@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 // Package storage provides storage interfaces and implementations for framework resources.
 //
 // The storage system is designed to be pluggable, allowing different backends

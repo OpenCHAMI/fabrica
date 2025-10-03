@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 // Package versioning provides HTTP middleware for API version negotiation.
 //
 // This middleware implements version negotiation strategy for REST APIs,
@@ -11,6 +15,9 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // VersionContext contains version information for the current request
@@ -51,12 +58,13 @@ type DefaultResourceMapper struct{}
 
 // MapResourceToKind provides a simple pluralization heuristic
 func (m *DefaultResourceMapper) MapResourceToKind(pluralName string) string {
+	caser := cases.Title(language.English)
 	// Simple heuristic: remove 's' suffix and capitalize
 	if strings.HasSuffix(pluralName, "s") && len(pluralName) > 1 {
 		singular := pluralName[:len(pluralName)-1]
-		return strings.Title(singular)
+		return caser.String(singular)
 	}
-	return strings.Title(pluralName)
+	return caser.String(pluralName)
 }
 
 // VersionNegotiationMiddleware provides HTTP middleware for version negotiation

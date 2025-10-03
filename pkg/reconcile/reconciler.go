@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 // Package reconcile provides the reconciliation framework for inventory resources.
 //
 // The reconciliation system enables declarative infrastructure management by

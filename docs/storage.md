@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Storage System Guide
 
 > Pluggable storage backends for flexible resource persistence.

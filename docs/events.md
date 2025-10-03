@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Events System
 
 Fabrica provides a CloudEvents-compliant event system for building event-driven applications. The event system enables decoupled communication between components through a publish-subscribe pattern.
@@ -6,7 +12,7 @@ Fabrica provides a CloudEvents-compliant event system for building event-driven 
 
 The event system consists of:
 - **Event Bus**: Central hub for publishing and subscribing to events
-- **CloudEvents**: Standard event format for interoperability  
+- **CloudEvents**: Standard event format for interoperability
 - **Wildcard Subscriptions**: Pattern-based event routing
 - **In-Memory Implementation**: Low-latency event delivery
 
@@ -343,7 +349,7 @@ eventBus.Subscribe("io.example.user.**", func(ctx context.Context, e events.Even
 // Order saga
 eventBus.Subscribe("io.example.order.created", func(ctx context.Context, e events.Event) error {
     // Reserve inventory
-    // Process payment  
+    // Process payment
     // Ship order
     return nil
 })

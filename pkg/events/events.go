@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 // Package events provides a CloudEvents-based event system for inventory resources.
 //
 // This package implements event publishing and subscription using the CloudEvents

@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Versioning Guide
 
 > Multi-version schema support with automatic conversion and HTTP negotiation.

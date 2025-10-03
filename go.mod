@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 module github.com/alexlovelltroy/fabrica
 
 go 1.23.4

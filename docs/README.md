@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Fabrica Documentation
 
 > Complete documentation for the Fabrica framework - build resource-based REST APIs with automatic code generation.

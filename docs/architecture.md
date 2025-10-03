@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Fabrica Architecture
 
 > Understanding the framework's design, components, and extension points.

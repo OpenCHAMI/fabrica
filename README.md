@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Fabrica 🏗️
 
 > A powerful Go framework for building resource-based REST APIs with automatic code generation, multi-version schema support, and pluggable storage backends.

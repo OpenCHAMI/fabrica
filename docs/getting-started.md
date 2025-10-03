@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Getting Started with Fabrica
 
 > Build your first resource-based REST API in 10 minutes with automatic code generation.

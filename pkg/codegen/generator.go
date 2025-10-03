@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 // Package codegen provides code generation for REST API resources.
 //
 // This package generates consistent CRUD operations, storage, and client code

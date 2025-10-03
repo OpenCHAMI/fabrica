@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Code Generation Templates
 
 > 📖 **Complete Guide**: [Code Generation Documentation](../../../docs/developer/CODE-GENERATION.md)

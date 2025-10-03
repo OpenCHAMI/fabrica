@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Reconciliation Framework
 
 Fabrica provides a Kubernetes-style reconciliation framework for building declarative infrastructure management systems. The reconciliation pattern enables automatic convergence of actual state to desired state.
@@ -470,10 +476,10 @@ func (r *DeviceReconciler) Reconcile(ctx context.Context, resource interface{}) 
         if device.Status.State != "running" {
             // Simulate starting device
             r.Logger.Infof("Starting device %s", device.UID)
-            
+
             device.Status.State = "running"
             device.Status.LastSeen = time.Now().Format(time.RFC3339)
-            
+
             r.SetCondition(device, "Ready", "True", "DeviceRunning", "Device is running")
             r.UpdateStatus(ctx, device)
             r.EmitEvent(ctx, "io.example.device.started", device)
@@ -483,9 +489,9 @@ func (r *DeviceReconciler) Reconcile(ctx context.Context, resource interface{}) 
         if device.Status.State != "stopped" {
             // Simulate stopping device
             r.Logger.Infof("Stopping device %s", device.UID)
-            
+
             device.Status.State = "stopped"
-            
+
             r.SetCondition(device, "Ready", "False", "DeviceStopped", "Device is stopped")
             r.UpdateStatus(ctx, device)
             r.EmitEvent(ctx, "io.example.device.stopped", device)

@@ -1,3 +1,7 @@
+// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
 // Package versioning provides version registry for managing multiple schema versions.
 //
 // The version registry provides a central location for managing all resource
