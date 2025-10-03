@@ -1,429 +1,601 @@
-# Framework Comparison: Fabrica vs Go-Fuego vs Huma vs Goa
+## Go Framework Comparison: Finding the Right Tool for Your Project
 
-This document compares Fabrica with three popular Go API frameworks to help you choose the right tool for your project.
+This document provides an honest, balanced comparison of Go web and API frameworks to help you choose the right tool. Each framework excels in different areas—there's no universal "best" choice.
 
-## 📊 Quick Comparison Matrix
+## 📊 Framework Categories
 
-| Feature | Fabrica | Go-Fuego | Huma | Goa |
-|---------|---------|----------|------|-----|
-| **Approach** | Resource-Centric | Handler-Centric | Schema-First | Design-First DSL |
-| **OpenAPI Generation** | ✅ Template-based | ✅ From code | ✅ From code | ✅ From DSL |
-| **Code Generation** | ✅ Full stack | ❌ OpenAPI only | ❌ None | ✅ Full stack |
-| **Multi-Version Support** | ✅ Built-in | ❌ Manual | ❌ Manual | ⚠️ Via DSL |
-| **Storage Abstraction** | ✅ Pluggable | ❌ None | ❌ None | ❌ None |
-| **Event System** | ✅ CloudEvents | ❌ None | ❌ None | ❌ None |
-| **Reconciliation** | ✅ K8s-style | ❌ None | ❌ None | ❌ None |
-| **Authorization** | ✅ Policy-based | ⚠️ Manual | ⚠️ Manual | ⚠️ Manual |
-| **CLI Generation** | ✅ Yes | ❌ No | ❌ No | ✅ Yes |
-| **Client Generation** | ✅ Yes | ❌ No | ✅ Via OpenAPI | ✅ Yes |
-| **Router** | chi-based | net/http (Go 1.22+) | Router-agnostic | Generated |
-| **Learning Curve** | Medium | Low | Low | High |
-| **Best For** | Inventory systems | REST APIs | REST APIs | Microservices |
-| **Production Ready** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+Go frameworks fall into distinct categories with different goals:
+
+### 1. **High-Level Code Generation Frameworks**
+Generate significant portions of your codebase from specifications.
+- **Goa** - Design-first with DSL, generates full stack
+- **Fabrica** - Resource-centric, template-based generation
+- **Buffalo** - Rails-like full-stack framework
+
+### 2. **OpenAPI-Focused Frameworks**
+Prioritize automatic OpenAPI documentation generation.
+- **Huma** - Schema-first with comprehensive OpenAPI 3.1
+- **Go-Fuego** - Code-first with automatic OpenAPI 3.0
+- **Ogen** - Generate server from OpenAPI specs
+
+### 3. **Lightweight Routers**
+Fast, minimal frameworks focused on routing and middleware.
+- **Chi** - Idiomatic, stdlib-compatible
+- **Echo** - Fast with good middleware
+- **Gin** - Most popular, simple API
+- **Fiber** - Fastest, Express-like (uses fasthttp)
+
+### 4. **Full-Stack MVC Frameworks**
+Complete frameworks with ORM, templating, and more.
+- **Beego** - Enterprise-focused MVC
+- **Buffalo** - Rails-like rapid development
+- **Revel** - Full-stack with hot reload
 
 ---
 
-## 🎯 Detailed Comparison
+## 🎯 Quick Decision Guide
+
+**I need...**
+
+- **Generate code from OpenAPI spec** → Ogen
+- **Generate OpenAPI from code** → Huma, Go-Fuego
+- **Manage inventory/resources with storage** → Fabrica
+- **Design-first microservices (HTTP+gRPC)** → Goa
+- **Fast, simple REST API** → Chi, Gin, Echo
+- **Highest performance** → Fiber
+- **Full-stack web app** → Buffalo, Beego
+- **Multi-version API support** → Fabrica, Huma (manual)
+- **JSON Patch/Merge Patch** → Huma (built-in), others (manual)
+- **Enterprise MVC** → Beego
+- **Something like Express.js** → Fiber
+- **Minimal dependencies** → Chi, stdlib
+
+---
+
+## 🔍 Detailed Framework Profiles
 
 ### Fabrica
 
-**Philosophy**: Resource-centric inventory management framework
+**What it is**: Resource-centric inventory management framework with code generation
+
+**Philosophy**: Kubernetes-style resource management with template-based generation
 
 **Strengths**:
-- 🏗️ **Complete Framework**: Not just an API framework - includes storage, events, reconciliation, versioning
-- 📦 **Resource Model**: Kubernetes-style resources with metadata, labels, annotations
-- 🔄 **Multi-Version Schema**: Built-in support for v1, v2beta1, etc. with automatic conversion
-- 🎨 **Template-Based Generation**: Generate handlers, storage, CLI, clients from resource definitions
-- 📊 **Event System**: CloudEvents-compliant event bus for reactive architectures
-- ♻️ **Reconciliation**: Kubernetes-style reconciliation loops for declarative management
-- 🔐 **Policy Framework**: Pluggable authorization with RBAC/ABAC patterns
-- 💾 **Storage Abstraction**: File, database, cloud - swap backends without code changes
+- ✅ Built-in storage abstraction (file, database, cloud)
+- ✅ CloudEvents-compliant event system
+- ✅ Kubernetes-style reconciliation loops
+- ✅ Native multi-version schema support with automatic conversion
+- ✅ Template-based full-stack generation (API + CLI + client + storage)
+- ✅ Resource model with labels, annotations, conditions
+- ✅ Policy-based authorization framework
 
-**Ideal For**:
-- Inventory management systems (IT assets, devices, sensors, products)
-- Systems needing multi-version APIs
-- Event-driven architectures
-- Declarative infrastructure management
-- Resource-based CRUD applications
+**Weaknesses**:
+- ❌ Opinionated resource structure (not suitable for all APIs)
+- ❌ Learning curve for resource model concepts
+- ❌ Inventory/asset domain focus (less suitable for general APIs)
+- ❌ No JSON Patch/Merge Patch support
+- ❌ No built-in validation (must implement in templates)
+- ❌ Smaller community compared to Gin/Echo
+- ❌ More complex than simple REST frameworks
 
-**When to Choose Fabrica**:
-- You're building an inventory or asset management system
-- You need multi-version API support out of the box
-- You want Kubernetes-style resource management
-- You need events and reconciliation
-- You prefer template-based code generation
+**Best For**:
+- Inventory management (IT assets, devices, IoT, products)
+- Systems needing resource versioning (v1, v2beta1)
+- Event-driven architectures with reconciliation
+- Projects wanting Kubernetes-style patterns
 
-**Example Use Cases**:
-- HPC hardware inventory (OpenCHAMI)
-- IoT device management
-- Product catalog systems
-- Configuration management databases (CMDB)
-- Asset tracking systems
-
----
-
-### Go-Fuego
-
-**Philosophy**: Modern Go API framework with automatic OpenAPI generation from code
-
-**Strengths**:
-- 🚀 **Modern Go**: Built on Go 1.22+ net/http with generics
-- 📝 **OpenAPI from Code**: Automatic OpenAPI 3 generation without comments or YAML
-- 🔌 **Zero Lock-in**: 100% net/http compatible, use any middleware
-- ⚡ **Low Boilerplate**: Minimal code for handlers with automatic serialization
-- 🎯 **Simple API**: Clean, intuitive API inspired by Nest.js
-- 🔄 **Adaptors**: Plugin to existing Gin/Echo apps
-- ✅ **Built-in Validation**: go-playground/validator integration
-
-**Ideal For**:
-- Modern REST APIs with OpenAPI documentation
-- Teams migrating from Gin/Echo wanting OpenAPI
-- Projects requiring net/http compatibility
-- Developers who prefer code-first approaches
-
-**When to Choose Go-Fuego**:
-- You want automatic OpenAPI without YAML files
-- You value net/http compatibility
-- You need a simple, modern API framework
-- You're starting a new REST API project
-- You don't need storage, events, or reconciliation
-
-**Example Use Cases**:
-- Microservices REST APIs
-- API gateways
-- Backend services for web/mobile apps
-- Public APIs with OpenAPI docs
+**Not For**:
+- Simple CRUD APIs (use Huma, Go-Fuego, or Chi)
+- Non-resource-based systems
+- Projects needing maximum flexibility
+- Teams unfamiliar with Kubernetes concepts
 
 ---
 
 ### Huma
 
-**Philosophy**: Schema-first REST/RPC framework with comprehensive OpenAPI 3.1 support
+**What it is**: Schema-first REST/RPC framework with comprehensive OpenAPI 3.1
+
+**Philosophy**: Type-safe, schema-driven development with extensive features
 
 **Strengths**:
-- 📋 **OpenAPI 3.1**: Full OpenAPI 3.1 and JSON Schema support
-- 🔀 **Router Agnostic**: Works with chi, gin, fiber, gorilla/mux, stdlib
-- 📦 **Content Types**: JSON, CBOR, with gzip/Brotli encoding
-- ✅ **Type Safety**: Static typing for all inputs/outputs
-- 🔧 **Conditional Requests**: If-Match, If-Unmodified-Since support
-- 🩹 **Auto PATCH**: Automatic JSON Patch/Merge Patch generation
-- 🎨 **Beautiful Docs**: Stoplight Elements integration
-- ⚡ **Production Proven**: Used by large companies with millions of users
+- ✅ Full OpenAPI 3.1 and JSON Schema support
+- ✅ **Built-in JSON Patch and JSON Merge Patch** (RFC 7396, RFC 6902)
+- ✅ Router-agnostic (chi, gin, fiber, gorilla, stdlib)
+- ✅ Multiple content types (JSON, CBOR) with compression
+- ✅ Conditional requests (If-Match, If-Unmodified-Since)
+- ✅ Automatic PATCH generation from GET+PUT
+- ✅ Production-proven (millions of users)
+- ✅ Excellent validation with detailed errors
+- ✅ Beautiful documentation (Stoplight Elements)
 
-**Ideal For**:
-- REST APIs requiring comprehensive OpenAPI 3.1
-- Projects needing multiple content type support (JSON, CBOR)
+**Weaknesses**:
+- ❌ No code generation beyond OpenAPI
+- ❌ Manual versioning (no automatic conversion)
+- ❌ No storage abstraction
+- ❌ Verbose API for simple use cases
+- ❌ Learning curve for schema-first approach
+
+**Best For**:
+- Enterprise REST APIs with complex schemas
+- APIs needing comprehensive OpenAPI 3.1
+- Projects requiring PATCH operations
 - Teams wanting router flexibility
-- APIs with complex validation requirements
-
-**When to Choose Huma**:
-- You need OpenAPI 3.1 (vs 3.0)
-- You want router flexibility
-- You need conditional request support
-- You value comprehensive validation
-- You want automatic PATCH generation
-
-**Example Use Cases**:
-- Enterprise REST APIs
-- APIs with complex schemas
 - Multi-tenant SaaS platforms
-- APIs requiring content negotiation
+
+**Not For**:
+- Simple APIs (use Gin or Chi)
+- Projects needing code generation
+- gRPC services (use Goa)
+
+**Production Use**: Live streaming platforms, enterprise SaaS
 
 ---
-
-### Goa
-
-**Philosophy**: Design-first microservices framework with DSL-driven code generation
-
-**Strengths**:
-- 🎨 **Design-First DSL**: Express APIs in elegant, type-safe DSL
-- ⚙️ **Full Stack Generation**: 30-50% of codebase auto-generated
-- 🔀 **Multi-Transport**: HTTP, gRPC, JSON-RPC 2.0 (WebSocket/SSE)
-- 🤖 **AI-Powered**: AI design wizard for natural language API creation
-- 📚 **Zero Drift**: Design, code, and docs always in sync
-- 🛡️ **Enterprise Features**: Built-in validation, error handling, middleware
-- 📦 **Complete Tooling**: Server, client, CLI, OpenAPI, Protocol Buffers
-
-**Ideal For**:
-- Microservices architectures
-- Teams valuing design-first development
-- Projects needing multiple transports (HTTP + gRPC)
-- Organizations with strict API governance
-- Enterprise applications
-
-**When to Choose Goa**:
-- You prefer design-first over code-first
-- You need gRPC and HTTP from same design
-- You want comprehensive code generation
-- You value design-implementation consistency
-- You need enterprise-grade governance
-
-**Example Use Cases**:
-- Microservices platforms
-- Multi-protocol APIs (REST + gRPC)
-- Enterprise service architectures
-- APIs with complex business logic
-- Services requiring strict contracts
-
----
-
-## 🔍 Head-to-Head Comparisons
-
-### Fabrica vs Go-Fuego
-
-**Similarities**:
-- Both generate OpenAPI documentation
-- Both support modern Go patterns
-- Both have clean, intuitive APIs
-
-**Key Differences**:
-- **Scope**: Fabrica is a complete framework (storage, events, reconciliation), Fuego is API-focused
-- **Resources**: Fabrica is resource-centric, Fuego is handler-centric
-- **Generation**: Fabrica generates full stack (handlers, storage, CLI, clients), Fuego generates OpenAPI only
-- **Versioning**: Fabrica has built-in multi-version support, Fuego requires manual versioning
-- **Events**: Fabrica includes CloudEvents bus, Fuego has none
-
-**Choose Fabrica if**: You need a complete inventory framework with storage and events
-**Choose Fuego if**: You just need a modern REST API with OpenAPI docs
-
----
-
-### Fabrica vs Huma
-
-**Similarities**:
-- Both generate OpenAPI from code
-- Both support multiple routers (Fabrica: chi, Huma: router-agnostic)
-- Both emphasize type safety
-- Both are production-ready
-
-**Key Differences**:
-- **Philosophy**: Fabrica is resource-centric, Huma is schema-first
-- **Scope**: Fabrica includes storage/events/reconciliation, Huma is API-focused
-- **Versioning**: Fabrica has built-in multi-version support, Huma requires manual versioning
-- **Code Gen**: Fabrica generates full stack, Huma generates OpenAPI only
-- **Resources**: Fabrica has Kubernetes-style resources, Huma uses standard Go structs
-
-**Choose Fabrica if**: You're building an inventory system with resources
-**Choose Huma if**: You need a flexible schema-first REST API framework
-
----
-
-### Fabrica vs Goa
-
-**Similarities**:
-- Both generate comprehensive code (handlers, clients, CLI)
-- Both emphasize design-code consistency
-- Both support OpenAPI generation
-- Both target enterprise use cases
-
-**Key Differences**:
-- **Approach**: Fabrica is resource-centric, Goa is DSL-first
-- **Design Language**: Fabrica uses Go structs + templates, Goa uses custom DSL
-- **Domain**: Fabrica is inventory-focused, Goa is general microservices
-- **Built-ins**: Fabrica includes storage/events/reconciliation, Goa is API/transport focused
-- **Learning Curve**: Fabrica uses familiar Go patterns, Goa requires learning DSL
-- **Transports**: Fabrica is HTTP-focused, Goa supports HTTP/gRPC/JSON-RPC
-
-**Choose Fabrica if**: You're building inventory systems with resources
-**Choose Goa if**: You need multi-protocol microservices with design governance
-
----
-
-## 🎨 Code Comparison
-
-### Defining a Resource/Endpoint
-
-**Fabrica**:
-```go
-type Device struct {
-    resource.Resource
-    Spec   DeviceSpec   `json:"spec"`
-    Status DeviceStatus `json:"status"`
-}
-
-type DeviceSpec struct {
-    Name     string `json:"name"`
-    Location string `json:"location"`
-}
-
-// Register and generate everything
-gen := codegen.NewGenerator("./gen", "main", "myapp")
-gen.RegisterResource(&Device{})
-gen.GenerateAll() // Generates handlers, storage, CLI, client
-```
-
-**Go-Fuego**:
-```go
-type Device struct {
-    Name     string `json:"name"`
-    Location string `json:"location"`
-}
-
-fuego.Get(s, "/devices/{id}", func(c fuego.ContextWithBody[Device]) (Device, error) {
-    id := c.PathParam("id")
-    return loadDevice(id)
-})
-// OpenAPI auto-generated from signature
-```
-
-**Huma**:
-```go
-type Device struct {
-    Name     string `json:"name" doc:"Device name"`
-    Location string `json:"location" doc:"Device location"`
-}
-
-huma.Register(api, huma.Operation{
-    OperationID: "get-device",
-    Method:      http.MethodGet,
-    Path:        "/devices/{id}",
-}, func(ctx context.Context, input *struct{
-    ID string `path:"id"`
-}) (*struct{ Body Device }, error) {
-    device := loadDevice(input.ID)
-    return &struct{ Body Device }{Body: device}, nil
-})
-```
-
-**Goa**:
-```go
-// design/design.go
-var _ = Service("device", func() {
-    Method("get", func() {
-        Payload(func() {
-            Attribute("id", String, "Device ID")
-        })
-        Result(Device)
-        HTTP(func() {
-            GET("/devices/{id}")
-        })
-    })
-})
-
-// Then: goa gen myapp/design
-// Generates: controllers, types, OpenAPI, clients
-```
-
----
-
-## 🎯 Decision Matrix
-
-### Choose **Fabrica** when:
-- ✅ Building inventory/asset management systems
-- ✅ Need multi-version API support (v1, v2beta1, etc.)
-- ✅ Want Kubernetes-style resource management
-- ✅ Need storage abstraction (file, DB, cloud)
-- ✅ Require event-driven architecture (CloudEvents)
-- ✅ Need reconciliation loops
-- ✅ Want full-stack code generation (API + CLI + client + storage)
-- ✅ Prefer template-based generation
-- ✅ Building resource-centric systems
-
-### Choose **Go-Fuego** when:
-- ✅ Building modern REST APIs
-- ✅ Want automatic OpenAPI from code (no YAML)
-- ✅ Need net/http compatibility
-- ✅ Prefer minimal boilerplate
-- ✅ Starting a new API project
-- ✅ Migrating from Gin/Echo
-- ✅ Don't need storage/events/reconciliation
-- ✅ Want a simple, intuitive framework
-- ✅ Value code-first approach
-
-### Choose **Huma** when:
-- ✅ Need comprehensive OpenAPI 3.1 support
-- ✅ Want router flexibility (chi, gin, fiber, etc.)
-- ✅ Need multiple content types (JSON, CBOR)
-- ✅ Require conditional request support
-- ✅ Want automatic PATCH generation
-- ✅ Building enterprise REST APIs
-- ✅ Need complex validation
-- ✅ Prefer schema-first approach
-- ✅ Want production-proven technology
-
-### Choose **Goa** when:
-- ✅ Building microservices architectures
-- ✅ Need multiple transports (HTTP + gRPC + JSON-RPC)
-- ✅ Prefer design-first development
-- ✅ Want comprehensive code generation (30-50% of code)
-- ✅ Need strict design-implementation consistency
-- ✅ Require enterprise governance
-- ✅ Building complex service architectures
-- ✅ Value DSL-based design
-- ✅ Need multi-protocol support
-
----
-
-## 🏆 Best Use Case for Each
-
-| Framework | Sweet Spot |
-|-----------|------------|
-| **Fabrica** | HPC inventory, IoT device management, asset tracking, product catalogs, CMDBs |
-| **Go-Fuego** | Microservice REST APIs, API gateways, backend services, public APIs |
-| **Huma** | Enterprise REST APIs, multi-tenant SaaS, APIs with complex schemas |
-| **Goa** | Microservices platforms, multi-protocol APIs (REST+gRPC), enterprise services |
-
----
-
-## 📚 Additional Resources
-
-### Fabrica
-- GitHub: [github.com/alexlovelltroy/fabrica](https://github.com/alexlovelltroy/fabrica)
-- Documentation: [docs/](/)
 
 ### Go-Fuego
-- GitHub: [github.com/go-fuego/fuego](https://github.com/go-fuego/fuego)
-- Documentation: [go-fuego.github.io/fuego](https://go-fuego.github.io/fuego/)
-- Article: [How I write Go APIs in 2025](https://dev.to/tizzard/how-i-write-go-apis-in-2025-my-experience-with-fuego-1j5o)
 
-### Huma
-- GitHub: [github.com/danielgtaylor/huma](https://github.com/danielgtaylor/huma)
-- Documentation: [huma.rocks](https://huma.rocks/)
-- Tutorial: [How to Build an API with Go and Huma](https://zuplo.com/learning-center/how-to-build-an-api-with-go-and-huma)
+**What it is**: Modern code-first framework with automatic OpenAPI generation
 
-### Goa
-- GitHub: [github.com/goadesign/goa](https://github.com/goadesign/goa)
-- Documentation: [goa.design](https://goa.design/)
-- Blog: [Goa: Untangling Microservices](https://blog.gopheracademy.com/advent-2015/goauntanglingmicroservices/)
+**Philosophy**: Minimal boilerplate with modern Go idioms
+
+**Strengths**:
+- ✅ Zero YAML - OpenAPI 3.0 from Go code
+- ✅ Built on Go 1.22+ stdlib (no lock-in)
+- ✅ Uses generics for type safety
+- ✅ Very low boilerplate
+- ✅ Easy migration from Gin/Echo
+- ✅ Built-in validation (go-playground/validator)
+- ✅ Simple, intuitive API
+
+**Weaknesses**:
+- ❌ OpenAPI 3.0 only (not 3.1)
+- ❌ No code generation (only OpenAPI)
+- ❌ No storage abstraction
+- ❌ No built-in versioning
+- ❌ No JSON Patch support
+- ❌ Newer framework (smaller community)
+
+**Best For**:
+- Modern REST APIs
+- Teams wanting code-first OpenAPI
+- Projects valuing stdlib compatibility
+- Microservices
+
+**Not For**:
+- Projects needing OpenAPI 3.1
+- Full-stack generation needs
+- Complex enterprise requirements
 
 ---
 
-## 🤔 Still Unsure?
+### Goa
 
-### Quick Decision Tree
+**What it is**: Design-first framework with DSL-driven code generation
+
+**Philosophy**: Design contract first, generate everything from it
+
+**Strengths**:
+- ✅ Elegant DSL for API design
+- ✅ Generates 30-50% of codebase
+- ✅ Multi-transport (HTTP, gRPC, JSON-RPC 2.0)
+- ✅ WebSocket and SSE streaming
+- ✅ Zero drift between design and code
+- ✅ AI-powered design wizard
+- ✅ Complete tooling (server, client, CLI, docs)
+
+**Weaknesses**:
+- ❌ High learning curve (custom DSL)
+- ❌ Less flexibility in generated code
+- ❌ Opinionated structure
+- ❌ No storage abstraction
+- ❌ Debugging generated code can be complex
+
+**Best For**:
+- Microservices architectures
+- Multi-protocol APIs (REST + gRPC)
+- Teams valuing design governance
+- Enterprise service architectures
+
+**Not For**:
+- Simple REST APIs
+- Teams unfamiliar with DSLs
+- Rapid prototyping
+
+**Production Use**: Enterprise microservices, regulated industries
+
+---
+
+### Chi
+
+**What it is**: Lightweight, composable router built on stdlib
+
+**Philosophy**: Minimal, idiomatic Go with no magic
+
+**Strengths**:
+- ✅ 100% net/http compatible
+- ✅ Excellent middleware ecosystem
+- ✅ Clean, simple API
+- ✅ No external dependencies
+- ✅ Stable and battle-tested
+- ✅ Great for learning Go idioms
+
+**Weaknesses**:
+- ❌ No OpenAPI generation
+- ❌ No validation
+- ❌ No code generation
+- ❌ Manual everything (flexibility = more code)
+
+**Best For**:
+- Developers wanting idiomatic Go
+- Projects prioritizing simplicity
+- Teams wanting full control
+- Learning Go web development
+
+**Not For**:
+- Projects needing OpenAPI
+- Teams wanting code generation
+- Rapid development needs
+
+**Community**: Growing, recommended by many gophers
+
+---
+
+### Gin
+
+**What it is**: Fast, minimalist web framework
+
+**Philosophy**: Simple API, good performance
+
+**Strengths**:
+- ✅ Most popular (75k+ GitHub stars)
+- ✅ Huge community and ecosystem
+- ✅ Excellent documentation
+- ✅ Fast performance
+- ✅ Simple API
+- ✅ Great for beginners
+
+**Weaknesses**:
+- ❌ No OpenAPI generation
+- ❌ No code generation
+- ❌ Manual validation
+- ❌ Less idiomatic than Chi
+- ❌ Maintenance concerns (slower updates)
+
+**Best For**:
+- Beginners to Go
+- Small to medium REST APIs
+- Projects needing large community
+- Fast development
+
+**Not For**:
+- OpenAPI requirements
+- Enterprise governance needs
+
+**Production Use**: Widely adopted across all scales
+
+---
+
+### Fiber
+
+**What it is**: Express-like framework on fasthttp
+
+**Philosophy**: Fastest performance with familiar API
+
+**Strengths**:
+- ✅ Fastest Go web framework (benchmarks)
+- ✅ Express.js-like API (easy for Node devs)
+- ✅ Low memory footprint
+- ✅ Built-in middleware
+- ✅ WebSocket support
+
+**Weaknesses**:
+- ❌ Uses fasthttp (not stdlib - compatibility issues)
+- ❌ Less idiomatic Go
+- ❌ No OpenAPI generation
+- ❌ Some stdlib tools don't work
+
+**Best For**:
+- High-performance microservices
+- Node.js developers learning Go
+- Performance-critical applications
+- WebSocket applications
+
+**Not For**:
+- Projects requiring stdlib compatibility
+- Teams prioritizing Go idioms
+
+**Community**: Growing rapidly (31k+ stars)
+
+---
+
+### Echo
+
+**What it is**: Fast, feature-rich framework
+
+**Philosophy**: Performance + features
+
+**Strengths**:
+- ✅ Excellent performance
+- ✅ Built-in middleware
+- ✅ Good documentation
+- ✅ Mature and stable
+- ✅ Type-safe request binding
+- ✅ Supports HTTP/2
+
+**Weaknesses**:
+- ❌ No OpenAPI generation
+- ❌ Steeper learning curve than Gin
+- ❌ No code generation
+
+**Best For**:
+- Enterprise applications
+- Complex API projects
+- Teams wanting structure
+- Production systems
+
+**Not For**:
+- Beginners
+- Simple APIs
+- OpenAPI requirements
+
+**Production Use**: Enterprise-level applications
+
+---
+
+### Buffalo
+
+**What it is**: Rails-like full-stack framework
+
+**Philosophy**: Convention over configuration, rapid development
+
+**Strengths**:
+- ✅ Complete full-stack solution
+- ✅ Built-in ORM (Pop)
+- ✅ Asset pipeline
+- ✅ Hot reload
+- ✅ Scaffolding generators
+- ✅ WebSocket support
+
+**Weaknesses**:
+- ❌ Heavy and opinionated
+- ❌ Learning curve
+- ❌ Slower development pace
+- ❌ Less suitable for APIs only
+
+**Best For**:
+- Full-stack web applications
+- Teams from Rails/Django background
+- Rapid prototyping
+
+**Not For**:
+- Microservices
+- API-only projects
+- Minimal dependencies needs
+
+---
+
+### Beego
+
+**What it is**: Enterprise MVC framework
+
+**Philosophy**: Complete framework for enterprise apps
+
+**Strengths**:
+- ✅ Full MVC architecture
+- ✅ Built-in ORM
+- ✅ Admin dashboard
+- ✅ Task scheduling
+- ✅ I18n support
+- ✅ Enterprise features
+
+**Weaknesses**:
+- ❌ Heavy and complex
+- ❌ Older design patterns
+- ❌ Less active development
+- ❌ Steep learning curve
+
+**Best For**:
+- Large enterprise applications
+- Teams wanting complete framework
+- Traditional MVC projects
+
+**Not For**:
+- Microservices
+- Modern Go idioms
+- Simple APIs
+
+---
+
+## 📊 Feature Comparison Matrix
+
+| Feature | Fabrica | Huma | Go-Fuego | Goa | Chi | Gin | Fiber | Echo | Buffalo | Beego |
+|---------|---------|------|----------|-----|-----|-----|-------|------|---------|-------|
+| **OpenAPI Generation** | Template | 3.1 | 3.0 | Yes | No | No | No | No | No | No |
+| **Code Generation** | Full | No | No | Full | No | No | No | No | Partial | No |
+| **Storage Abstraction** | Yes | No | No | No | No | No | No | No | ORM | ORM |
+| **Versioning** | Built-in | Manual | Manual | DSL | Manual | Manual | Manual | Manual | Manual | Manual |
+| **JSON Patch** | No | **Yes** | No | No | No | No | No | No | No | No |
+| **Router** | chi | Agnostic | stdlib | Generated | Built-in | Built-in | fasthttp | Built-in | Built-in | Built-in |
+| **Performance** | Good | Good | Good | Good | Good | Excellent | **Fastest** | Excellent | Good | Good |
+| **Learning Curve** | Medium | Medium | Low | High | Low | Low | Low | Medium | High | High |
+| **Community Size** | Small | Medium | Small | Medium | Medium | **Huge** | Large | Large | Medium | Medium |
+| **stdlib Compatible** | Yes | Yes | Yes | No | Yes | Yes | No | Yes | Yes | Yes |
+| **Production Ready** | Yes | **Yes** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+
+---
+
+## 🎭 Honest Strengths & Weaknesses
+
+### What Fabrica Does Better
+- **Only framework** with built-in resource storage abstraction
+- **Only framework** with CloudEvents event system
+- **Only framework** with Kubernetes-style reconciliation
+- **Best** native multi-version schema support
+- **Best** for inventory/asset management domain
+
+### What Fabrica Does Worse
+- **No JSON Patch/Merge Patch** (Huma has this built-in)
+- **More complex** than simple frameworks (Gin, Chi, Fiber)
+- **More opinionated** than flexible frameworks (Huma, Chi)
+- **Smaller community** than established frameworks
+- **Less suitable** for non-resource-based APIs
+- **No validation framework** (Huma, Go-Fuego have built-in)
+- **Fewer production references** than Gin/Echo/Fiber
+
+### What Each Framework Does Best
+
+**Huma**: Most comprehensive OpenAPI 3.1, built-in PATCH support, router flexibility
+**Go-Fuego**: Simplest modern code-first OpenAPI generation
+**Goa**: Best design-first approach, multi-protocol support
+**Chi**: Most idiomatic Go, best middleware system
+**Gin**: Largest community, easiest for beginners
+**Fiber**: Absolute fastest performance, best for Node devs
+**Echo**: Best balance of features and performance
+**Buffalo**: Best full-stack Rails-like experience
+**Beego**: Best enterprise MVC features
+
+---
+
+## 🤔 Choosing the Right Framework
+
+### Decision Tree
 
 ```
-Need inventory/asset management?
-├─ Yes → Fabrica
-└─ No
-   │
-   Need gRPC + HTTP from same design?
-   ├─ Yes → Goa
-   └─ No
-      │
-      Need OpenAPI 3.1 and router flexibility?
-      ├─ Yes → Huma
-      └─ No → Go-Fuego
+What are you building?
+
+├─ Inventory/Asset Management System?
+│  └─ Need storage + events + reconciliation?
+│     ├─ Yes → Fabrica
+│     └─ No → Huma or Go-Fuego
+│
+├─ Microservices (HTTP + gRPC)?
+│  └─ Goa
+│
+├─ REST API with OpenAPI?
+│  ├─ Need OpenAPI 3.1 + JSON Patch?
+│  │  └─ Huma
+│  ├─ Want simple code-first?
+│  │  └─ Go-Fuego
+│  └─ Just need OpenAPI?
+│     └─ Generate from spec: Ogen
+│
+├─ Simple REST API?
+│  ├─ Need maximum performance?
+│  │  └─ Fiber
+│  ├─ Want idiomatic Go?
+│  │  └─ Chi
+│  ├─ Want largest community?
+│  │  └─ Gin
+│  └─ Want features + performance?
+│     └─ Echo
+│
+└─ Full-Stack Web App?
+   ├─ Rails-like experience?
+   │  └─ Buffalo
+   └─ Enterprise MVC?
+      └─ Beego
 ```
 
-### Can You Use Multiple?
+### By Use Case
 
-Yes! These frameworks serve different purposes:
+| Use Case | Best Choice | Alternative |
+|----------|-------------|-------------|
+| HPC/IoT Inventory | Fabrica | Huma + custom storage |
+| Enterprise REST API | Huma | Echo + OpenAPI tools |
+| Microservices Platform | Goa | Go-Fuego or Huma |
+| Simple CRUD API | Chi, Gin | Go-Fuego |
+| High-Performance API | Fiber | Echo |
+| Full-Stack Web App | Buffalo | Beego |
+| Learning Go | Gin, Chi | Echo |
+| Node.js Migration | Fiber | Gin |
+| OpenAPI 3.1 Required | Huma | Custom with Chi |
+| Multi-Protocol Service | Goa | Separate services |
+
+---
+
+## 💡 Can You Mix Frameworks?
+
+**Yes!** Common patterns:
 
 - **Fabrica + Huma**: Use Fabrica for inventory resources, Huma for other APIs
-- **Go-Fuego + Goa**: Use Goa for complex services, Fuego for simple ones
-- **Fabrica + Goa**: Use Fabrica for inventory, Goa for business logic services
+- **Goa + Chi**: Goa for main services, Chi for utility endpoints
+- **Buffalo + API framework**: Buffalo for web UI, separate API service
+- **Multiple services**: Different frameworks for different microservices
 
 ---
 
-## 📝 Conclusion
+## 🎓 Learning Resources
 
-**Fabrica** is the only framework specifically designed for inventory and asset management with built-in storage, events, reconciliation, and multi-version support. If you're building an inventory system, Fabrica provides everything you need out of the box.
+### Fabrica
+- Docs: [github.com/alexlovelltroy/fabrica](https://github.com/alexlovelltroy/fabrica)
+- Best for: Inventory systems
 
-For general REST APIs, **Go-Fuego** offers the simplest path with automatic OpenAPI generation and minimal boilerplate.
+### Huma
+- Docs: [huma.rocks](https://huma.rocks/)
+- Tutorial: [Building APIs with Huma](https://huma.rocks/tutorial/)
+- Best for: Enterprise REST APIs
 
-For schema-first REST APIs with comprehensive OpenAPI 3.1 support, **Huma** provides the most flexibility and production-proven reliability.
+### Go-Fuego
+- Docs: [go-fuego.github.io/fuego](https://go-fuego.github.io/fuego/)
+- Article: [How I write Go APIs in 2025](https://dev.to/tizzard/how-i-write-go-apis-in-2025-my-experience-with-fuego-1j5o)
+- Best for: Modern REST APIs
 
-For design-first microservices requiring multiple transports and extensive code generation, **Goa** offers unmatched capabilities with its DSL-driven approach.
+### Goa
+- Docs: [goa.design](https://goa.design/)
+- Best for: Design-first microservices
 
-Choose based on your specific needs, team preferences, and project requirements. All four frameworks are production-ready and actively maintained in 2025.
+### Chi
+- Docs: [go-chi.io](https://go-chi.io/)
+- Best for: Idiomatic Go
+
+### Gin
+- Docs: [gin-gonic.com](https://gin-gonic.com/)
+- Best for: Beginners
+
+### Fiber
+- Docs: [gofiber.io](https://gofiber.io/)
+- Best for: Performance
+
+### Echo
+- Docs: [echo.labstack.com](https://echo.labstack.com/)
+- Best for: Balance of features/performance
+
+### Buffalo
+- Docs: [gobuffalo.io](https://gobuffalo.io/)
+- Best for: Full-stack apps
+
+### Beego
+- Docs: [beego.wiki](https://beego.wiki/)
+- Best for: Enterprise MVC
+
+---
+
+## 📝 Final Thoughts
+
+**There is no "best" framework** - only the best framework for your specific needs.
+
+### Choose based on:
+
+1. **Project requirements** (performance, features, OpenAPI, etc.)
+2. **Team experience** (Node.js → Fiber, Rails → Buffalo, Kubernetes → Fabrica)
+3. **Scale and complexity** (simple → Gin/Chi, complex → Echo/Huma)
+4. **Domain fit** (inventory → Fabrica, microservices → Goa, general → others)
+5. **Long-term maintenance** (community size, update frequency)
+
+### Remember:
+
+- **Gin/Echo/Fiber/Chi**: Production-proven, huge communities, safe choices
+- **Huma/Go-Fuego**: Modern OpenAPI, growing rapidly, excellent docs
+- **Goa**: Unique design-first approach, powerful but complex
+- **Fabrica**: Specialized for inventory, excellent fit for that domain
+- **Buffalo/Beego**: Full-stack, good for web apps, less for APIs
+
+### Don't overthink it:
+
+- For most REST APIs: **Start with Gin or Chi**
+- Need OpenAPI? **Add Huma or Go-Fuego**
+- Building inventory? **Consider Fabrica**
+- Need gRPC? **Use Goa or grpc-go**
+- Want fastest? **Use Fiber**
+
+All frameworks mentioned here are production-ready and actively maintained. Pick one that fits your needs and build something great! 🚀
