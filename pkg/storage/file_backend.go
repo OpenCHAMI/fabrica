@@ -259,7 +259,7 @@ func (f *FileBackend) Save(ctx context.Context, resourceType, uid string, data j
 
 	if err := os.Rename(tempPath, filePath); err != nil {
 		// Clean up temp file on error
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return fmt.Errorf("failed to rename temp file %s to %s: %w", tempPath, filePath, err)
 	}
 

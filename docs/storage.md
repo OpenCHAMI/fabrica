@@ -35,7 +35,7 @@ type StorageBackend interface {
     Exists(ctx context.Context, resourceType, uid string) (bool, error)
     List(ctx context.Context, resourceType string) ([]string, error)
     Close() error
-    
+
     // Version support
     LoadWithVersion(ctx context.Context, resourceType, uid, version string) (json.RawMessage, string, error)
     LoadAllWithVersion(ctx context.Context, resourceType, version string) ([]json.RawMessage, error)
@@ -175,7 +175,7 @@ import (
     "context"
     "database/sql"
     "encoding/json"
-    
+
     _ "github.com/lib/pq"
 )
 
@@ -188,7 +188,7 @@ func NewPostgresBackend(connectionString string) (*PostgresBackend, error) {
     if err != nil {
         return nil, err
     }
-    
+
     // Create schema
     _, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS resources (
@@ -203,22 +203,22 @@ func NewPostgresBackend(connectionString string) (*PostgresBackend, error) {
     if err != nil {
         return nil, err
     }
-    
+
     return &PostgresBackend{db: db}, nil
 }
 
 func (b *PostgresBackend) Load(ctx context.Context, resourceType, uid string) (json.RawMessage, error) {
     var data json.RawMessage
-    
+
     err := b.db.QueryRowContext(ctx,
         "SELECT data FROM resources WHERE resource_type = $1 AND uid = $2",
         resourceType, uid,
     ).Scan(&data)
-    
+
     if err == sql.ErrNoRows {
         return nil, storage.ErrNotFound
     }
-    
+
     return data, err
 }
 
@@ -229,7 +229,7 @@ func (b *PostgresBackend) Save(ctx context.Context, resourceType, uid string, da
         ON CONFLICT (resource_type, uid)
         DO UPDATE SET data = $3, updated_at = NOW()
     `, resourceType, uid, data)
-    
+
     return err
 }
 
@@ -241,16 +241,16 @@ func (b *PostgresBackend) Delete(ctx context.Context, resourceType, uid string) 
     if err != nil {
         return err
     }
-    
+
     rows, err := result.RowsAffected()
     if err != nil {
         return err
     }
-    
+
     if rows == 0 {
         return storage.ErrNotFound
     }
-    
+
     return nil
 }
 
@@ -263,7 +263,7 @@ func (b *PostgresBackend) LoadAll(ctx context.Context, resourceType string) ([]j
         return nil, err
     }
     defer rows.Close()
-    
+
     var results []json.RawMessage
     for rows.Next() {
         var data json.RawMessage
@@ -272,7 +272,7 @@ func (b *PostgresBackend) LoadAll(ctx context.Context, resourceType string) ([]j
         }
         results = append(results, data)
     }
-    
+
     return results, nil
 }
 
@@ -282,7 +282,7 @@ func (b *PostgresBackend) Exists(ctx context.Context, resourceType, uid string) 
         "SELECT EXISTS(SELECT 1 FROM resources WHERE resource_type = $1 AND uid = $2)",
         resourceType, uid,
     ).Scan(&exists)
-    
+
     return exists, err
 }
 
@@ -295,7 +295,7 @@ func (b *PostgresBackend) List(ctx context.Context, resourceType string) ([]stri
         return nil, err
     }
     defer rows.Close()
-    
+
     var uids []string
     for rows.Next() {
         var uid string
@@ -304,7 +304,7 @@ func (b *PostgresBackend) List(ctx context.Context, resourceType string) ([]stri
         }
         uids = append(uids, uid)
     }
-    
+
     return uids, nil
 }
 

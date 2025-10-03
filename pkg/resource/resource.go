@@ -338,6 +338,7 @@ func RegisterResourcePrefix(resourceKind, prefix string) {
 	}
 
 	// Validate prefix format - only lowercase letters and numbers
+	// nolint:all // Allow simple loop for clarity
 	for _, r := range prefix {
 		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
 			panic(fmt.Sprintf("prefix '%s' contains invalid characters - only lowercase letters and numbers allowed", prefix))

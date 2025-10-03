@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+
+- repo: https://github.com/fsfe/reuse-tool
+  rev: v5.1.1
+  hooks:
+    - id: reuse-lint-file
+
+-   repo: https://github.com/tekwizely/pre-commit-golang
+    # See 'pre-commit help autoupdate'
+    rev: v1.0.0-rc.2
+    hooks:
+
+    -   id: go-mod-tidy
+    -   id: go-test-mod
+    -   id: go-vet-mod
+
+    #
+    # Formatters
+    #
+    -   id: go-fmt
+    -   id: go-fmt-repo
+
+    #
+    # Style Checkers
+    -   id: golangci-lint-mod
+
+
+    #

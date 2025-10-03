@@ -120,7 +120,7 @@ If template generation fails:
 pkg/codegen/templates/
 ├── README.md                    # This file
 ├── handlers.go.tmpl            # REST API handlers
-├── storage.go.tmpl             # Data persistence  
+├── storage.go.tmpl             # Data persistence
 ├── client.go.tmpl              # HTTP client
 ├── client-models.go.tmpl       # Client types
 ├── client-cmd.go.tmpl          # CLI application
@@ -151,7 +151,7 @@ When you open any generated file (e.g., `cmd/server/handlers_bmc_generated.go`),
 //
 // This file contains REST API handlers for BMC resources.
 // Generated from: pkg/codegen/templates/handlers.go.tmpl
-// 
+//
 // To modify this code:
 //   1. Edit the template file: pkg/codegen/templates/handlers.go.tmpl
 //   2. Run 'make dev' to regenerate
@@ -174,7 +174,7 @@ Each generated file includes comprehensive header comments explaining:
 //
 // This file contains REST API handlers for BMC resources.
 // Generated from: pkg/codegen/templates/handlers.go.tmpl
-// 
+//
 // To modify this code:
 //   1. Edit the template file: pkg/codegen/templates/handlers.go.tmpl
 //   2. Run 'make dev' to regenerate

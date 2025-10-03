@@ -59,10 +59,10 @@ func (r *EventHandlerRegistry) RegisterEventHandlers(eventBus events.EventBus) e
 /*
 func (r *EventHandlerRegistry) handleBMCConnected(ctx context.Context, event events.Event) error {
 	r.logger.Infof("Handling BMC connected event: %s", event.ID())
-	
+
 	// Extract BMC information from event
 	bmcUID := event.ResourceUID()
-	
+
 	// Trigger FRU discovery
 	// This is where you'd implement cross-resource reactive logic
 	// For example:
@@ -70,7 +70,7 @@ func (r *EventHandlerRegistry) handleBMCConnected(ctx context.Context, event eve
 	//   2. Connect to the BMC
 	//   3. Discover FRUs
 	//   4. Create FRU resources
-	
+
 	r.logger.Infof("FRU discovery triggered for BMC %s", bmcUID)
 	return nil
 }

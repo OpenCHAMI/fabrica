@@ -144,13 +144,13 @@ func getClient() (*client.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Apply version if specified
 	version := viper.GetString("version")
 	if version != "" {
 		c = c.WithVersion(version)
 	}
-	
+
 	return c, nil
 }
 
@@ -236,7 +236,7 @@ var {{toLower .Name}}CreateCmd = &cobra.Command{
 		// Read request from flags or stdin
 		reqJSON, _ := cmd.Flags().GetString("spec")
 		var req client.Create{{.Name}}Request
-		
+
 		if reqJSON == "" {
 			// Read from stdin if no spec provided
 			decoder := json.NewDecoder(os.Stdin)
@@ -275,7 +275,7 @@ var {{toLower .Name}}UpdateCmd = &cobra.Command{
 		// Read request from flags or stdin
 		reqJSON, _ := cmd.Flags().GetString("spec")
 		var req client.Update{{.Name}}Request
-		
+
 		if reqJSON == "" {
 			// Read from stdin if no spec provided
 			decoder := json.NewDecoder(os.Stdin)

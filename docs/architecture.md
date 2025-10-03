@@ -297,7 +297,7 @@ Response (v1)
 
 **Example:**
 ```go
-func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext, 
+func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
     req *http.Request, uid string) policy.PolicyDecision {
     if policy.HasRole(auth, "admin") {
         return policy.Allow()
@@ -394,10 +394,10 @@ type MultiTenantPolicy struct{}
 
 func (p *MultiTenantPolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
     req *http.Request, resourceUID string) policy.PolicyDecision {
-    
+
     tenantID, _ := policy.GetStringClaim(auth, "tenant_id")
     resource := loadResource(resourceUID)
-    
+
     if resource.Metadata.Labels["tenant"] == tenantID {
         return policy.Allow()
     }
@@ -427,17 +427,17 @@ Add middleware to generated routes:
 // In your main.go
 func main() {
     backend := storage.NewFileBackend("./data")
-    
+
     // Register routes
     RegisterRoutes(backend)
-    
+
     // Add middleware
     handler := loggingMiddleware(
         authMiddleware(
             http.DefaultServeMux,
         ),
     )
-    
+
     http.ListenAndServe(":8080", handler)
 }
 ```

@@ -98,7 +98,7 @@ func VersionNegotiationMiddleware(registry *VersionRegistry, mapper ResourceMapp
 				errorMsg := fmt.Sprintf(`{"error":"Unsupported version","requested":"%s","supported":%v}`,
 					ctx.RequestedVersion,
 					registry.ListVersions(ctx.ResourceKind))
-				w.Write([]byte(errorMsg))
+				_, _ = w.Write([]byte(errorMsg))
 				return
 			}
 

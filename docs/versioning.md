@@ -202,7 +202,7 @@ func (c *DeviceConverter) Convert(resource interface{}, from, to string) (interf
 
 func (c *DeviceConverter) v1ToV2(resource interface{}) (*v2.Device, error) {
     v1Device := resource.(*v1.Device)
-    
+
     v2Device := &v2.Device{
         Resource: v1Device.Resource,
         Spec: v2.DeviceSpec{
@@ -216,20 +216,20 @@ func (c *DeviceConverter) v1ToV2(resource interface{}) (*v2.Device, error) {
         },
         Status: v2.DeviceStatus(v1Device.Status),
     }
-    
+
     return v2Device, nil
 }
 
 func (c *DeviceConverter) v2ToV1(resource interface{}) (*v1.Device, error) {
     v2Device := resource.(*v2.Device)
-    
+
     // Warning: Lossy conversion if auth type is not "basic"
     username, password := "", ""
     if v2Device.Spec.Auth.Type == "basic" {
         username = v2Device.Spec.Auth.Username
         password = v2Device.Spec.Auth.Password
     }
-    
+
     v1Device := &v1.Device{
         Resource: v2Device.Resource,
         Spec: v1.DeviceSpec{
@@ -240,7 +240,7 @@ func (c *DeviceConverter) v2ToV1(resource interface{}) (*v1.Device, error) {
         },
         Status: v1.DeviceStatus(v2Device.Status),
     }
-    
+
     return v1Device, nil
 }
 ```

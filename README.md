@@ -12,6 +12,8 @@ Fabrica provides everything you need to build production-ready REST APIs with mi
 - **🔒 Flexible Authorization** - Built-in policy framework for RBAC, ABAC, and custom policies
 - **⚡ Type-Safe** - Full type safety across server, storage, and client
 - **📖 Kubernetes-Style Resources** - Familiar APIVersion/Kind/Metadata/Spec/Status pattern
+- **📡 Event System** - CloudEvents-compliant event bus with wildcard subscriptions
+- **🔄 Reconciliation Framework** - Kubernetes-style controllers for declarative resource management
 
 ## ✨ Quick Start
 
@@ -288,6 +290,8 @@ Fabrica follows a clean, layered architecture:
 - **`pkg/storage/`** - Storage interfaces and backends
 - **`pkg/policy/`** - Authorization framework
 - **`pkg/versioning/`** - Multi-version support
+- **`pkg/events/`** - CloudEvents-compliant event system
+- **`pkg/reconcile/`** - Reconciliation framework and controllers
 - **`templates/`** - Code generation templates
 
 **→ See [Architecture Guide](docs/architecture.md)**
@@ -305,6 +309,8 @@ Fabrica follows a clean, layered architecture:
 - **[Code Generation](docs/codegen.md)** - Template system guide
 - **[Versioning](docs/versioning.md)** - Multi-version support
 - **[Authorization](docs/policy.md)** - Policy framework
+- **[Events](docs/events.md)** - Event system with CloudEvents
+- **[Reconciliation](docs/reconciliation.md)** - Declarative resource management
 
 ### Reference
 - **[API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)** - Go package docs
