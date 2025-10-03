@@ -302,6 +302,14 @@ Fabrica follows a clean, layered architecture:
 
 **→ See [Architecture Guide](docs/architecture.md)**
 
+## 🔍 How Does Fabrica Compare?
+
+Wondering how Fabrica stacks up against other Go frameworks like **Go-Fuego**, **Huma**, or **Goa**?
+
+**→ See [Framework Comparison](docs/comparison.md)** for detailed analysis, feature matrices, and guidance on choosing the right framework for your project.
+
+**TL;DR**: Fabrica is the only framework specifically designed for inventory and asset management with built-in storage, events, reconciliation, and multi-version support. For general REST APIs, consider Go-Fuego (simple) or Huma (schema-first). For microservices with gRPC, consider Goa.
+
 ## 📚 Documentation
 
 ### Getting Started

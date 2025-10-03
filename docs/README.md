@@ -80,6 +80,13 @@ Learn about the main framework systems.
 
 Real-world examples and patterns.
 
+- **[Framework Comparison](comparison.md)** - Fabrica vs Go-Fuego vs Huma vs Goa
+  - Feature comparison matrix
+  - Decision tree for choosing frameworks
+  - Code examples comparing approaches
+  - When to use each framework
+  - Integration possibilities
+
 - **[Examples](examples.md)** - Complete example implementations
   - Simple device inventory
   - Blog CMS example
