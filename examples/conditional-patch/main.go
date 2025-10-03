@@ -6,37 +6,61 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexlovelltroy/fabrica/pkg/conditional"
 	"github.com/alexlovelltroy/fabrica/pkg/patch"
+	"github.com/alexlovelltroy/fabrica/pkg/validation"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// Resource represents a simple resource
+// Resource represents a simple resource with validation
 type Resource struct {
 	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	Status      string                 `json:"status"`
-	Tags        []string               `json:"tags,omitempty"`
+	Name        string                 `json:"name" validate:"required,k8sname,min=3,max=63"`
+	Description string                 `json:"description,omitempty" validate:"max=200"`
+	Status      string                 `json:"status" validate:"required,oneof=active inactive pending"`
+	Tags        []string               `json:"tags,omitempty" validate:"dive,labelvalue"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt   time.Time              `json:"createdAt"`
 	ModifiedAt  time.Time              `json:"modifiedAt"`
+}
+
+// Validate implements custom validation logic (hybrid approach)
+func (r *Resource) Validate(ctx context.Context) error {
+	// Custom business rule: inactive resources cannot have tags
+	if r.Status == "inactive" && len(r.Tags) > 0 {
+		return errors.New("inactive resources cannot have tags")
+	}
+
+	// Custom rule: pending resources must have a description
+	if r.Status == "pending" && r.Description == "" {
+		return errors.New("pending resources must have a description")
+	}
+
+	// Custom rule: name prefix based on status
+	if r.Status == "active" && !strings.HasPrefix(r.Name, "active-") {
+		return fmt.Errorf("active resources must have names starting with 'active-', got: %s", r.Name)
+	}
+
+	return nil
 }
 
 // Simple in-memory storage
 var resources = map[string]*Resource{
 	"1": {
 		ID:          "1",
-		Name:        "Example Resource",
-		Description: "This is an example",
+		Name:        "active-example", // Valid k8sname format, starts with "active-" for active status
+		Description: "This is an example resource",
 		Status:      "active",
 		Tags:        []string{"example", "demo"},
 		Metadata: map[string]interface{}{
@@ -67,28 +91,62 @@ func main() {
 	r.Options("/resources/{id}", optionsResource)
 
 	fmt.Println("Server starting on :8080")
-	fmt.Println("\nExample requests:")
-	fmt.Println("  # Get resource with ETag")
+	fmt.Println("\n=== Example Requests ===")
+	fmt.Println("\n# 1. Get resource with ETag")
 	fmt.Println("  curl -i http://localhost:8080/resources/1")
-	fmt.Println("\n  # Conditional GET (will return 304 if not modified)")
+
+	fmt.Println("\n# 2. Conditional GET (will return 304 if not modified)")
 	fmt.Println(`  curl -i -H "If-None-Match: \"etag-value\"" http://localhost:8080/resources/1`)
-	fmt.Println("\n  # JSON Merge Patch")
+
+	fmt.Println("\n# 3. Create resource with validation (VALID)")
+	fmt.Println(`  curl -X POST http://localhost:8080/resources \`)
+	fmt.Println(`    -H "Content-Type: application/json" \`)
+	fmt.Println(`    -d '{"name":"active-new-device","status":"active","description":"Valid resource"}' | jq`)
+
+	fmt.Println("\n# 4. Create resource with validation (INVALID - uppercase name)")
+	fmt.Println(`  curl -X POST http://localhost:8080/resources \`)
+	fmt.Println(`    -H "Content-Type: application/json" \`)
+	fmt.Println(`    -d '{"name":"Invalid-Name","status":"active"}' | jq`)
+
+	fmt.Println("\n# 5. Create with custom validation failure (inactive with tags)")
+	fmt.Println(`  curl -X POST http://localhost:8080/resources \`)
+	fmt.Println(`    -H "Content-Type: application/json" \`)
+	fmt.Println(`    -d '{"name":"inactive-device","status":"inactive","tags":["test"]}' | jq`)
+
+	fmt.Println("\n# 6. JSON Merge Patch (valid)")
 	fmt.Println(`  curl -X PATCH http://localhost:8080/resources/1 \`)
 	fmt.Println(`    -H "Content-Type: application/merge-patch+json" \`)
-	fmt.Println(`    -d '{"status":"inactive","description":"Updated"}' | jq`)
-	fmt.Println("\n  # JSON Patch")
+	fmt.Println(`    -d '{"description":"Updated description"}' | jq`)
+
+	fmt.Println("\n# 7. JSON Patch (valid)")
 	fmt.Println(`  curl -X PATCH http://localhost:8080/resources/1 \`)
 	fmt.Println(`    -H "Content-Type: application/json-patch+json" \`)
-	fmt.Println(`    -d '[{"op":"replace","path":"/status","value":"pending"}]' | jq`)
-	fmt.Println("\n  # Shorthand Patch")
+	fmt.Println(`    -d '[{"op":"replace","path":"/description","value":"Patched via JSON Patch"}]' | jq`)
+
+	fmt.Println("\n# 8. Shorthand Patch (valid)")
 	fmt.Println(`  curl -X PATCH http://localhost:8080/resources/1 \`)
 	fmt.Println(`    -H "Content-Type: application/shorthand-patch+json" \`)
-	fmt.Println(`    -d '{"name":"Updated Name","metadata.version":"2.0"}' | jq`)
-	fmt.Println("\n  # Update with optimistic concurrency (get ETag first, then use If-Match)")
+	fmt.Println(`    -d '{"description":"Updated via shorthand","metadata.version":"2.0"}' | jq`)
+
+	fmt.Println("\n# 9. Patch with validation failure (invalid status)")
 	fmt.Println(`  curl -X PATCH http://localhost:8080/resources/1 \`)
-	fmt.Println(`    -H "If-Match: \"etag-from-previous-get\"" \`)
 	fmt.Println(`    -H "Content-Type: application/merge-patch+json" \`)
-	fmt.Println(`    -d '{"status":"active"}' | jq`)
+	fmt.Println(`    -d '{"status":"invalid-status"}' | jq`)
+
+	fmt.Println("\n# 10. Update with optimistic concurrency (get ETag first, then use If-Match)")
+	fmt.Println(`  ETAG=$(curl -s -i http://localhost:8080/resources/1 | grep -i etag | cut -d' ' -f2 | tr -d '\r')`)
+	fmt.Println(`  curl -X PATCH http://localhost:8080/resources/1 \`)
+	fmt.Println(`    -H "If-Match: $ETAG" \`)
+	fmt.Println(`    -H "Content-Type: application/merge-patch+json" \`)
+	fmt.Println(`    -d '{"description":"Updated with concurrency control"}' | jq`)
+
+	fmt.Println("\n=== Validation Features Demonstrated ===")
+	fmt.Println("✅ Struct tag validation (k8sname, oneof, max length)")
+	fmt.Println("✅ Custom validation logic (status-based rules)")
+	fmt.Println("✅ Hybrid approach (tags + CustomValidator interface)")
+	fmt.Println("✅ Detailed validation error responses")
+	fmt.Println("✅ Integration with PATCH operations")
+	fmt.Println("✅ Integration with conditional requests")
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
@@ -145,6 +203,12 @@ func createResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the resource (hybrid approach: struct tags + custom logic)
+	if err := validation.ValidateWithContext(r.Context(), &resource); err != nil {
+		handleValidationError(w, err)
+		return
+	}
+
 	// Generate ID and timestamps
 	resource.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	resource.CreatedAt = time.Now()
@@ -183,6 +247,12 @@ func updateResource(w http.ResponseWriter, r *http.Request) {
 	var updated Resource
 	if err := json.NewDecoder(r.Body).Decode(&updated); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+
+	// Validate the updated resource
+	if err := validation.ValidateWithContext(r.Context(), &updated); err != nil {
+		handleValidationError(w, err)
 		return
 	}
 
@@ -263,6 +333,12 @@ func patchResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the patched resource
+	if err := validation.ValidateWithContext(r.Context(), &updated); err != nil {
+		handleValidationError(w, err)
+		return
+	}
+
 	// Preserve system fields
 	updated.ID = resource.ID
 	updated.CreatedAt = resource.CreatedAt
@@ -329,5 +405,29 @@ func respondError(w http.ResponseWriter, status int, err error) {
 		"error": err.Error(),
 	}); encErr != nil {
 		log.Printf("Error encoding error response: %v", encErr)
+	}
+}
+
+// handleValidationError handles validation errors with detailed field-level feedback
+func handleValidationError(w http.ResponseWriter, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+
+	// Check if it's a structured validation error
+	if validationErrs, ok := err.(validation.ValidationErrors); ok {
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Validation failed",
+			"details": validationErrs.Errors,
+		}); encErr != nil {
+			log.Printf("Error encoding validation error response: %v", encErr)
+		}
+		return
+	}
+
+	// Generic validation error
+	if encErr := json.NewEncoder(w).Encode(map[string]string{
+		"error": err.Error(),
+	}); encErr != nil {
+		log.Printf("Error encoding validation error response: %v", encErr)
 	}
 }

@@ -67,12 +67,12 @@ Complete frameworks with ORM, templating, and batteries included.
 - ✅ **Built-in conditional requests (ETags, If-Match, If-None-Match)**
 - ✅ **Comprehensive PATCH support (RFC 7386, RFC 6902, shorthand)**
 - ✅ **Optimistic concurrency control with ETags**
+- ✅ **Comprehensive validation (struct tags + K8s-style validators)**
 
 **Weaknesses**:
 - ❌ Opinionated resource structure (not suitable for all APIs)
 - ❌ Learning curve for resource model concepts
 - ❌ Inventory/asset domain focus (less suitable for general APIs)
-- ❌ No built-in validation (must implement in templates)
 - ❌ Smaller community compared to other frameworks
 - ❌ More complex setup than simpler alternatives
 
@@ -344,7 +344,9 @@ Complete frameworks with ORM, templating, and batteries included.
 | **Event System** | CloudEvents | No | No | No | No | No | No |
 | **Reconciliation** | K8s-style | No | No | No | No | No | No |
 | **Versioning** | Built-in | Manual | Manual | DSL | Manual | Manual | Via spec |
-| **JSON Patch** | No | **Yes** | No | No | No | No | Spec-based |
+| **Validation** | **K8s + Tags** | **Built-in** | **Built-in** | DSL | Manual | Manual | Spec-based |
+| **JSON Patch** | **Yes** | **Yes** | No | No | No | No | Spec-based |
+| **Conditional Requests** | **Yes** | **Yes** | No | No | No | No | Spec-based |
 | **Multi-transport** | HTTP | HTTP | HTTP | HTTP/gRPC/JSON-RPC | HTTP | HTTP | HTTP |
 | **Learning Curve** | Medium | Medium | Low | High | High | High | Medium |
 | **Best For** | Inventory | Enterprise API | Modern API | Microservices | Full-stack | Enterprise MVC | Spec-first |
@@ -362,12 +364,10 @@ Complete frameworks with ORM, templating, and batteries included.
 - **Most comprehensive** for resource-centric systems
 
 ### What Fabrica Does Worse
-- **No JSON Patch/Merge Patch** (Huma has this built-in)
 - **More complex** than focused frameworks
 - **More opinionated** than flexible alternatives
 - **Smaller community** than established frameworks
 - **Less suitable** for non-resource-based APIs
-- **No built-in validation** (Huma, Go-Fuego have this)
 - **Fewer production references** than older frameworks
 - **Steeper learning curve** than Go-Fuego
 

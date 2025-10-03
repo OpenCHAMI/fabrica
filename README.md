@@ -20,6 +20,9 @@ Fabrica provides everything you need to build production-ready REST APIs with mi
 - **📖 Kubernetes-Style Resources** - Familiar APIVersion/Kind/Metadata/Spec/Status pattern
 - **📡 Event System** - CloudEvents-compliant event bus with wildcard subscriptions
 - **🔄 Reconciliation Framework** - Kubernetes-style controllers for declarative resource management
+- **✅ Comprehensive Validation** - Struct tags + K8s validators + custom business logic (NEW!)
+- **🏷️ Conditional Requests** - ETags, If-Match, optimistic concurrency control (NEW!)
+- **🔧 PATCH Operations** - JSON Merge Patch, JSON Patch, and shorthand patches (NEW!)
 
 ## ✨ Quick Start
 
@@ -313,9 +316,17 @@ Wondering how Fabrica stacks up against other Go frameworks like **Go-Fuego**, *
 ## 📚 Documentation
 
 ### Getting Started
-- **[Getting Started Guide](docs/getting-started.md)** ⭐ - Your first API in 10 minutes
+
+**New to Fabrica? Start here:**
+- **[Quick Start](docs/quickstart.md)** ⚡ - Simple REST API in 30 minutes (no Kubernetes concepts)
+- **[Getting Started Guide](docs/getting-started.md)** ⭐ - Full resource model in 2-4 hours
 - **[Architecture Overview](docs/architecture.md)** - Design and concepts
 - **[Examples](docs/examples.md)** - Real-world use cases
+
+**Choose your learning path:**
+- **Beginner** → Start with [Quick Start](docs/quickstart.md) for simple CRUD APIs
+- **Intermediate** → Continue with [Getting Started](docs/getting-started.md) for resource management
+- **Advanced** → Explore [Reconciliation](docs/reconciliation.md) and [Events](docs/events.md)
 
 ### Core Concepts
 - **[Resource Model](docs/resource-model.md)** - Understanding resources

@@ -12,13 +12,26 @@ SPDX-License-Identifier: MIT
 
 ### 🚀 Getting Started
 
-Perfect for newcomers - get your first API running in minutes.
+Perfect for newcomers - choose your learning path based on your experience level.
 
-- **[Getting Started Guide](getting-started.md)** ⭐ - Your first resource in 10 minutes
-  - Installation
-  - Quick start tutorial
+**Level 1: Quick Start (30 minutes)**
+- **[Quick Start Guide](quickstart.md)** ⚡ - Simple REST API without Kubernetes concepts
+  - Treat Fabrica as a code generator only
+  - Plain Go structs, basic CRUD operations
+  - Perfect for prototypes and learning the basics
+  - Example: [simple-rest-api](../examples/simple-rest-api/)
+
+**Level 2: Resource Management (2-4 hours)**
+- **[Getting Started Guide](getting-started.md)** ⭐ - Full resource model with metadata
+  - Learn labels, annotations, and conditions
+  - Understand Kubernetes-style resource patterns
+  - Production-ready patterns
   - Complete working example
-  - Common patterns
+
+**Level 3: Advanced Patterns (1-2 days)**
+- **[Reconciliation Guide](reconciliation.md)** - Declarative resource management
+- **[Events Guide](events.md)** - Event-driven architecture
+- **[Versioning Guide](versioning.md)** - Multi-version APIs
 
 ### 🏗️ Core Concepts
 
@@ -129,7 +142,8 @@ Help make Fabrica better!
 
 **I want to...**
 
-- **Get started quickly** → [Getting Started Guide](getting-started.md)
+- **Build a simple API quickly** → [Quick Start](quickstart.md) (30 min)
+- **Learn resource management** → [Getting Started Guide](getting-started.md) (2-4 hours)
 - **Understand the framework** → [Architecture Overview](architecture.md)
 - **Define resources** → [Resource Model](resource-model.md)
 - **Generate code** → [Code Generation Guide](codegen.md)
@@ -141,34 +155,62 @@ Help make Fabrica better!
 
 ## 🎯 Learning Paths
 
-### Path 1: Build Your First API (30 minutes)
+### Path 1: Quick Start (30 minutes) - NEW! ⚡
+
+**For: Beginners, prototyping, or learning basics**
+
+1. **[Quick Start - Installation](quickstart.md#installation)** (5 min)
+2. **[Quick Start - Initialize Project](quickstart.md#step-1-initialize-your-project)** (5 min)
+3. **[Quick Start - Define Data](quickstart.md#step-2-define-your-data)** (5 min)
+4. **[Quick Start - Generate & Run](quickstart.md#step-3-generate-code)** (10 min)
+5. **[Quick Start - Test API](quickstart.md#step-5-test-your-api)** (5 min)
+
+**Outcome**: Simple REST API with plain Go structs ✅
+**What you learn**: Basic CRUD, code generation, testing APIs
+**What you skip**: Resource model, labels, metadata (comes later)
+
+**Next step**: [Path 2: Resource Management](#path-2-resource-management-2-4-hours)
+
+### Path 2: Resource Management (2-4 hours)
+
+**For: Building production systems with metadata and lifecycle management**
 
 1. **[Getting Started - Installation](getting-started.md#installation)** (5 min)
-2. **[Getting Started - Your First Resource](getting-started.md#your-first-resource)** (10 min)
-3. **[Getting Started - Generate Code](getting-started.md#generate-code)** (5 min)
+2. **[Getting Started - Your First Resource](getting-started.md#your-first-resource)** (30 min)
+3. **[Getting Started - Generate Code](getting-started.md#generate-code)** (10 min)
 4. **[Getting Started - Run the Server](getting-started.md#run-the-server)** (5 min)
-5. **[Getting Started - Test the API](getting-started.md#test-the-api)** (5 min)
+5. **[Getting Started - Test the API](getting-started.md#test-the-api)** (15 min)
+6. **[Resource Model - Deep Dive](resource-model.md)** (60 min)
 
-**Outcome**: Working REST API with CRUD operations ✅
+**Outcome**: Production-ready API with full resource model ✅
+**What you learn**: Labels, annotations, conditions, metadata, Kubernetes patterns
+**Prerequisites**: [Path 1: Quick Start](#path-1-quick-start-30-minutes---new) recommended
 
-### Path 2: Production-Ready API (2 hours)
+**Next step**: [Path 3: Advanced Patterns](#path-3-advanced-patterns-1-2-days)
 
-1. **Complete Path 1** (30 min)
-2. **[Resource Model - Labels and Annotations](resource-model.md#labels-and-annotations)** (15 min)
-3. **[Authorization - RBAC Setup](policy.md#rbac-patterns)** (30 min)
-4. **[Storage - File Backend Configuration](storage.md#file-backend)** (15 min)
-5. **[Code Generation - Custom Templates](codegen.md#customizing-templates)** (30 min)
+### Path 3: Advanced Patterns (1-2 days)
 
-**Outcome**: Production-ready API with auth and persistence ✅
+**For: Event-driven systems, reconciliation, multi-version APIs**
 
-### Path 3: Multi-Version API (3 hours)
+1. **Complete Path 2** (2-4 hours)
+2. **[Validation - Hybrid Approach](validation.md)** (60 min)
+   - Struct tags + custom validators
+   - Kubernetes-style validation
+3. **[Events - Event Bus Setup](events.md)** (90 min)
+   - CloudEvents integration
+   - Event handlers and subscriptions
+4. **[Reconciliation - Controllers](reconciliation.md)** (2-3 hours)
+   - Declarative resource management
+   - Custom reconcilers
+   - Work queues
+5. **[Versioning - Multi-Version APIs](versioning.md)** (2 hours)
+   - Version registration
+   - Automatic conversion
+   - Migration strategies
 
-1. **Complete Path 2** (2.5 hours)
-2. **[Versioning - Understanding Versions](versioning.md#why-versioning-matters)** (15 min)
-3. **[Versioning - Register Versions](versioning.md#version-registration)** (15 min)
-4. **[Versioning - Version Conversion](versioning.md#conversion-patterns)** (30 min)
-
-**Outcome**: API supporting multiple versions with automatic conversion ✅
+**Outcome**: Production system with event-driven architecture and reconciliation ✅
+**What you learn**: Advanced patterns, declarative systems, event processing
+**Prerequisites**: [Path 2: Resource Management](#path-2-resource-management-2-4-hours) required
 
 ## 📚 Reference Documentation
 
