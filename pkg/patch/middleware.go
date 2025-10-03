@@ -57,7 +57,10 @@ func (ph *PatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read request body: %w", err))
 		return
 	}
-	defer r.Body.Close()
+	if closeErr := r.Body.Close(); closeErr != nil {
+		// Log but don't fail - body already read
+		_ = closeErr
+	}
 
 	// Detect patch type from Content-Type header
 	patchType := DetectPatchType(r.Header.Get("Content-Type"))
@@ -81,7 +84,9 @@ func (ph *PatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ph.Options.DryRun {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(result)
+		if encErr := json.NewEncoder(w).Encode(result); encErr != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to encode result: %w", encErr))
+		}
 		return
 	}
 
@@ -102,7 +107,10 @@ func (ph *PatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Return updated resource
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(result.Updated)
+	if _, writeErr := w.Write(result.Updated); writeErr != nil {
+		// Can't send error response after writing status code
+		_ = writeErr
+	}
 }
 
 // PatchMiddleware provides automatic PATCH support for PUT/POST handlers
@@ -133,7 +141,7 @@ func PatchMiddleware(getFunc func(*http.Request) ([]byte, error), saveFunc func(
 func respondError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error": err.Error(),
 	})
 }
@@ -155,7 +163,7 @@ func AutoPatchMiddleware(basePath string) func(http.Handler) http.Handler {
 				respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch: %w", err))
 				return
 			}
-			r.Body.Close()
+			_ = r.Body.Close()
 
 			// Create a GET request to fetch current state
 			getReq := &http.Request{
@@ -176,7 +184,7 @@ func AutoPatchMiddleware(basePath string) func(http.Handler) http.Handler {
 			if getRecorder.statusCode != http.StatusOK {
 				// If GET failed, return that error
 				w.WriteHeader(getRecorder.statusCode)
-				w.Write(getRecorder.body.Bytes())
+				_, _ = w.Write(getRecorder.body.Bytes())
 				return
 			}
 

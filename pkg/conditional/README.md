@@ -89,7 +89,7 @@ package main
 import (
     "encoding/json"
     "net/http"
-    
+
     "github.com/alexlovelltroy/fabrica/pkg/conditional"
     "github.com/alexlovelltroy/fabrica/pkg/patch"
     "github.com/go-chi/chi/v5"
@@ -99,27 +99,27 @@ func UpdateResource(w http.ResponseWriter, r *http.Request) {
     // Load current resource
     resource, _ := loadResource(chi.URLParam(r, "id"))
     originalJSON, _ := json.Marshal(resource)
-    
+
     // Check conditional headers
     etag := conditional.DefaultETagGenerator(originalJSON)
     if conditional.CheckConditionalRequest(w, r, etag, resource.ModifiedAt) {
         return
     }
-    
+
     // Handle PATCH
     if r.Method == http.MethodPatch {
         patchData, _ := io.ReadAll(r.Body)
         patchType := patch.DetectPatchType(r.Header.Get("Content-Type"))
-        
+
         updated, err := patch.ApplyPatch(originalJSON, patchData, patchType)
         if err != nil {
             http.Error(w, err.Error(), http.StatusUnprocessableEntity)
             return
         }
-        
+
         json.Unmarshal(updated, &resource)
     }
-    
+
     // Save and return
     saveResource(resource)
     newETag := conditional.DefaultETagGenerator(updated)

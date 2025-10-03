@@ -217,8 +217,12 @@ func TestCreatePatch(t *testing.T) {
 
 	// Result should match updated
 	var resultMap, updatedMap map[string]interface{}
-	json.Unmarshal(result, &resultMap)
-	json.Unmarshal(updated, &updatedMap)
+	if err := json.Unmarshal(result, &resultMap); err != nil {
+		t.Fatalf("Failed to unmarshal result: %v", err)
+	}
+	if err := json.Unmarshal(updated, &updatedMap); err != nil {
+		t.Fatalf("Failed to unmarshal updated: %v", err)
+	}
 
 	if resultMap["age"] != updatedMap["age"] {
 		t.Error("Patch application should produce same result")
@@ -287,7 +291,7 @@ func TestTestOperation(t *testing.T) {
 	}
 
 	// Test non-matching value
-	matches, err = TestOperation(doc, "/name", "Jane")
+	matches, _ = TestOperation(doc, "/name", "Jane")
 	if matches {
 		t.Error("Test should fail for non-matching value")
 	}

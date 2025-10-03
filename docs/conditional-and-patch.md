@@ -273,36 +273,36 @@ updated, err := patch.ApplyShorthandPatch(original, patchData)
 ```go
 func UpdateResource(w http.ResponseWriter, r *http.Request) {
     uid := chi.URLParam(r, "uid")
-    
+
     // Load current resource
     original, err := storage.LoadResource(uid)
     if err != nil {
         respondError(w, http.StatusNotFound, err)
         return
     }
-    
+
     // Marshal to JSON
     originalJSON, _ := json.Marshal(original)
-    
+
     // Check conditional headers
     etag := conditional.DefaultETagGenerator(originalJSON)
     lastModified := original.Metadata.ModifiedAt
-    
+
     if conditional.CheckConditionalRequest(w, r, etag, lastModified) {
         return // Response already sent
     }
-    
+
     // Handle PATCH
     if r.Method == http.MethodPatch {
         patchData, _ := io.ReadAll(r.Body)
         patchType := patch.DetectPatchType(r.Header.Get("Content-Type"))
-        
+
         updated, err := patch.ApplyPatch(originalJSON, patchData, patchType)
         if err != nil {
             respondError(w, http.StatusUnprocessableEntity, err)
             return
         }
-        
+
         // Unmarshal back to resource
         if err := json.Unmarshal(updated, &original); err != nil {
             respondError(w, http.StatusInternalServerError, err)
@@ -312,14 +312,14 @@ func UpdateResource(w http.ResponseWriter, r *http.Request) {
         // Handle PUT normally
         json.NewDecoder(r.Body).Decode(&original)
     }
-    
+
     // Save and return
     storage.SaveResource(original)
-    
+
     newETag := conditional.DefaultETagGenerator(originalJSON)
     conditional.SetETag(w, newETag)
     conditional.SetLastModified(w, original.Metadata.ModifiedAt)
-    
+
     respondJSON(w, http.StatusOK, original)
 }
 ```
@@ -359,33 +359,33 @@ Update your handler template to include PATCH support:
 // Update{{.Name}} updates an existing {{.Name}} resource
 func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
     uid := chi.URLParam(r, "uid")
-    
+
     {{camelCase .Name}}, err := storage.Load{{.StorageName}}(uid)
     if err != nil {
         respondError(w, http.StatusNotFound, err)
         return
     }
-    
+
     // Marshal current state
     currentJSON, _ := json.Marshal({{camelCase .Name}})
-    
+
     // Generate ETag and check conditionals
     etag := conditional.DefaultETagGenerator(currentJSON)
     if conditional.CheckConditionalRequest(w, r, etag, {{camelCase .Name}}.Metadata.ModifiedAt) {
         return
     }
-    
+
     // Handle PATCH
     if r.Method == http.MethodPatch {
         patchData, _ := io.ReadAll(r.Body)
         patchType := patch.DetectPatchType(r.Header.Get("Content-Type"))
-        
+
         updatedJSON, err := patch.ApplyPatch(currentJSON, patchData, patchType)
         if err != nil {
             respondError(w, http.StatusUnprocessableEntity, err)
             return
         }
-        
+
         json.Unmarshal(updatedJSON, &{{camelCase .Name}})
     } else {
         // Normal PUT
@@ -393,16 +393,16 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
         json.NewDecoder(r.Body).Decode(&req)
         req.ApplyTo{{.Name}}({{camelCase .Name}})
     }
-    
+
     {{camelCase .Name}}.Touch()
     storage.Save{{.StorageName}}({{camelCase .Name}})
-    
+
     // Set response headers
     updatedJSON, _ := json.Marshal({{camelCase .Name}})
     newETag := conditional.DefaultETagGenerator(updatedJSON)
     conditional.SetETag(w, newETag)
     conditional.SetLastModified(w, {{camelCase .Name}}.Metadata.ModifiedAt)
-    
+
     respondJSON(w, http.StatusOK, {{camelCase .Name}})
 }
 ```

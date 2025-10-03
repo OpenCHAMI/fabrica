@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -227,11 +228,10 @@ func patchResource(w http.ResponseWriter, r *http.Request) {
 	patchData := make([]byte, 0)
 	if r.Body != nil {
 		var err error
-		patchData, err = json.Marshal(r.Body)
+		patchData, err = io.ReadAll(r.Body)
 		if err != nil {
-			buf := make([]byte, r.ContentLength)
-			r.Body.Read(buf)
-			patchData = buf
+			respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch: %w", err))
+			return
 		}
 	}
 
@@ -325,7 +325,9 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 func respondError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{
+	if encErr := json.NewEncoder(w).Encode(map[string]string{
 		"error": err.Error(),
-	})
+	}); encErr != nil {
+		log.Printf("Error encoding error response: %v", encErr)
+	}
 }
