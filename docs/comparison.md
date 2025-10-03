@@ -1,3 +1,9 @@
+<!--
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+-->
+
 # Go Framework Comparison: Finding the Right Tool for Your Project
 
 This document provides an honest, balanced comparison of Go frameworks that generate code or provide comprehensive API development features. For simple routing frameworks (Chi, Gin, Fiber, Echo), see their respective documentation—they're excellent but serve a different purpose than the frameworks compared here.
@@ -58,12 +64,14 @@ Complete frameworks with ORM, templating, and batteries included.
 - ✅ Template-based full-stack generation (API + CLI + client + storage)
 - ✅ Resource model with labels, annotations, conditions
 - ✅ Policy-based authorization framework
+- ✅ **Built-in conditional requests (ETags, If-Match, If-None-Match)**
+- ✅ **Comprehensive PATCH support (RFC 7386, RFC 6902, shorthand)**
+- ✅ **Optimistic concurrency control with ETags**
 
 **Weaknesses**:
 - ❌ Opinionated resource structure (not suitable for all APIs)
 - ❌ Learning curve for resource model concepts
 - ❌ Inventory/asset domain focus (less suitable for general APIs)
-- ❌ No JSON Patch/Merge Patch support
 - ❌ No built-in validation (must implement in templates)
 - ❌ Smaller community compared to other frameworks
 - ❌ More complex setup than simpler alternatives

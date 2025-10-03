@@ -8,6 +8,8 @@ go 1.23.4
 
 require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
+	github.com/evanphx/json-patch/v5 v5.9.11
+	github.com/go-chi/chi/v5 v5.2.3
 	golang.org/x/text v0.21.0
 )
 
