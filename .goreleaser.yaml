@@ -121,7 +121,7 @@ docker_manifests:
 # Release configuration
 release:
   github:
-    owner: OpenCHAMI
+    owner: alexlovelltroy
     name: fabrica
   draft: false
   prerelease: auto
@@ -143,21 +143,21 @@ release:
 
     #### Go Install
     ```bash
-    go install github.com/OpenCHAMI/fabrica/cmd/fabrica@{{ .Tag }}
+    go install github.com/alexlovelltroy/fabrica/cmd/fabrica@{{ .Tag }}
     ```
 
   footer: |
     ---
-    **Full Changelog**: https://github.com/OpenCHAMI/fabrica/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/alexlovelltroy/fabrica/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # Homebrew tap (optional - uncomment if you have a homebrew tap)
 # brews:
 #   - name: fabrica
 #     repository:
-#       owner: OpenCHAMI
+#       owner: alexlovelltroy
 #       name: homebrew-tap
 #     directory: Formula
-#     homepage: https://github.com/OpenCHAMI/fabrica
+#     homepage: https://github.com/alexlovelltroy/fabrica
 #     description: "A powerful Go framework for building resource-based REST APIs"
 #     license: MIT
 #     install: |
@@ -169,7 +169,7 @@ release:
 # AUR package (optional - for Arch Linux)
 # aurs:
 #   - name: fabrica-bin
-#     homepage: https://github.com/OpenCHAMI/fabrica
+#     homepage: https://github.com/alexlovelltroy/fabrica
 #     description: "A powerful Go framework for building resource-based REST APIs"
 #     maintainers:
 #       - 'Your Name <your.email@example.com>'

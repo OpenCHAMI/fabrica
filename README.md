@@ -483,7 +483,7 @@ MIT License - See [MIT.txt](LICENSES/MIT.txt)
 
 ## ⭐ Status
 
-- **Version**: v0.2.1 (Early Development)
+- **Version**: v0.2.2 (Early Development)
 - **Go Version**: 1.23+
 - **Status**: Alpha - API may change
 

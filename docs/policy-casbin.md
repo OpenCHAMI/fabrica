@@ -87,7 +87,7 @@ package main
 
 import (
     "log"
-    "github.com/OpenCHAMI/fabrica/pkg/policy"
+    "github.com/alexlovelltroy/fabrica/pkg/policy"
 )
 
 func main() {
@@ -116,7 +116,7 @@ package main
 
 import (
     "log"
-    "github.com/OpenCHAMI/fabrica/pkg/policy"
+    "github.com/alexlovelltroy/fabrica/pkg/policy"
     "entgo.io/ent/dialect/sql"
 )
 
@@ -363,4 +363,4 @@ enforcer.SavePolicy()
 - [Casbin RBAC Guide](https://casbin.org/docs/rbac)
 - [Casbin ABAC Guide](https://casbin.org/docs/abac)
 - [Online Editor](https://casbin.org/editor) - Test policies interactively
-- [Fabrica Policy Examples](https://github.com/OpenCHAMI/fabrica/tree/main/examples)
+- [Fabrica Policy Examples](https://github.com/alexlovelltroy/fabrica/tree/main/examples)
