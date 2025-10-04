@@ -33,3 +33,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# LLM Coding Assistant Cruft
+.claude
+CLAUDE/*
+
