@@ -257,6 +257,9 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateOpenAPI(); err != nil {
 			return err
 		}
+		if err := g.GenerateCasbinPolicies(); err != nil {
+			return err
+		}
 	case "client":
 		// Client code - client and models only
 		if err := g.GenerateClient(); err != nil {
@@ -468,6 +471,10 @@ func (g *Generator) LoadTemplates() error {
 		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
 		"entAdapter":          "ent_adapter.go.tmpl",
 		"generate":            "generate.go.tmpl",
+		// Casbin templates
+		"casbinModel":    "policies/model.conf.tmpl",
+		"casbinPolicy":   "policies/policy.csv.tmpl",
+		"policyHandlers": "policy_handlers.go.tmpl",
 	}
 
 	g.Templates = make(map[string]*template.Template)
@@ -794,6 +801,36 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 
 	if err := os.WriteFile(outputPath, output, 0644); err != nil {
 		return fmt.Errorf("failed to write file %s: %w", outputPath, err)
+	}
+
+	return nil
+}
+
+// GenerateCasbinPolicies generates Casbin policy files for RBAC authorization
+func (g *Generator) GenerateCasbinPolicies() error {
+	// Create policies directory
+	policiesDir := filepath.Join("policies")
+	if err := os.MkdirAll(policiesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create policies directory: %w", err)
+	}
+
+	// Template data
+	data := struct {
+		ProjectName string
+		Resources   []ResourceMetadata
+	}{
+		ProjectName: g.ModulePath,
+		Resources:   g.Resources,
+	}
+
+	// Generate model.conf
+	if err := g.executeTemplate("casbinModel", filepath.Join(policiesDir, "model.conf"), data); err != nil {
+		return fmt.Errorf("failed to generate Casbin model: %w", err)
+	}
+
+	// Generate policy.csv
+	if err := g.executeTemplate("casbinPolicy", filepath.Join(policiesDir, "policy.csv"), data); err != nil {
+		return fmt.Errorf("failed to generate Casbin policies: %w", err)
 	}
 
 	return nil

@@ -237,37 +237,75 @@ fabrica init my-api --storage=ent --db=postgres
 
 ### Flexible Authorization
 
-Build custom authorization policies for your resources:
+**Option 1: Casbin (Declarative RBAC/ABAC) - Recommended** ✨ NEW!
+
+No code needed - define policies in CSV files:
+
+```csv
+# policies/policy.csv
+# Format: p, subject, object, action
+
+# Admin role - full access
+p, admin, *, *
+
+# Device manager - full CRUD
+p, device-manager, Device, create
+p, device-manager, Device, update
+p, device-manager, Device, delete
+
+# Device viewer - read-only
+p, device-viewer, Device, list
+p, device-viewer, Device, get
+
+# Role assignments
+g, alice@example.com, admin
+g, bob@example.com, device-manager
+```
+
+Use Casbin policy in your server:
+
+```go
+// Initialize Casbin policy from files
+casbinPolicy, _ := policy.NewCasbinPolicyFromFiles("policies/model.conf", "policies/policy.csv")
+
+// Or use database-backed policies for runtime updates
+casbinPolicy, _ := policy.NewCasbinPolicyWithEntAdapter(entClient, "policies/model.conf")
+
+// Register policy (handlers automatically use it)
+registry.RegisterPolicy("Device", casbinPolicy)
+```
+
+**Benefits:**
+- ✅ Declarative policies (CSV files, not Go code)
+- ✅ Runtime policy updates via REST API
+- ✅ Database persistence with Ent
+- ✅ RBAC, ABAC, ACL support
+- ✅ Auto-generated policies for each resource
+
+**Option 2: Custom Policies (Programmatic)**
+
+For complex authorization logic, implement the `ResourcePolicy` interface:
 
 ```go
 type DevicePolicy struct{}
 
 func (p *DevicePolicy) CanCreate(ctx context.Context, auth *policy.AuthContext, req *http.Request, resource interface{}) policy.PolicyDecision {
-    // Only admins can create devices
+    // Custom logic: Only admins can create devices
     if policy.HasRole(auth, "admin") {
         return policy.Allow()
     }
     return policy.Deny("must be admin to create devices")
 }
-
-func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext, req *http.Request, resourceUID string) policy.PolicyDecision {
-    // Users can view devices in their organization
-    org, _ := policy.GetStringClaim(auth, "organization")
-    if device.Metadata.Labels["organization"] == org {
-        return policy.Allow()
-    }
-    return policy.Deny("can only view devices in your organization")
-}
 ```
 
-**Patterns:**
-- 🔐 RBAC (Role-Based Access Control)
-- 📊 ABAC (Attribute-Based Access Control)
+**Supported Patterns:**
+- 🔐 RBAC (Role-Based Access Control) - Casbin or custom
+- 📊 ABAC (Attribute-Based Access Control) - Casbin or custom
 - 🎫 JWT claim-based authorization
 - 🏢 Multi-tenancy support
-- 🎭 Custom authorization logic
+- 🎭 Mixed: Casbin for simple RBAC + custom for complex logic
 
-**→ See [Policy Guide](docs/policy.md)**
+**→ See [Casbin Policy Guide](docs/policy-casbin.md) | [Policy Guide](docs/policy.md)**
 
 ## 📦 Installation
 
