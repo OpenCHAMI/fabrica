@@ -39,6 +39,8 @@ import (
 var validate *validator.Validate
 
 // ValidationErrors wraps multiple validation errors
+//
+//nolint:revive // "ValidationErrors" name is intentional; "Errors" alone would be ambiguous
 type ValidationErrors struct {
 	Errors []FieldError `json:"errors"`
 }
@@ -350,7 +352,7 @@ func RegisterCustomValidator(tag string, fn validator.Func) error {
 }
 
 // RegisterCustomValidatorWithMessage registers a custom validation function with a custom message
-func RegisterCustomValidatorWithMessage(tag string, fn validator.Func, msgFunc func(validator.FieldError) string) error {
+func RegisterCustomValidatorWithMessage(tag string, fn validator.Func, _ func(validator.FieldError) string) error {
 	if err := validate.RegisterValidation(tag, fn); err != nil {
 		return err
 	}

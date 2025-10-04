@@ -2,6 +2,9 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package policy provides authorization and access control implementations for Fabrica.
+// It includes the ResourcePolicy interface and implementations including CasbinPolicy
+// for declarative RBAC/ABAC authorization.
 package policy
 
 import (
@@ -78,7 +81,7 @@ func (p *CasbinPolicy) EnableAutoSave(enabled bool) {
 }
 
 // CanList implements ResourcePolicy.CanList
-func (p *CasbinPolicy) CanList(ctx context.Context, auth *AuthContext, req *http.Request) PolicyDecision {
+func (p *CasbinPolicy) CanList(_ context.Context, auth *AuthContext, req *http.Request) PolicyDecision {
 	if auth == nil {
 		return Deny("no authentication context provided")
 	}
@@ -97,7 +100,7 @@ func (p *CasbinPolicy) CanList(ctx context.Context, auth *AuthContext, req *http
 }
 
 // CanGet implements ResourcePolicy.CanGet
-func (p *CasbinPolicy) CanGet(ctx context.Context, auth *AuthContext, req *http.Request, resourceUID string) PolicyDecision {
+func (p *CasbinPolicy) CanGet(_ context.Context, auth *AuthContext, req *http.Request, _ string) PolicyDecision {
 	if auth == nil {
 		return Deny("no authentication context provided")
 	}
@@ -116,7 +119,7 @@ func (p *CasbinPolicy) CanGet(ctx context.Context, auth *AuthContext, req *http.
 }
 
 // CanCreate implements ResourcePolicy.CanCreate
-func (p *CasbinPolicy) CanCreate(ctx context.Context, auth *AuthContext, req *http.Request, resource interface{}) PolicyDecision {
+func (p *CasbinPolicy) CanCreate(_ context.Context, auth *AuthContext, req *http.Request, _ interface{}) PolicyDecision {
 	if auth == nil {
 		return Deny("no authentication context provided")
 	}
@@ -135,7 +138,7 @@ func (p *CasbinPolicy) CanCreate(ctx context.Context, auth *AuthContext, req *ht
 }
 
 // CanUpdate implements ResourcePolicy.CanUpdate
-func (p *CasbinPolicy) CanUpdate(ctx context.Context, auth *AuthContext, req *http.Request, resourceUID string, resource interface{}) PolicyDecision {
+func (p *CasbinPolicy) CanUpdate(_ context.Context, auth *AuthContext, req *http.Request, _ string, _ interface{}) PolicyDecision {
 	if auth == nil {
 		return Deny("no authentication context provided")
 	}
@@ -154,7 +157,7 @@ func (p *CasbinPolicy) CanUpdate(ctx context.Context, auth *AuthContext, req *ht
 }
 
 // CanDelete implements ResourcePolicy.CanDelete
-func (p *CasbinPolicy) CanDelete(ctx context.Context, auth *AuthContext, req *http.Request, resourceUID string) PolicyDecision {
+func (p *CasbinPolicy) CanDelete(_ context.Context, auth *AuthContext, req *http.Request, _ string) PolicyDecision {
 	if auth == nil {
 		return Deny("no authentication context provided")
 	}

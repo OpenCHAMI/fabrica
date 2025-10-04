@@ -36,7 +36,7 @@ type Resource struct {
 }
 
 // Validate implements custom validation logic (hybrid approach)
-func (r *Resource) Validate(ctx context.Context) error {
+func (r *Resource) Validate(_ context.Context) error {
 	// Custom business rule: inactive resources cannot have tags
 	if r.Status == "inactive" && len(r.Tags) > 0 {
 		return errors.New("inactive resources cannot have tags")
@@ -151,7 +151,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func listResources(w http.ResponseWriter, r *http.Request) {
+func listResources(w http.ResponseWriter, _ *http.Request) {
 	// Set cache control
 	conditional.SetCacheControl(w, conditional.CacheControlOptions{
 		Public: true,
@@ -381,7 +381,7 @@ func deleteResource(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func optionsResource(w http.ResponseWriter, r *http.Request) {
+func optionsResource(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Allow", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 	w.Header().Set("Accept-Patch", string(patch.JSONMergePatch))
 	w.Header().Add("Accept-Patch", string(patch.JSONPatch))

@@ -185,6 +185,8 @@ func (crw *conditionalResponseWriter) Write(data []byte) (int, error) {
 }
 
 // ConditionalRequestInfo contains information extracted from conditional request headers
+//
+//nolint:revive // "ConditionalRequestInfo" name is intentional; "RequestInfo" alone would be ambiguous
 type ConditionalRequestInfo struct {
 	IfMatch           string
 	IfNoneMatch       string

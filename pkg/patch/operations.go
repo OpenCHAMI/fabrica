@@ -29,6 +29,8 @@ import (
 )
 
 // PatchType represents the type of PATCH operation
+//
+//nolint:revive // "PatchType" name is intentional; "Type" alone would be ambiguous
 type PatchType string
 
 const (
@@ -54,6 +56,8 @@ type Operation struct {
 }
 
 // PatchRequest represents a PATCH request with metadata
+//
+//nolint:revive // "PatchRequest" name is intentional; "Request" alone would be ambiguous
 type PatchRequest struct {
 	Type      PatchType       `json:"type"`
 	Patch     json.RawMessage `json:"patch"`
@@ -62,6 +66,8 @@ type PatchRequest struct {
 }
 
 // PatchResult contains the result of a patch operation
+//
+//nolint:revive // "PatchResult" name is intentional; "Result" alone would be ambiguous
 type PatchResult struct {
 	Modified bool            `json:"modified"`
 	Original json.RawMessage `json:"original,omitempty"`
@@ -337,6 +343,8 @@ func TestOperation(doc []byte, path string, expectedValue interface{}) (bool, er
 }
 
 // PatchOptions defines options for patch operations
+//
+//nolint:revive // "PatchOptions" name is intentional; "Options" alone would be ambiguous
 type PatchOptions struct {
 	DryRun            bool     // Don't actually modify, just validate
 	FieldMask         []string // Only allow patching specific fields

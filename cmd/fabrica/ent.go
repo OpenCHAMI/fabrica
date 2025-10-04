@@ -39,7 +39,7 @@ This runs 'go generate ./internal/storage' to generate:
   - Query builders
   - Mutation builders
   - Edge traversal methods`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			fmt.Println("🔄 Generating Ent code...")
 
 			// Check if ent directory exists
@@ -78,7 +78,7 @@ func newEntMigrateCommand() *cobra.Command {
 		Long: `Run Ent migrations to update the database schema.
 
 This ensures your database schema matches your Ent schema definitions.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			fmt.Println("🔄 Running database migrations...")
 
 			// Check if ent directory exists
@@ -114,7 +114,7 @@ func newEntDescribeCommand() *cobra.Command {
 		Use:   "describe",
 		Short: "Describe Ent schema",
 		Long:  `Display information about the Ent schema and entities.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			fmt.Println("📊 Ent Schema Information")
 			fmt.Println()
 

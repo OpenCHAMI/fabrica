@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package resource provides Kubernetes-style resource conditions for tracking resource status.
 package resource
 
 import "time"

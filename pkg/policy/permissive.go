@@ -26,22 +26,27 @@ func NewPermissivePolicy() ResourcePolicy {
 	return &PermissivePolicy{}
 }
 
-func (p *PermissivePolicy) CanList(ctx context.Context, auth *AuthContext, req *http.Request) PolicyDecision {
+// CanList implements ResourcePolicy.CanList and allows all list operations
+func (p *PermissivePolicy) CanList(_ context.Context, _ *AuthContext, _ *http.Request) PolicyDecision {
 	return Allow()
 }
 
-func (p *PermissivePolicy) CanGet(ctx context.Context, auth *AuthContext, req *http.Request, resourceUID string) PolicyDecision {
+// CanGet implements ResourcePolicy.CanGet and allows all get operations
+func (p *PermissivePolicy) CanGet(_ context.Context, _ *AuthContext, _ *http.Request, _ string) PolicyDecision {
 	return Allow()
 }
 
-func (p *PermissivePolicy) CanCreate(ctx context.Context, auth *AuthContext, req *http.Request, resource interface{}) PolicyDecision {
+// CanCreate implements ResourcePolicy.CanCreate and allows all create operations
+func (p *PermissivePolicy) CanCreate(_ context.Context, _ *AuthContext, _ *http.Request, _ interface{}) PolicyDecision {
 	return Allow()
 }
 
-func (p *PermissivePolicy) CanUpdate(ctx context.Context, auth *AuthContext, req *http.Request, resourceUID string, resource interface{}) PolicyDecision {
+// CanUpdate implements ResourcePolicy.CanUpdate and allows all update operations
+func (p *PermissivePolicy) CanUpdate(_ context.Context, _ *AuthContext, _ *http.Request, _ string, _ interface{}) PolicyDecision {
 	return Allow()
 }
 
-func (p *PermissivePolicy) CanDelete(ctx context.Context, auth *AuthContext, req *http.Request, resourceUID string) PolicyDecision {
+// CanDelete implements ResourcePolicy.CanDelete and allows all delete operations
+func (p *PermissivePolicy) CanDelete(_ context.Context, _ *AuthContext, _ *http.Request, _ string) PolicyDecision {
 	return Allow()
 }

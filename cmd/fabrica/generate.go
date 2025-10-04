@@ -30,7 +30,7 @@ Examples:
   fabrica generate --handlers         # Just handlers
   fabrica generate --client --openapi # Client + OpenAPI
 `,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			if !handlers && !storage && !client && !openapi {
 				all = true
 			}

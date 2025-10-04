@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package main provides a simple REST API example demonstrating Fabrica-style resource handling.
 package main
 
 import (
@@ -199,7 +200,7 @@ func (h *ProductHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // List handles GET /products
-func (h *ProductHandlers) List(w http.ResponseWriter, r *http.Request) {
+func (h *ProductHandlers) List(w http.ResponseWriter, _ *http.Request) {
 	products := h.storage.List()
 
 	w.Header().Set("Content-Type", "application/json")

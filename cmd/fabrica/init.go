@@ -39,7 +39,7 @@ Modes:
 
 The interactive flag launches a guided wizard to help you choose.`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			projectName := "myproject"
 			if len(args) > 0 {
 				projectName = args[0]
@@ -371,7 +371,7 @@ See [docs/](docs/) for detailed documentation.
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func createMakefile(projectName string, opts *initOptions) error {
+func createMakefile(projectName string, _ *initOptions) error {
 	content := `.PHONY: build run test generate clean
 
 build:
@@ -528,7 +528,7 @@ type MyResource struct {
 	return nil
 }
 
-func createExpertModeFiles(projectName string, opts *initOptions) error {
+func createExpertModeFiles(projectName string, _ *initOptions) error {
 	// Minimal scaffolding for expert mode
 	mainContent := `package main
 

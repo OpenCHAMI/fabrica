@@ -45,7 +45,7 @@ Examples:
   fabrica example reconciliation --level=advanced
 `,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			opts.feature = args[0]
 			return runGenerateExample(opts)
 		},
@@ -272,27 +272,27 @@ curl -X POST http://localhost:8080/products \
 }
 
 // Placeholder implementations for other example types
-func generatePatchExample(dir, level string, withDocs bool) error {
+func generatePatchExample(_ string, _ string, _ bool) error {
 	fmt.Println("  ⚠️  PATCH examples coming soon")
 	return nil
 }
 
-func generateEventsExample(dir, level string, withDocs bool) error {
+func generateEventsExample(_ string, _ string, _ bool) error {
 	fmt.Println("  ⚠️  Events examples coming soon")
 	return nil
 }
 
-func generateReconciliationExample(dir, level string, withDocs bool) error {
+func generateReconciliationExample(_ string, _ string, _ bool) error {
 	fmt.Println("  ⚠️  Reconciliation examples coming soon")
 	return nil
 }
 
-func generateStorageExample(dir, level string, withDocs bool) error {
+func generateStorageExample(_ string, _ string, _ bool) error {
 	fmt.Println("  ⚠️  Storage examples coming soon")
 	return nil
 }
 
-func generateVersioningExample(dir, level string, withDocs bool) error {
+func generateVersioningExample(_ string, _ string, _ bool) error {
 	fmt.Println("  ⚠️  Versioning examples coming soon")
 	return nil
 }

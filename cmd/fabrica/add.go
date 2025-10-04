@@ -38,7 +38,7 @@ Example:
   fabrica add resource Product --with-validation
 `,
 		Args: cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			if args[0] != "resource" {
 				return fmt.Errorf("unknown resource type: %s (only 'resource' is supported)", args[0])
 			}

@@ -457,6 +457,12 @@ We welcome contributions! Here's how to get started:
 - 🎨 Add examples
 - 🧪 Add tests
 
+**Code Quality:**
+All pull requests are automatically checked with golangci-lint. Run locally before submitting:
+```bash
+golangci-lint run
+```
+
 ## 🔗 Links
 
 - **[GitHub Repository](https://github.com/alexlovelltroy/fabrica)**

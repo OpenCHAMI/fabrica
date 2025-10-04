@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+#
+# SPDX-License-Identifier: MIT
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.goreleaser.yaml
+
+# Documentation (except what we explicitly copy)
+*.md
+!README.md
+!LICENSE
+
+# Build artifacts
+bin/
+dist/
+*.tar.gz
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+*_test.go
+testdata/
+coverage.out
+*.test
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Example builds
+examples/**/demo
+examples/**/*.license
+
+# Claude directory
+CLAUDE/

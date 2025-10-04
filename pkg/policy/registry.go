@@ -24,6 +24,8 @@ type AuthContext struct {
 }
 
 // PolicyDecision represents the result of an authorization decision
+//
+//nolint:revive // "PolicyDecision" name is intentional; "Decision" alone would be ambiguous
 type PolicyDecision struct {
 	Allowed bool
 	Reason  string
@@ -49,6 +51,8 @@ type ResourcePolicy interface {
 }
 
 // PolicyRegistry holds all the policy implementations
+//
+//nolint:revive // "PolicyRegistry" name is intentional; "Registry" alone would be ambiguous
 type PolicyRegistry struct {
 	policies map[string]ResourcePolicy
 }

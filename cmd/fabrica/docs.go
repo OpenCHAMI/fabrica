@@ -46,7 +46,7 @@ Examples:
   fabrica docs all --level=intermediate
 `,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			opts.topic = args[0]
 			return runGenerateDocs(opts)
 		},
@@ -262,7 +262,7 @@ Documentation coming soon.
 `
 }
 
-func generateDocsIndex(docsDir, level string) error {
+func generateDocsIndex(docsDir, _ string) error {
 	content := `# Fabrica Documentation
 
 Welcome to the Fabrica documentation!

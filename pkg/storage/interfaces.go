@@ -79,6 +79,8 @@ var (
 //
 //	Resources are stored as JSON-serializable data.
 //	The backend is responsible for serialization/deserialization.
+//
+//nolint:revive // "StorageBackend" name is intentional; "Backend" alone would be ambiguous
 type StorageBackend interface {
 	// LoadAll retrieves all resources of the specified type.
 	//

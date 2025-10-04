@@ -25,7 +25,7 @@ type TestResourceWithCustomValidation struct {
 	Name string `json:"name" validate:"required"`
 }
 
-func (tr *TestResourceWithCustomValidation) Validate(ctx context.Context) error {
+func (tr *TestResourceWithCustomValidation) Validate(_ context.Context) error {
 	if tr.Name == "forbidden" {
 		return errors.New("name 'forbidden' is not allowed")
 	}

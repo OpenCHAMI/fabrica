@@ -42,6 +42,7 @@ type VersionContext struct {
 type VersionContextKey string
 
 const (
+	// VersionContextKeyName is the context key used to store version information in request contexts
 	VersionContextKeyName VersionContextKey = "version_context"
 )
 

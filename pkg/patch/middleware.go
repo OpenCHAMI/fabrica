@@ -13,6 +13,8 @@ import (
 )
 
 // PatchHandler wraps a handler to provide PATCH support
+//
+//nolint:revive // "PatchHandler" name is intentional; "Handler" alone would be ambiguous
 type PatchHandler struct {
 	GetResource   func(r *http.Request) ([]byte, error)
 	SaveResource  func(r *http.Request, data []byte) error
@@ -114,6 +116,8 @@ func (ph *PatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // PatchMiddleware provides automatic PATCH support for PUT/POST handlers
+//
+//nolint:revive // "PatchMiddleware" name is intentional; "Middleware" alone would be ambiguous
 func PatchMiddleware(getFunc func(*http.Request) ([]byte, error), saveFunc func(*http.Request, []byte) error) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +152,7 @@ func respondError(w http.ResponseWriter, status int, err error) {
 
 // AutoPatchMiddleware automatically generates PATCH from existing GET and PUT handlers
 // This middleware intercepts PATCH requests and translates them to GET+modify+PUT
-func AutoPatchMiddleware(basePath string) func(http.Handler) http.Handler {
+func AutoPatchMiddleware(_ string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Only handle PATCH requests
@@ -230,6 +234,8 @@ func (rr *responseRecorder) Write(data []byte) (int, error) {
 }
 
 // PatchSupport adds Content-Type header advertisement for PATCH support
+//
+//nolint:revive // "PatchSupport" name is intentional; "Support" alone would be ambiguous
 func PatchSupport(w http.ResponseWriter) {
 	accept := w.Header().Get("Accept-Patch")
 	patches := []string{

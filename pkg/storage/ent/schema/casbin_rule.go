@@ -1,11 +1,12 @@
 // Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
+
+// Package schema provides Ent schemas for database entities including Casbin policy persistence.
 //
 // NOTE: This file provides the Ent schema for Casbin policy persistence.
 // It defines the database structure for storing Casbin policies, allowing
 // policies to be persisted and managed through the database.
-
 package schema
 
 import (

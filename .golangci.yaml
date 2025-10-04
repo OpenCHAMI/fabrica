@@ -1,0 +1,22 @@
+# golangci-lint configuration for Fabrica
+# Documentation: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - misspell
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -258,5 +258,5 @@ func compareVersions(a, b string) int {
 	return 0
 }
 
-// Global version registry instance
+// GlobalVersionRegistry is the global version registry instance for managing API versions
 var GlobalVersionRegistry = NewVersionRegistry()

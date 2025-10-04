@@ -1,0 +1,185 @@
+# SPDX-FileCopyrightText: Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+#
+# SPDX-License-Identifier: MIT
+# GoReleaser configuration for Fabrica
+# Documentation: https://goreleaser.com
+
+version: 2
+
+before:
+  hooks:
+    # Clean up any previous builds
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: fabrica
+    main: ./cmd/fabrica
+    binary: fabrica
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # Set version information via ldflags
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    # Build flags
+    flags:
+      - -trimpath
+
+archives:
+  - id: fabrica
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - docs/**/*
+      - templates/**/*
+      - examples/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+# Docker configuration for multi-platform images
+dockers:
+  # Linux AMD64
+  - id: fabrica-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/openchami/fabrica:{{ .Version }}-amd64"
+      - "ghcr.io/openchami/fabrica:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+  # Linux ARM64
+  - id: fabrica-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/openchami/fabrica:{{ .Version }}-arm64"
+      - "ghcr.io/openchami/fabrica:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+# Docker manifest for multi-arch support
+docker_manifests:
+  - name_template: "ghcr.io/openchami/fabrica:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/openchami/fabrica:{{ .Version }}-amd64"
+      - "ghcr.io/openchami/fabrica:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/openchami/fabrica:latest"
+    image_templates:
+      - "ghcr.io/openchami/fabrica:latest-amd64"
+      - "ghcr.io/openchami/fabrica:latest-arm64"
+
+# Release configuration
+release:
+  github:
+    owner: OpenCHAMI
+    name: fabrica
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## Fabrica {{ .Version }}
+
+    **Release Date:** {{ .Date }}
+
+    ### Installation
+
+    #### Binaries
+    Download the appropriate binary for your platform from the assets below.
+
+    #### Docker
+    ```bash
+    docker pull ghcr.io/openchami/fabrica:{{ .Version }}
+    ```
+
+    #### Go Install
+    ```bash
+    go install github.com/OpenCHAMI/fabrica/cmd/fabrica@{{ .Tag }}
+    ```
+
+  footer: |
+    ---
+    **Full Changelog**: https://github.com/OpenCHAMI/fabrica/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# Homebrew tap (optional - uncomment if you have a homebrew tap)
+# brews:
+#   - name: fabrica
+#     repository:
+#       owner: OpenCHAMI
+#       name: homebrew-tap
+#     directory: Formula
+#     homepage: https://github.com/OpenCHAMI/fabrica
+#     description: "A powerful Go framework for building resource-based REST APIs"
+#     license: MIT
+#     install: |
+#       bin.install "fabrica"
+#       bash_completion.install "completions/fabrica.bash" => "fabrica"
+#       zsh_completion.install "completions/fabrica.zsh" => "_fabrica"
+#       fish_completion.install "completions/fabrica.fish"
+
+# AUR package (optional - for Arch Linux)
+# aurs:
+#   - name: fabrica-bin
+#     homepage: https://github.com/OpenCHAMI/fabrica
+#     description: "A powerful Go framework for building resource-based REST APIs"
+#     maintainers:
+#       - 'Your Name <your.email@example.com>'
+#     license: MIT
+#     private_key: '{{ .Env.AUR_KEY }}'
+#     git_url: 'ssh://aur@aur.archlinux.org/fabrica-bin.git'
+
+# Announce release (optional)
+# announce:
+#   slack:
+#     enabled: true
+#     message_template: 'Fabrica {{ .Tag }} is out! Check it out at {{ .ReleaseURL }}'
+#     channel: '#releases'

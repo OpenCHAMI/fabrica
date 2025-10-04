@@ -53,29 +53,3 @@ func NewCasbinPolicyWithEntAdapter(driverName, dataSourceName, modelPath string)
 
 	return NewCasbinPolicy(enforcer), nil
 }
-
-// InitializeCasbinPolicies loads default policies into Casbin from a CSV file.
-// This is useful for bootstrapping policies on first run.
-//
-// Example usage:
-//
-//	casbinPolicy := policy.NewCasbinPolicy(enforcer)
-//	if err := policy.InitializeCasbinPolicies(casbinPolicy, "policies/policy.csv"); err != nil {
-//	    log.Printf("Failed to load default policies: %v", err)
-//	}
-func InitializeCasbinPolicies(casbinPolicy ResourcePolicy, policyFilePath string) error {
-	cp, ok := casbinPolicy.(*CasbinPolicy)
-	if !ok {
-		return fmt.Errorf("provided policy is not a CasbinPolicy")
-	}
-
-	enforcer := cp.GetEnforcer()
-
-	// Load policies from CSV file
-	// Note: This adds policies, doesn't replace existing ones
-	if err := enforcer.LoadPolicy(); err != nil {
-		return fmt.Errorf("failed to load policies from file: %w", err)
-	}
-
-	return nil
-}

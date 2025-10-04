@@ -89,7 +89,7 @@ func (c *Controller) RegisterReconciler(reconciler Reconciler) error {
 //
 // Returns:
 //   - error: If startup fails
-func (c *Controller) Start(ctx context.Context) error {
+func (c *Controller) Start(_ context.Context) error {
 	c.logger.Infof("Starting reconciliation controller with %d workers", c.workerCount)
 
 	// Subscribe to all resource events (generic pattern - can be customized per application)
@@ -252,7 +252,7 @@ func (c *Controller) loadResource(ctx context.Context, kind, uid string) (interf
 }
 
 // handleEvent processes resource change events.
-func (c *Controller) handleEvent(ctx context.Context, event events.Event) error {
+func (c *Controller) handleEvent(_ context.Context, event events.Event) error {
 	// Extract resource kind and UID from event
 	resourceKind := event.ResourceKind()
 	resourceUID := event.ResourceUID()
@@ -282,6 +282,8 @@ func (c *Controller) handleEvent(ctx context.Context, event events.Event) error 
 }
 
 // ReconcileRequest represents a request to reconcile a resource.
+//
+//nolint:revive // "ReconcileRequest" name is intentional; "Request" alone would be ambiguous
 type ReconcileRequest struct {
 	// ResourceKind is the kind of resource (e.g., "BMC", "Node")
 	ResourceKind string
