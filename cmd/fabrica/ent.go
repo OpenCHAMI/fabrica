@@ -34,7 +34,7 @@ func newEntGenerateCommand() *cobra.Command {
 		Short: "Generate Ent code from schemas",
 		Long: `Generate Ent client code from schema definitions.
 
-This runs 'go generate ./internal/storage/ent' to generate:
+This runs 'go generate ./internal/storage' to generate:
   - Type-safe CRUD operations
   - Query builders
   - Mutation builders
@@ -44,11 +44,16 @@ This runs 'go generate ./internal/storage/ent' to generate:
 
 			// Check if ent directory exists
 			if _, err := os.Stat("internal/storage/ent/schema"); os.IsNotExist(err) {
-				return fmt.Errorf("ent schema directory not found - is this an Ent project?")
+				return fmt.Errorf("ent schema directory not found - is this an Ent project?\nUse 'fabrica init --storage=ent' to create an Ent-enabled project")
+			}
+
+			// Check if generate.go exists
+			if _, err := os.Stat("internal/storage/generate.go"); os.IsNotExist(err) {
+				return fmt.Errorf("generate.go not found - your project may need to be regenerated")
 			}
 
 			// Run go generate
-			entCmd := exec.Command("go", "generate", "./internal/storage/ent")
+			entCmd := exec.Command("go", "generate", "./internal/storage")
 			entCmd.Stdout = os.Stdout
 			entCmd.Stderr = os.Stderr
 
@@ -78,7 +83,7 @@ This ensures your database schema matches your Ent schema definitions.`,
 
 			// Check if ent directory exists
 			if _, err := os.Stat("internal/storage/ent"); os.IsNotExist(err) {
-				return fmt.Errorf("ent directory not found - is this an Ent project?")
+				return fmt.Errorf("ent directory not found - is this an Ent project?\nUse 'fabrica init --storage=ent' to create an Ent-enabled project")
 			}
 
 			if dryRun {
@@ -115,7 +120,7 @@ func newEntDescribeCommand() *cobra.Command {
 
 			// Check if ent directory exists
 			if _, err := os.Stat("internal/storage/ent/schema"); os.IsNotExist(err) {
-				return fmt.Errorf("ent schema directory not found - is this an Ent project?")
+				return fmt.Errorf("ent schema directory not found - is this an Ent project?\nUse 'fabrica init --storage=ent' to create an Ent-enabled project")
 			}
 
 			fmt.Println("Entities:")

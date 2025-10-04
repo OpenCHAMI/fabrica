@@ -467,6 +467,7 @@ func (g *Generator) LoadTemplates() error {
 		"entSchemaLabel":      "ent/schema/label.go.tmpl",
 		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
 		"entAdapter":          "ent_adapter.go.tmpl",
+		"generate":            "generate.go.tmpl",
 	}
 
 	g.Templates = make(map[string]*template.Template)
@@ -757,6 +758,11 @@ func (g *Generator) GenerateEntAdapter() error {
 	adapterPath := filepath.Join("internal", "storage", "ent_adapter.go")
 	if err := os.WriteFile(adapterPath, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write ent adapter file: %w", err)
+	}
+
+	// Generate generate.go for Ent code generation
+	if err := g.executeTemplate("generate", filepath.Join("internal", "storage", "generate.go"), nil); err != nil {
+		return fmt.Errorf("failed to generate generate.go: %w", err)
 	}
 
 	return nil

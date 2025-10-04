@@ -36,20 +36,54 @@ Ent is a powerful entity framework for Go that provides:
 
 ## Quick Start
 
-### 1. Initialize Project with Ent
+### Complete Workflow Example
+
+Here's the complete workflow to create and run an Ent-backed Fabrica API:
 
 ```bash
+# 1. Create a new project with Ent storage
 fabrica init my-api --storage=ent --db=postgres
 cd my-api
+
+# 2. Add your resources
+fabrica add resource Device
+
+# 3. Generate Fabrica code (handlers, storage, etc.)
+fabrica generate
+
+# 4. Generate Ent client code from schemas
+# This reads internal/storage/ent/schema/*.go
+# and generates type-safe database client code
+go generate ./internal/storage
+# Or use: fabrica ent generate
+
+# 5. Set up your database connection
+export DATABASE_URL="postgres://user:pass@localhost:5432/mydb?sslmode=disable"
+# For SQLite development: export DATABASE_URL="file:test.db?cache=shared&_fk=1"
+
+# 6. Build and run (migrations run automatically on startup)
+go build -o api ./cmd/server
+./api
+
+# 7. Test your API
+curl http://localhost:8080/api/v1/devices
 ```
 
-This generates a project with:
-- Ent schemas for generic resource storage
-- Database adapter layer
-- Migration support
-- Type-safe storage operations
+### What Gets Generated
 
-### 2. Set Database URL
+When you run `fabrica init --storage=ent`, the following files are created:
+
+| File | Purpose |
+|------|---------|
+| `internal/storage/ent/schema/*.go` | Ent schema definitions (Resource, Label, Annotation) |
+| `internal/storage/generate.go` | Contains `//go:generate` directive for Ent code generation |
+| `internal/storage/ent_adapter.go` | Converts between Fabrica resources and Ent entities |
+| `internal/storage/storage_ent.go` | Ent-backed storage implementation |
+| `cmd/server/main.go` | Includes database connection and auto-migration |
+
+**Note:** After running `go generate ./internal/storage`, Ent will create `internal/storage/ent/*.go` files with the generated client code.
+
+### Database Connection Strings
 
 ```bash
 # PostgreSQL
@@ -58,35 +92,8 @@ export DATABASE_URL="postgres://user:pass@localhost/mydb?sslmode=disable"
 # MySQL
 export DATABASE_URL="user:pass@tcp(localhost:3306)/mydb?parseTime=true"
 
-# SQLite (development)
+# SQLite (development/testing)
 export DATABASE_URL="file:./data.db?cache=shared&_fk=1"
-```
-
-### 3. Add Resources
-
-```bash
-fabrica add resource Device
-```
-
-This creates:
-- `pkg/resources/device/device.go` - Resource definition with Spec/Status
-- Storage functions that use Ent backend
-- Handlers with three-layer validation
-
-### 4. Generate and Run
-
-```bash
-# Generate Fabrica code
-fabrica generate
-
-# Generate Ent code
-fabrica ent generate
-
-# Run migrations
-fabrica ent migrate
-
-# Start server
-go run cmd/server/main.go
 ```
 
 ## Architecture
@@ -518,22 +525,55 @@ counts, err := entClient.Resource.Query().
 
 ## Troubleshooting
 
+### "ent schema directory not found" Error
+
+If you see this when running `fabrica ent` commands:
+
+```bash
+# Check if you're in an Ent-enabled project
+ls internal/storage/ent/schema
+
+# If the directory doesn't exist, your project wasn't initialized with Ent
+# Create a new Ent-enabled project:
+fabrica init my-new-api --storage=ent
+```
+
+### "package ent is not in GOROOT" Error
+
+This means Ent client code hasn't been generated yet:
+
+```bash
+# Generate Ent client code
+go generate ./internal/storage
+
+# Or use the Fabrica command
+fabrica ent generate
+```
+
 ### Connection Issues
 
 ```bash
 # Test database connection
 psql $DATABASE_URL -c "SELECT 1"
 
-# Check Ent client initialization
+# Verify DATABASE_URL is set
+echo $DATABASE_URL
+
+# Check Ent client initialization in logs
 tail -f /var/log/myapp.log | grep "ent"
 ```
 
 ### Migration Failures
 
 ```bash
-# Drop and recreate (DEVELOPMENT ONLY)
+# Check current database state
+fabrica ent describe
+
+# Drop and recreate (DEVELOPMENT ONLY - destroys all data!)
 psql $DATABASE_URL -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 fabrica ent migrate
+
+# For production, use versioned migrations
 ```
 
 ### Performance Issues
