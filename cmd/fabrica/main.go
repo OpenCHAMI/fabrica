@@ -41,6 +41,7 @@ The CLI provides commands for:
 	rootCmd.AddCommand(newGenerateCommand())
 	rootCmd.AddCommand(newExampleCommand())
 	rootCmd.AddCommand(newDocsCommand())
+	rootCmd.AddCommand(newEntCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	if err := rootCmd.Execute(); err != nil {

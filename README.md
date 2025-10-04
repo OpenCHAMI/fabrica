@@ -220,13 +220,20 @@ func (s *MyStorage) Load(ctx context.Context, resourceType, uid string) (json.Ra
 }
 ```
 
-**Built-in:**
-- 📁 File-based storage (production-ready)
-- 🔒 Thread-safe operations
-- ⚡ Efficient lookups by UID
-- 🎯 Support for versioned resources
+**Storage Backends:**
+- 📁 **File Storage** - Zero dependencies, production-ready (default)
+- 🗄️ **Ent Storage** - Database-backed with PostgreSQL/MySQL/SQLite (NEW!)
+  - Type-safe queries with Ent ORM
+  - Automatic migrations
+  - Transaction support
+  - Advanced filtering and aggregations
 
-**→ See [Storage Guide](docs/storage.md)**
+```bash
+# Initialize with Ent storage
+fabrica init my-api --storage=ent --db=postgres
+```
+
+**→ See [Storage Guide](docs/storage.md) | [Ent Storage Guide](docs/storage-ent.md)**
 
 ### Flexible Authorization
 
