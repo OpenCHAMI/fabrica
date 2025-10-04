@@ -20,6 +20,8 @@ type initOptions struct {
 	modulePath   string
 	withExamples bool
 	withDocs     bool
+	storageType  string // file, ent
+	dbDriver     string // postgres, mysql, sqlite
 }
 
 func newInitCommand() *cobra.Command {
@@ -56,6 +58,8 @@ The interactive flag launches a guided wizard to help you choose.`,
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
 	cmd.Flags().BoolVar(&opts.withExamples, "examples", true, "Include example code")
 	cmd.Flags().BoolVar(&opts.withDocs, "docs", true, "Generate documentation")
+	cmd.Flags().StringVar(&opts.storageType, "storage", "file", "Storage backend: file or ent")
+	cmd.Flags().StringVar(&opts.dbDriver, "db", "sqlite", "Database driver for Ent: postgres, mysql, or sqlite")
 
 	return cmd
 }
@@ -108,6 +112,41 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 		opts.mode = "standard"
 	}
 
+	// Storage backend
+	fmt.Println()
+	fmt.Println("Which storage backend do you want?")
+	fmt.Println("  1) File - Simple file-based storage (default)")
+	fmt.Println("  2) Ent - Database storage with PostgreSQL/MySQL/SQLite")
+	fmt.Print("Choice [1]: ")
+
+	choice, _ = reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+
+	if choice == "2" {
+		opts.storageType = "ent"
+
+		fmt.Println()
+		fmt.Println("Which database driver?")
+		fmt.Println("  1) SQLite - Embedded database (great for development)")
+		fmt.Println("  2) PostgreSQL - Production-ready database")
+		fmt.Println("  3) MySQL - Alternative production database")
+		fmt.Print("Choice [1]: ")
+
+		dbChoice, _ := reader.ReadString('\n')
+		dbChoice = strings.TrimSpace(dbChoice)
+
+		switch dbChoice {
+		case "2":
+			opts.dbDriver = "postgres"
+		case "3":
+			opts.dbDriver = "mysql"
+		default:
+			opts.dbDriver = "sqlite"
+		}
+	} else {
+		opts.storageType = "file"
+	}
+
 	// Features
 	fmt.Println()
 	fmt.Print("Include example code? [Y/n]: ")
@@ -124,6 +163,11 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 	fmt.Printf("  Project: %s\n", projectName)
 	fmt.Printf("  Module: %s\n", opts.modulePath)
 	fmt.Printf("  Mode: %s\n", opts.mode)
+	fmt.Printf("  Storage: %s", opts.storageType)
+	if opts.storageType == "ent" {
+		fmt.Printf(" (%s)", opts.dbDriver)
+	}
+	fmt.Println()
 	fmt.Printf("  Examples: %v\n", opts.withExamples)
 	fmt.Printf("  Docs: %v\n", opts.withDocs)
 	fmt.Println()
@@ -171,7 +215,7 @@ func runInit(projectName string, opts *initOptions) error {
 	}
 
 	// Create go.mod
-	if err := createGoMod(projectName, opts.modulePath); err != nil {
+	if err := createGoMod(projectName, opts.modulePath, opts); err != nil {
 		return err
 	}
 
@@ -230,7 +274,7 @@ func runInit(projectName string, opts *initOptions) error {
 	return nil
 }
 
-func createGoMod(projectName, modulePath string) error {
+func createGoMod(projectName, modulePath string, opts *initOptions) error {
 	if modulePath == "" {
 		modulePath = fmt.Sprintf("github.com/user/%s", projectName)
 	}
@@ -240,9 +284,29 @@ func createGoMod(projectName, modulePath string) error {
 go 1.23
 
 require (
-	github.com/alexlovelltroy/fabrica latest
+	github.com/alexlovelltroy/fabrica latest`, modulePath)
+
+	// Add Ent dependencies if using Ent storage
+	if opts.storageType == "ent" {
+		content += `
+	entgo.io/ent latest`
+
+		switch opts.dbDriver {
+		case "postgres":
+			content += `
+	github.com/lib/pq latest`
+		case "mysql":
+			content += `
+	github.com/go-sql-driver/mysql latest`
+		case "sqlite":
+			content += `
+	github.com/mattn/go-sqlite3 latest`
+		}
+	}
+
+	content += `
 )
-`, modulePath)
+`
 
 	path := filepath.Join(projectName, "go.mod")
 	return os.WriteFile(path, []byte(content), 0644)

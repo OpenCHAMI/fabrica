@@ -38,7 +38,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"{{.Package}}"
 	"{{.ModulePath}}/internal/storage"
-	"{{.ModulePath}}/pkg/resources"
+	"{{.ModulePath}}/pkg/resource"
+	"{{.ModulePath}}/pkg/validation"
 	"{{.ModulePath}}/pkg/versioning"
 )
 
@@ -146,9 +147,22 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{camelCase .Name}}.SetAnnotation(k, v)
 	}
 
+	// Layer 2: Fabrica struct tag validation
+	if err := validation.ValidateResource({{camelCase .Name}}); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+
+	// Layer 3: Custom business logic validation
+	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+
 	// Set initial status
 	resources.SetCondition(&{{camelCase .Name}}.Status.Conditions, "Created", "True", "{{.Name}}Created", "{{.Name}} has been created")
 
+	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
 	if err := storage.Save{{.StorageName}}({{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return

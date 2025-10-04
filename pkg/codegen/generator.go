@@ -88,6 +88,8 @@ type Generator struct {
 	ModulePath  string
 	Resources   []ResourceMetadata
 	Templates   map[string]*template.Template
+	StorageType string // "file" or "ent" - type of storage backend to generate
+	DBDriver    string // "postgres", "mysql", "sqlite" - database driver for Ent
 }
 
 // NewGenerator creates a new code generator
@@ -98,7 +100,19 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 		ModulePath:  modulePath,
 		Resources:   make([]ResourceMetadata, 0),
 		Templates:   make(map[string]*template.Template),
+		StorageType: "file", // Default to file storage
+		DBDriver:    "sqlite",
 	}
+}
+
+// SetStorageType sets the storage backend type ("file" or "ent")
+func (g *Generator) SetStorageType(storageType string) {
+	g.StorageType = storageType
+}
+
+// SetDBDriver sets the database driver for Ent ("postgres", "mysql", "sqlite")
+func (g *Generator) SetDBDriver(driver string) {
+	g.DBDriver = driver
 }
 
 // RegisterResource adds a resource type for code generation
@@ -276,13 +290,21 @@ func (g *Generator) GenerateStorage() error {
 		PackageName string
 		ModulePath  string
 		Resources   []ResourceMetadata
+		StorageType string
 	}{
 		PackageName: g.PackageName,
 		ModulePath:  g.ModulePath,
 		Resources:   g.Resources,
+		StorageType: g.StorageType,
 	}
 
-	if err := g.Templates["storage"].Execute(&buf, data); err != nil {
+	// Use appropriate template based on storage type
+	templateName := "storage"
+	if g.StorageType == "ent" {
+		templateName = "storageEnt"
+	}
+
+	if err := g.Templates[templateName].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute storage template: %w", err)
 	}
 
@@ -431,6 +453,7 @@ func (g *Generator) LoadTemplates() error {
 		"clientModels":           "client-models.go.tmpl",
 		"routes":                 "routes.go.tmpl",
 		"storage":                "storage.go.tmpl",
+		"storageEnt":             "storage_ent.go.tmpl",
 		"models":                 "models.go.tmpl",
 		"client":                 "client.go.tmpl",
 		"policies":               "policies.go.tmpl",
@@ -439,6 +462,11 @@ func (g *Generator) LoadTemplates() error {
 		"reconciler":             "reconciler.go.tmpl",
 		"reconcilerRegistration": "reconciler-registration.go.tmpl",
 		"eventHandlers":          "event-handlers.go.tmpl",
+		// Ent templates
+		"entSchemaResource":   "ent/schema/resource.go.tmpl",
+		"entSchemaLabel":      "ent/schema/label.go.tmpl",
+		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
+		"entAdapter":          "ent_adapter.go.tmpl",
 	}
 
 	g.Templates = make(map[string]*template.Template)
@@ -667,6 +695,99 @@ func (g *Generator) GenerateOpenAPI() error {
 	filename := filepath.Join(g.OutputDir, "openapi_generated.go")
 	if err := os.WriteFile(filename, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write openapi file: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateEntSchemas generates Ent schema files for generic resource storage
+func (g *Generator) GenerateEntSchemas() error {
+	if g.StorageType != "ent" {
+		return nil // Skip if not using Ent
+	}
+
+	// Create schema directory
+	schemaDir := filepath.Join("internal", "storage", "ent", "schema")
+	if err := os.MkdirAll(schemaDir, 0755); err != nil {
+		return fmt.Errorf("failed to create ent schema directory: %w", err)
+	}
+
+	// Generate resource.go
+	if err := g.executeTemplate("entSchemaResource", filepath.Join(schemaDir, "resource.go"), nil); err != nil {
+		return err
+	}
+
+	// Generate label.go
+	if err := g.executeTemplate("entSchemaLabel", filepath.Join(schemaDir, "label.go"), nil); err != nil {
+		return err
+	}
+
+	// Generate annotation.go
+	if err := g.executeTemplate("entSchemaAnnotation", filepath.Join(schemaDir, "annotation.go"), nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GenerateEntAdapter generates the adapter layer between Fabrica resources and Ent entities
+func (g *Generator) GenerateEntAdapter() error {
+	if g.StorageType != "ent" {
+		return nil
+	}
+
+	var buf bytes.Buffer
+	data := struct {
+		ModulePath string
+		Resources  []ResourceMetadata
+	}{
+		ModulePath: g.ModulePath,
+		Resources:  g.Resources,
+	}
+
+	if err := g.Templates["entAdapter"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute ent adapter template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated ent adapter code: %w", err)
+	}
+
+	adapterPath := filepath.Join("internal", "storage", "ent_adapter.go")
+	if err := os.WriteFile(adapterPath, formatted, 0644); err != nil {
+		return fmt.Errorf("failed to write ent adapter file: %w", err)
+	}
+
+	return nil
+}
+
+// executeTemplate executes a template and writes formatted output to a file
+func (g *Generator) executeTemplate(templateName, outputPath string, data interface{}) error {
+	tmpl, exists := g.Templates[templateName]
+	if !exists {
+		return fmt.Errorf("template %s not found", templateName)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute template %s: %w", templateName, err)
+	}
+
+	// Skip formatting for non-Go files
+	var output []byte
+	if filepath.Ext(outputPath) == ".go" {
+		formatted, err := format.Source(buf.Bytes())
+		if err != nil {
+			return fmt.Errorf("failed to format generated code for %s: %w", outputPath, err)
+		}
+		output = formatted
+	} else {
+		output = buf.Bytes()
+	}
+
+	if err := os.WriteFile(outputPath, output, 0644); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", outputPath, err)
 	}
 
 	return nil
