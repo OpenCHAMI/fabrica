@@ -37,3 +37,6 @@ go.work.sum
 # LLM Coding Assistant Cruft
 .claude
 CLAUDE/*
+
+# Goreleaser artifacts
+dist/

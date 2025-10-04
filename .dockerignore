@@ -13,7 +13,7 @@
 # Documentation (except what we explicitly copy)
 *.md
 !README.md
-!LICENSE
+!LICENSES
 
 # Build artifacts
 bin/

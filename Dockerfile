@@ -1,32 +1,10 @@
 # SPDX-FileCopyrightText: Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 #
 # SPDX-License-Identifier: MIT
+#
 # Dockerfile for Fabrica
-# Multi-stage build for minimal final image
+# Used by GoReleaser - binary is pre-built
 
-# Build stage
-FROM golang:1.23-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates
-
-WORKDIR /build
-
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy source code
-COPY . .
-
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w" \
-    -trimpath \
-    -o fabrica \
-    ./cmd/fabrica
-
-# Final stage
 FROM alpine:latest
 
 # Install runtime dependencies
@@ -41,15 +19,11 @@ RUN addgroup -g 1000 fabrica && \
 
 WORKDIR /home/fabrica
 
-# Copy binary from builder
-COPY --from=builder /build/fabrica /usr/local/bin/fabrica
+# Copy pre-built binary from GoReleaser
+COPY fabrica /usr/local/bin/fabrica
 
-# Copy templates and documentation
-COPY --from=builder /build/templates ./templates
-COPY --from=builder /build/docs ./docs
-COPY --from=builder /build/examples ./examples
-COPY --from=builder /build/README.md ./README.md
-COPY --from=builder /build/LICENSE ./LICENSE
+# Note: GoReleaser only copies the binary by default
+# Additional files must be explicitly included in the build context
 
 # Set ownership
 RUN chown -R fabrica:fabrica /home/fabrica

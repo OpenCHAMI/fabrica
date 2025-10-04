@@ -479,11 +479,11 @@ golangci-lint run
 
 ## 📝 License
 
-MIT License - See [LICENSE](LICENSE)
+MIT License - See [MIT.txt](LICENSES/MIT.txt)
 
 ## ⭐ Status
 
-- **Version**: v0.1.0 (Early Development)
+- **Version**: v0.2.0 (Early Development)
 - **Go Version**: 1.23+
 - **Status**: Alpha - API may change
 

@@ -432,7 +432,7 @@ module github.com/yourname/myapi
 
 go 1.23
 
-require github.com/alexlovelltroy/fabrica v0.1.0
+require github.com/alexlovelltroy/fabrica v0.2.0
 ```
 
 **Run it:**
