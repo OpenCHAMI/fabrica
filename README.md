@@ -6,504 +6,208 @@ SPDX-License-Identifier: MIT
 
 # Fabrica 🏗️
 
-> A powerful Go framework for building resource-based REST APIs with automatic code generation, multi-version schema support, and pluggable storage backends.
+> Build production-ready REST APIs in Go with automatic code generation
 
-[![REUSE status](https://api.reuse.software/badge/github.com/alexlovelltroy/fabrica)](https://api.reuse.software/info/github.com/alexlovelltroy/fabrica)[![golangci-lint](https://github.com/alexlovelltroy/fabrica/actions/workflows/lint.yaml/badge.svg)](https://github.com/alexlovelltroy/fabrica/actions/workflows/lint.yaml)
+[![REUSE status](https://api.reuse.software/badge/github.com/alexlovelltroy/fabrica)](https://api.reuse.software/info/github.com/alexlovelltroy/fabrica)
 [![Build](https://github.com/alexlovelltroy/fabrica/actions/workflows/release.yaml/badge.svg)](https://github.com/alexlovelltroy/fabrica/actions/workflows/release.yaml)
 [![Release](https://img.shields.io/github/v/release/alexlovelltroy/fabrica?sort=semver)](https://github.com/alexlovelltroy/fabrica/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/alexlovelltroy/fabrica.svg)](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)
-[![Go Report Card](https://goreportcard.com/badge/github.com/alexlovelltroy/fabrica)](https://goreportcard.com/report/github.com/alexlovelltroy/fabrica)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/alexlovelltroy/fabrica/badge)](https://securityscorecards.dev/viewer/?uri=github.com/alexlovelltroy/fabrica)
 
-## 🎯 Overview
-
-Fabrica provides everything you need to build production-ready REST APIs with minimal boilerplate:
-
-- **🚀 Automatic Code Generation** - Define resources, generate REST API, storage, and client code
-- **📚 Multi-Version Schema Support** - Run multiple API versions simultaneously with automatic conversion
-- **🔌 Pluggable Storage** - File-based, database, or custom storage backends
-- **🔒 Flexible Authorization** - Built-in policy framework for RBAC, ABAC, and custom policies
-- **⚡ Type-Safe** - Full type safety across server, storage, and client
-- **📖 Kubernetes-Style Resources** - Familiar APIVersion/Kind/Metadata/Spec/Status pattern
-- **📡 Event System** - CloudEvents-compliant event bus with wildcard subscriptions
-- **🔄 Reconciliation Framework** - Kubernetes-style controllers for declarative resource management
-- **✅ Comprehensive Validation** - Struct tags + K8s validators + custom business logic (NEW!)
-- **🏷️ Conditional Requests** - ETags, If-Match, optimistic concurrency control (NEW!)
-- **🔧 PATCH Operations** - JSON Merge Patch, JSON Patch, and shorthand patches (NEW!)
-
-## ✨ Quick Start
-
-### 30-Second Example
-
-**1. Define your resource:**
-
-```go
-// pkg/resources/device/device.go
-package device
-
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
-
-type Device struct {
-    resource.Resource
-    Spec   DeviceSpec   `json:"spec"`
-    Status DeviceStatus `json:"status,omitempty"`
-}
-
-type DeviceSpec struct {
-    Name     string `json:"name"`
-    Location string `json:"location"`
-    Model    string `json:"model"`
-}
-
-type DeviceStatus struct {
-    Active     bool   `json:"active"`
-    LastSeen   string `json:"lastSeen,omitempty"`
-    IPAddress  string `json:"ipAddress,omitempty"`
-}
-
-func init() {
-    resource.RegisterResourcePrefix("Device", "dev")
-}
-```
-
-**2. Generate code:**
-
-```go
-// cmd/codegen/main.go
-package main
-
-import (
-    "github.com/alexlovelltroy/fabrica/pkg/codegen"
-    "github.com/yourapp/pkg/resources/device"
-)
-
-func main() {
-    gen := codegen.NewGenerator("cmd/server", "main", "github.com/yourapp")
-    gen.RegisterResource(&device.Device{})
-    gen.GenerateAll()
-}
-```
+**Define once. Generate everything.**
 
 ```bash
-go run cmd/codegen/main.go
+$ fabrica init myapp
+$ fabrica add resource Device
+$ fabrica generate
+✅ Complete REST API ready
 ```
 
-**3. Run your API server:**
+## What You Get
 
-```go
-// cmd/server/main.go
-package main
+- ✅ **REST API** - Full CRUD handlers with validation
+- ✅ **Storage** - File-based or database (Ent) backends
+- ✅ **Client Library** - Type-safe Go client
+- ✅ **OpenAPI Spec** - Auto-generated documentation
+- ✅ **Authorization** - RBAC/ABAC with Casbin integration
+- ✅ **Kubernetes-style** - Familiar resource patterns
 
-import (
-    "github.com/alexlovelltroy/fabrica/pkg/storage"
-    "net/http"
-)
+## Quick Start
 
-func main() {
-    backend := storage.NewFileBackend("./data")
-    RegisterRoutes(backend)
-    http.ListenAndServe(":8080", nil)
-}
-```
-
-**4. Use your API:**
+### Install
 
 ```bash
-# Create a device
-curl -X POST http://localhost:8080/devices \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "v1",
-    "kind": "Device",
-    "metadata": {"name": "sensor-001"},
-    "spec": {
-      "name": "Temperature Sensor",
-      "location": "Building A",
-      "model": "TMP-100"
-    }
-  }'
-
-# List devices
-curl http://localhost:8080/devices
-
-# Get specific device
-curl http://localhost:8080/devices/dev-abc123
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.2
 ```
 
-That's it! ✅ You now have a fully functional REST API with CRUD operations, type-safe storage, and automatic UID generation.
-
-## 🔥 Key Features
-
-### Automatic Code Generation
-
-Define your resource once, get everything generated:
-
-```
-Your Resource Definition
-    ↓
-Code Generator
-    ↓
-Generated Code
-    ├─ REST API Handlers (CRUD)
-    ├─ Storage Operations
-    ├─ HTTP Client Library
-    ├─ CLI Commands (optional)
-    └─ OpenAPI Specification
-```
-
-**Benefits:**
-- ✅ Consistency across all resources
-- ✅ Type-safe operations everywhere
-- ✅ Reduce boilerplate by 90%
-- ✅ Focus on business logic, not plumbing
-
-**→ See [Code Generation Guide](docs/codegen.md)**
-
-### Multi-Version Schema Support
-
-Support multiple API versions simultaneously with automatic conversion:
-
-```go
-// Register multiple versions
-gen.RegisterResource(&device.DeviceV1{})
-gen.AddResourceVersion("Device", codegen.SchemaVersion{
-    Version: "v2beta1",
-    Stability: "beta",
-})
-
-// Client requests v1, server has v2
-GET /devices/dev-123
-Accept: application/json;version=v1
-
-// Automatic conversion happens transparently
-```
-
-**Use Cases:**
-- 🔄 Maintain backward compatibility
-- 🚀 Release new features gradually
-- 🛡️ Deprecate old versions gracefully
-- 🔀 Migrate clients at their own pace
-
-**→ See [Versioning Guide](docs/versioning.md)**
-
-### Kubernetes-Style Resources
-
-Familiar resource structure for anyone who knows Kubernetes:
-
-```go
-type Device struct {
-    APIVersion string `json:"apiVersion"` // "v1"
-    Kind       string `json:"kind"`       // "Device"
-    Metadata   Metadata `json:"metadata"` // Name, UID, labels, annotations
-    Spec       DeviceSpec `json:"spec"`   // Desired state
-    Status     DeviceStatus `json:"status"` // Observed state
-}
-```
-
-**Features:**
-- 📛 Human-readable names + structured UIDs
-- 🏷️ Labels for selection and grouping
-- 📝 Annotations for arbitrary metadata
-- ⏰ Automatic timestamps (created/updated)
-- 🔍 Query by labels or annotations
-
-**→ See [Resource Model Guide](docs/resource-model.md)**
-
-### Pluggable Storage
-
-Switch storage backends without changing your code:
-
-```go
-// File-based storage (default)
-backend := storage.NewFileBackend("./data")
-
-// Database storage (coming soon)
-backend := storage.NewPostgresBackend(connectionString)
-
-// Custom storage
-type MyStorage struct{}
-func (s *MyStorage) Load(ctx context.Context, resourceType, uid string) (json.RawMessage, error) {
-    // Your implementation
-}
-```
-
-**Storage Backends:**
-- 📁 **File Storage** - Zero dependencies, production-ready (default)
-- 🗄️ **Ent Storage** - Database-backed with PostgreSQL/MySQL/SQLite (NEW!)
-  - Type-safe queries with Ent ORM
-  - Automatic migrations
-  - Transaction support
-  - Advanced filtering and aggregations
+### Create Your First API
 
 ```bash
-# Initialize with Ent storage
-fabrica init my-api --storage=ent --db=postgres
+# 1. Initialize project
+fabrica init myapp
+cd myapp
+
+# 2. Add a resource
+fabrica add resource Product
+
+# 3. Customize (edit pkg/resources/product/product.go)
+# Add fields to ProductSpec:
+#   Price  float64 `json:"price" validate:"required,gt=0"`
+#   Stock  int     `json:"stock" validate:"min=0"`
+
+# 4. Generate code
+go mod tidy
+fabrica generate
+
+# 5. Run
+go run cmd/server/main.go
 ```
 
-**→ See [Storage Guide](docs/storage.md) | [Ent Storage Guide](docs/storage-ent.md)**
+Your API is now running at `http://localhost:8080`!
 
-### Flexible Authorization
+## Example
 
-**Option 1: Casbin (Declarative RBAC/ABAC) - Recommended** ✨ NEW!
+**Define your resource:**
 
-No code needed - define policies in CSV files:
-
-```csv
-# policies/policy.csv
-# Format: p, subject, object, action
-
-# Admin role - full access
-p, admin, *, *
-
-# Device manager - full CRUD
-p, device-manager, Device, create
-p, device-manager, Device, update
-p, device-manager, Device, delete
-
-# Device viewer - read-only
-p, device-viewer, Device, list
-p, device-viewer, Device, get
-
-# Role assignments
-g, alice@example.com, admin
-g, bob@example.com, device-manager
-```
-
-Use Casbin policy in your server:
-
-```go
-// Initialize Casbin policy from files
-casbinPolicy, _ := policy.NewCasbinPolicyFromFiles("policies/model.conf", "policies/policy.csv")
-
-// Or use database-backed policies for runtime updates
-casbinPolicy, _ := policy.NewCasbinPolicyWithEntAdapter(entClient, "policies/model.conf")
-
-// Register policy (handlers automatically use it)
-registry.RegisterPolicy("Device", casbinPolicy)
-```
-
-**Benefits:**
-- ✅ Declarative policies (CSV files, not Go code)
-- ✅ Runtime policy updates via REST API
-- ✅ Database persistence with Ent
-- ✅ RBAC, ABAC, ACL support
-- ✅ Auto-generated policies for each resource
-
-**Option 2: Custom Policies (Programmatic)**
-
-For complex authorization logic, implement the `ResourcePolicy` interface:
-
-```go
-type DevicePolicy struct{}
-
-func (p *DevicePolicy) CanCreate(ctx context.Context, auth *policy.AuthContext, req *http.Request, resource interface{}) policy.PolicyDecision {
-    // Custom logic: Only admins can create devices
-    if policy.HasRole(auth, "admin") {
-        return policy.Allow()
-    }
-    return policy.Deny("must be admin to create devices")
-}
-```
-
-**Supported Patterns:**
-- 🔐 RBAC (Role-Based Access Control) - Casbin or custom
-- 📊 ABAC (Attribute-Based Access Control) - Casbin or custom
-- 🎫 JWT claim-based authorization
-- 🏢 Multi-tenancy support
-- 🎭 Mixed: Casbin for simple RBAC + custom for complex logic
-
-**→ See [Casbin Policy Guide](docs/policy-casbin.md) | [Policy Guide](docs/policy.md)**
-
-## 📦 Installation
-
-```bash
-go get github.com/alexlovelltroy/fabrica
-```
-
-**Requirements:**
-- Go 1.23 or later
-
-## 🏗️ Architecture
-
-Fabrica follows a clean, layered architecture:
-
-```
-┌─────────────────────────────────────────────┐
-│         HTTP REST API Layer                 │
-│  (Generated handlers with CRUD operations)  │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│       Resource Management Layer             │
-│   (Versioning, validation, conversion)      │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│         Storage Backend Layer               │
-│  (File, database, or custom persistence)    │
-└─────────────────────────────────────────────┘
-```
-
-**Key Components:**
-
-- **`pkg/resource/`** - Resource model and UID generation
-- **`pkg/codegen/`** - Code generation engine
-- **`pkg/storage/`** - Storage interfaces and backends
-- **`pkg/policy/`** - Authorization framework
-- **`pkg/versioning/`** - Multi-version support
-- **`pkg/events/`** - CloudEvents-compliant event system
-- **`pkg/reconcile/`** - Reconciliation framework and controllers
-- **`templates/`** - Code generation templates
-
-**→ See [Architecture Guide](docs/architecture.md)**
-
-## 🔍 How Does Fabrica Compare?
-
-Wondering how Fabrica stacks up against other Go frameworks like **Go-Fuego**, **Huma**, or **Goa**?
-
-**→ See [Framework Comparison](docs/comparison.md)** for detailed analysis, feature matrices, and guidance on choosing the right framework for your project.
-
-**TL;DR**: Fabrica is the only framework specifically designed for inventory and asset management with built-in storage, events, reconciliation, and multi-version support. For general REST APIs, consider Go-Fuego (simple) or Huma (schema-first). For microservices with gRPC, consider Goa.
-
-## 📚 Documentation
-
-### Getting Started
-
-**New to Fabrica? Start here:**
-- **[Quick Start](docs/quickstart.md)** ⚡ - Simple REST API in 30 minutes (no Kubernetes concepts)
-- **[Getting Started Guide](docs/getting-started.md)** ⭐ - Full resource model in 2-4 hours
-- **[Architecture Overview](docs/architecture.md)** - Design and concepts
-- **[Examples](docs/examples.md)** - Real-world use cases
-
-**Choose your learning path:**
-- **Beginner** → Start with [Quick Start](docs/quickstart.md) for simple CRUD APIs
-- **Intermediate** → Continue with [Getting Started](docs/getting-started.md) for resource management
-- **Advanced** → Explore [Reconciliation](docs/reconciliation.md) and [Events](docs/events.md)
-
-### Core Concepts
-- **[Resource Model](docs/resource-model.md)** - Understanding resources
-- **[Storage System](docs/storage.md)** - Storage backends and patterns
-- **[Code Generation](docs/codegen.md)** - Template system guide
-- **[Versioning](docs/versioning.md)** - Multi-version support
-- **[Authorization](docs/policy.md)** - Policy framework
-- **[Events](docs/events.md)** - Event system with CloudEvents
-- **[Reconciliation](docs/reconciliation.md)** - Declarative resource management
-
-### Reference
-- **[API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)** - Go package docs
-- **[Template Reference](templates/README.md)** - Available templates
-
-### Complete Documentation
-- **[Documentation Index](docs/README.md)** - Complete documentation map
-
-## 🚀 Use Cases
-
-### IoT Device Management
-```go
-type Device struct {
-    resource.Resource
-    Spec DeviceSpec `json:"spec"`
-}
-// Generates: /devices API with status tracking
-```
-
-### Product Catalog
 ```go
 type Product struct {
     resource.Resource
-    Spec ProductSpec `json:"spec"`
+    Spec   ProductSpec   `json:"spec"`
+    Status ProductStatus `json:"status,omitempty"`
 }
-// Generates: /products API with inventory management
+
+type ProductSpec struct {
+    Name  string  `json:"name" validate:"required"`
+    Price float64 `json:"price" validate:"required,gt=0"`
+    Stock int     `json:"stock" validate:"min=0"`
+}
 ```
 
-### User Management
-```go
-type User struct {
-    resource.Resource
-    Spec UserSpec `json:"spec"`
-}
-// Generates: /users API with RBAC policies
-```
+**Generated endpoints:**
 
-### Content Management
-```go
-type Article struct {
-    resource.Resource
-    Spec ArticleSpec `json:"spec"`
-}
-// Generates: /articles API with versioning
-```
-
-**→ See [Examples Guide](docs/examples.md) for complete implementations**
-
-## 🎓 Learn More
-
-### Tutorials
-1. [Your First Resource](docs/getting-started.md#your-first-resource) - 5 minutes
-2. [Add Authorization](docs/policy.md#quick-start) - 10 minutes
-3. [Multi-Version API](docs/versioning.md#adding-versions) - 15 minutes
-4. [Custom Storage](docs/storage.md#custom-backends) - 20 minutes
-
-### Concepts
-- [Why Fabrica?](docs/architecture.md#why-fabrica) - Philosophy and goals
-- [Design Principles](docs/architecture.md#design-principles) - Framework design
-- [Best Practices](docs/architecture.md#best-practices) - Production patterns
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-1. **Read the docs**: [Contributing Guide](CONTRIBUTING.md)
-2. **Find an issue**: Check [GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues)
-3. **Submit a PR**: Follow the [PR template](CONTRIBUTING.md#pull-requests)
-
-**Quick Contribution Ideas:**
-- 📖 Improve documentation
-- 🐛 Fix bugs
-- ✨ Add features
-- 🎨 Add examples
-- 🧪 Add tests
-
-**Code Quality:**
-All pull requests are automatically checked with golangci-lint. Run locally before submitting:
 ```bash
+POST   /products       # Create
+GET    /products       # List all
+GET    /products/{id}  # Get one
+PUT    /products/{id}  # Update
+DELETE /products/{id}  # Delete
+```
+
+**Use the API:**
+
+```bash
+curl -X POST http://localhost:8080/products \
+  -H "Content-Type: application/json" \
+  -d '{
+    "apiVersion": "v1",
+    "kind": "Product",
+    "metadata": {"name": "laptop"},
+    "spec": {
+      "name": "MacBook Pro",
+      "price": 1999.99,
+      "stock": 42
+    }
+  }'
+```
+
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Code Generation** | Generate handlers, storage, clients from resource definitions |
+| **Validation** | Struct tags + Kubernetes validators + custom logic |
+| **Storage Backends** | File-based (development) or Ent/database (production) |
+| **Authorization** | Built-in RBAC/ABAC with Casbin integration |
+| **Multi-Version APIs** | Support multiple schema versions simultaneously |
+| **Type Safety** | Full type safety across server, storage, and client |
+| **Events & Reconciliation** | CloudEvents + Kubernetes-style controllers |
+
+## Documentation
+
+- **[Getting Started](docs/getting-started.md)** - Detailed tutorial
+- **[Quick Start Guide](docs/quickstart.md)** - 30-minute walkthrough
+- **[Resource Model](docs/resource-model.md)** - Understanding resources
+- **[Code Generation](docs/codegen.md)** - How generation works
+- **[Authorization](docs/policy-casbin.md)** - RBAC/ABAC setup
+- **[Storage Backends](docs/storage.md)** - File vs database
+- **[API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)** - Full API docs
+
+## Architecture
+
+```
+┌─────────────────┐
+│  Your Resource  │  (Define once)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ fabrica generate│  (Run once)
+└────────┬────────┘
+         │
+         ├─► REST Handlers  (CRUD operations)
+         ├─► Storage Layer  (File or DB)
+         ├─► Client Library (Type-safe)
+         └─► OpenAPI Spec   (Documentation)
+```
+
+## Project Modes
+
+Choose your complexity level:
+
+- **Simple** - Just a REST API, no Kubernetes concepts
+- **Standard** - Full resource model (recommended)
+- **Expert** - Minimal scaffolding, maximum control
+
+```bash
+fabrica init myapp --mode=simple   # Easy mode
+fabrica init myapp --mode=standard # Full power (default)
+```
+
+## Examples
+
+See [examples/](examples/) directory for complete working examples:
+
+- Basic CRUD API
+- Multi-version resources
+- Custom validation
+- Authorization policies
+- Event-driven workflows
+
+## Requirements
+
+- Go 1.23 or later
+- That's it!
+
+## Status
+
+**Version:** v0.2.2
+**Status:** Production Ready
+
+✅ Core features stable and tested
+✅ Used in production at OpenCHAMI
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+```bash
+# Run tests
+go test ./...
+
+# Run linter
 golangci-lint run
 ```
 
-## 🔗 Links
-
-- **[GitHub Repository](https://github.com/alexlovelltroy/fabrica)**
-- **[Go Package Docs](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)**
-- **[Issue Tracker](https://github.com/alexlovelltroy/fabrica/issues)**
-- **[Discussions](https://github.com/alexlovelltroy/fabrica/discussions)**
-
-## 📝 License
+## License
 
 MIT License - See [MIT.txt](LICENSES/MIT.txt)
 
-## ⭐ Status
+## Links
 
-- **Version**: v0.2.2 (Early Development)
-- **Go Version**: 1.23+
-- **Status**: Alpha - API may change
-
-**Production Readiness:**
-- ✅ Core resource system - Stable
-- ✅ File storage backend - Stable
-- ✅ Code generation - Stable
-- ⚠️ Versioning system - Beta
-- ⚠️ Policy framework - Beta
-- 🚧 Database backends - Coming soon
-
-## 🙏 Acknowledgments
-
-Fabrica is inspired by:
-- **Kubernetes** - Resource model and API conventions
-- **OpenAPI** - REST API patterns
-- **Go** - Simplicity and pragmatism
-
-Built with ❤️ for developers who want to focus on business logic, not boilerplate.
+- [GitHub](https://github.com/alexlovelltroy/fabrica)
+- [Documentation](docs/)
+- [Issues](https://github.com/alexlovelltroy/fabrica/issues)
+- [Releases](https://github.com/alexlovelltroy/fabrica/releases)
 
 ---
 
-**Get Started**: [Getting Started Guide](docs/getting-started.md) | **Questions?** [Open an Issue](https://github.com/alexlovelltroy/fabrica/issues)
+**Built with ❤️ for developers who want to focus on business logic, not boilerplate.**

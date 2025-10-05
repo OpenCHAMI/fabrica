@@ -45,14 +45,14 @@ A simple REST API for managing products with these endpoints:
 ### Install Fabrica CLI
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.2
 ```
 
 Verify installation:
 
 ```bash
-fabrica version
-# Output: fabrica version v0.2.2
+fabrica --version
+# Output: fabrica version v0.2.2 (or similar)
 ```
 
 ## Step 1: Initialize Your Project
@@ -60,12 +60,11 @@ fabrica version
 Create a new project using **simple mode** (this hides advanced features):
 
 ```bash
-# Create and enter project directory
-mkdir myshop
-cd myshop
+# Initialize project (creates myshop directory)
+fabrica init myshop --mode=simple
 
-# Initialize with simple mode
-fabrica init --mode=simple
+# Enter project directory
+cd myshop
 
 # This creates:
 # - go.mod with necessary dependencies
@@ -86,57 +85,97 @@ Your project is ready! Next steps:
   3. go run cmd/server/main.go
 ```
 
-## Step 2: Define Your Data
+## Step 2: Add Your Resource
 
-Create a file `product.go` to define your data structure:
-
-```bash
-mkdir -p pkg/resources/product
-```
-
-Create `pkg/resources/product/product.go`:
-
-```go
-package product
-
-// Product represents an item in your store
-type Product struct {
-    ID          string  `json:"id"`
-    Name        string  `json:"name"`
-    Description string  `json:"description"`
-    Price       float64 `json:"price"`
-    InStock     bool    `json:"inStock"`
-}
-```
-
-**That's it!** Just a plain Go struct. No inheritance, no magic fields.
-
-## Step 3: Generate Code
-
-Use the Fabrica CLI to generate all the REST API code:
+Use the Fabrica CLI to create a Product resource:
 
 ```bash
 fabrica add resource Product
 ```
 
+This command creates a resource definition at `pkg/resources/product/product.go`:
+
+```go
+package product
+
+import (
+    "context"
+    "github.com/alexlovelltroy/fabrica/pkg/resource"
+    "github.com/alexlovelltroy/fabrica/pkg/validation"
+)
+
+// Product represents a Product resource
+type Product struct {
+    resource.Resource
+    Spec   ProductSpec   `json:"spec" validate:"required"`
+    Status ProductStatus `json:"status,omitempty"`
+}
+
+// ProductSpec defines the desired state of Product
+type ProductSpec struct {
+    Name        string `json:"name" validate:"required,k8sname"`
+    Description string `json:"description,omitempty" validate:"max=200"`
+    // Add your spec fields here
+}
+
+// ProductStatus defines the observed state of Product
+type ProductStatus struct {
+    Phase      string `json:"phase,omitempty"`
+    Message    string `json:"message,omitempty"`
+    Ready      bool   `json:"ready"`
+    // Add your status fields here
+}
+
+// Validate implements custom validation logic for Product
+func (r *Product) Validate(ctx context.Context) error {
+    // Add custom validation logic here
+    return nil
+}
+
+func init() {
+    // Register resource type prefix for storage
+    resource.RegisterResourcePrefix("Product", "pro")
+}
+```
+
+**Customize the Spec:** Edit `pkg/resources/product/product.go` to add your fields:
+
+```go
+type ProductSpec struct {
+    Name        string  `json:"name" validate:"required,k8sname"`
+    Description string  `json:"description,omitempty" validate:"max=200"`
+    Price       float64 `json:"price" validate:"required,gt=0"`
+    InStock     bool    `json:"inStock"`
+}
+```
+
+## Step 3: Generate Code
+
+Now generate the REST API handlers, storage, and routes:
+
+```bash
+fabrica generate
+```
+
 This command:
-- Finds your `Product` struct
+- Discovers your `Product` resource
 - Generates HTTP handlers (Create, Read, Update, Delete, List)
-- Generates in-memory storage
+- Generates file-based storage
 - Generates API routes
-- Creates a main.go server file
+- Updates server registration
 
 You'll see:
 
 ```
-Analyzing product.go...
-✓ Found Product struct
-✓ Generated handlers (cmd/server/product_handlers.go)
-✓ Generated storage (internal/storage/product_storage.go)
-✓ Generated routes (cmd/server/routes.go)
-✓ Generated main (cmd/server/main.go)
+🔧 Generating code...
+📦 Found 1 resource(s): Product
+  ├─ Registering Product...
+  ├─ Generating handlers...
+  ├─ Generating storage...
+  ├─ Generating OpenAPI spec...
+  └─ Done!
 
-Done! Run with: go run cmd/server/main.go
+✅ Code generation complete!
 ```
 
 ## Step 4: Run Your API
@@ -365,56 +404,6 @@ This quick start used **simple mode** which hides Fabrica's advanced features. W
 - **CLI Help**: Run `fabrica --help` or `fabrica <command> --help`
 - **Documentation**: Browse `docs/` in the Fabrica repository
 - **Examples**: Check `examples/` for working code samples
-
-## Comparison: With and Without Fabrica
-
-### Without Fabrica (Traditional Approach)
-
-To build the same Product API manually, you'd write:
-
-```go
-// ~50 lines: HTTP handlers
-func CreateProduct(w http.ResponseWriter, r *http.Request) { /* ... */ }
-func GetProduct(w http.ResponseWriter, r *http.Request) { /* ... */ }
-func UpdateProduct(w http.ResponseWriter, r *http.Request) { /* ... */ }
-func DeleteProduct(w http.ResponseWriter, r *http.Request) { /* ... */ }
-func ListProducts(w http.ResponseWriter, r *http.Request) { /* ... */ }
-
-// ~30 lines: Storage layer
-type ProductStorage struct { /* ... */ }
-func (s *ProductStorage) Create(p Product) error { /* ... */ }
-func (s *ProductStorage) Get(id string) (*Product, error) { /* ... */ }
-// ... more storage methods
-
-// ~20 lines: Server and routing
-func main() {
-    http.HandleFunc("/products", handleProducts)
-    http.HandleFunc("/products/", handleProduct)
-    // ... routing logic
-}
-
-// ~15 lines: Error handling utilities
-// ~10 lines: JSON helpers
-```
-
-**Total: ~125 lines of boilerplate code** for ONE resource.
-
-### With Fabrica
-
-```go
-// 7 lines: Your data structure
-type Product struct {
-    ID          string  `json:"id"`
-    Name        string  `json:"name"`
-    Description string  `json:"description"`
-    Price       float64 `json:"price"`
-    InStock     bool    `json:"inStock"`
-}
-```
-
-**Total: 7 lines of code** + one CLI command.
-
-Fabrica generates all the boilerplate for you!
 
 ---
 

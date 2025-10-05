@@ -6,617 +6,393 @@ SPDX-License-Identifier: MIT
 
 # Getting Started with Fabrica
 
-> Build your first resource-based REST API in 10 minutes with automatic code generation.
-
-## Table of Contents
-
-- [Installation](#installation)
-- [Prerequisites](#prerequisites)
-- [Your First Resource](#your-first-resource)
-- [Generate Code](#generate-code)
-- [Run the Server](#run-the-server)
-- [Use the API](#use-the-api)
-- [Complete Example](#complete-example)
-- [Next Steps](#next-steps)
-
-## Installation
-
-### Install Fabrica
-
-```bash
-go get github.com/alexlovelltroy/fabrica
-```
-
-### Create a New Project
-
-```bash
-mkdir myapi
-cd myapi
-go mod init github.com/yourname/myapi
-```
-
-### Project Structure
-
-Create the following directory structure:
-
-```
-myapi/
-├── go.mod
-├── cmd/
-│   ├── codegen/          # Code generator
-│   │   └── main.go
-│   └── server/           # API server
-│       └── main.go
-├── pkg/
-│   └── resources/        # Resource definitions
-│       └── device/
-│           └── device.go
-└── internal/
-    └── storage/          # Generated storage (auto-created)
-```
+This guide will walk you through creating your first REST API with Fabrica in about 15 minutes.
 
 ## Prerequisites
 
-**Go Version**: 1.23 or later
+- Go 1.23 or later installed
+- Basic familiarity with Go
+- A terminal
 
-**Basic Knowledge:**
-- Go programming basics
-- REST API concepts
-- JSON format
+## Installation
 
-**No prior experience needed with:**
-- Code generation
-- Kubernetes patterns
-- Complex API frameworks
-
-## Your First Resource
-
-Let's create a simple Device resource for an IoT platform.
-
-### Step 1: Define the Resource
-
-Create `pkg/resources/device/device.go`:
-
-```go
-package device
-
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
-
-// Device represents an IoT device in your system
-type Device struct {
-    resource.Resource
-    Spec   DeviceSpec   `json:"spec"`
-    Status DeviceStatus `json:"status,omitempty"`
-}
-
-// DeviceSpec defines the desired state
-type DeviceSpec struct {
-    Name        string            `json:"name"`
-    Type        string            `json:"type"`        // "sensor", "actuator", "controller"
-    Location    string            `json:"location"`
-    Model       string            `json:"model"`
-    Properties  map[string]string `json:"properties,omitempty"`
-}
-
-// DeviceStatus defines the observed state
-type DeviceStatus struct {
-    Online       bool   `json:"online"`
-    LastSeen     string `json:"lastSeen,omitempty"`
-    IPAddress    string `json:"ipAddress,omitempty"`
-    FirmwareVer  string `json:"firmwareVersion,omitempty"`
-    BatteryLevel int    `json:"batteryLevel,omitempty"` // 0-100
-}
-
-// Register UID prefix for devices
-func init() {
-    resource.RegisterResourcePrefix("Device", "dev")
-}
-```
-
-**What's happening here?**
-
-1. **Device struct** embeds `resource.Resource` - gives you APIVersion, Kind, Metadata for free
-2. **Spec** defines what you want (desired state)
-3. **Status** defines what you observe (observed state)
-4. **UID prefix** registered as "dev" - generates IDs like `dev-1a2b3c4d`
-
-### Step 2: Understanding the Resource Structure
-
-When you create a Device, it will look like this:
-
-```json
-{
-  "apiVersion": "v1",
-  "kind": "Device",
-  "metadata": {
-    "uid": "dev-1a2b3c4d",
-    "name": "temperature-sensor-01",
-    "labels": {
-      "location": "warehouse-a",
-      "type": "sensor"
-    },
-    "annotations": {
-      "description": "Temperature sensor for cold storage"
-    },
-    "createdAt": "2024-10-03T10:00:00Z",
-    "updatedAt": "2024-10-03T10:00:00Z"
-  },
-  "spec": {
-    "name": "Temperature Sensor 01",
-    "type": "sensor",
-    "location": "Warehouse A, Aisle 3",
-    "model": "TMP-100",
-    "properties": {
-      "samplingRate": "60s",
-      "accuracy": "±0.5°C"
-    }
-  },
-  "status": {
-    "online": true,
-    "lastSeen": "2024-10-03T10:15:00Z",
-    "ipAddress": "192.168.1.100",
-    "firmwareVersion": "1.2.3",
-    "batteryLevel": 85
-  }
-}
-```
-
-## Generate Code
-
-### Step 3: Create Code Generator
-
-Create `cmd/codegen/main.go`:
-
-```go
-package main
-
-import (
-    "fmt"
-    "log"
-
-    "github.com/alexlovelltroy/fabrica/pkg/codegen"
-    "github.com/yourname/myapi/pkg/resources/device"
-)
-
-func main() {
-    // Create generator for server code
-    serverGen := codegen.NewGenerator(
-        "cmd/server",           // Output directory
-        "main",                 // Package name
-        "github.com/yourname/myapi", // Module path
-    )
-
-    // Register your resource
-    if err := serverGen.RegisterResource(&device.Device{}); err != nil {
-        log.Fatalf("Failed to register Device: %v", err)
-    }
-
-    // Generate all server code
-    fmt.Println("Generating server code...")
-    if err := serverGen.GenerateAll(); err != nil {
-        log.Fatalf("Failed to generate server code: %v", err)
-    }
-
-    fmt.Println("✅ Code generation complete!")
-    fmt.Println("\nGenerated files:")
-    fmt.Println("  - cmd/server/device_handlers_generated.go")
-    fmt.Println("  - cmd/server/models_generated.go")
-    fmt.Println("  - cmd/server/routes_generated.go")
-    fmt.Println("  - internal/storage/storage_generated.go")
-}
-```
-
-### Step 4: Run Code Generation
+Install the Fabrica CLI:
 
 ```bash
-go run cmd/codegen/main.go
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.2
 ```
 
-**Output:**
-```
-Generating server code...
-✅ Code generation complete!
-
-Generated files:
-  - cmd/server/device_handlers_generated.go
-  - cmd/server/models_generated.go
-  - cmd/server/routes_generated.go
-  - internal/storage/storage_generated.go
-```
-
-**What got generated?**
-
-- **Handlers**: CRUD endpoints (List, Get, Create, Update, Delete)
-- **Models**: Request/response types
-- **Routes**: URL routing configuration
-- **Storage**: File-based persistence operations
-
-## Run the Server
-
-### Step 5: Create Server Main
-
-Create `cmd/server/main.go`:
-
-```go
-package main
-
-import (
-    "fmt"
-    "log"
-    "net/http"
-
-    "github.com/alexlovelltroy/fabrica/pkg/storage"
-)
-
-func main() {
-    // Create file-based storage backend
-    backend := storage.NewFileBackend("./data")
-    defer backend.Close()
-
-    // Register routes (generated function)
-    RegisterRoutes(backend)
-
-    // Start server
-    addr := ":8080"
-    fmt.Printf("🚀 Server starting on http://localhost%s\n", addr)
-    fmt.Println("\nAvailable endpoints:")
-    fmt.Println("  GET    /devices           - List all devices")
-    fmt.Println("  GET    /devices/{uid}     - Get specific device")
-    fmt.Println("  POST   /devices           - Create new device")
-    fmt.Println("  PUT    /devices/{uid}     - Update device")
-    fmt.Println("  DELETE /devices/{uid}     - Delete device")
-    fmt.Println()
-
-    if err := http.ListenAndServe(addr, nil); err != nil {
-        log.Fatalf("Server failed: %v", err)
-    }
-}
-```
-
-### Step 6: Start the Server
+Verify installation:
 
 ```bash
-go run cmd/server/*.go
+fabrica --version
+# Output: fabrica version v0.2.2
 ```
 
-**Output:**
-```
-🚀 Server starting on http://localhost:8080
+## Create Your First API
 
-Available endpoints:
-  GET    /devices           - List all devices
-  GET    /devices/{uid}     - Get specific device
-  POST   /devices           - Create new device
-  PUT    /devices/{uid}     - Update device
-  DELETE /devices/{uid}     - Delete device
-```
-
-🎉 **Your API is now running!**
-
-## Use the API
-
-### Step 7: Create a Device
+### Step 1: Initialize Project
 
 ```bash
-curl -X POST http://localhost:8080/devices \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "v1",
-    "kind": "Device",
-    "metadata": {
-      "name": "temp-sensor-01",
-      "labels": {
-        "location": "warehouse-a",
-        "type": "sensor"
-      }
-    },
-    "spec": {
-      "name": "Temperature Sensor 01",
-      "type": "sensor",
-      "location": "Warehouse A",
-      "model": "TMP-100"
-    }
-  }'
+fabrica init bookstore
+cd bookstore
 ```
 
-**Response:**
-```json
-{
-  "apiVersion": "v1",
-  "kind": "Device",
-  "metadata": {
-    "uid": "dev-a1b2c3d4",
-    "name": "temp-sensor-01",
-    "labels": {
-      "location": "warehouse-a",
-      "type": "sensor"
-    },
-    "createdAt": "2024-10-03T10:00:00Z",
-    "updatedAt": "2024-10-03T10:00:00Z"
-  },
-  "spec": {
-    "name": "Temperature Sensor 01",
-    "type": "sensor",
-    "location": "Warehouse A",
-    "model": "TMP-100"
-  }
-}
+This creates:
 ```
-
-**Note the UID**: `dev-a1b2c3d4` was automatically generated!
-
-### Step 8: List All Devices
-
-```bash
-curl http://localhost:8080/devices
-```
-
-**Response:**
-```json
-[
-  {
-    "apiVersion": "v1",
-    "kind": "Device",
-    "metadata": {
-      "uid": "dev-a1b2c3d4",
-      "name": "temp-sensor-01",
-      ...
-    },
-    "spec": {
-      "name": "Temperature Sensor 01",
-      ...
-    }
-  }
-]
-```
-
-### Step 9: Get Specific Device
-
-```bash
-curl http://localhost:8080/devices/dev-a1b2c3d4
-```
-
-### Step 10: Update Device
-
-```bash
-curl -X PUT http://localhost:8080/devices/dev-a1b2c3d4 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "v1",
-    "kind": "Device",
-    "metadata": {
-      "uid": "dev-a1b2c3d4",
-      "name": "temp-sensor-01"
-    },
-    "spec": {
-      "name": "Temperature Sensor 01",
-      "type": "sensor",
-      "location": "Warehouse A",
-      "model": "TMP-100"
-    },
-    "status": {
-      "online": true,
-      "ipAddress": "192.168.1.100",
-      "firmwareVersion": "1.2.3"
-    }
-  }'
-```
-
-### Step 11: Delete Device
-
-```bash
-curl -X DELETE http://localhost:8080/devices/dev-a1b2c3d4
-```
-
-## Complete Example
-
-### Full Working Project
-
-Here's a complete, ready-to-run example:
-
-**Directory Structure:**
-```
-myapi/
-├── go.mod
+bookstore/
 ├── cmd/
-│   ├── codegen/main.go
-│   └── server/main.go
-└── pkg/
-    └── resources/
-        └── device/device.go
+│   ├── server/          # API server
+│   └── client/          # Client code
+├── pkg/
+│   └── resources/       # Your resource definitions
+├── internal/
+│   └── storage/         # Generated storage
+├── go.mod
+├── Makefile
+└── README.md
 ```
 
-**go.mod:**
-```go
-module github.com/yourname/myapi
+### Step 2: Add Your First Resource
 
-go 1.23
-
-require github.com/alexlovelltroy/fabrica v0.2.2
-```
-
-**Run it:**
 ```bash
-# 1. Generate code
-go run cmd/codegen/main.go
-
-# 2. Start server
-go run cmd/server/*.go
-
-# 3. Test API (in another terminal)
-curl -X POST http://localhost:8080/devices \
-  -H "Content-Type: application/json" \
-  -d '{"apiVersion":"v1","kind":"Device","metadata":{"name":"test"},"spec":{"name":"Test Device","type":"sensor","location":"Lab","model":"TEST-1"}}'
+fabrica add resource Book
 ```
+
+This creates `pkg/resources/book/book.go`:
+
+```go
+package book
+
+import (
+    "context"
+    "github.com/alexlovelltroy/fabrica/pkg/resource"
+    "github.com/alexlovelltroy/fabrica/pkg/validation"
+)
+
+// Book represents a Book resource
+type Book struct {
+    resource.Resource
+    Spec   BookSpec   `json:"spec" validate:"required"`
+    Status BookStatus `json:"status,omitempty"`
+}
+
+// BookSpec defines the desired state of Book
+type BookSpec struct {
+    Name        string `json:"name" validate:"required,k8sname"`
+    Description string `json:"description,omitempty" validate:"max=200"`
+    // Add your spec fields here
+}
+
+// BookStatus defines the observed state of Book
+type BookStatus struct {
+    Phase   string `json:"phase,omitempty"`
+    Message string `json:"message,omitempty"`
+    Ready   bool   `json:"ready"`
+    // Add your status fields here
+}
+
+// Validate implements custom validation logic
+func (r *Book) Validate(ctx context.Context) error {
+    // Add custom validation here
+    return nil
+}
+
+func init() {
+    resource.RegisterResourcePrefix("Book", "boo")
+}
+```
+
+### Step 3: Customize Your Resource
+
+Edit `pkg/resources/book/book.go` and add fields to `BookSpec`:
+
+```go
+type BookSpec struct {
+    Title       string   `json:"title" validate:"required,min=1,max=200"`
+    Author      string   `json:"author" validate:"required,min=1,max=100"`
+    ISBN        string   `json:"isbn" validate:"required,isbn"`
+    Price       float64  `json:"price" validate:"required,gt=0"`
+    InStock     bool     `json:"inStock"`
+    Categories  []string `json:"categories,omitempty"`
+}
+```
+
+### Step 4: Generate Code
+
+```bash
+go mod tidy
+fabrica generate
+```
+
+Output:
+```
+🔧 Generating code...
+📦 Found 1 resource(s): Book
+  ├─ Registering Book...
+  ├─ Generating handlers...
+  ├─ Generating storage...
+  ├─ Generating OpenAPI spec...
+  ├─ Generating client code...
+  └─ Done!
+
+✅ Code generation complete!
+```
+
+This generates:
+- `cmd/server/handlers_generated.go` - REST handlers
+- `internal/storage/storage_generated.go` - Storage operations
+- `cmd/server/openapi_generated.go` - OpenAPI spec
+- `pkg/client/client_generated.go` - Go client library
+
+### Step 5: Run Your API
+
+```bash
+go run cmd/server/main.go
+```
+
+Your API is now running at `http://localhost:8080`!
+
+## Using Your API
+
+### Create a Book
+
+```bash
+curl -X POST http://localhost:8080/books \
+  -H "Content-Type: application/json" \
+  -d '{
+    "apiVersion": "v1",
+    "kind": "Book",
+    "metadata": {
+      "name": "golang-guide"
+    },
+    "spec": {
+      "title": "The Go Programming Language",
+      "author": "Alan Donovan",
+      "isbn": "978-0134190440",
+      "price": 44.99,
+      "inStock": true,
+      "categories": ["programming", "go"]
+    }
+  }'
+```
+
+Response:
+```json
+{
+  "apiVersion": "v1",
+  "kind": "Book",
+  "metadata": {
+    "name": "golang-guide",
+    "uid": "boo-abc123def456",
+    "createdAt": "2025-10-05T10:00:00Z"
+  },
+  "spec": {
+    "title": "The Go Programming Language",
+    "author": "Alan Donovan",
+    "isbn": "978-0134190440",
+    "price": 44.99,
+    "inStock": true,
+    "categories": ["programming", "go"]
+  }
+}
+```
+
+### List Books
+
+```bash
+curl http://localhost:8080/books
+```
+
+### Get a Specific Book
+
+```bash
+curl http://localhost:8080/books/boo-abc123def456
+```
+
+### Update a Book
+
+```bash
+curl -X PUT http://localhost:8080/books/boo-abc123def456 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "apiVersion": "v1",
+    "kind": "Book",
+    "metadata": {
+      "name": "golang-guide",
+      "uid": "boo-abc123def456"
+    },
+    "spec": {
+      "title": "The Go Programming Language",
+      "author": "Alan Donovan",
+      "isbn": "978-0134190440",
+      "price": 39.99,
+      "inStock": false,
+      "categories": ["programming", "go"]
+    }
+  }'
+```
+
+### Delete a Book
+
+```bash
+curl -X DELETE http://localhost:8080/books/boo-abc123def456
+```
+
+## Understanding the Resource Model
+
+Fabrica uses a Kubernetes-style resource model:
+
+```go
+type Book struct {
+    APIVersion string        // "v1"
+    Kind       string        // "Book"
+    Metadata   Metadata      // Name, UID, labels, annotations
+    Spec       BookSpec      // Desired state (your fields)
+    Status     BookStatus    // Observed state (system updates)
+}
+```
+
+**Key concepts:**
+- **Spec** - What you want (your data model)
+- **Status** - What the system knows (read-only, system updates)
+- **Metadata** - Standard fields (name, UID, timestamps, labels)
+
+## Validation
+
+Fabrica provides three levels of validation:
+
+### 1. Struct Tag Validation
+
+```go
+type BookSpec struct {
+    Title  string  `json:"title" validate:"required,min=1,max=200"`
+    Price  float64 `json:"price" validate:"required,gt=0,lt=1000"`
+    ISBN   string  `json:"isbn" validate:"required,isbn"`
+}
+```
+
+**Common validators:**
+- `required` - Field must be present
+- `min=N,max=N` - Length constraints
+- `gt=N,lt=N` - Numeric comparisons
+- `email`, `url`, `isbn` - Format validators
+- `k8sname` - Kubernetes-style name (lowercase, alphanumeric, hyphens)
+
+### 2. Kubernetes-Style Validators
+
+```go
+type BookSpec struct {
+    Title string `json:"title" validate:"required,k8sname"`
+    //                                   ^^^^^^^^ Kubernetes name rules
+}
+```
+
+### 3. Custom Validation
+
+```go
+func (r *Book) Validate(ctx context.Context) error {
+    // Business logic validation
+    if r.Spec.Price > 100 && !r.Spec.InStock {
+        return errors.New("expensive books must be in stock")
+    }
+    return nil
+}
+```
+
+## Storage Options
+
+### File-Based Storage (Default)
+
+Perfect for development:
+
+```go
+backend, err := storage.NewFileBackend("./data")
+```
+
+Data stored in `./data/` directory as JSON files.
+
+### Database Storage (Production)
+
+Use Ent for production:
+
+```bash
+fabrica init myapp --storage=ent --db=postgres
+```
+
+See [Storage Guide](storage.md) for details.
 
 ## Next Steps
 
-### 🎓 Learn More
+Now that you have a working API:
 
-Now that you have a working API, explore these topics:
+1. **Add More Resources** - `fabrica add resource Author`
+2. **Add Authorization** - See [Policy Guide](policy-casbin.md)
+3. **Add Validation** - See [Validation Guide](validation.md)
+4. **Use the Client** - Generated Go client in `pkg/client/`
+5. **Add Events** - See [Events Guide](events.md)
+6. **Deploy** - Build with `go build cmd/server/main.go`
 
-1. **[Add Labels and Annotations](resource-model.md#labels-and-annotations)** - Query and organize resources
-2. **[Implement Authorization](policy.md)** - Add access control
-3. **[Customize Templates](codegen.md#customizing-templates)** - Modify generated code
-4. **[Add More Resources](resource-model.md#defining-resources)** - Build a complete API
+## Common Tasks
 
-### 📚 Deep Dives
+### Add Another Resource
 
-- **[Resource Model](resource-model.md)** - Understand the full resource structure
-- **[Storage System](storage.md)** - Learn about storage backends
-- **[Code Generation](codegen.md)** - Master the template system
-- **[Architecture](architecture.md)** - Framework design and principles
-
-### 🎯 Common Next Steps
-
-#### Add Another Resource
-
-Create `pkg/resources/sensor/sensor.go`:
-
-```go
-package sensor
-
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
-
-type Sensor struct {
-    resource.Resource
-    Spec   SensorSpec   `json:"spec"`
-    Status SensorStatus `json:"status,omitempty"`
-}
-
-type SensorSpec struct {
-    DeviceUID string `json:"deviceUid"`
-    Type      string `json:"type"` // "temperature", "humidity", "pressure"
-    Unit      string `json:"unit"`
-    Threshold float64 `json:"threshold"`
-}
-
-type SensorStatus struct {
-    CurrentValue float64 `json:"currentValue"`
-    LastReading  string  `json:"lastReading"`
-}
-
-func init() {
-    resource.RegisterResourcePrefix("Sensor", "sen")
-}
-```
-
-Register in code generator:
-
-```go
-serverGen.RegisterResource(&sensor.Sensor{})
-```
-
-Regenerate and restart!
-
-#### Add Query Parameters
-
-Edit the generated handlers to add filtering:
-
-```go
-// In cmd/server/device_handlers_generated.go (after regenerating, edit your template)
-func ListDevices(w http.ResponseWriter, r *http.Request) {
-    devices, err := storage.LoadAllDevices(r.Context())
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-
-    // Add filtering by label
-    location := r.URL.Query().Get("location")
-    if location != "" {
-        filtered := []Device{}
-        for _, d := range devices {
-            if d.Metadata.Labels["location"] == location {
-                filtered = append(filtered, d)
-            }
-        }
-        devices = filtered
-    }
-
-    json.NewEncoder(w).Encode(devices)
-}
-```
-
-Usage:
 ```bash
-curl http://localhost:8080/devices?location=warehouse-a
+fabrica add resource Author
+# Edit pkg/resources/author/author.go
+fabrica generate
+```
+
+### Regenerate After Changes
+
+```bash
+# After editing resource definitions
+fabrica generate
+```
+
+### Build for Production
+
+```bash
+go build -o bookstore-api cmd/server/main.go
+./bookstore-api
+```
+
+### Run Tests
+
+```bash
+go test ./...
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Error: "go: updates to go.mod needed"
 
-**Code generation fails:**
+**Fix:** Run `go mod tidy` before `fabrica generate`
+
+### Error: "no resources found"
+
+**Fix:** Make sure your resource embeds `resource.Resource`:
+```go
+type MyResource struct {
+    resource.Resource  // ← Must embed this
+    Spec MyResourceSpec
+}
 ```
-Error: failed to register Device: ...
-```
-**Solution**: Ensure Device struct embeds `resource.Resource` and has json tags
 
-**Server won't start:**
-```
-Error: address already in use
-```
-**Solution**: Another process is using port 8080. Change port in main.go or kill the other process
+### Error: "failed to read embedded template"
 
-**404 errors:**
-```
-404 page not found
-```
-**Solution**: Make sure you called `RegisterRoutes(backend)` in main.go
+**Fix:** Update fabrica: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest`
 
-**Storage errors:**
-```
-Error: failed to create storage directory
-```
-**Solution**: Check file permissions. Server needs write access to ./data directory
+## Further Reading
 
-### Getting Help
+- [Quick Start](quickstart.md) - 30-minute tutorial
+- [Resource Model](resource-model.md) - Deep dive into resources
+- [Code Generation](codegen.md) - How generation works
+- [Authorization](policy-casbin.md) - RBAC/ABAC setup
+- [API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)
 
-- **[GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues)** - Report bugs
-- **[Discussions](https://github.com/alexlovelltroy/fabrica/discussions)** - Ask questions
-- **[Examples](examples.md)** - See more complete examples
+## Get Help
 
-## Summary
-
-In this guide, you:
-
-- ✅ Installed Fabrica
-- ✅ Created your first resource
-- ✅ Generated REST API code
-- ✅ Ran an API server
-- ✅ Performed CRUD operations
-
-**Time spent**: ~10 minutes
-**Code written**: ~100 lines
-**APIs generated**: Complete CRUD with storage ✨
-
-### What You Got
-
-From ~100 lines of code, you got:
-
-- 🌐 Full REST API with 5 endpoints
-- 💾 File-based persistence
-- 🔑 Structured UID generation
-- 🏷️ Label and annotation support
-- ⏰ Automatic timestamps
-- 📦 Type-safe operations
-
-### Where to Go Next
-
-**To build production APIs:**
-- Add [Authorization](policy.md) for access control
-- Configure [Storage](storage.md) for your database
-- Support [Multiple Versions](versioning.md) for compatibility
-- Customize [Code Generation](codegen.md) for your needs
-
-**To learn the framework:**
-- Understand [Architecture](architecture.md) and design principles
-- Master the [Resource Model](resource-model.md)
-- Explore [Examples](examples.md) of real-world applications
-
----
-
-**Ready for more?** → [Resource Model Guide](resource-model.md)
-**Need help?** → [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
-**Want to contribute?** → [Contributing Guide](../CONTRIBUTING.md)
+- [GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues)
+- [Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+- [Documentation](https://github.com/alexlovelltroy/fabrica/tree/main/docs)

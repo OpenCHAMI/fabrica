@@ -111,16 +111,16 @@ import (
 	content += `
 )
 
-// %s represents a %s resource
-type %s struct {
+// ` + resourceName + ` represents a ` + resourceName + ` resource
+type ` + resourceName + ` struct {
 	resource.Resource
-	Spec   %sSpec   ` + "`json:\"spec\"`"
+	Spec   ` + resourceName + `Spec   ` + "`json:\"spec\""
 
 	if opts.withValidation {
 		content += ` validate:"required"`
 	}
 
-	content += "\n"
+	content += "`\n"
 
 	if opts.withStatus {
 		content += fmt.Sprintf(`	Status %sStatus `+"`json:\"status,omitempty\"`\n", resourceName)

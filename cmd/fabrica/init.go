@@ -45,6 +45,12 @@ The interactive flag launches a guided wizard to help you choose.`,
 				projectName = args[0]
 			}
 
+			// If a non-default database driver is specified, automatically use ent storage
+			// (sqlite is the default, so we check if postgres or mysql was explicitly chosen)
+			if opts.dbDriver == "postgres" || opts.dbDriver == "mysql" {
+				opts.storageType = "ent"
+			}
+
 			if opts.interactive {
 				return runInteractiveInit(projectName, opts)
 			}
@@ -469,7 +475,10 @@ import (
 
 func main() {
 	// Initialize storage backend
-	backend := storage.NewFileBackend("./data")
+	backend, err := storage.NewFileBackend("./data")
+	if err != nil {
+		log.Fatalf("Failed to initialize storage: %v", err)
+	}
 
 	// Setup router
 	r := chi.NewRouter()

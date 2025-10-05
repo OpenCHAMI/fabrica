@@ -36,6 +36,7 @@ package codegen
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"go/format"
 	"os"
@@ -47,6 +48,9 @@ import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
+
+//go:embed templates/*
+var embeddedTemplates embed.FS
 
 // SchemaVersion represents a specific version of a resource schema
 type SchemaVersion struct {
@@ -446,11 +450,9 @@ func (g *Generator) GenerateEventHandlers() error {
 	return nil
 }
 
-// LoadTemplates loads code generation templates from files or embedded templates
+// LoadTemplates loads code generation templates from embedded filesystem
 func (g *Generator) LoadTemplates() error {
-	// Try to load from templates directory first (for development)
-	templateDir := filepath.Join("templates")
-
+	// Templates are embedded in the binary using go:embed directive
 	templateFiles := map[string]string{
 		"handlers":               "handlers.go.tmpl",
 		"clientModels":           "client-models.go.tmpl",
@@ -479,12 +481,12 @@ func (g *Generator) LoadTemplates() error {
 
 	g.Templates = make(map[string]*template.Template)
 	for name, filename := range templateFiles {
-		templatePath := filepath.Join(templateDir, filename)
+		templatePath := filepath.Join("templates", filename)
 
-		// Read template content from file
-		content, err := os.ReadFile(templatePath)
+		// Read template content from embedded filesystem
+		content, err := embeddedTemplates.ReadFile(templatePath)
 		if err != nil {
-			return fmt.Errorf("failed to read template file %s: %w", templatePath, err)
+			return fmt.Errorf("failed to read embedded template %s: %w", templatePath, err)
 		}
 
 		// Parse template with functions
@@ -531,6 +533,10 @@ func (g *Generator) GenerateHandlers() error {
 // GenerateClient generates API client library
 func (g *Generator) GenerateClient() error {
 	var buf bytes.Buffer
+	// Ensure output directory exists
+	if err := os.MkdirAll(g.OutputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
 	data := struct {
 		PackageName string
 		ModulePath  string
