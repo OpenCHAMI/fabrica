@@ -1,5 +1,16 @@
 <!--
-Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+Copyright © 2025 OpenCHAMI a Series of ### Install Fabrica
+
+```bash
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.3
+```
+
+Verify installation:
+
+```bash
+fabrica version
+# Output: fabrica version v0.2.3 (or similar)
+``` LLC
 
 SPDX-License-Identifier: MIT
 -->
@@ -45,14 +56,14 @@ A simple REST API for managing products with these endpoints:
 ### Install Fabrica CLI
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.2
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.3
 ```
 
 Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.2.2 (or similar)
+# Output: fabrica version v0.2.3 (or similar)
 ```
 
 ## Step 1: Initialize Your Project

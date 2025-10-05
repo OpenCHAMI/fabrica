@@ -38,7 +38,7 @@ $ fabrica generate
 ### Install
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.2
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.3
 ```
 
 ### Create Your First API
@@ -181,7 +181,7 @@ See [examples/](examples/) directory for complete working examples:
 
 ## Status
 
-**Version:** v0.2.2
+**Version:** v0.2.3
 **Status:** Production Ready
 
 ✅ Core features stable and tested

@@ -19,14 +19,14 @@ This guide will walk you through creating your first REST API with Fabrica in ab
 Install the Fabrica CLI:
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.2
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.3
 ```
 
 Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.2.2
+# Output: fabrica version v0.2.3
 ```
 
 ## Create Your First API
@@ -381,7 +381,7 @@ type MyResource struct {
 
 ### Error: "failed to read embedded template"
 
-**Fix:** Update fabrica: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest`
+**Fix:** Update fabrica: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.3`
 
 ## Further Reading
 
