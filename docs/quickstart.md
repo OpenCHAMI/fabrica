@@ -70,24 +70,41 @@ fabrica --version
 
 Create a new project using **simple mode** (this hides advanced features):
 
+### Option A: New Directory
+
 ```bash
 # Initialize project (creates myshop directory)
 fabrica init myshop --mode=simple
 
 # Enter project directory
 cd myshop
-
-# This creates:
-# - go.mod with necessary dependencies
-# - Basic project structure
-# - Simple README
 ```
+
+### Option B: Existing Directory (e.g., from `gh repo create`)
+
+If you've already created a repository with GitHub CLI or template:
+
+```bash
+# Create repo from template (example)
+gh repo create myshop --template myorg/template --public
+cd myshop
+
+# Initialize Fabrica in current directory
+fabrica init . --mode=simple
+```
+
+This will preserve existing files like `.git`, `README.md`, `LICENSE`, etc.
+
+Both options create:
+- `go.mod` with necessary dependencies
+- Basic project structure (`cmd/`, `pkg/`, etc.)
+- Makefile for common tasks
 
 You'll see:
 
 ```
 ✓ Created go.mod
-✓ Created README.md
+✓ Created README.md (or skipped if exists)
 ✓ Created basic project structure
 
 Your project is ready! Next steps:

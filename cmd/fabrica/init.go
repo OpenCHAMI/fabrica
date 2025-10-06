@@ -37,7 +37,11 @@ Modes:
   standard - Full resource model with labels, annotations (recommended)
   expert   - Minimal scaffolding, maximum flexibility
 
-The interactive flag launches a guided wizard to help you choose.`,
+The interactive flag launches a guided wizard to help you choose.
+
+You can initialize in an existing directory by using '.' as the project name,
+or by providing the name of an existing directory. This is useful when using
+'gh repo create --template' or similar workflows.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			projectName := "myproject"
@@ -189,11 +193,59 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 }
 
 func runInit(projectName string, opts *initOptions) error {
-	fmt.Printf("🚀 Creating %s project in %s mode...\n", projectName, opts.mode)
+	// Determine if we're initializing in current directory
+	inCurrentDir := projectName == "."
+	var projectBaseName string
+	var targetDir string
 
-	// Create project directory
-	if err := os.MkdirAll(projectName, 0755); err != nil {
-		return fmt.Errorf("failed to create project directory: %w", err)
+	if inCurrentDir {
+		// Initialize in current directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+		projectBaseName = filepath.Base(cwd)
+		targetDir = "."
+		fmt.Printf("🚀 Initializing Fabrica project in current directory (%s) in %s mode...\n", projectBaseName, opts.mode)
+
+		// Check if current directory already has Fabrica files
+		if err := checkExistingProject("."); err != nil {
+			return err
+		}
+
+		// Check if directory has important files we should preserve
+		if err := checkSafeToInitialize("."); err != nil {
+			return err
+		}
+
+		fmt.Println("📁 Initializing in existing directory...")
+	} else {
+		// Creating or initializing in a named directory
+		projectBaseName = filepath.Base(projectName)
+		targetDir = projectName
+
+		if stat, err := os.Stat(projectName); err == nil && stat.IsDir() {
+			// Directory exists
+			fmt.Printf("🚀 Initializing Fabrica project in existing directory %s in %s mode...\n", projectName, opts.mode)
+
+			// Check if directory already has Fabrica files
+			if err := checkExistingProject(projectName); err != nil {
+				return err
+			}
+
+			// Check if directory has important files we should preserve
+			if err := checkSafeToInitialize(projectName); err != nil {
+				return err
+			}
+
+			fmt.Println("📁 Initializing in existing directory...")
+		} else {
+			// Create new directory
+			fmt.Printf("🚀 Creating %s project in %s mode...\n", projectName, opts.mode)
+			if err := os.MkdirAll(projectName, 0755); err != nil {
+				return fmt.Errorf("failed to create project directory: %w", err)
+			}
+		}
 	}
 
 	// Create directory structure
@@ -214,40 +266,40 @@ func runInit(projectName string, opts *initOptions) error {
 	}
 
 	for _, dir := range dirs {
-		path := filepath.Join(projectName, dir)
+		path := filepath.Join(targetDir, dir)
 		if err := os.MkdirAll(path, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
 
-	// Create go.mod
-	if err := createGoMod(projectName, opts.modulePath, opts); err != nil {
+	// Create go.mod (only if it doesn't exist)
+	if err := createGoMod(targetDir, projectBaseName, opts.modulePath, opts); err != nil {
 		return err
 	}
 
 	// Create files based on mode
 	switch opts.mode {
 	case "simple":
-		if err := createSimpleModeFiles(projectName, opts); err != nil {
+		if err := createSimpleModeFiles(targetDir, opts); err != nil {
 			return err
 		}
 	case "expert":
-		if err := createExpertModeFiles(projectName, opts); err != nil {
+		if err := createExpertModeFiles(targetDir, opts); err != nil {
 			return err
 		}
 	default: // standard
-		if err := createStandardModeFiles(projectName, opts); err != nil {
+		if err := createStandardModeFiles(targetDir, opts); err != nil {
 			return err
 		}
 	}
 
 	// Create README
-	if err := createREADME(projectName, opts); err != nil {
+	if err := createREADME(targetDir, projectBaseName, opts); err != nil {
 		return err
 	}
 
 	// Create Makefile
-	if err := createMakefile(projectName, opts); err != nil {
+	if err := createMakefile(targetDir, opts); err != nil {
 		return err
 	}
 
@@ -255,7 +307,12 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("✅ Project created successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Printf("  cd %s\n", projectName)
+
+	// Only show cd command if not in current directory
+	if !inCurrentDir {
+		fmt.Printf("  cd %s\n", projectName)
+	}
+
 	fmt.Println("  go mod tidy")
 
 	if opts.mode == "simple" {
@@ -270,17 +327,32 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println()
 
 	if opts.withDocs {
-		fmt.Printf("📚 Documentation available in %s/docs/\n", projectName)
+		if inCurrentDir {
+			fmt.Println("📚 Documentation available in docs/")
+		} else {
+			fmt.Printf("📚 Documentation available in %s/docs/\n", projectName)
+		}
 	}
 
 	if opts.withExamples {
-		fmt.Printf("💡 Examples available in %s/examples/\n", projectName)
+		if inCurrentDir {
+			fmt.Println("💡 Examples available in examples/")
+		} else {
+			fmt.Printf("💡 Examples available in %s/examples/\n", projectName)
+		}
 	}
 
 	return nil
 }
 
-func createGoMod(projectName, modulePath string, opts *initOptions) error {
+func createGoMod(targetDir, projectName, modulePath string, opts *initOptions) error {
+	// Check if go.mod already exists
+	goModPath := filepath.Join(targetDir, "go.mod")
+	if _, err := os.Stat(goModPath); err == nil {
+		fmt.Println("ℹ️  go.mod already exists, skipping...")
+		return nil
+	}
+
 	if modulePath == "" {
 		modulePath = fmt.Sprintf("github.com/user/%s", projectName)
 	}
@@ -314,11 +386,16 @@ require (
 )
 `
 
-	path := filepath.Join(projectName, "go.mod")
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(goModPath, []byte(content), 0644)
 }
 
-func createREADME(projectName string, opts *initOptions) error {
+func createREADME(targetDir, projectName string, opts *initOptions) error {
+	// Check if README already exists
+	readmePath := filepath.Join(targetDir, "README.md")
+	if _, err := os.Stat(readmePath); err == nil {
+		fmt.Println("ℹ️  README.md already exists, skipping...")
+		return nil
+	}
 	modeDesc := map[string]string{
 		"simple":   "Simple REST API",
 		"standard": "Resource-based REST API with Fabrica",
@@ -373,8 +450,7 @@ See [docs/](docs/) for detailed documentation.
 `
 	}
 
-	path := filepath.Join(projectName, "README.md")
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(readmePath, []byte(content), 0644)
 }
 
 func createMakefile(projectName string, _ *initOptions) error {
@@ -556,4 +632,86 @@ func main() {
 
 	path := filepath.Join(projectName, "cmd/server/main.go")
 	return os.WriteFile(path, []byte(mainContent), 0644)
+}
+
+// checkExistingProject checks if the directory already contains a Fabrica project
+func checkExistingProject(dir string) error {
+	// Check for key Fabrica files that indicate this is already initialized
+	fabricaFiles := []string{
+		"cmd/server/main.go",
+		"pkg/resources",
+	}
+
+	for _, file := range fabricaFiles {
+		path := filepath.Join(dir, file)
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("directory appears to already contain a Fabrica project (found %s)\nUse a different directory or remove existing files first", file)
+		}
+	}
+
+	return nil
+}
+
+// checkSafeToInitialize verifies that we won't overwrite important files
+func checkSafeToInitialize(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	// List of files/directories that are safe to ignore
+	safeFiles := map[string]bool{
+		".git":           true,
+		".gitignore":     true,
+		".github":        true,
+		"LICENSE":        true,
+		"LICENSES":       true,
+		"README.md":      true,
+		".gitattributes": true,
+		".editorconfig":  true,
+		".vscode":        true,
+		".idea":          true,
+	}
+
+	// Check for potentially problematic files
+	hasUnsafeFiles := false
+	unsafeFiles := []string{}
+
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Skip safe files
+		if safeFiles[name] {
+			continue
+		}
+
+		// Skip hidden files and directories (except the ones we explicitly check)
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		// If we find any other files, warn the user
+		hasUnsafeFiles = true
+		unsafeFiles = append(unsafeFiles, name)
+	}
+
+	if hasUnsafeFiles {
+		fmt.Println("⚠️  Warning: Directory contains existing files:")
+		for _, f := range unsafeFiles {
+			fmt.Printf("    - %s\n", f)
+		}
+		fmt.Println()
+		fmt.Print("Continue and potentially overwrite files? [y/N]: ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, _ := reader.ReadString('\n')
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response != "y" && response != "yes" {
+			return fmt.Errorf("initialization cancelled by user")
+		}
+		fmt.Println()
+	}
+
+	return nil
 }
