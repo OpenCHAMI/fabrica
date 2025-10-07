@@ -24,6 +24,7 @@ func newGenerateCommand() *cobra.Command {
 		client   bool
 		openapi  bool
 		all      bool
+		debug    bool
 	)
 
 	cmd := &cobra.Command{
@@ -45,12 +46,21 @@ Examples:
 			fmt.Println("🔧 Generating code...")
 
 			// Read go.mod to get module path
+			if debug {
+				fmt.Println("🔍 Reading go.mod...")
+			}
 			modulePath, err := getModulePath()
 			if err != nil {
 				return fmt.Errorf("failed to read module path: %w (make sure you're in a Go module)", err)
 			}
+			if debug {
+				fmt.Printf("  Module: %s\n", modulePath)
+			}
 
 			// Discover resources in pkg/resources
+			if debug {
+				fmt.Println("🔍 Discovering resources in pkg/resources/...")
+			}
 			resources, err := discoverResources()
 			if err != nil {
 				return fmt.Errorf("failed to discover resources: %w", err)
@@ -75,17 +85,28 @@ Examples:
 			if needsRegistration {
 				fmt.Println()
 				fmt.Println("📝 Registration file not found, creating it...")
-				if err := generateRegistrationFile(); err != nil {
+				if err := generateRegistrationFile(debug); err != nil {
 					return fmt.Errorf("failed to generate registration file: %w", err)
 				}
 				fmt.Println()
+			} else if debug {
+				fmt.Printf("📝 Registration file exists: %s\n", regFile)
 			}
 
 			// Ensure dependencies are available by running go mod tidy
-			fmt.Println("📥 Ensuring dependencies are available...")
+			if debug {
+				fmt.Println("📥 Running go mod tidy...")
+			} else {
+				fmt.Println("📥 Ensuring dependencies are available...")
+			}
 			tidyCmd := exec.Command("go", "mod", "tidy")
-			tidyCmd.Stdout = nil // Suppress output unless there's an error
-			tidyCmd.Stderr = nil
+			if debug {
+				tidyCmd.Stdout = os.Stdout
+				tidyCmd.Stderr = os.Stderr
+			} else {
+				tidyCmd.Stdout = nil // Suppress output unless there's an error
+				tidyCmd.Stderr = nil
+			}
 			if err := tidyCmd.Run(); err != nil {
 				fmt.Println("⚠️  Warning: go mod tidy failed, continuing anyway...")
 			}
@@ -98,14 +119,18 @@ Examples:
 
 			// Generate server code (handlers, storage, openapi)
 			if all || handlers || storage || openapi {
-				if err := generateCodeWithRunner(modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, authEnabled); err != nil {
+				if debug {
+					fmt.Println("📦 Generating server code...")
+				}
+				if err := generateCodeWithRunner(modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, authEnabled, debug); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
 
 			// Generate client code
 			if all || client {
-				if err := generateCodeWithRunner(modulePath, "pkg/client", "client", false, false, false, true, false); err != nil {
+				fmt.Println("📦 Generating client code...")
+				if err := generateCodeWithRunner(modulePath, "pkg/client", "client", false, false, false, true, false, debug); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
 				}
 			}
@@ -122,6 +147,7 @@ Examples:
 	cmd.Flags().BoolVar(&storage, "storage", false, "Generate storage adapters")
 	cmd.Flags().BoolVar(&client, "client", false, "Generate client code")
 	cmd.Flags().BoolVar(&openapi, "openapi", false, "Generate OpenAPI spec")
+	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug output showing detailed generation steps")
 
 	return cmd
 }
@@ -146,8 +172,11 @@ func getModulePath() (string, error) {
 }
 
 // generateCodeWithRunner creates and runs a temporary codegen program
-func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled bool) error {
+func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool) error {
 	// Create output directory if it doesn't exist
+	if debug {
+		fmt.Printf("  Creating output directory: %s\n", outputDir)
+	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
@@ -160,7 +189,10 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 	defer os.RemoveAll(runnerDir) // nolint:errcheck
 
 	// Generate the runner program
-	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, authEnabled)
+	if debug {
+		fmt.Println("  Generating codegen runner...")
+	}
+	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, authEnabled, debug)
 
 	runnerPath := filepath.Join(runnerDir, "main.go")
 	if err := os.WriteFile(runnerPath, []byte(runnerCode), 0644); err != nil {
@@ -168,7 +200,11 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 	}
 
 	// Run the codegen runner from the project root
-	cmd := exec.Command("go", "run", runnerPath)
+	if debug {
+		fmt.Println("  Running code generator...")
+	}
+	// Use relative path starting with ./ so go run uses the project's go.mod and replace directives
+	cmd := exec.Command("go", "run", "./"+runnerDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = "." // Run in project root
@@ -181,14 +217,17 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 }
 
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled bool) string {
+func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
 		// Server-side generation
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Loading templates...\")\n")
+		}
 		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
-		generationCalls.WriteString("\t}\n\n")
+		generationCalls.WriteString("\t}\n")
 
 		// Enable auth for all resources if auth is enabled
 		if authEnabled {
@@ -226,27 +265,46 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 		generationCalls.WriteString("\t}\n")
 	} else if client {
 		// Client-side generation
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Loading templates...\")\n")
+		}
 		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
 		generationCalls.WriteString("\t}\n\n")
 
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating client library...\")\n")
+		}
 		generationCalls.WriteString("\tif err := gen.GenerateClient(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating client models...\")\n")
+		}
 		generationCalls.WriteString("\tif err := gen.GenerateClientModels(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client models: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating client CLI...\")\n")
+		}
 		generationCalls.WriteString("\tif err := gen.GenerateClientCmd(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client CLI: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 	}
 
+	verboseFlag := "false"
+	fmtImport := ""
+	if debug {
+		verboseFlag = "true"
+		fmtImport = "\t\"fmt\"\n"
+	}
+
 	return fmt.Sprintf(`package main
 
 import (
-	"log"
+%s	"log"
 
 	"github.com/alexlovelltroy/fabrica/pkg/codegen"
 	"%s/pkg/resources"
@@ -254,13 +312,14 @@ import (
 
 func main() {
 	gen := codegen.NewGenerator("%s", "%s", "%s")
+	gen.Verbose = %s
 
 	if err := resources.RegisterAllResources(gen); err != nil {
 		log.Fatalf("Failed to register resources: %%v", err)
 	}
 
 %s}
-`, modulePath, outputDir, packageName, modulePath, generationCalls.String())
+`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, generationCalls.String())
 }
 
 // discoverResources scans pkg/resources for resource definitions
@@ -327,4 +386,88 @@ func discoverResources() ([]string, error) {
 	}
 
 	return resources, nil
+}
+
+// generateRegistrationFile creates pkg/resources/register_generated.go
+func generateRegistrationFile(debug bool) error {
+	if !debug {
+		fmt.Println("🔍 Discovering resources...")
+	}
+
+	// 1. Read go.mod to get module path
+	modulePath, err := getModulePath()
+	if err != nil {
+		return fmt.Errorf("failed to get module path: %w (make sure you're in a Go module)", err)
+	}
+
+	// 2. Discover resources
+	resources, err := discoverResources()
+	if err != nil {
+		return fmt.Errorf("failed to discover resources: %w", err)
+	}
+
+	if len(resources) == 0 {
+		fmt.Println("⚠️  No resources found in pkg/resources/")
+		fmt.Println("   Run 'fabrica add resource <name>' to create a resource first")
+		return nil
+	}
+
+	if !debug {
+		fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(resources, ", "))
+	}
+
+	// 3. Generate registration file
+	content := generateRegistrationCode(modulePath, resources)
+
+	// 4. Ensure pkg/resources directory exists
+	resourcesDir := filepath.Join("pkg", "resources")
+	if err := os.MkdirAll(resourcesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create resources directory: %w", err)
+	}
+
+	// 5. Write to pkg/resources/register_generated.go
+	outputPath := filepath.Join(resourcesDir, "register_generated.go")
+	if err := os.WriteFile(outputPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write registration file: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("✅ Generated %s\n", outputPath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  fabrica generate                # Generate handlers and storage")
+	fmt.Println("  go run cmd/server/main.go       # Start the server")
+
+	return nil
+}
+
+// generateRegistrationCode creates the content of the registration file
+func generateRegistrationCode(modulePath string, resources []string) string {
+	var imports strings.Builder
+	var registrations strings.Builder
+
+	for _, resource := range resources {
+		pkg := strings.ToLower(resource)
+		imports.WriteString(fmt.Sprintf("\t\"%s/pkg/resources/%s\"\n", modulePath, pkg))
+		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resource))
+		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
+		registrations.WriteString("\t}\n")
+	}
+
+	return fmt.Sprintf(`// Code generated by fabrica codegen init. DO NOT EDIT.
+package resources
+
+import (
+	"fmt"
+
+	"github.com/alexlovelltroy/fabrica/pkg/codegen"
+%s)
+
+// RegisterAllResources registers all discovered resources with the generator.
+// This file is auto-generated. Re-run 'fabrica codegen init' after adding resources.
+func RegisterAllResources(gen *codegen.Generator) error {
+%s
+	return nil
+}
+`, imports.String(), registrations.String())
 }

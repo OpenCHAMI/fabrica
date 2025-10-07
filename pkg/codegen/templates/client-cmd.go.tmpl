@@ -230,6 +230,18 @@ var {{toLower .Name}}GetCmd = &cobra.Command{
 var {{toLower .Name}}CreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new {{.Name}}",
+	Long: `Create a new {{.Name}}.
+
+Examples:
+  # Create from stdin
+  echo '{{specToJSON .SpecFields}}' | inventory-cli {{toLower .Name}} create
+
+  # Create with --spec flag
+  inventory-cli {{toLower .Name}} create --spec '{{specToJSON .SpecFields}}'
+
+Spec fields:
+{{range .SpecFields}}  {{.JSONName}} ({{.Type}}){{if .Required}} [required]{{end}}
+{{end}}`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := getClient()
 		if err != nil {
@@ -268,6 +280,18 @@ var {{toLower .Name}}CreateCmd = &cobra.Command{
 var {{toLower .Name}}UpdateCmd = &cobra.Command{
 	Use:   "update [uid]",
 	Short: "Update an existing {{.Name}}",
+	Long: `Update an existing {{.Name}}.
+
+Examples:
+  # Update from stdin
+  echo '{{specToJSON .SpecFields}}' | inventory-cli {{toLower .Name}} update <uid>
+
+  # Update with --spec flag
+  inventory-cli {{toLower .Name}} update <uid> --spec '{{specToJSON .SpecFields}}'
+
+Spec fields:
+{{range .SpecFields}}  {{.JSONName}} ({{.Type}}){{if .Required}} [required]{{end}}
+{{end}}`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := getClient()

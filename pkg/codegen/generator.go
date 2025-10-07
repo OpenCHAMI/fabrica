@@ -65,6 +65,15 @@ type SchemaVersion struct {
 	Transforms []string // List of transformations applied in this version
 }
 
+// SpecField represents a field in the resource spec
+type SpecField struct {
+	Name         string // Field name (e.g., "Description")
+	JSONName     string // JSON tag name (e.g., "description")
+	Type         string // Go type (e.g., "string", "int")
+	Required     bool   // Whether field is required
+	ExampleValue string // Example value for documentation
+}
+
 // ResourceMetadata holds metadata about a resource type for code generation
 type ResourceMetadata struct {
 	Name         string            // e.g., "User"
@@ -78,6 +87,7 @@ type ResourceMetadata struct {
 	StorageName  string            // e.g., "User" for storage function names
 	Tags         map[string]string // Additional metadata
 	RequiresAuth bool              // Whether this resource requires authentication
+	SpecFields   []SpecField       // Fields in the Spec struct
 
 	// Multi-version support
 	Versions        []SchemaVersion // Multiple schema versions
@@ -94,6 +104,7 @@ type Generator struct {
 	Templates   map[string]*template.Template
 	StorageType string // "file" or "ent" - type of storage backend to generate
 	DBDriver    string // "postgres", "mysql", "sqlite" - database driver for Ent
+	Verbose     bool   // Enable verbose output showing files being generated
 }
 
 // NewGenerator creates a new code generator
@@ -150,6 +161,9 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 		packageImport = pkgPath
 	}
 
+	// Extract spec fields using reflection
+	specFields := extractSpecFields(t)
+
 	// Initialize default version metadata
 	defaultVersion := SchemaVersion{
 		Version:    "v1",
@@ -174,6 +188,7 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 		URLPath:         fmt.Sprintf("/%s", pluralName),
 		StorageName:     storageName,
 		Tags:            make(map[string]string),
+		SpecFields:      specFields,
 		Versions:        []SchemaVersion{defaultVersion},
 		DefaultVersion:  "v1",
 		APIGroupVersion: "v1", // Default API group version
@@ -181,6 +196,105 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 
 	g.Resources = append(g.Resources, metadata)
 	return nil
+}
+
+// extractSpecFields uses reflection to extract field information from a Spec struct
+func extractSpecFields(resourceType reflect.Type) []SpecField {
+	var fields []SpecField
+
+	// Find the Spec field in the resource
+	for i := 0; i < resourceType.NumField(); i++ {
+		field := resourceType.Field(i)
+		if field.Name == "Spec" {
+			specType := field.Type
+			if specType.Kind() == reflect.Ptr {
+				specType = specType.Elem()
+			}
+
+			// Iterate through spec fields
+			for j := 0; j < specType.NumField(); j++ {
+				specField := specType.Field(j)
+
+				// Skip unexported fields
+				if !specField.IsExported() {
+					continue
+				}
+
+				// Extract JSON tag
+				jsonTag := specField.Tag.Get("json")
+				jsonName := specField.Name
+				if jsonTag != "" {
+					// Parse json tag (format: "name,omitempty" or just "name")
+					parts := strings.Split(jsonTag, ",")
+					if parts[0] != "" && parts[0] != "-" {
+						jsonName = parts[0]
+					}
+				}
+
+				// Check if required from validate tag
+				validateTag := specField.Tag.Get("validate")
+				required := strings.Contains(validateTag, "required")
+
+				// Generate example value based on type
+				exampleValue := generateExampleValue(specField.Type, specField.Name)
+
+				fields = append(fields, SpecField{
+					Name:         specField.Name,
+					JSONName:     jsonName,
+					Type:         specField.Type.String(),
+					Required:     required,
+					ExampleValue: exampleValue,
+				})
+			}
+			break
+		}
+	}
+
+	return fields
+}
+
+// generateExampleValue creates an example value based on the field type and name
+func generateExampleValue(t reflect.Type, fieldName string) string {
+	// Handle common types
+	switch t.Kind() {
+	case reflect.String:
+		// Try to generate contextual examples based on field name
+		lowerName := strings.ToLower(fieldName)
+		switch {
+		case strings.Contains(lowerName, "name"):
+			return "example-name"
+		case strings.Contains(lowerName, "description"):
+			return "Example description"
+		case strings.Contains(lowerName, "email"):
+			return "user@example.com"
+		case strings.Contains(lowerName, "url"), strings.Contains(lowerName, "uri"):
+			return "https://example.com"
+		case strings.Contains(lowerName, "ip"), strings.Contains(lowerName, "address"):
+			return "192.168.1.1"
+		case strings.Contains(lowerName, "location"):
+			return "DataCenter A"
+		default:
+			return "example-value"
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return "42"
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return "42"
+	case reflect.Float32, reflect.Float64:
+		return "3.14"
+	case reflect.Bool:
+		return "true"
+	case reflect.Slice:
+		elemType := t.Elem()
+		if elemType.Kind() == reflect.String {
+			return `["item1","item2"]`
+		}
+		return "[]"
+	case reflect.Map:
+		return `{"key":"value"}`
+	default:
+		return `{}`
+	}
 }
 
 // AddResourceVersion adds a new schema version to an existing resource
@@ -331,6 +445,10 @@ func (g *Generator) GenerateStorage() error {
 		return fmt.Errorf("failed to write storage file: %w", err)
 	}
 
+	if g.Verbose {
+		fmt.Printf("  ✓ Generated %s\n", filename)
+	}
+
 	return nil
 }
 
@@ -360,6 +478,9 @@ func (g *Generator) GenerateClientModels() error {
 	if err := os.WriteFile(filename, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write client models file: %w", err)
 	}
+
+	// Always show client generation output (not just in verbose mode)
+	fmt.Printf("  ✓ Generated %s\n", filename)
 
 	return nil
 }
@@ -525,6 +646,10 @@ func (g *Generator) GenerateHandlers() error {
 		if err := os.WriteFile(filename, formatted, 0644); err != nil {
 			return fmt.Errorf("failed to write handlers file for %s: %w", resource.Name, err)
 		}
+
+		if g.Verbose {
+			fmt.Printf("  ✓ Generated %s\n", filename)
+		}
 	}
 
 	return nil
@@ -560,6 +685,9 @@ func (g *Generator) GenerateClient() error {
 	if err := os.WriteFile(filename, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write client file: %w", err)
 	}
+
+	// Always show client generation output (not just in verbose mode)
+	fmt.Printf("  ✓ Generated %s\n", filename)
 
 	return nil
 }
@@ -603,6 +731,10 @@ func (g *Generator) GenerateModels() error {
 		return fmt.Errorf("failed to write models file: %w", err)
 	}
 
+	if g.Verbose {
+		fmt.Printf("  ✓ Generated %s\n", filename)
+	}
+
 	return nil
 }
 
@@ -631,6 +763,10 @@ func (g *Generator) GenerateRoutes() error {
 	filename := filepath.Join(g.OutputDir, "routes_generated.go")
 	if err := os.WriteFile(filename, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write routes file: %w", err)
+	}
+
+	if g.Verbose {
+		fmt.Printf("  ✓ Generated %s\n", filename)
 	}
 
 	return nil
@@ -699,6 +835,9 @@ func (g *Generator) GenerateClientCmd() error {
 		return fmt.Errorf("failed to write client-cmd file: %w", err)
 	}
 
+	// Always show client generation output (not just in verbose mode)
+	fmt.Printf("  ✓ Generated %s\n", filename)
+
 	return nil
 }
 
@@ -727,6 +866,10 @@ func (g *Generator) GenerateOpenAPI() error {
 	filename := filepath.Join(g.OutputDir, "openapi_generated.go")
 	if err := os.WriteFile(filename, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write openapi file: %w", err)
+	}
+
+	if g.Verbose {
+		fmt.Printf("  ✓ Generated %s\n", filename)
 	}
 
 	return nil
@@ -860,6 +1003,25 @@ func (g *Generator) GenerateCasbinPolicies() error {
 	return nil
 }
 
+// formatJSONValue formats a value appropriately for JSON based on its type
+func formatJSONValue(goType, value string) string {
+	// Handle various Go types
+	switch {
+	case strings.Contains(goType, "int") || strings.Contains(goType, "float") || strings.Contains(goType, "bool"):
+		// Numeric and boolean types don't need quotes
+		return value
+	case strings.Contains(goType, "[]"):
+		// Array types
+		return fmt.Sprintf(`["%s"]`, value)
+	case strings.Contains(goType, "map["):
+		// Map types
+		return fmt.Sprintf(`{"%s": "value"}`, value)
+	default:
+		// String and other types need quotes
+		return fmt.Sprintf(`"%s"`, value)
+	}
+}
+
 // Template functions
 var templateFuncs = template.FuncMap{
 	"toLower":    strings.ToLower,
@@ -871,5 +1033,32 @@ var templateFuncs = template.FuncMap{
 			return s
 		}
 		return strings.ToLower(s[:1]) + s[1:]
+	},
+	"specToJSON": func(fields []SpecField) string {
+		if len(fields) == 0 {
+			return `{"name": "example"}`
+		}
+
+		var parts []string
+		for _, f := range fields {
+			// Format the value based on type
+			value := formatJSONValue(f.Type, f.ExampleValue)
+			parts = append(parts, fmt.Sprintf(`"%s": %s`, f.JSONName, value))
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
+	},
+	"specToJSONPretty": func(fields []SpecField) string {
+		if len(fields) == 0 {
+			return `{
+    "name": "example"
+  }`
+		}
+
+		var parts []string
+		for _, f := range fields {
+			value := formatJSONValue(f.Type, f.ExampleValue)
+			parts = append(parts, fmt.Sprintf(`    "%s": %s`, f.JSONName, value))
+		}
+		return "{\n" + strings.Join(parts, ",\n") + "\n  }"
 	},
 }
