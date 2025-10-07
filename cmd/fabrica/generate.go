@@ -147,6 +147,11 @@ func getModulePath() (string, error) {
 
 // generateCodeWithRunner creates and runs a temporary codegen program
 func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled bool) error {
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
 	// Create runner in the project's cmd directory to have access to go.mod
 	runnerDir := filepath.Join("cmd", ".fabrica-codegen")
 	if err := os.MkdirAll(runnerDir, 0755); err != nil {
@@ -231,6 +236,10 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 
 		generationCalls.WriteString("\tif err := gen.GenerateClientModels(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client models: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+
+		generationCalls.WriteString("\tif err := gen.GenerateClientCmd(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client CLI: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 	}
 

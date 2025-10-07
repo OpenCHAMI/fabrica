@@ -152,10 +152,10 @@ func main() {
 }
 ```
 
-### Step 6: Build and Run
+### Step 6: Go mod tidy again and Build and Run
 
 ```bash
-go build -o server ./cmd/server
+go mod tidy && go build -o server ./cmd/server
 ./server
 ```
 
@@ -179,14 +179,14 @@ curl -X POST http://localhost:8080/devices \
     "rack": "R42"
   }'
 
-# List all devices
-curl http://localhost:8080/devices
+# Recover the uid of the created device
+DEVID=$(curl -s http://localhost:8080/devices 2>/dev/null | jq -r '.[].metadata.uid')
 
 # Get specific device (use UID from create response)
-curl http://localhost:8080/devices/dev-1ea29407
+curl http://localhost:8080/devices/$DEVID
 
 # Update device
-curl -X PUT http://localhost:8080/devices/dev-1ea29407 \
+curl -X PUT http://localhost:8080/devices/$DEVID \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Updated description",
@@ -195,7 +195,7 @@ curl -X PUT http://localhost:8080/devices/dev-1ea29407 \
   }'
 
 # Delete device
-curl -X DELETE http://localhost:8080/devices/dev-1ea29407
+curl -X DELETE http://localhost:8080/devices/$DEVID
 ```
 
 ## Understanding the Generated Code

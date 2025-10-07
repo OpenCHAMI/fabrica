@@ -67,6 +67,11 @@ type Client struct {
 	version    string // Optional API version for Accept/Content-Type headers
 }
 
+// ErrorResponse represents an API error response
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // NewClient creates a new API client
 func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {

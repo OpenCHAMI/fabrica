@@ -674,7 +674,7 @@ func (g *Generator) GenerateClientCmd() error {
 		ModulePath  string
 		Resources   []ResourceMetadata
 	}{
-		PackageName: g.PackageName,
+		PackageName: "main", // CLI is always package main
 		ModulePath:  g.ModulePath,
 		Resources:   g.Resources,
 	}
@@ -688,7 +688,13 @@ func (g *Generator) GenerateClientCmd() error {
 		return fmt.Errorf("failed to format generated client-cmd code: %w", err)
 	}
 
-	filename := filepath.Join(g.OutputDir, "main_generated.go")
+	// CLI goes to cmd/client, not the OutputDir (which is pkg/client)
+	cliDir := filepath.Join("cmd", "client")
+	if err := os.MkdirAll(cliDir, 0755); err != nil {
+		return fmt.Errorf("failed to create CLI directory: %w", err)
+	}
+
+	filename := filepath.Join(cliDir, "main.go")
 	if err := os.WriteFile(filename, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write client-cmd file: %w", err)
 	}
