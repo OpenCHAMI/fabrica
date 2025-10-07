@@ -567,14 +567,26 @@ func (g *Generator) GenerateClient() error {
 // GenerateModels generates request/response models
 func (g *Generator) GenerateModels() error {
 	var buf bytes.Buffer
+
+	// Check if any resource requires auth
+	requiresAuth := false
+	for _, res := range g.Resources {
+		if res.RequiresAuth {
+			requiresAuth = true
+			break
+		}
+	}
+
 	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
+		PackageName  string
+		ModulePath   string
+		Resources    []ResourceMetadata
+		RequiresAuth bool
 	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
+		PackageName:  g.PackageName,
+		ModulePath:   g.ModulePath,
+		Resources:    g.Resources,
+		RequiresAuth: requiresAuth,
 	}
 
 	if err := g.Templates["models"].Execute(&buf, data); err != nil {

@@ -5,16 +5,19 @@
 .PHONY: help build test lint clean install run docker-build docker-run
 
 # Variables
-BINARY_NAME=app
+BINARY_NAME=fabrica
 GO=go
 GOFLAGS=-v
-LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(shell git rev-parse --short HEAD) -X main.date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)"
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
 help: ## Display this help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build the application
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME) .
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/fabrica
 
 test: ## Run tests
 	$(GO) test $(GOFLAGS) -race -coverprofile=coverage.out -covermode=atomic ./...

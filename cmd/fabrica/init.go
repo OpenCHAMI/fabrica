@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -20,6 +21,7 @@ type initOptions struct {
 	modulePath   string
 	withExamples bool
 	withDocs     bool
+	withAuth     bool   // Enable Casbin authorization
 	storageType  string // file, ent
 	dbDriver     string // postgres, mysql, sqlite
 }
@@ -68,6 +70,7 @@ or by providing the name of an existing directory. This is useful when using
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
 	cmd.Flags().BoolVar(&opts.withExamples, "examples", true, "Include example code")
 	cmd.Flags().BoolVar(&opts.withDocs, "docs", true, "Generate documentation")
+	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable Casbin authorization policies")
 	cmd.Flags().StringVar(&opts.storageType, "storage", "file", "Storage backend: file or ent")
 	cmd.Flags().StringVar(&opts.dbDriver, "db", "sqlite", "Database driver for Ent: postgres, mysql, or sqlite")
 
@@ -303,6 +306,13 @@ func runInit(projectName string, opts *initOptions) error {
 		return err
 	}
 
+	// Create policy files if auth is enabled
+	if opts.withAuth {
+		if err := createPolicyFiles(targetDir, opts); err != nil {
+			return err
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("✅ Project created successfully!")
 	fmt.Println()
@@ -362,24 +372,31 @@ func createGoMod(targetDir, projectName, modulePath string, opts *initOptions) e
 go 1.23
 
 require (
-	github.com/alexlovelltroy/fabrica latest`, modulePath)
+	github.com/alexlovelltroy/fabrica %s
+	github.com/getkin/kin-openapi v0.128.0`, modulePath, getFabricaVersion())
 
 	// Add Ent dependencies if using Ent storage
 	if opts.storageType == "ent" {
 		content += `
-	entgo.io/ent latest`
+	entgo.io/ent v0.14.1`
 
 		switch opts.dbDriver {
 		case "postgres":
 			content += `
-	github.com/lib/pq latest`
+	github.com/lib/pq v1.10.9`
 		case "mysql":
 			content += `
-	github.com/go-sql-driver/mysql latest`
+	github.com/go-sql-driver/mysql v1.8.1`
 		case "sqlite":
 			content += `
-	github.com/mattn/go-sqlite3 latest`
+	github.com/mattn/go-sqlite3 v1.14.24`
 		}
+	}
+
+	// Add Casbin dependency if authorization is enabled
+	if opts.withAuth {
+		content += `
+	github.com/casbin/casbin/v2 v2.102.0`
 	}
 
 	content += `
@@ -454,22 +471,35 @@ See [docs/](docs/) for detailed documentation.
 }
 
 func createMakefile(projectName string, _ *initOptions) error {
-	content := `.PHONY: build run test generate clean
+	content := `.PHONY: build run test generate clean dev codegen-init
 
 build:
 	go build -o bin/server cmd/server/main.go
 
-run:
-	go run cmd/server/main.go
+run: build
+	./bin/server
 
 test:
 	go test ./...
 
+# Initialize code generation (run after adding resources)
+codegen-init:
+	fabrica codegen init
+
+# Generate handlers, storage, and OpenAPI specs
 generate:
-	fabrica generate
+	fabrica generate --handlers --storage --openapi
+
+# Development workflow: regenerate and build
+dev: clean codegen-init generate build
+	@echo "✅ Development build complete"
 
 clean:
 	rm -rf bin/
+	rm -f cmd/server/*_generated.go
+	rm -f internal/storage/storage_generated.go
+	rm -f pkg/client/*_generated.go
+	rm -f pkg/resources/register_generated.go
 `
 
 	path := filepath.Join(projectName, "Makefile")
@@ -714,4 +744,82 @@ func checkSafeToInitialize(dir string) error {
 	}
 
 	return nil
+}
+
+// createPolicyFiles creates Casbin policy files for authorization
+func createPolicyFiles(projectName string, _ *initOptions) error {
+	// Create policies directory
+	policyDir := filepath.Join(projectName, "policies")
+	if err := os.MkdirAll(policyDir, 0755); err != nil {
+		return fmt.Errorf("failed to create policies directory: %w", err)
+	}
+
+	// Create model.conf - Casbin RBAC model
+	modelContent := `[request_definition]
+r = sub, obj, act
+
+[policy_definition]
+p = sub, obj, act
+
+[role_definition]
+g = _, _
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act || g(r.sub, p.sub) && p.obj == "*" && r.act == p.act || g(r.sub, p.sub) && r.obj == p.obj && p.act == "*"
+`
+
+	modelPath := filepath.Join(policyDir, "model.conf")
+	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+		return fmt.Errorf("failed to create model.conf: %w", err)
+	}
+
+	// Create policy.csv - Default policies
+	policyContent := `# Casbin Policy File
+# Format: p, subject, object, action
+# Format: g, user, role
+
+# Admin role - full access to all resources
+p, admin, *, *
+
+# User role - read-only access
+p, user, *, list
+p, user, *, get
+
+# Example: grant admin role to a specific user
+# g, user:alice@example.com, admin
+
+# Example: grant user role to a specific user
+# g, user:bob@example.com, user
+`
+
+	policyPath := filepath.Join(policyDir, "policy.csv")
+	if err := os.WriteFile(policyPath, []byte(policyContent), 0644); err != nil {
+		return fmt.Errorf("failed to create policy.csv: %w", err)
+	}
+
+	fmt.Println("  ├─ Created Casbin policy files")
+	return nil
+}
+
+// getFabricaVersion returns the version string to use in go.mod
+func getFabricaVersion() string {
+	// version is set via ldflags at build time
+	if version != "" && version != "dev" {
+		return version
+	}
+
+	// Fallback: try to get from current module
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "github.com/alexlovelltroy/fabrica")
+	if output, err := cmd.Output(); err == nil {
+		v := strings.TrimSpace(string(output))
+		if v != "" && v != "(devel)" {
+			return v
+		}
+	}
+
+	// Last resort: use latest stable
+	return "v0.2.3"
 }

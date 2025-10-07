@@ -34,8 +34,16 @@
 package {{.PackageName}}
 
 import (
-	{{range .Resources}}"{{.Package}}"
-	{{end}}
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+{{range .Resources}}
+	"{{.Package}}"
+{{end}}
+{{if .RequiresAuth}}
+	"github.com/alexlovelltroy/fabrica/pkg/policy"
+{{end}}
 )
 
 {{range .Resources}}
@@ -72,3 +80,41 @@ type DeleteResponse struct {
 	Message string `json:"message"`
 	UID     string `json:"uid"`
 }
+
+// Helper functions for handlers
+
+// respondJSON sends a JSON response
+func respondJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+	}
+}
+
+// respondError sends an error response
+func respondError(w http.ResponseWriter, status int, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	response := ErrorResponse{
+		Error:   err.Error(),
+		Code:    status,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+{{if .RequiresAuth}}
+// Context key for auth
+type contextKey string
+
+const authContextKey contextKey = "auth"
+
+// policyRegistry is the global policy registry for authorization
+var policyRegistry = policy.NewPolicyRegistry()
+
+// GetAuthFromContext retrieves the auth context from the request context
+func GetAuthFromContext(ctx context.Context) (*policy.AuthContext, bool) {
+	auth, ok := ctx.Value(authContextKey).(*policy.AuthContext)
+	return auth, ok
+}
+{{end}}

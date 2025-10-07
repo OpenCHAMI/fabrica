@@ -12,7 +12,6 @@ require (
 	github.com/casbin/ent-adapter v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/spf13/cobra v1.10.1
 	golang.org/x/text v0.22.0

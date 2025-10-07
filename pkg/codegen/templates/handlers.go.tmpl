@@ -36,11 +36,11 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/alexlovelltroy/fabrica/pkg/validation"
+	"github.com/alexlovelltroy/fabrica/pkg/versioning"
 	"{{.Package}}"
 	"{{.ModulePath}}/internal/storage"
-	"{{.ModulePath}}/pkg/resource"
-	"{{.ModulePath}}/pkg/validation"
-	"{{.ModulePath}}/pkg/versioning"
 )
 
 // Get{{.Name}}s returns all {{.Name}} resources
@@ -122,14 +122,14 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Get version context from request
 	versionCtx := versioning.GetVersionContext(r.Context())
 
-	uid, err := resources.GenerateUIDForResource("{{.Name}}")
+	uid, err := resource.GenerateUIDForResource("{{.Name}}")
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate UID: %w", err))
 		return
 	}
 
 	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
-		Resource: resources.Resource{
+		Resource: resource.Resource{
 			APIVersion:    versionCtx.GroupVersion,
 			Kind:          "{{.Name}}",
 			SchemaVersion: versionCtx.ServeVersion,
@@ -160,7 +160,6 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set initial status
-	resources.SetCondition(&{{camelCase .Name}}.Status.Conditions, "Created", "True", "{{.Name}}Created", "{{.Name}} has been created")
 
 	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
 	if err := storage.Save{{.StorageName}}({{camelCase .Name}}); err != nil {
@@ -205,7 +204,6 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	{{camelCase .Name}}.Touch()
-	resources.SetCondition(&{{camelCase .Name}}.Status.Conditions, "Updated", "True", "{{.Name}}Updated", "{{.Name}} has been updated")
 
 	if err := storage.Save{{.StorageName}}({{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
