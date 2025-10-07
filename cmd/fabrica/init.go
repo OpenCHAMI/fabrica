@@ -16,14 +16,12 @@ import (
 )
 
 type initOptions struct {
-	mode         string // simple, standard, expert
-	interactive  bool
-	modulePath   string
-	withExamples bool
-	withDocs     bool
-	withAuth     bool   // Enable Casbin authorization
-	storageType  string // file, ent
-	dbDriver     string // postgres, mysql, sqlite
+	mode        string // simple, standard, expert
+	interactive bool
+	modulePath  string
+	withAuth    bool   // Enable Casbin authorization
+	storageType string // file, ent
+	dbDriver    string // postgres, mysql, sqlite
 }
 
 func newInitCommand() *cobra.Command {
@@ -68,8 +66,6 @@ or by providing the name of an existing directory. This is useful when using
 	cmd.Flags().StringVarP(&opts.mode, "mode", "m", "standard", "Project mode: simple, standard, or expert")
 	cmd.Flags().BoolVarP(&opts.interactive, "interactive", "i", false, "Interactive wizard mode")
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
-	cmd.Flags().BoolVar(&opts.withExamples, "examples", true, "Include example code")
-	cmd.Flags().BoolVar(&opts.withDocs, "docs", true, "Generate documentation")
 	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable Casbin authorization policies")
 	cmd.Flags().StringVar(&opts.storageType, "storage", "file", "Storage backend: file or ent")
 	cmd.Flags().StringVar(&opts.dbDriver, "db", "sqlite", "Database driver for Ent: postgres, mysql, or sqlite")
@@ -162,13 +158,6 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 
 	// Features
 	fmt.Println()
-	fmt.Print("Include example code? [Y/n]: ")
-	input, _ := reader.ReadString('\n')
-	opts.withExamples = !strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "n")
-
-	fmt.Print("Generate documentation? [Y/n]: ")
-	input, _ = reader.ReadString('\n')
-	opts.withDocs = !strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "n")
 
 	// Summary
 	fmt.Println()
@@ -181,12 +170,8 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 		fmt.Printf(" (%s)", opts.dbDriver)
 	}
 	fmt.Println()
-	fmt.Printf("  Examples: %v\n", opts.withExamples)
-	fmt.Printf("  Docs: %v\n", opts.withDocs)
-	fmt.Println()
-	fmt.Print("Proceed? [Y/n]: ")
 
-	input, _ = reader.ReadString('\n')
+	input, _ := reader.ReadString('\n')
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "n") {
 		fmt.Println("Cancelled.")
 		return nil
@@ -260,14 +245,6 @@ func runInit(projectName string, opts *initOptions) error {
 		"api/v1",
 	}
 
-	if opts.withExamples {
-		dirs = append(dirs, "examples")
-	}
-
-	if opts.withDocs {
-		dirs = append(dirs, "docs")
-	}
-
 	for _, dir := range dirs {
 		path := filepath.Join(targetDir, dir)
 		if err := os.MkdirAll(path, 0755); err != nil {
@@ -283,7 +260,7 @@ func runInit(projectName string, opts *initOptions) error {
 	// Create files based on mode
 	switch opts.mode {
 	case "simple":
-		if err := createSimpleModeFiles(targetDir, opts); err != nil {
+		if err := createSimpleModeFiles(targetDir); err != nil {
 			return err
 		}
 	case "expert":
@@ -335,22 +312,6 @@ func runInit(projectName string, opts *initOptions) error {
 
 	fmt.Println("  go run cmd/server/main.go       # Start the server")
 	fmt.Println()
-
-	if opts.withDocs {
-		if inCurrentDir {
-			fmt.Println("📚 Documentation available in docs/")
-		} else {
-			fmt.Printf("📚 Documentation available in %s/docs/\n", projectName)
-		}
-	}
-
-	if opts.withExamples {
-		if inCurrentDir {
-			fmt.Println("💡 Examples available in examples/")
-		} else {
-			fmt.Printf("💡 Examples available in %s/examples/\n", projectName)
-		}
-	}
 
 	return nil
 }
@@ -506,7 +467,7 @@ clean:
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func createSimpleModeFiles(projectName string, opts *initOptions) error {
+func createSimpleModeFiles(projectName string) error {
 	// Create a simplified main.go
 	mainContent := `package main
 
@@ -535,32 +496,6 @@ func main() {
 	path := filepath.Join(projectName, "cmd/server/main.go")
 	if err := os.WriteFile(path, []byte(mainContent), 0644); err != nil {
 		return err
-	}
-
-	// Create simple docs
-	if opts.withDocs {
-		docsContent := `# Simple Mode Documentation
-
-In simple mode, Fabrica acts as a lightweight code generator.
-
-## Adding Resources
-
-` + "```bash" + `
-fabrica add resource Product
-` + "```" + `
-
-This creates a resource definition and generates CRUD handlers.
-
-## Next Steps
-
-- Add validation with struct tags
-- Add business logic in handlers
-- Explore standard mode for advanced features
-`
-		docsPath := filepath.Join(projectName, "docs/getting-started.md")
-		if err := os.WriteFile(docsPath, []byte(docsContent), 0644); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -605,42 +540,6 @@ func main() {
 	path := filepath.Join(projectName, "cmd/server/main.go")
 	if err := os.WriteFile(path, []byte(mainContent), 0644); err != nil {
 		return err
-	}
-
-	// Create standard mode documentation
-	if opts.withDocs {
-		docsContent := `# Standard Mode Documentation
-
-Standard mode provides the full Fabrica resource model with:
-
-- Labels and annotations
-- Conditions and status
-- Multi-version support
-- Event system
-- Storage abstraction
-
-## Resource Model
-
-Resources follow the Kubernetes pattern:
-
-` + "```go" + `
-type MyResource struct {
-    resource.Resource
-    Spec   MyResourceSpec   ` + "`json:\"spec\"`" + `
-    Status MyResourceStatus ` + "`json:\"status,omitempty\"`" + `
-}
-` + "```" + `
-
-## Next Steps
-
-- Read the [Resource Guide](resource-guide.md)
-- Explore [Validation](validation.md)
-- Learn about [Events](events.md)
-`
-		docsPath := filepath.Join(projectName, "docs/getting-started.md")
-		if err := os.WriteFile(docsPath, []byte(docsContent), 0644); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -825,5 +724,5 @@ func getFabricaVersion() string {
 	}
 
 	// Last resort: use latest stable release
-	return "v0.2.4"
+	return "v0.2.5"
 }

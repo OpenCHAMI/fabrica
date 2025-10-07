@@ -38,7 +38,7 @@ $ fabrica generate
 ### Install
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.4
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.5
 ```
 
 ### Create Your First API
@@ -181,8 +181,8 @@ See [examples/](examples/) directory for complete working examples:
 
 ## Status
 
-**Version:** v0.2.4
-**Status:** Production Ready
+**Version:** v0.2.5
+**Status:** Alpha Quality
 
 ✅ Core features stable and tested
 ✅ Used in production at OpenCHAMI

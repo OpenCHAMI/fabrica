@@ -152,11 +152,20 @@ func main() {
 }
 ```
 
-### Step 6: Go mod tidy again and Build and Run
+### Step 6: Build Server and Client
 
 ```bash
-go mod tidy && go build -o server ./cmd/server
-./server
+# Run go mod tidy first
+go mod tidy
+
+# Build the server
+go build -o server ./cmd/server
+
+# Generate the client CLI
+fabrica generate --client
+
+# Build the client
+go build -o client ./cmd/client
 ```
 
 The server starts on port 8080 with:
@@ -165,40 +174,121 @@ The server starts on port 8080 with:
 - ✅ Request validation
 - ✅ OpenAPI spec at `/openapi.json`
 
-### Step 7: Test the API
+The client CLI provides:
+- ✅ Type-safe commands for each resource
+- ✅ JSON output formatting
+- ✅ Helpful examples with `--help`
+
+### Step 7: Run the Server
+
+In one terminal:
+```bash
+./server
+```
+
+### Step 8: Test with the Generated Client
+
+In another terminal:
+
+```bash
+# See what commands are available
+./client --help
+
+# Get help for device commands (shows spec field examples!)
+./client device create --help
+
+# Create a device
+./client device create --spec '{
+  "description": "Core network switch",
+  "ipAddress": "192.168.1.10",
+  "location": "DataCenter A",
+  "rack": "R42"
+}'
+
+# List all devices
+./client device list
+
+# Get the UID from the list output, then get specific device
+DEVID=$(./client device list | jq -r '.[0].metadata.uid')
+./client device get $DEVID
+
+# Update device
+./client device update $DEVID --spec '{
+  "description": "Updated description",
+  "ipAddress": "192.168.1.20",
+  "location": "DataCenter B"
+}'
+
+# Delete device
+./client device delete $DEVID
+```
+
+**Alternative: Using curl**
+
+If you prefer curl commands:
 
 ```bash
 # Create a device
 curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "switch-01",
-    "description": "Core network switch",
-    "ipAddress": "192.168.1.10",
-    "location": "DataCenter A",
-    "rack": "R42"
+    "apiVersion": "v1",
+    "kind": "Device",
+    "metadata": {"name": "switch-01"},
+    "spec": {
+      "description": "Core network switch",
+      "ipAddress": "192.168.1.10",
+      "location": "DataCenter A",
+      "rack": "R42"
+    }
   }'
 
-# Recover the uid of the created device
-DEVID=$(curl -s http://localhost:8080/devices 2>/dev/null | jq -r '.[].metadata.uid')
+# List devices
+curl http://localhost:8080/devices
 
-# Get specific device (use UID from create response)
-curl http://localhost:8080/devices/$DEVID
-
-# Update device
-curl -X PUT http://localhost:8080/devices/$DEVID \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "Updated description",
-    "ipAddress": "192.168.1.20",
-    "location": "DataCenter B"
-  }'
-
-# Delete device
-curl -X DELETE http://localhost:8080/devices/$DEVID
+# Get, update, and delete work the same way
 ```
 
 ## Understanding the Generated Code
+
+### Client CLI (`cmd/client/main.go`)
+
+The generated client provides a production-ready CLI tool:
+
+```bash
+# See available commands
+./client --help
+
+# Get command-specific help with field examples
+./client device create --help
+```
+
+**What you get:**
+- Commands for each resource (list, get, create, update, delete)
+- Auto-generated examples showing **actual spec fields** from your resource
+- Support for both stdin and `--spec` flag
+- JSON output formatting
+- Server URL configuration via flag or env var
+
+**Example help output:**
+```
+Create a new Device.
+
+Examples:
+  # Create from stdin
+  echo '{"description": "...", "ipAddress": "192.168.1.1"}' | inventory-cli device create
+
+  # Create with --spec flag
+  inventory-cli device create --spec '{"description": "...", "ipAddress": "192.168.1.1"}'
+
+Spec fields:
+  description (string)
+  ipAddress (string)
+  location (string)
+  rack (string)
+```
+
+The help text automatically reflects your actual DeviceSpec fields!
 
 ### Handlers (`device_handlers_generated.go`)
 
@@ -250,6 +340,8 @@ func RegisterGeneratedRoutes(r chi.Router) {
 | Storage backend | ✅ `fabrica generate` | File-based implementation |
 | Route registration | ✅ `fabrica generate` | Chi router setup |
 | OpenAPI spec | ✅ `fabrica generate` | Full API documentation |
+| Go client library | ✅ `fabrica generate --client` | Type-safe HTTP client |
+| CLI tool | ✅ `fabrica generate --client` | Cobra-based commands with examples |
 | Server main.go | ⚠️ Manual | Uncomment generated imports/calls |
 
 ## Complete Workflow Summary
@@ -274,9 +366,15 @@ fabrica generate
 #    - storage.InitFileBackend("./data")
 #    - RegisterGeneratedRoutes(r)
 
-# 6. Build and run
+# 6. Build server and client
+go mod tidy
 go build -o server ./cmd/server
-./server
+fabrica generate --client
+go build -o client ./cmd/client
+
+# 7. Run and test
+./server  # In one terminal
+./client device list  # In another terminal
 ```
 
 ## Key Features
@@ -287,6 +385,7 @@ go build -o server ./cmd/server
 ✅ **Validation** - Struct tags + custom validation hooks
 ✅ **Storage abstraction** - File-based by default, easily extended
 ✅ **OpenAPI** - Auto-generated API documentation
+✅ **Client SDK** - Generated Go client library and CLI tool with helpful examples
 
 ## Common Issues
 

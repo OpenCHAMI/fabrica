@@ -39,7 +39,6 @@ The CLI provides commands for:
 	rootCmd.AddCommand(newInitCommand())
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
-	rootCmd.AddCommand(newDocsCommand())
 	rootCmd.AddCommand(newEntCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
