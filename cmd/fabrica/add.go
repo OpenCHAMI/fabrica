@@ -103,10 +103,8 @@ import (
 	"context"
 	"github.com/alexlovelltroy/fabrica/pkg/resource"`, packageName)
 
-	if opts.withValidation {
-		content += `
-	"github.com/alexlovelltroy/fabrica/pkg/validation"`
-	}
+	// Note: validation package is imported in the fabrica library
+	// and used implicitly through struct tags
 
 	content += `
 )

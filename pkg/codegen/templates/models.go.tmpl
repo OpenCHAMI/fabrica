@@ -34,7 +34,6 @@
 package {{.PackageName}}
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -42,6 +41,7 @@ import (
 	"{{.Package}}"
 {{end}}
 {{if .RequiresAuth}}
+	"context"
 	"github.com/alexlovelltroy/fabrica/pkg/policy"
 {{end}}
 )

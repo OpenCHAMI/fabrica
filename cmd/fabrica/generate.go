@@ -64,13 +64,30 @@ Examples:
 
 			fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(resources, ", "))
 
-			// Check if registration file exists
+			// Check if registration file exists or needs regenerating
 			regFile := "pkg/resources/register_generated.go"
+			needsRegistration := false
 			if _, err := os.Stat(regFile); os.IsNotExist(err) {
+				needsRegistration = true
+			}
+
+			// Auto-generate registration file if missing
+			if needsRegistration {
 				fmt.Println()
-				fmt.Println("⚠️  Registration file not found")
-				fmt.Println("   Run 'fabrica codegen init' first to register resources")
-				return fmt.Errorf("registration file missing: %s", regFile)
+				fmt.Println("📝 Registration file not found, creating it...")
+				if err := generateRegistrationFile(); err != nil {
+					return fmt.Errorf("failed to generate registration file: %w", err)
+				}
+				fmt.Println()
+			}
+
+			// Ensure dependencies are available by running go mod tidy
+			fmt.Println("📥 Ensuring dependencies are available...")
+			tidyCmd := exec.Command("go", "mod", "tidy")
+			tidyCmd.Stdout = nil // Suppress output unless there's an error
+			tidyCmd.Stderr = nil
+			if err := tidyCmd.Run(); err != nil {
+				fmt.Println("⚠️  Warning: go mod tidy failed, continuing anyway...")
 			}
 
 			// Check if authorization is enabled (policies directory exists)
@@ -130,22 +147,22 @@ func getModulePath() (string, error) {
 
 // generateCodeWithRunner creates and runs a temporary codegen program
 func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled bool) error {
-	// Create a temporary directory for the runner
-	tempDir, err := os.MkdirTemp("", "fabrica-codegen-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
+	// Create runner in the project's cmd directory to have access to go.mod
+	runnerDir := filepath.Join("cmd", ".fabrica-codegen")
+	if err := os.MkdirAll(runnerDir, 0755); err != nil {
+		return fmt.Errorf("failed to create runner directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir) // nolint:errcheck
+	defer os.RemoveAll(runnerDir) // nolint:errcheck
 
 	// Generate the runner program
 	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, authEnabled)
 
-	runnerPath := filepath.Join(tempDir, "main.go")
+	runnerPath := filepath.Join(runnerDir, "main.go")
 	if err := os.WriteFile(runnerPath, []byte(runnerCode), 0644); err != nil {
 		return fmt.Errorf("failed to write runner: %w", err)
 	}
 
-	// Run the codegen runner
+	// Run the codegen runner from the project root
 	cmd := exec.Command("go", "run", runnerPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

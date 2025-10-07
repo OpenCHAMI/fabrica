@@ -567,37 +567,40 @@ This creates a resource definition and generates CRUD handlers.
 }
 
 func createStandardModeFiles(projectName string, opts *initOptions) error {
+	// Determine module path for imports
+	modulePath := opts.modulePath
+	if modulePath == "" {
+		modulePath = fmt.Sprintf("github.com/user/%s", projectName)
+	}
+
 	// Create standard main.go with full Fabrica features
-	mainContent := `package main
+	mainContent := fmt.Sprintf(`package main
 
 import (
 	"log"
 	"net/http"
 
-	"github.com/alexlovelltroy/fabrica/pkg/storage"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	// After running 'fabrica generate', uncomment this line:
+	// "%s/internal/storage"
 )
 
 func main() {
-	// Initialize storage backend
-	backend, err := storage.NewFileBackend("./data")
-	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
-	}
+	// After running 'fabrica generate', uncomment these lines:
+	// if err := storage.InitFileBackend("./data"); err != nil {
+	// 	log.Fatalf("Failed to initialize storage: %%v", err)
+	// }
 
 	// Setup router
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
 
-	// Register generated routes here
-	// RegisterRoutes(r, backend)
+	// After running 'fabrica generate', uncomment this line:
+	// RegisterGeneratedRoutes(r)
 
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
-`
+`, modulePath)
 
 	path := filepath.Join(projectName, "cmd/server/main.go")
 	if err := os.WriteFile(path, []byte(mainContent), 0644); err != nil {
@@ -807,7 +810,8 @@ p, user, *, get
 // getFabricaVersion returns the version string to use in go.mod
 func getFabricaVersion() string {
 	// version is set via ldflags at build time
-	if version != "" && version != "dev" {
+	// If it contains "dirty" or is "dev", use the latest stable release instead
+	if version != "" && version != "dev" && !strings.Contains(version, "dirty") {
 		return version
 	}
 
@@ -815,11 +819,11 @@ func getFabricaVersion() string {
 	cmd := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "github.com/alexlovelltroy/fabrica")
 	if output, err := cmd.Output(); err == nil {
 		v := strings.TrimSpace(string(output))
-		if v != "" && v != "(devel)" {
+		if v != "" && v != "(devel)" && !strings.Contains(v, "dirty") {
 			return v
 		}
 	}
 
-	// Last resort: use latest stable
+	// Last resort: use latest stable release
 	return "v0.2.4"
 }
