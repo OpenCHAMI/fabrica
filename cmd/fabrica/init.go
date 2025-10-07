@@ -821,5 +821,5 @@ func getFabricaVersion() string {
 	}
 
 	// Last resort: use latest stable
-	return "v0.2.3"
+	return "v0.2.4"
 }
