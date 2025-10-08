@@ -134,7 +134,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 			Kind:          "{{.Name}}",
 			SchemaVersion: versionCtx.ServeVersion,
 		},
-		Spec: req.{{.SpecType}},
+		Spec: req.{{.Name}}Spec,
 	}
 
 	{{camelCase .Name}}.Metadata.Initialize(req.Name, uid)
@@ -196,7 +196,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update spec fields - merge non-zero values from request
-	{{camelCase .Name}}.Spec = req.{{.SpecType}}
+	{{camelCase .Name}}.Spec = req.{{.Name}}Spec
 
 	// Update labels and annotations
 	for k, v := range req.Labels {
