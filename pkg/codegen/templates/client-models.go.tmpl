@@ -34,21 +34,26 @@
 //
 package client
 
+import (
+{{range .Resources}}	"{{.Package}}"
+{{end}}
+)
+
 {{range .Resources}}
 // Create{{.Name}}Request represents a request to create a {{.Name}}
 type Create{{.Name}}Request struct {
-	Name        string            `json:"name" validate:"required"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	// TODO: Add resource-specific fields based on {{.Name}}Spec
+	{{.SpecType}} `json:",inline"`
+	Name          string            `json:"name" validate:"required"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	Annotations   map[string]string `json:"annotations,omitempty"`
 }
 
 // Update{{.Name}}Request represents a request to update a {{.Name}}
 type Update{{.Name}}Request struct {
-	Name        string            `json:"name,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	// TODO: Add resource-specific fields based on {{.Name}}Spec
+	{{.SpecType}} `json:",inline,omitempty"`
+	Name          string            `json:"name,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	Annotations   map[string]string `json:"annotations,omitempty"`
 }
 
 {{end}}
