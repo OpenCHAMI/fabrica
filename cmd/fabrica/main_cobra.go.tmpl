@@ -22,7 +22,6 @@ import (
 
 	// TODO: Uncomment after running 'fabrica generate'
 	{{if .WithStorage}}// "{{.ModulePath}}/internal/storage"{{end}}
-	{{if .WithAuth}}"{{.ModulePath}}/pkg/auth"{{end}}
 	{{if eq .StorageType "ent"}}
 	// TODO: Uncomment after running 'fabrica generate --storage'
 	// "{{.ModulePath}}/internal/storage/ent"
@@ -57,7 +56,10 @@ type Config struct {
 
 	{{if .WithAuth}}
 	// Authentication Configuration
-	Auth auth.Config `mapstructure:"auth"`
+	AuthEnabled    bool   `mapstructure:"auth_enabled"`
+	TokenSmithURL  string `mapstructure:"tokensmith_url"`
+	CasbinModelPath string `mapstructure:"casbin_model_path"`
+	CasbinPolicyPath string `mapstructure:"casbin_policy_path"`
 	{{end}}
 
 	{{if .WithHSM}}
@@ -92,7 +94,10 @@ func DefaultConfig() *Config {
 		{{end}}
 		{{end}}
 		{{if .WithAuth}}
-		Auth: auth.DefaultConfig(),
+		AuthEnabled:     true,
+		TokenSmithURL:   "http://localhost:3333",
+		CasbinModelPath: "./casbin_model.conf",
+		CasbinPolicyPath: "./casbin_policy.csv",
 		{{end}}
 		{{if .WithMetrics}}
 		EnableMetrics: true,
@@ -273,13 +278,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	{{if .WithAuth}}
 	// Setup authentication middleware
-	if config.Auth.Enabled {
-		authLogger := log.New(os.Stdout, "auth: ", log.LstdFlags)
-		authMiddleware := config.Auth.CreateMiddleware(authLogger)
+	if config.AuthEnabled {
+		// TODO: Integrate with TokenSmith middleware
+		// authMiddleware := tokensmith.NewMiddleware(config.TokenSmithURL)
+
+		// TODO: Setup Casbin authorization
+		// enforcer, err := casbin.NewEnforcer(config.CasbinModelPath, config.CasbinPolicyPath)
+		// if err != nil {
+		// 	log.Fatalf("Failed to create Casbin enforcer: %v", err)
+		// }
 		
 		// Apply auth to protected routes
 		r.Route("/api", func(r chi.Router) {
-			r.Use(authMiddleware)
+			// r.Use(authMiddleware)
+			// r.Use(casbinMiddleware(enforcer))
 			// Protected API routes will be registered here
 			// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
 		})
@@ -340,7 +352,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		{{end}}
 		{{end}}
 		{{if .WithAuth}}
-		log.Printf("Authentication: %s", map[bool]string{true: "enabled", false: "disabled"}[config.Auth.Enabled])
+		log.Printf("Authentication: %s", map[bool]string{true: "enabled", false: "disabled"}[config.AuthEnabled])
 		{{end}}
 		
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
