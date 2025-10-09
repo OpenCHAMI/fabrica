@@ -22,8 +22,8 @@
 //   - DELETE /resource/{uid} -> Delete resource
 //
 // To add middleware to routes:
-//   1. Modify RegisterGeneratedRoutes to accept middleware options
-//   2. Apply middleware in cmd/server/main.go before calling this function
+//   1. Apply middleware in cmd/server/main.go before calling RegisterGeneratedRoutes
+//   2. Use r.Use() calls in main.go, not in generated route functions
 //
 // To add custom routes:
 //   1. Create a separate RegisterCustomRoutes function
@@ -33,17 +33,11 @@ package main
 
 import (
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 // RegisterGeneratedRoutes registers all generated routes
+// Note: Middleware should be applied in main.go before calling this function
 func RegisterGeneratedRoutes(r chi.Router) {
-	// Apply standard middleware
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-
 {{range .Resources}}
 	// {{.Name}} routes
 	r.Route("{{.URLPath}}", func(r chi.Router) {

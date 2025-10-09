@@ -6,42 +6,76 @@ package main
 
 import (
 	"bufio"
+	_ "embed"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/spf13/cobra"
 )
 
+//go:embed main_cobra.go.tmpl
+var mainCobraTemplate string
+
 type initOptions struct {
-	mode        string // simple, standard, expert
 	interactive bool
 	modulePath  string
-	withAuth    bool   // Enable Casbin authorization
+	description string
+
+	// Feature flags instead of modes
+	withAuth      bool // Enable authentication
+	withStorage   bool // Enable storage backend
+	withHSM       bool // Enable HSM support
+	withLegacyAPI bool // Enable legacy API compatibility
+	withMetrics   bool // Enable metrics/monitoring
+	withVersion   bool // Enable version command
+
+	// Storage options
 	storageType string // file, ent
 	dbDriver    string // postgres, mysql, sqlite
 }
 
+// Template data structure
+type templateData struct {
+	ProjectName   string
+	ModulePath    string
+	Description   string
+	WithAuth      bool
+	WithStorage   bool
+	WithHSM       bool
+	WithLegacyAPI bool
+	WithMetrics   bool
+	WithVersion   bool
+	StorageType   string
+	DBDriver      string
+}
+
 func newInitCommand() *cobra.Command {
-	opts := &initOptions{}
+	opts := &initOptions{
+		withStorage: true,     // Default to enabling storage
+		withVersion: true,     // Default to enabling version command
+		storageType: "file",   // Default to file storage
+		dbDriver:    "sqlite", // Default database
+	}
 
 	cmd := &cobra.Command{
 		Use:   "init [project-name]",
 		Short: "Initialize a new Fabrica project",
-		Long: `Initialize a new Fabrica project with tiered complexity levels.
+		Long: `Initialize a new Fabrica project with configurable features.
 
-Modes:
-  simple   - Basic REST API without Kubernetes concepts (quick start)
-  standard - Full resource model with labels, annotations (recommended)
-  expert   - Minimal scaffolding, maximum flexibility
+Instead of complex modes, use feature flags to customize your project:
+  --auth          Enable authentication with TokenSmith
+  --storage       Enable persistent storage (file or database)
+  --hsm           Enable HSM support for cryptographic operations
+  --legacy-api    Enable legacy API compatibility
+  --metrics       Enable Prometheus metrics
 
 The interactive flag launches a guided wizard to help you choose.
 
 You can initialize in an existing directory by using '.' as the project name,
-or by providing the name of an existing directory. This is useful when using
-'gh repo create --template' or similar workflows.`,
+or by providing the name of an existing directory.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			projectName := "myproject"
@@ -50,7 +84,6 @@ or by providing the name of an existing directory. This is useful when using
 			}
 
 			// If a non-default database driver is specified, automatically use ent storage
-			// (sqlite is the default, so we check if postgres or mysql was explicitly chosen)
 			if opts.dbDriver == "postgres" || opts.dbDriver == "mysql" {
 				opts.storageType = "ent"
 			}
@@ -63,11 +96,21 @@ or by providing the name of an existing directory. This is useful when using
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.mode, "mode", "m", "standard", "Project mode: simple, standard, or expert")
+	// Feature flags instead of complex modes
 	cmd.Flags().BoolVarP(&opts.interactive, "interactive", "i", false, "Interactive wizard mode")
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
-	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable Casbin authorization policies")
-	cmd.Flags().StringVar(&opts.storageType, "storage", "file", "Storage backend: file or ent")
+	cmd.Flags().StringVar(&opts.description, "description", "", "Project description")
+
+	// Feature flags
+	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable authentication with TokenSmith")
+	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage")
+	cmd.Flags().BoolVar(&opts.withHSM, "hsm", false, "Enable HSM support for cryptographic operations")
+	cmd.Flags().BoolVar(&opts.withLegacyAPI, "legacy-api", false, "Enable legacy API compatibility")
+	cmd.Flags().BoolVar(&opts.withMetrics, "metrics", false, "Enable Prometheus metrics")
+	cmd.Flags().BoolVar(&opts.withVersion, "version", true, "Enable version command")
+
+	// Storage options
+	cmd.Flags().StringVar(&opts.storageType, "storage-type", "file", "Storage backend: file or ent")
 	cmd.Flags().StringVar(&opts.dbDriver, "db", "sqlite", "Database driver for Ent: postgres, mysql, or sqlite")
 
 	return cmd
@@ -101,77 +144,98 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 		}
 	}
 
-	// Experience level
-	fmt.Println()
-	fmt.Println("What's your experience level with Fabrica and Kubernetes?")
-	fmt.Println("  1) Beginner - Just want a simple REST API")
-	fmt.Println("  2) Intermediate - Familiar with REST, want resource management")
-	fmt.Println("  3) Advanced - Know Kubernetes, want full power")
-	fmt.Print("Choice [2]: ")
-
-	choice, _ := reader.ReadString('\n')
-	choice = strings.TrimSpace(choice)
-
-	switch choice {
-	case "1":
-		opts.mode = "simple"
-	case "3":
-		opts.mode = "expert"
-	default:
-		opts.mode = "standard"
-	}
-
-	// Storage backend
-	fmt.Println()
-	fmt.Println("Which storage backend do you want?")
-	fmt.Println("  1) File - Simple file-based storage (default)")
-	fmt.Println("  2) Ent - Database storage with PostgreSQL/MySQL/SQLite")
-	fmt.Print("Choice [1]: ")
-
-	choice, _ = reader.ReadString('\n')
-	choice = strings.TrimSpace(choice)
-
-	if choice == "2" {
-		opts.storageType = "ent"
-
-		fmt.Println()
-		fmt.Println("Which database driver?")
-		fmt.Println("  1) SQLite - Embedded database (great for development)")
-		fmt.Println("  2) PostgreSQL - Production-ready database")
-		fmt.Println("  3) MySQL - Alternative production database")
-		fmt.Print("Choice [1]: ")
-
-		dbChoice, _ := reader.ReadString('\n')
-		dbChoice = strings.TrimSpace(dbChoice)
-
-		switch dbChoice {
-		case "2":
-			opts.dbDriver = "postgres"
-		case "3":
-			opts.dbDriver = "mysql"
-		default:
-			opts.dbDriver = "sqlite"
-		}
-	} else {
-		opts.storageType = "file"
-	}
+	// Description
+	fmt.Printf("Project description (optional): ")
+	input, _ := reader.ReadString('\n')
+	opts.description = strings.TrimSpace(input)
 
 	// Features
 	fmt.Println()
+	fmt.Println("🚀 Features to enable:")
+
+	// Authentication
+	fmt.Print("Enable authentication with TokenSmith? [y/N]: ")
+	input, _ = reader.ReadString('\n')
+	opts.withAuth = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
+
+	// Storage
+	fmt.Print("Enable persistent storage? [Y/n]: ")
+	input, _ = reader.ReadString('\n')
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "n") {
+		opts.withStorage = false
+	} else {
+		opts.withStorage = true
+
+		// Storage type
+		fmt.Println("Storage backend:")
+		fmt.Println("  1) File-based storage (simple)")
+		fmt.Println("  2) Database with Ent (postgres/mysql/sqlite)")
+		fmt.Print("Choose [1]: ")
+		input, _ = reader.ReadString('\n')
+		switch strings.TrimSpace(input) {
+		case "2":
+			opts.storageType = "ent"
+
+			// Database driver
+			fmt.Println("Database driver:")
+			fmt.Println("  1) SQLite (file-based)")
+			fmt.Println("  2) PostgreSQL")
+			fmt.Println("  3) MySQL")
+			fmt.Print("Choose [1]: ")
+			input, _ = reader.ReadString('\n')
+			switch strings.TrimSpace(input) {
+			case "2":
+				opts.dbDriver = "postgres"
+			case "3":
+				opts.dbDriver = "mysql"
+			default:
+				opts.dbDriver = "sqlite"
+			}
+		default:
+			opts.storageType = "file"
+		}
+	}
+
+	// HSM support
+	fmt.Print("Enable HSM support for cryptographic operations? [y/N]: ")
+	input, _ = reader.ReadString('\n')
+	opts.withHSM = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
+
+	// Legacy API
+	fmt.Print("Enable legacy API compatibility? [y/N]: ")
+	input, _ = reader.ReadString('\n')
+	opts.withLegacyAPI = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
+
+	// Metrics
+	fmt.Print("Enable Prometheus metrics? [y/N]: ")
+	input, _ = reader.ReadString('\n')
+	opts.withMetrics = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
 
 	// Summary
 	fmt.Println()
 	fmt.Println("📋 Summary:")
 	fmt.Printf("  Project: %s\n", projectName)
 	fmt.Printf("  Module: %s\n", opts.modulePath)
-	fmt.Printf("  Mode: %s\n", opts.mode)
-	fmt.Printf("  Storage: %s", opts.storageType)
-	if opts.storageType == "ent" {
-		fmt.Printf(" (%s)", opts.dbDriver)
+	if opts.description != "" {
+		fmt.Printf("  Description: %s\n", opts.description)
 	}
-	fmt.Println()
+	fmt.Printf("  Features:\n")
+	fmt.Printf("    Authentication: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withAuth])
+	if opts.withStorage {
+		fmt.Printf("    Storage: %s", opts.storageType)
+		if opts.storageType == "ent" {
+			fmt.Printf(" (%s)", opts.dbDriver)
+		}
+		fmt.Println()
+	} else {
+		fmt.Printf("    Storage: disabled\n")
+	}
+	fmt.Printf("    HSM Support: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withHSM])
+	fmt.Printf("    Legacy API: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withLegacyAPI])
+	fmt.Printf("    Metrics: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withMetrics])
 
-	input, _ := reader.ReadString('\n')
+	fmt.Print("\nProceed? [Y/n]: ")
+	input, _ = reader.ReadString('\n')
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "n") {
 		fmt.Println("Cancelled.")
 		return nil
@@ -194,381 +258,264 @@ func runInit(projectName string, opts *initOptions) error {
 		}
 		projectBaseName = filepath.Base(cwd)
 		targetDir = "."
-		fmt.Printf("🚀 Initializing Fabrica project in current directory (%s) in %s mode...\n", projectBaseName, opts.mode)
+		fmt.Printf("🚀 Initializing Fabrica project in current directory (%s)...\n", projectBaseName)
 
 		// Check if current directory already has Fabrica files
 		if err := checkExistingProject("."); err != nil {
 			return err
 		}
-
-		// Check if directory has important files we should preserve
-		if err := checkSafeToInitialize("."); err != nil {
-			return err
-		}
-
-		fmt.Println("📁 Initializing in existing directory...")
 	} else {
-		// Creating or initializing in a named directory
-		projectBaseName = filepath.Base(projectName)
-		targetDir = projectName
-
-		if stat, err := os.Stat(projectName); err == nil && stat.IsDir() {
-			// Directory exists
-			fmt.Printf("🚀 Initializing Fabrica project in existing directory %s in %s mode...\n", projectName, opts.mode)
-
-			// Check if directory already has Fabrica files
+		// Check if directory already exists
+		if _, err := os.Stat(projectName); err == nil {
+			// Directory exists, initialize within it
 			if err := checkExistingProject(projectName); err != nil {
 				return err
 			}
-
-			// Check if directory has important files we should preserve
-			if err := checkSafeToInitialize(projectName); err != nil {
-				return err
-			}
-
-			fmt.Println("📁 Initializing in existing directory...")
+			fmt.Printf("🚀 Initializing Fabrica project in existing directory %s...\n", projectName)
 		} else {
 			// Create new directory
-			fmt.Printf("🚀 Creating %s project in %s mode...\n", projectName, opts.mode)
-			if err := os.MkdirAll(projectName, 0755); err != nil {
-				return fmt.Errorf("failed to create project directory: %w", err)
-			}
+			fmt.Printf("🚀 Creating %s project...\n", projectName)
 		}
+		projectBaseName = projectName
+		targetDir = projectName
 	}
 
-	// Create directory structure
+	// Set default module path if not provided
+	if opts.modulePath == "" {
+		opts.modulePath = fmt.Sprintf("github.com/user/%s", projectBaseName)
+	}
+
+	// Create project structure
+	if err := createProjectStructure(targetDir, projectBaseName, opts); err != nil {
+		return fmt.Errorf("failed to create project structure: %w", err)
+	}
+
+	// Success message
+	fmt.Println()
+	fmt.Println("✅ Project initialized successfully!")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Define your resources in pkg/resources/")
+	fmt.Println("  2. Run 'fabrica generate' to generate code")
+	fmt.Println("  3. Start development with 'go run cmd/server/main.go'")
+	fmt.Println()
+
+	return nil
+}
+
+func createProjectStructure(targetDir, projectName string, opts *initOptions) error {
+	// Template data
+	data := templateData{
+		ProjectName:   projectName,
+		ModulePath:    opts.modulePath,
+		Description:   opts.description,
+		WithAuth:      opts.withAuth,
+		WithStorage:   opts.withStorage,
+		WithHSM:       opts.withHSM,
+		WithLegacyAPI: opts.withLegacyAPI,
+		WithMetrics:   opts.withMetrics,
+		WithVersion:   opts.withVersion,
+		StorageType:   opts.storageType,
+		DBDriver:      opts.dbDriver,
+	}
+
+	// Create directories
 	dirs := []string{
 		"cmd/server",
-		"cmd/client",
 		"pkg/resources",
 		"internal/storage",
-		"api/v1",
+	}
+
+	if opts.withAuth {
+		dirs = append(dirs, "pkg/auth")
 	}
 
 	for _, dir := range dirs {
 		path := filepath.Join(targetDir, dir)
 		if err := os.MkdirAll(path, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+			return err
 		}
 	}
 
-	// Create go.mod (only if it doesn't exist)
-	if err := createGoMod(targetDir, projectBaseName, opts.modulePath, opts); err != nil {
+	// Generate main.go from template
+	if err := generateFromTemplate("main_cobra.go.tmpl", filepath.Join(targetDir, "cmd/server/main.go"), data); err != nil {
 		return err
 	}
 
-	// Create files based on mode
-	switch opts.mode {
-	case "simple":
-		if err := createSimpleModeFiles(targetDir); err != nil {
-			return err
-		}
-	case "expert":
-		if err := createExpertModeFiles(targetDir, opts); err != nil {
-			return err
-		}
-	default: // standard
-		if err := createStandardModeFiles(targetDir, opts); err != nil {
-			return err
-		}
-	}
-
-	// Create README
-	if err := createREADME(targetDir, projectBaseName, opts); err != nil {
+	// Create go.mod
+	if err := createGoMod(targetDir, opts.modulePath); err != nil {
 		return err
 	}
 
-	// Create Makefile
-	if err := createMakefile(targetDir, opts); err != nil {
+	// Create basic files
+	if err := createBasicFiles(targetDir, data); err != nil {
 		return err
 	}
-
-	// Create policy files if auth is enabled
-	if opts.withAuth {
-		if err := createPolicyFiles(targetDir, opts); err != nil {
-			return err
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("✅ Project created successfully!")
-	fmt.Println()
-	fmt.Println("Next steps:")
-
-	// Only show cd command if not in current directory
-	if !inCurrentDir {
-		fmt.Printf("  cd %s\n", projectName)
-	}
-
-	fmt.Println("  go mod tidy")
-
-	if opts.mode == "simple" {
-		fmt.Println("  fabrica add resource Product    # Add your first resource")
-		fmt.Println("  fabrica generate                # Generate code")
-	} else {
-		fmt.Println("  fabrica add resource Device     # Add your first resource")
-		fmt.Println("  fabrica generate                # Generate handlers and storage")
-	}
-
-	fmt.Println("  go run cmd/server/main.go       # Start the server")
-	fmt.Println()
 
 	return nil
 }
 
-func createGoMod(targetDir, projectName, modulePath string, opts *initOptions) error {
-	// Check if go.mod already exists
-	goModPath := filepath.Join(targetDir, "go.mod")
-	if _, err := os.Stat(goModPath); err == nil {
-		fmt.Println("ℹ️  go.mod already exists, skipping...")
-		return nil
+func generateFromTemplate(templateName, outputPath string, data templateData) error {
+	var tmplContent string
+
+	// Use the embedded template
+	if templateName == "main_cobra.go.tmpl" {
+		tmplContent = mainCobraTemplate
+	} else {
+		return fmt.Errorf("template %s not found", templateName)
 	}
 
-	if modulePath == "" {
-		modulePath = fmt.Sprintf("github.com/user/%s", projectName)
+	// Template functions
+	funcMap := template.FuncMap{
+		"toLower": strings.ToLower,
+		"toUpper": strings.ToUpper,
 	}
 
+	tmpl, err := template.New(templateName).Funcs(funcMap).Parse(tmplContent)
+	if err != nil {
+		return fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %w", outputPath, err)
+	}
+	defer file.Close() //nolint:errcheck
+
+	if err := tmpl.Execute(file, data); err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return nil
+}
+
+func createGoMod(targetDir, modulePath string) error {
 	content := fmt.Sprintf(`module %s
 
-go 1.23
+go 1.21
 
 require (
-	github.com/alexlovelltroy/fabrica %s
-	github.com/getkin/kin-openapi v0.128.0`, modulePath, getFabricaVersion())
-
-	// Add Ent dependencies if using Ent storage
-	if opts.storageType == "ent" {
-		content += `
-	entgo.io/ent v0.14.1`
-
-		switch opts.dbDriver {
-		case "postgres":
-			content += `
-	github.com/lib/pq v1.10.9`
-		case "mysql":
-			content += `
-	github.com/go-sql-driver/mysql v1.8.1`
-		case "sqlite":
-			content += `
-	github.com/mattn/go-sqlite3 v1.14.24`
-		}
-	}
-
-	// Add Casbin dependency if authorization is enabled
-	if opts.withAuth {
-		content += `
-	github.com/casbin/casbin/v2 v2.102.0`
-	}
-
-	content += `
+	github.com/go-chi/chi/v5 v5.0.10
+	github.com/spf13/cobra v1.7.0
+	github.com/spf13/viper v1.16.0
 )
-`
-
-	return os.WriteFile(goModPath, []byte(content), 0644)
-}
-
-func createREADME(targetDir, projectName string, opts *initOptions) error {
-	// Check if README already exists
-	readmePath := filepath.Join(targetDir, "README.md")
-	if _, err := os.Stat(readmePath); err == nil {
-		fmt.Println("ℹ️  README.md already exists, skipping...")
-		return nil
-	}
-	modeDesc := map[string]string{
-		"simple":   "Simple REST API",
-		"standard": "Resource-based REST API with Fabrica",
-		"expert":   "Advanced Fabrica Project",
-	}
-
-	content := fmt.Sprintf(`# %s
-
-%s created with Fabrica.
-
-## Quick Start
-
-`, projectName, modeDesc[opts.mode])
-
-	if opts.mode == "simple" {
-		content += `### Add a Resource
-
-` + "```bash" + `
-fabrica add resource Product
-` + "```" + `
-
-### Generate Code
-
-` + "```bash" + `
-fabrica generate
-` + "```" + `
-
-### Run
-
-` + "```bash" + `
-go run cmd/server/main.go
-` + "```" + `
-
-Your API will be available at http://localhost:8080
-`
-	} else {
-		content += `### Generate Handlers
-
-` + "```bash" + `
-fabrica generate
-` + "```" + `
-
-### Run the Server
-
-` + "```bash" + `
-go run cmd/server/main.go
-` + "```" + `
-
-## Documentation
-
-See [docs/](docs/) for detailed documentation.
-`
-	}
-
-	return os.WriteFile(readmePath, []byte(content), 0644)
-}
-
-func createMakefile(projectName string, _ *initOptions) error {
-	content := `.PHONY: build run test generate clean dev codegen-init
-
-build:
-	go build -o bin/server cmd/server/main.go
-
-run: build
-	./bin/server
-
-test:
-	go test ./...
-
-# Initialize code generation (run after adding resources)
-codegen-init:
-	fabrica codegen init
-
-# Generate handlers, storage, and OpenAPI specs
-generate:
-	fabrica generate --handlers --storage --openapi
-
-# Development workflow: regenerate and build
-dev: clean codegen-init generate build
-	@echo "✅ Development build complete"
-
-clean:
-	rm -rf bin/
-	rm -f cmd/server/*_generated.go
-	rm -f internal/storage/storage_generated.go
-	rm -f pkg/client/*_generated.go
-	rm -f pkg/resources/register_generated.go
-`
-
-	path := filepath.Join(projectName, "Makefile")
-	return os.WriteFile(path, []byte(content), 0644)
-}
-
-func createSimpleModeFiles(projectName string) error {
-	// Create a simplified main.go
-	mainContent := `package main
-
-import (
-	"encoding/json"
-	"log"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-)
-
-func main() {
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-
-	// Add your routes here
-	// Example: r.Get("/resources", listResources)
-
-	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
-}
-`
-
-	path := filepath.Join(projectName, "cmd/server/main.go")
-	if err := os.WriteFile(path, []byte(mainContent), 0644); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func createStandardModeFiles(projectName string, opts *initOptions) error {
-	// Determine module path for imports
-	modulePath := opts.modulePath
-	if modulePath == "" {
-		modulePath = fmt.Sprintf("github.com/user/%s", projectName)
-	}
-
-	// Create standard main.go with full Fabrica features
-	mainContent := fmt.Sprintf(`package main
-
-import (
-	"log"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-	// After running 'fabrica generate', uncomment this line:
-	// "%s/internal/storage"
-)
-
-func main() {
-	// After running 'fabrica generate', uncomment these lines:
-	// if err := storage.InitFileBackend("./data"); err != nil {
-	// 	log.Fatalf("Failed to initialize storage: %%v", err)
-	// }
-
-	// Setup router
-	r := chi.NewRouter()
-
-	// After running 'fabrica generate', uncomment this line:
-	// RegisterGeneratedRoutes(r)
-
-	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
-}
 `, modulePath)
 
-	path := filepath.Join(projectName, "cmd/server/main.go")
-	if err := os.WriteFile(path, []byte(mainContent), 0644); err != nil {
+	return os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte(content), 0644)
+}
+
+func createBasicFiles(targetDir string, data templateData) error {
+	// README.md
+	readmeContent := fmt.Sprintf(`# %s
+
+%s
+
+## Getting Started
+
+1. Define your resources in pkg/resources/
+2. Generate code: fabrica generate
+3. Run the server: go run cmd/server/main.go
+
+## Configuration
+
+The server supports configuration via:
+- Command line flags
+- Environment variables (%s_*)
+- Configuration file (~/.%s.yaml)
+
+## Features
+
+%s
+
+## Development
+
+`+"```bash"+`
+# Install dependencies
+go mod tidy
+
+# Run the server
+go run cmd/server/main.go serve
+
+# Run with custom config
+go run cmd/server/main.go serve --config config.yaml
+`+"```"+`
+`, data.ProjectName, data.Description, strings.ToUpper(data.ProjectName), data.ProjectName, generateFeaturesText(data))
+
+	if err := os.WriteFile(filepath.Join(targetDir, "README.md"), []byte(readmeContent), 0644); err != nil {
 		return err
 	}
 
-	return nil
-}
+	// .gitignore
+	gitignoreContent := `# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-func createExpertModeFiles(projectName string, _ *initOptions) error {
-	// Minimal scaffolding for expert mode
-	mainContent := `package main
+# Test binary, built with go test -c
+*.test
 
-import (
-	"log"
-	"net/http"
-)
+# Output of the go coverage tool
+*.out
 
-func main() {
-	// Build your application here
+# Go workspace file
+go.work
 
-	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
+# Data directories
+data/
+*.db
+
+# Config files (may contain secrets)
+*.yaml
+*.yml
+!example.yaml
+!example.yml
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 `
 
-	path := filepath.Join(projectName, "cmd/server/main.go")
-	return os.WriteFile(path, []byte(mainContent), 0644)
+	return os.WriteFile(filepath.Join(targetDir, ".gitignore"), []byte(gitignoreContent), 0644)
+}
+
+func generateFeaturesText(data templateData) string {
+	var features []string
+
+	if data.WithAuth {
+		features = append(features, "- 🔐 Authentication with TokenSmith")
+	}
+	if data.WithStorage {
+		if data.StorageType == "ent" {
+			features = append(features, fmt.Sprintf("- 💾 Database storage (%s)", data.DBDriver))
+		} else {
+			features = append(features, "- 💾 File-based storage")
+		}
+	}
+	if data.WithHSM {
+		features = append(features, "- 🔒 HSM support for cryptographic operations")
+	}
+	if data.WithLegacyAPI {
+		features = append(features, "- 🔄 Legacy API compatibility")
+	}
+	if data.WithMetrics {
+		features = append(features, "- 📊 Prometheus metrics")
+	}
+
+	if len(features) == 0 {
+		return "- Basic REST API server"
+	}
+
+	return strings.Join(features, "\n")
 }
 
 // checkExistingProject checks if the directory already contains a Fabrica project
 func checkExistingProject(dir string) error {
-	// Check for key Fabrica files that indicate this is already initialized
 	fabricaFiles := []string{
 		"cmd/server/main.go",
 		"pkg/resources",
@@ -582,147 +529,4 @@ func checkExistingProject(dir string) error {
 	}
 
 	return nil
-}
-
-// checkSafeToInitialize verifies that we won't overwrite important files
-func checkSafeToInitialize(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("failed to read directory: %w", err)
-	}
-
-	// List of files/directories that are safe to ignore
-	safeFiles := map[string]bool{
-		".git":           true,
-		".gitignore":     true,
-		".github":        true,
-		"LICENSE":        true,
-		"LICENSES":       true,
-		"README.md":      true,
-		".gitattributes": true,
-		".editorconfig":  true,
-		".vscode":        true,
-		".idea":          true,
-	}
-
-	// Check for potentially problematic files
-	hasUnsafeFiles := false
-	unsafeFiles := []string{}
-
-	for _, entry := range entries {
-		name := entry.Name()
-
-		// Skip safe files
-		if safeFiles[name] {
-			continue
-		}
-
-		// Skip hidden files and directories (except the ones we explicitly check)
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-
-		// If we find any other files, warn the user
-		hasUnsafeFiles = true
-		unsafeFiles = append(unsafeFiles, name)
-	}
-
-	if hasUnsafeFiles {
-		fmt.Println("⚠️  Warning: Directory contains existing files:")
-		for _, f := range unsafeFiles {
-			fmt.Printf("    - %s\n", f)
-		}
-		fmt.Println()
-		fmt.Print("Continue and potentially overwrite files? [y/N]: ")
-
-		reader := bufio.NewReader(os.Stdin)
-		response, _ := reader.ReadString('\n')
-		response = strings.ToLower(strings.TrimSpace(response))
-
-		if response != "y" && response != "yes" {
-			return fmt.Errorf("initialization cancelled by user")
-		}
-		fmt.Println()
-	}
-
-	return nil
-}
-
-// createPolicyFiles creates Casbin policy files for authorization
-func createPolicyFiles(projectName string, _ *initOptions) error {
-	// Create policies directory
-	policyDir := filepath.Join(projectName, "policies")
-	if err := os.MkdirAll(policyDir, 0755); err != nil {
-		return fmt.Errorf("failed to create policies directory: %w", err)
-	}
-
-	// Create model.conf - Casbin RBAC model
-	modelContent := `[request_definition]
-r = sub, obj, act
-
-[policy_definition]
-p = sub, obj, act
-
-[role_definition]
-g = _, _
-
-[policy_effect]
-e = some(where (p.eft == allow))
-
-[matchers]
-m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act || g(r.sub, p.sub) && p.obj == "*" && r.act == p.act || g(r.sub, p.sub) && r.obj == p.obj && p.act == "*"
-`
-
-	modelPath := filepath.Join(policyDir, "model.conf")
-	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
-		return fmt.Errorf("failed to create model.conf: %w", err)
-	}
-
-	// Create policy.csv - Default policies
-	policyContent := `# Casbin Policy File
-# Format: p, subject, object, action
-# Format: g, user, role
-
-# Admin role - full access to all resources
-p, admin, *, *
-
-# User role - read-only access
-p, user, *, list
-p, user, *, get
-
-# Example: grant admin role to a specific user
-# g, user:alice@example.com, admin
-
-# Example: grant user role to a specific user
-# g, user:bob@example.com, user
-`
-
-	policyPath := filepath.Join(policyDir, "policy.csv")
-	if err := os.WriteFile(policyPath, []byte(policyContent), 0644); err != nil {
-		return fmt.Errorf("failed to create policy.csv: %w", err)
-	}
-
-	fmt.Println("  ├─ Created Casbin policy files")
-	return nil
-}
-
-// getFabricaVersion returns the version string to use in go.mod
-func getFabricaVersion() string {
-	// version is set via ldflags at build time
-	// If it contains "dirty" or is "dev", use the latest stable release instead
-	if version != "" && version != "dev" && !strings.Contains(version, "dirty") {
-		return version
-	}
-
-	// Fallback: try to get from current module
-	cmd := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "github.com/alexlovelltroy/fabrica")
-	if output, err := cmd.Output(); err == nil {
-		v := strings.TrimSpace(string(output))
-		if v != "" && v != "(devel)" && !strings.Contains(v, "dirty") {
-			return v
-		}
-	}
-
-	// Last resort: use latest stable release
-	return "v0.2.5"
 }
