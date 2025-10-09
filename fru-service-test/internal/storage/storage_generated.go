@@ -71,7 +71,7 @@ func LoadFRU(ctx context.Context, uid string) (*fru.FRU, error) {
 	// Query by UID and kind
 	entResource, err := entClient.Resource.Query().
 		Where(
-			entresource.UidEQ(uid),
+			entresource.UIDEQ(uid),
 			entresource.KindEQ("FRU"),
 		).
 		WithLabels().
@@ -107,7 +107,7 @@ func SaveFRU(ctx context.Context, resource *fru.FRU) error {
 
 	// Use upsert pattern: try to update, if not exists then create
 	entResource, err := entClient.Resource.Query().
-		Where(entresource.UidEQ(resource.GetUID())).
+		Where(entresource.UIDEQ(resource.GetUID())).
 		Only(ctx)
 
 	if err != nil && !ent.IsNotFound(err) {
@@ -160,7 +160,7 @@ func DeleteFRU(ctx context.Context, uid string) error {
 	// Delete by UID
 	deleted, err := entClient.Resource.Delete().
 		Where(
-			entresource.UidEQ(uid),
+			entresource.UIDEQ(uid),
 			entresource.KindEQ("FRU"),
 		).
 		Exec(ctx)
