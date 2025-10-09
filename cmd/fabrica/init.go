@@ -352,6 +352,11 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
+	// Create Fabrica configuration file
+	if err := createFabricaConfig(targetDir, opts); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -512,6 +517,34 @@ func generateFeaturesText(data templateData) string {
 	}
 
 	return strings.Join(features, "\n")
+}
+
+// createFabricaConfig creates a .fabrica.yaml configuration file to preserve project settings
+func createFabricaConfig(targetDir string, opts *initOptions) error {
+	configContent := fmt.Sprintf(`# Fabrica project configuration
+# This file preserves the settings used during 'fabrica init'
+
+project:
+  module_path: %s
+  description: %s
+
+features:
+  auth: %t
+  storage: %t
+  hsm: %t
+  legacy_api: %t
+  metrics: %t
+  version: %t
+
+storage:
+  type: %s      # file, ent
+  db_driver: %s # postgres, mysql, sqlite (for ent)
+`, opts.modulePath, opts.description, opts.withAuth, opts.withStorage,
+		opts.withHSM, opts.withLegacyAPI, opts.withMetrics, opts.withVersion,
+		opts.storageType, opts.dbDriver)
+
+	configPath := filepath.Join(targetDir, ".fabrica.yaml")
+	return os.WriteFile(configPath, []byte(configContent), 0644)
 }
 
 // checkExistingProject checks if the directory already contains a Fabrica project

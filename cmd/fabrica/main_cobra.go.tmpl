@@ -20,11 +20,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	{{if .WithStorage}}"{{.ModulePath}}/internal/storage"{{end}}
+	// TODO: Uncomment after running 'fabrica generate'
+	{{if .WithStorage}}// "{{.ModulePath}}/internal/storage"{{end}}
 	{{if .WithAuth}}"{{.ModulePath}}/pkg/auth"{{end}}
 	{{if eq .StorageType "ent"}}
-	"{{.ModulePath}}/internal/storage/ent"
-	"{{.ModulePath}}/internal/storage/ent/migrate"
+	// TODO: Uncomment after running 'fabrica generate --storage'
+	// "{{.ModulePath}}/internal/storage/ent"
+	// "{{.ModulePath}}/internal/storage/ent/migrate"
 	{{if eq .DBDriver "postgres"}}
 	_ "github.com/lib/pq"
 	{{else if eq .DBDriver "mysql"}}
@@ -225,31 +227,34 @@ func runServer(cmd *cobra.Command, args []string) error {
 	{{if .WithStorage}}
 	// Initialize storage backend
 	{{if eq .StorageType "file"}}
-	if err := storage.InitFileBackend(config.DataDir); err != nil {
-		return fmt.Errorf("failed to initialize file storage: %w", err)
-	}
-	log.Printf("File storage initialized in: %s", config.DataDir)
+	// TODO: Initialize storage - Run 'fabrica generate --storage' to create storage backend
+	// if err := storage.InitFileBackend(config.DataDir); err != nil {
+	// 	return fmt.Errorf("failed to initialize file storage: %w", err)
+	// }
+	log.Printf("File storage not yet generated - run 'fabrica generate --storage'")
 	{{else if eq .StorageType "ent"}}
-	// Connect to database
-	client, err := ent.Open("{{.DBDriver}}", config.DatabaseURL)
-	if err != nil {
-		return fmt.Errorf("failed opening connection to {{.DBDriver}}: %w", err)
-	}
-	defer client.Close()
+	// TODO: Connect to database after running 'fabrica generate --storage'
+	// client, err := ent.Open("{{.DBDriver}}", config.DatabaseURL)
+	// if err != nil {
+	// 	return fmt.Errorf("failed opening connection to {{.DBDriver}}: %w", err)
+	// }
+	// defer client.Close()
 
 	// Run auto-migration
-	ctx := context.Background()
-	if err := client.Schema.Create(
-		ctx,
-		migrate.WithDropIndex(true),
-		migrate.WithDropColumn(true),
-	); err != nil {
-		return fmt.Errorf("failed creating schema resources: %w", err)
-	}
-	log.Println("Database schema migrated successfully")
+	// ctx := context.Background()
+	// if err := client.Schema.Create(
+	// 	ctx,
+	// 	migrate.WithDropIndex(true),
+	// 	migrate.WithDropColumn(true),
+	// ); err != nil {
+	// 	return fmt.Errorf("failed creating schema resources: %w", err)
+	// }
+	// log.Println("Database schema migrated successfully")
 
 	// Set Ent client for storage operations
-	storage.SetEntClient(client)
+	// TODO: Uncomment after running 'fabrica generate --storage'
+	// storage.SetEntClient(client)
+	log.Println("Ent client configuration not yet generated - run 'fabrica generate --storage'")
 	{{end}}
 	{{end}}
 
@@ -263,7 +268,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Use(middleware.RealIP)
 
 	if config.Debug {
-		r.Use(middleware.Profiler)
+		r.Mount("/debug", middleware.Profiler())
 	}
 
 	{{if .WithAuth}}
@@ -276,7 +281,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		r.Route("/api", func(r chi.Router) {
 			r.Use(authMiddleware)
 			// Protected API routes will be registered here
-			RegisterGeneratedRoutes(r)
+			// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
 		})
 
 		// Public routes (health checks, etc.)
@@ -290,12 +295,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 		})
 	} else {
 		log.Println("Authentication disabled")
-		RegisterGeneratedRoutes(r)
+		// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
 		r.Get("/health", healthHandler)
 	}
 	{{else}}
 	// Register routes (no authentication)
-	RegisterGeneratedRoutes(r)
+	// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
 	r.Get("/health", healthHandler)
 	{{end}}
 

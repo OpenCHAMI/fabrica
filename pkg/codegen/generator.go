@@ -360,6 +360,17 @@ func (g *Generator) GenerateAll() error {
 	switch g.PackageName {
 	case "main":
 		// Server code - handlers, routes, models, storage, and openapi
+
+		// Generate Ent schemas first if using Ent storage
+		if g.StorageType == "ent" {
+			if err := g.GenerateEntSchemas(); err != nil {
+				return err
+			}
+			if err := g.GenerateEntAdapter(); err != nil {
+				return err
+			}
+		}
+
 		if err := g.GenerateModels(); err != nil {
 			return err
 		}
@@ -406,6 +417,7 @@ func (g *Generator) GenerateAll() error {
 
 // GenerateStorage generates storage operations for server
 func (g *Generator) GenerateStorage() error {
+	fmt.Printf("📁 Generating storage layer (%s)...\n", g.StorageType)
 	var buf bytes.Buffer
 	data := struct {
 		PackageName string
@@ -445,15 +457,14 @@ func (g *Generator) GenerateStorage() error {
 		return fmt.Errorf("failed to write storage file: %w", err)
 	}
 
-	if g.Verbose {
-		fmt.Printf("  ✓ Generated %s\n", filename)
-	}
+	fmt.Printf("  ✓ Generated %s\n", filename)
 
 	return nil
 }
 
 // GenerateClientModels generates models specifically for client package
 func (g *Generator) GenerateClientModels() error {
+	fmt.Printf("📊 Generating client models...\n")
 	var buf bytes.Buffer
 	data := struct {
 		PackageName string
@@ -623,6 +634,7 @@ func (g *Generator) LoadTemplates() error {
 
 // GenerateHandlers generates REST API handlers for all resources
 func (g *Generator) GenerateHandlers() error {
+	fmt.Printf("🛠️  Generating handlers...\n")
 	for _, resource := range g.Resources {
 		var buf bytes.Buffer
 		data := struct {
@@ -647,9 +659,7 @@ func (g *Generator) GenerateHandlers() error {
 			return fmt.Errorf("failed to write handlers file for %s: %w", resource.Name, err)
 		}
 
-		if g.Verbose {
-			fmt.Printf("  ✓ Generated %s\n", filename)
-		}
+		fmt.Printf("  ✓ Generated %s\n", filename)
 	}
 
 	return nil
@@ -657,6 +667,7 @@ func (g *Generator) GenerateHandlers() error {
 
 // GenerateClient generates API client library
 func (g *Generator) GenerateClient() error {
+	fmt.Printf("🔌 Generating client library...\n")
 	var buf bytes.Buffer
 	// Ensure output directory exists
 	if err := os.MkdirAll(g.OutputDir, 0755); err != nil {
@@ -694,6 +705,7 @@ func (g *Generator) GenerateClient() error {
 
 // GenerateModels generates request/response models
 func (g *Generator) GenerateModels() error {
+	fmt.Printf("📊 Generating models...\n")
 	var buf bytes.Buffer
 
 	// Check if any resource requires auth
@@ -731,15 +743,14 @@ func (g *Generator) GenerateModels() error {
 		return fmt.Errorf("failed to write models file: %w", err)
 	}
 
-	if g.Verbose {
-		fmt.Printf("  ✓ Generated %s\n", filename)
-	}
+	fmt.Printf("  ✓ Generated %s\n", filename)
 
 	return nil
 }
 
 // GenerateRoutes generates route registration code
 func (g *Generator) GenerateRoutes() error {
+	fmt.Printf("🛣️  Generating routes...\n")
 	var buf bytes.Buffer
 	data := struct {
 		PackageName string
@@ -765,9 +776,7 @@ func (g *Generator) GenerateRoutes() error {
 		return fmt.Errorf("failed to write routes file: %w", err)
 	}
 
-	if g.Verbose {
-		fmt.Printf("  ✓ Generated %s\n", filename)
-	}
+	fmt.Printf("  ✓ Generated %s\n", filename)
 
 	return nil
 }
@@ -804,14 +813,17 @@ func (g *Generator) GeneratePolicies() error {
 
 // GenerateClientCmd generates a Cobra-based CLI client
 func (g *Generator) GenerateClientCmd() error {
+	fmt.Printf("⚡ Generating CLI client...\n")
 	var buf bytes.Buffer
 	data := struct {
 		PackageName string
 		ModulePath  string
+		ProjectName string
 		Resources   []ResourceMetadata
 	}{
 		PackageName: "main", // CLI is always package main
 		ModulePath:  g.ModulePath,
+		ProjectName: g.extractProjectName(),
 		Resources:   g.Resources,
 	}
 
@@ -843,6 +855,7 @@ func (g *Generator) GenerateClientCmd() error {
 
 // GenerateOpenAPI generates OpenAPI specification code
 func (g *Generator) GenerateOpenAPI() error {
+	fmt.Printf("📋 Generating OpenAPI specification...\n")
 	var buf bytes.Buffer
 	data := struct {
 		PackageName string
@@ -868,9 +881,7 @@ func (g *Generator) GenerateOpenAPI() error {
 		return fmt.Errorf("failed to write openapi file: %w", err)
 	}
 
-	if g.Verbose {
-		fmt.Printf("  ✓ Generated %s\n", filename)
-	}
+	fmt.Printf("  ✓ Generated %s\n", filename)
 
 	return nil
 }
@@ -880,6 +891,8 @@ func (g *Generator) GenerateEntSchemas() error {
 	if g.StorageType != "ent" {
 		return nil // Skip if not using Ent
 	}
+
+	fmt.Printf("🗄️  Generating Ent schemas...\n")
 
 	// Create schema directory
 	schemaDir := filepath.Join("internal", "storage", "ent", "schema")
@@ -911,6 +924,8 @@ func (g *Generator) GenerateEntAdapter() error {
 		return nil
 	}
 
+	fmt.Printf("🔗 Generating Ent adapter...\n")
+
 	var buf bytes.Buffer
 	data := struct {
 		ModulePath string
@@ -933,6 +948,8 @@ func (g *Generator) GenerateEntAdapter() error {
 	if err := os.WriteFile(adapterPath, formatted, 0644); err != nil {
 		return fmt.Errorf("failed to write ent adapter file: %w", err)
 	}
+
+	fmt.Printf("  ✓ Generated %s\n", adapterPath)
 
 	// Generate generate.go for Ent code generation
 	if err := g.executeTemplate("generate", filepath.Join("internal", "storage", "generate.go"), nil); err != nil {
@@ -970,11 +987,14 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 		return fmt.Errorf("failed to write file %s: %w", outputPath, err)
 	}
 
+	fmt.Printf("  ✓ Generated %s\n", outputPath)
+
 	return nil
 }
 
 // GenerateCasbinPolicies generates Casbin policy files for RBAC authorization
 func (g *Generator) GenerateCasbinPolicies() error {
+	fmt.Printf("🔐 Generating Casbin policies...\n")
 	// Create policies directory
 	policiesDir := filepath.Join("policies")
 	if err := os.MkdirAll(policiesDir, 0755); err != nil {
@@ -1022,12 +1042,36 @@ func formatJSONValue(goType, value string) string {
 	}
 }
 
+// extractProjectName extracts a project name from the module path
+func (g *Generator) extractProjectName() string {
+	// Extract the last component of the module path
+	parts := strings.Split(g.ModulePath, "/")
+	if len(parts) > 0 {
+		projectName := parts[len(parts)-1]
+		// Clean up the name - replace common characters with underscores for env vars
+		return strings.ReplaceAll(strings.ReplaceAll(projectName, "-", "_"), ".", "_")
+	}
+	return "app" // fallback
+}
+
 // Template functions
 var templateFuncs = template.FuncMap{
 	"toLower":    strings.ToLower,
 	"toUpper":    strings.ToUpper,
 	"title":      cases.Title(language.English).String,
 	"trimPrefix": strings.TrimPrefix,
+	"replace": func(old, new, s string) string {
+		return strings.ReplaceAll(s, old, new)
+	},
+	"split": func(sep, s string) []string {
+		return strings.Split(s, sep)
+	},
+	"last": func(s []string) string {
+		if len(s) == 0 {
+			return ""
+		}
+		return s[len(s)-1]
+	},
 	"camelCase": func(s string) string {
 		if len(s) == 0 {
 			return s

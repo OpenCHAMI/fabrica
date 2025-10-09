@@ -17,6 +17,70 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// FabricaConfig represents the .fabrica.yaml configuration file
+type FabricaConfig struct {
+	Project struct {
+		ModulePath  string `yaml:"module_path"`
+		Description string `yaml:"description"`
+	} `yaml:"project"`
+	Features struct {
+		Auth      bool `yaml:"auth"`
+		Storage   bool `yaml:"storage"`
+		HSM       bool `yaml:"hsm"`
+		LegacyAPI bool `yaml:"legacy_api"`
+		Metrics   bool `yaml:"metrics"`
+		Version   bool `yaml:"version"`
+	} `yaml:"features"`
+	Storage struct {
+		Type     string `yaml:"type"`
+		DBDriver string `yaml:"db_driver"`
+	} `yaml:"storage"`
+}
+
+// readFabricaConfig reads the .fabrica.yaml configuration file
+func readFabricaConfig() (*FabricaConfig, error) {
+	configPath := ".fabrica.yaml"
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, nil // No config file found, not an error
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read .fabrica.yaml: %w", err)
+	}
+
+	var config FabricaConfig
+
+	// Simple parser for our specific YAML format
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
+		}
+
+		// Look for storage type
+		if strings.Contains(line, "type:") && strings.Contains(line, "ent") {
+			config.Storage.Type = "ent"
+		} else if strings.Contains(line, "type:") && strings.Contains(line, "file") {
+			config.Storage.Type = "file"
+		}
+
+		// Look for db_driver
+		if strings.Contains(line, "db_driver:") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				driver := strings.TrimSpace(parts[1])
+				driver = strings.Split(driver, "#")[0] // Remove comments
+				driver = strings.TrimSpace(driver)
+				config.Storage.DBDriver = driver
+			}
+		}
+	}
+
+	return &config, nil
+}
+
 func newGenerateCommand() *cobra.Command {
 	var (
 		handlers bool
@@ -171,6 +235,22 @@ func getModulePath() (string, error) {
 	return "", fmt.Errorf("module declaration not found in go.mod")
 }
 
+// detectStorageType detects the storage type from the project structure
+func detectStorageType() string {
+	// Check if the main.go file contains Ent imports (even if commented)
+	if data, err := os.ReadFile("cmd/server/main.go"); err == nil {
+		content := string(data)
+		if strings.Contains(content, "internal/storage/ent") ||
+			strings.Contains(content, "github.com/mattn/go-sqlite3") ||
+			strings.Contains(content, "_\"github.com/mattn/go-sqlite3\"") {
+			return "ent"
+		}
+	}
+
+	// Default to file storage
+	return "file"
+}
+
 // generateCodeWithRunner creates and runs a temporary codegen program
 func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool) error {
 	// Create output directory if it doesn't exist
@@ -192,7 +272,14 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 	if debug {
 		fmt.Println("  Generating codegen runner...")
 	}
-	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, authEnabled, debug)
+
+	// Detect storage type before generating runner
+	storageType := detectStorageType()
+	if debug {
+		fmt.Printf("  Detected storage type: %s\n", storageType)
+	}
+
+	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, authEnabled, debug, storageType)
 
 	runnerPath := filepath.Join(runnerDir, "main.go")
 	if err := os.WriteFile(runnerPath, []byte(runnerCode), 0644); err != nil {
@@ -217,7 +304,7 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 }
 
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool) string {
+func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool, storageType string) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
@@ -313,13 +400,19 @@ import (
 func main() {
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	gen.Verbose = %s
+	
+	// Configure storage type - passed from main generate command
+	gen.SetStorageType("%s")
+	if "%s" == "ent" {
+		gen.SetDBDriver("sqlite") // Default to sqlite for now
+	}
 
 	if err := resources.RegisterAllResources(gen); err != nil {
 		log.Fatalf("Failed to register resources: %%v", err)
 	}
 
 %s}
-`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, generationCalls.String())
+`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans pkg/resources for resource definitions
