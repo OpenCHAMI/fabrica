@@ -9,9 +9,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"{{.ModulePath}}/internal/storage/ent"
-	"{{.ModulePath}}/pkg/resource"
+	"{{.ModulePath}}/internal/storage/ent/label"
+	"{{.ModulePath}}/internal/storage/ent/annotation"
+	entresource "{{.ModulePath}}/internal/storage/ent/resource"
+	"github.com/alexlovelltroy/fabrica/pkg/resource"
 	{{range .Resources}}
 	{{.PackageAlias}} "{{.Package}}"
 	{{end}}
@@ -20,14 +24,8 @@ import (
 // ToEntResource converts a Fabrica resource to an Ent resource entity for storage.
 // This function extracts the Resource fields and marshals Spec/Status to JSON.
 func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string]string, map[string]string, error) {
-	// Extract base resource fields
-	r, ok := fabricaResource.(interface{ GetUID() string })
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("resource does not implement GetUID()")
-	}
-
 	// Type assertion to get Resource fields
-	var apiVersion, kind, name, uid, namespace string
+	var apiVersion, kind, name, uid string
 	var spec, status json.RawMessage
 	var labels, annotations map[string]string
 	var createdAt, updatedAt interface{}
@@ -43,9 +41,6 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 		annotations = v.Metadata.Annotations
 		createdAt = v.Metadata.CreatedAt
 		updatedAt = v.Metadata.UpdatedAt
-		if v.Metadata.Namespace != "" {
-			namespace = v.Metadata.Namespace
-		}
 
 		var err error
 		spec, err = json.Marshal(v.Spec)
@@ -77,9 +72,6 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 		create = create.SetStatus(status)
 	}
 
-	if namespace != "" {
-		create = create.SetNamespace(namespace)
-	}
 
 	return create, labels, annotations, nil
 }
@@ -105,9 +97,6 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 			},
 		}
 
-		if entResource.Namespace != nil {
-			resource.Metadata.Namespace = *entResource.Namespace
-		}
 
 		// Unmarshal Spec
 		if err := json.Unmarshal(entResource.Spec, &resource.Spec); err != nil {
@@ -146,7 +135,7 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 func saveLabels(ctx context.Context, resourceID int, labels map[string]string) error {
 	// Delete existing labels
 	_, err := entClient.Label.Delete().
-		Where(label.HasResourceWith(resourceEnt.IDEQ(resourceID))).
+		Where(label.HasResourceWith(entresource.IDEQ(resourceID))).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to delete old labels: %w", err)
@@ -171,7 +160,7 @@ func saveLabels(ctx context.Context, resourceID int, labels map[string]string) e
 func saveAnnotations(ctx context.Context, resourceID int, annotations map[string]string) error {
 	// Delete existing annotations
 	_, err := entClient.Annotation.Delete().
-		Where(annotation.HasResourceWith(resourceEnt.IDEQ(resourceID))).
+		Where(annotation.HasResourceWith(entresource.IDEQ(resourceID))).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to delete old annotations: %w", err)
