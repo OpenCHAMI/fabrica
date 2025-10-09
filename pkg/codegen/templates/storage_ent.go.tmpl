@@ -10,14 +10,20 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	"{{.ModulePath}}/internal/storage/ent"
-	"{{.ModulePath}}/internal/storage/ent/resource"
+	entresource "{{.ModulePath}}/internal/storage/ent/resource"
 	{{range .Resources}}
 	{{.PackageAlias}} "{{.Package}}"
 	{{end}}
 )
+
+// ErrNotFound indicates that a resource was not found
+var ErrNotFound = errors.New("resource not found")
 
 // Ent client (initialized in main.go)
 var entClient *ent.Client
@@ -67,7 +73,7 @@ func Load{{.StorageName}}(ctx context.Context, uid string) (*{{.PackageAlias}}.{
 	// Query by UID and kind
 	entResource, err := entClient.Resource.Query().
 		Where(
-			resource.UIDEQ(uid),
+			entresource.UidEQ(uid),
 			resource.KindEQ("{{.Name}}"),
 		).
 		WithLabels().
@@ -103,7 +109,7 @@ func Save{{.StorageName}}(ctx context.Context, resource *{{.PackageAlias}}.{{.Na
 
 	// Use upsert pattern: try to update, if not exists then create
 	entResource, err := entClient.Resource.Query().
-		Where(resource.UIDEQ(resource.GetUID())).
+		Where(entresource.UidEQ(resource.GetUID())).
 		Only(ctx)
 
 	if err != nil && !ent.IsNotFound(err) {
@@ -156,7 +162,7 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 	// Delete by UID
 	deleted, err := entClient.Resource.Delete().
 		Where(
-			resource.UIDEQ(uid),
+			entresource.UidEQ(uid),
 			resource.KindEQ("{{.Name}}"),
 		).
 		Exec(ctx)
