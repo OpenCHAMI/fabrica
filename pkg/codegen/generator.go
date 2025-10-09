@@ -1060,8 +1060,8 @@ var templateFuncs = template.FuncMap{
 	"toUpper":    strings.ToUpper,
 	"title":      cases.Title(language.English).String,
 	"trimPrefix": strings.TrimPrefix,
-	"replace": func(old, new, s string) string {
-		return strings.ReplaceAll(s, old, new)
+	"replace": func(old, newStr, s string) string {
+		return strings.ReplaceAll(s, old, newStr)
 	},
 	"split": func(sep, s string) []string {
 		return strings.Split(s, sep)

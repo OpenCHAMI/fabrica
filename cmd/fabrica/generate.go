@@ -235,9 +235,19 @@ func getModulePath() (string, error) {
 	return "", fmt.Errorf("module declaration not found in go.mod")
 }
 
-// detectStorageType detects the storage type from the project structure
+// detectStorageType detects the storage type from the project configuration
 func detectStorageType() string {
-	// Check if the main.go file contains Ent imports (even if commented)
+	// First, check .fabrica.yaml configuration
+	if config, err := readFabricaConfig(); err == nil && config != nil {
+		switch config.Storage.Type {
+		case "ent":
+			return "ent"
+		case "file":
+			return "file"
+		}
+	}
+
+	// Fallback: Check if the main.go file contains Ent imports (even if commented)
 	if data, err := os.ReadFile("cmd/server/main.go"); err == nil {
 		content := string(data)
 		if strings.Contains(content, "internal/storage/ent") ||
@@ -331,6 +341,14 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 		}
 
 		if storage {
+			// Generate Ent schemas first if using Ent storage
+			generationCalls.WriteString("\t// Generate Ent schemas if using Ent storage\n")
+			generationCalls.WriteString("\tif err := gen.GenerateEntSchemas(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate Ent schemas: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
+			generationCalls.WriteString("\tif err := gen.GenerateEntAdapter(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate Ent adapter: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
 			generationCalls.WriteString("\tif err := gen.GenerateStorage(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate storage: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
@@ -400,7 +418,7 @@ import (
 func main() {
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	gen.Verbose = %s
-	
+
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
 	if "%s" == "ent" {

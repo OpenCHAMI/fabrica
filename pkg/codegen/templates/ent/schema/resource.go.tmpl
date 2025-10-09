@@ -58,13 +58,7 @@ func (Resource) Fields() []ent.Field {
 
 		// Kubernetes-style Spec and Status (stored as JSON)
 		field.JSON("spec", json.RawMessage{}).
-			Comment("Desired state of the resource").
-			Validate(func(data json.RawMessage) error {
-				if len(data) == 0 {
-					return fmt.Errorf("spec cannot be empty")
-				}
-				return nil
-			}),
+			Comment("Desired state of the resource"),
 
 		field.JSON("status", json.RawMessage{}).
 			Optional().
