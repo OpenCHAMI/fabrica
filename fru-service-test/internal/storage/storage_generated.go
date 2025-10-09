@@ -40,7 +40,7 @@ func LoadAllFRUs(ctx context.Context) ([]*fru.FRU, error) {
 
 	// Query all resources of this kind
 	entResources, err := entClient.Resource.Query().
-		Where(resource.KindEQ("FRU")).
+		Where(entresource.KindEQ("FRU")).
 		WithLabels().
 		WithAnnotations().
 		All(ctx)
@@ -72,7 +72,7 @@ func LoadFRU(ctx context.Context, uid string) (*fru.FRU, error) {
 	entResource, err := entClient.Resource.Query().
 		Where(
 			entresource.UidEQ(uid),
-			resource.KindEQ("FRU"),
+			entresource.KindEQ("FRU"),
 		).
 		WithLabels().
 		WithAnnotations().
@@ -161,7 +161,7 @@ func DeleteFRU(ctx context.Context, uid string) error {
 	deleted, err := entClient.Resource.Delete().
 		Where(
 			entresource.UidEQ(uid),
-			resource.KindEQ("FRU"),
+			entresource.KindEQ("FRU"),
 		).
 		Exec(ctx)
 

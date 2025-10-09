@@ -14,11 +14,11 @@ type FRU struct {
 // FRUSpec defines the desired state of FRU
 type FRUSpec struct {
 	// FRU identification
-	FRUType        string `json:"fruType"`        // e.g., "CPU", "Memory", "Storage"
-	SerialNumber   string `json:"serialNumber"`
-	PartNumber     string `json:"partNumber"`
-	Manufacturer   string `json:"manufacturer"`
-	Model          string `json:"model"`
+	FRUType      string `json:"fruType"` // e.g., "CPU", "Memory", "Storage"
+	SerialNumber string `json:"serialNumber"`
+	PartNumber   string `json:"partNumber"`
+	Manufacturer string `json:"manufacturer"`
+	Model        string `json:"model"`
 
 	// Location information
 	Location FRULocation `json:"location"`
@@ -36,12 +36,12 @@ type FRUSpec struct {
 
 // FRULocation defines where the FRU is located
 type FRULocation struct {
-	BMCUID  string `json:"bmcUID,omitempty"`  // BMC managing this FRU
-	NodeUID string `json:"nodeUID,omitempty"` // Node containing this FRU
-	Rack    string `json:"rack,omitempty"`
-	Chassis string `json:"chassis,omitempty"`
-	Slot    string `json:"slot,omitempty"`
-	Bay     string `json:"bay,omitempty"`
+	BMCUID   string `json:"bmcUID,omitempty"`  // BMC managing this FRU
+	NodeUID  string `json:"nodeUID,omitempty"` // Node containing this FRU
+	Rack     string `json:"rack,omitempty"`
+	Chassis  string `json:"chassis,omitempty"`
+	Slot     string `json:"slot,omitempty"`
+	Bay      string `json:"bay,omitempty"`
 	Position string `json:"position,omitempty"`
 	Socket   string `json:"socket,omitempty"`
 	Channel  string `json:"channel,omitempty"`
@@ -51,21 +51,21 @@ type FRULocation struct {
 // FRUStatus defines the observed state of FRU
 type FRUStatus struct {
 	// Health and operational status
-	Health         string `json:"health"`         // "OK", "Warning", "Critical", "Unknown"
-	State          string `json:"state"`          // "Present", "Absent", "Disabled", "Unknown"
-	Functional     string `json:"functional"`     // "Enabled", "Disabled", "Unknown"
+	Health     string `json:"health"`     // "OK", "Warning", "Critical", "Unknown"
+	State      string `json:"state"`      // "Present", "Absent", "Disabled", "Unknown"
+	Functional string `json:"functional"` // "Enabled", "Disabled", "Unknown"
 
 	// Timestamps
-	LastSeen     string `json:"lastSeen,omitempty"`
-	LastScanned  string `json:"lastScanned,omitempty"`
+	LastSeen    string `json:"lastSeen,omitempty"`
+	LastScanned string `json:"lastScanned,omitempty"`
 
 	// Error conditions
-	Errors       []string `json:"errors,omitempty"`
+	Errors []string `json:"errors,omitempty"`
 
 	// Additional status information
-	Temperature  float64            `json:"temperature,omitempty"`
-	Power        float64            `json:"power,omitempty"`
-	Metrics      map[string]float64 `json:"metrics,omitempty"`
+	Temperature float64            `json:"temperature,omitempty"`
+	Power       float64            `json:"power,omitempty"`
+	Metrics     map[string]float64 `json:"metrics,omitempty"`
 }
 
 // GetKind returns the kind of the resource

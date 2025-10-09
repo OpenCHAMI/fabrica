@@ -73,7 +73,7 @@ func Load{{.StorageName}}(ctx context.Context, uid string) (*{{.PackageAlias}}.{
 	// Query by UID and kind
 	entResource, err := entClient.Resource.Query().
 		Where(
-			entresource.UidEQ(uid),
+			entresource.UIDEQ(uid),
 			entresource.KindEQ("{{.Name}}"),
 		).
 		WithLabels().
@@ -109,7 +109,7 @@ func Save{{.StorageName}}(ctx context.Context, resource *{{.PackageAlias}}.{{.Na
 
 	// Use upsert pattern: try to update, if not exists then create
 	entResource, err := entClient.Resource.Query().
-		Where(entresource.UidEQ(resource.GetUID())).
+		Where(entresource.UIDEQ(resource.GetUID())).
 		Only(ctx)
 
 	if err != nil && !ent.IsNotFound(err) {
@@ -162,7 +162,7 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 	// Delete by UID
 	deleted, err := entClient.Resource.Delete().
 		Where(
-			entresource.UidEQ(uid),
+			entresource.UIDEQ(uid),
 			entresource.KindEQ("{{.Name}}"),
 		).
 		Exec(ctx)
