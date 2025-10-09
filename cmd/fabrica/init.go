@@ -19,6 +19,9 @@ import (
 //go:embed main_cobra.go.tmpl
 var mainCobraTemplate string
 
+//go:embed ../../../pkg/codegen/templates/auth.go.tmpl
+var authTemplate string
+
 type initOptions struct {
 	interactive bool
 	modulePath  string
@@ -342,6 +345,13 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
+	// Generate auth package if enabled
+	if opts.withAuth {
+		if err := generateFromTemplate("auth.go.tmpl", filepath.Join(targetDir, "pkg/auth/auth.go"), data); err != nil {
+			return err
+		}
+	}
+
 	// Create go.mod
 	if err := createGoMod(targetDir, opts.modulePath); err != nil {
 		return err
@@ -364,9 +374,12 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 	var tmplContent string
 
 	// Use the embedded template
-	if templateName == "main_cobra.go.tmpl" {
+	switch templateName {
+	case "main_cobra.go.tmpl":
 		tmplContent = mainCobraTemplate
-	} else {
+	case "auth.go.tmpl":
+		tmplContent = authTemplate
+	default:
 		return fmt.Errorf("template %s not found", templateName)
 	}
 
