@@ -63,7 +63,7 @@ func Get{{.Name}}s(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 {{end}}
-	{{camelCase .PluralName}}, err := storage.LoadAll{{.StorageName}}s()
+	{{camelCase .PluralName}}, err := storage.LoadAll{{.StorageName}}s(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to load {{.PluralName}}: %w", err))
 		return
@@ -103,7 +103,7 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 {{end}}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(uid)
+	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -162,7 +162,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Set initial status
 
 	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
-	if err := storage.Save{{.StorageName}}({{camelCase .Name}}); err != nil {
+	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
@@ -178,7 +178,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(uid)
+	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -208,7 +208,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 
 	{{camelCase .Name}}.Touch()
 
-	if err := storage.Save{{.StorageName}}({{camelCase .Name}}); err != nil {
+	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
@@ -224,7 +224,7 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := storage.Delete{{.StorageName}}(uid); err != nil {
+	if err := storage.Delete{{.StorageName}}(r.Context(), uid); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete {{.Name}}: %w", err))
 		return
 	}
