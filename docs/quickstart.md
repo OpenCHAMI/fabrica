@@ -46,7 +46,7 @@ A simple REST API for managing products with these endpoints:
 ### Install Fabrica CLI
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.5
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest
 ```
 
 Verify installation:

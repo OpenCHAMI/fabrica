@@ -19,7 +19,7 @@ This guide will walk you through creating your first REST API with Fabrica in ab
 Install the Fabrica CLI:
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.5
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest
 ```
 
 Verify installation:
@@ -161,19 +161,13 @@ Your API is now running at `http://localhost:8080`!
 curl -X POST http://localhost:8080/books \
   -H "Content-Type: application/json" \
   -d '{
-    "apiVersion": "v1",
-    "kind": "Book",
-    "metadata": {
-      "name": "golang-guide"
-    },
-    "spec": {
-      "title": "The Go Programming Language",
-      "author": "Alan Donovan",
-      "isbn": "978-0134190440",
-      "price": 44.99,
-      "inStock": true,
-      "categories": ["programming", "go"]
-    }
+    "name": "golang-guide",
+    "title": "The Go Programming Language",
+    "author": "Alan Donovan",
+    "isbn": "978-0134190440",
+    "price": 44.99,
+    "inStock": true,
+    "categories": ["programming", "go"]
   }'
 ```
 
@@ -216,20 +210,13 @@ curl http://localhost:8080/books/boo-abc123def456
 curl -X PUT http://localhost:8080/books/boo-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "apiVersion": "v1",
-    "kind": "Book",
-    "metadata": {
-      "name": "golang-guide",
-      "uid": "boo-abc123def456"
-    },
-    "spec": {
-      "title": "The Go Programming Language",
-      "author": "Alan Donovan",
-      "isbn": "978-0134190440",
-      "price": 39.99,
-      "inStock": false,
-      "categories": ["programming", "go"]
-    }
+    "name": "golang-guide",
+    "title": "The Go Programming Language",
+    "author": "Alan Donovan",
+    "isbn": "978-0134190440",
+    "price": 39.99,
+    "inStock": false,
+    "categories": ["programming", "go"]
   }'
 ```
 
@@ -381,7 +368,7 @@ type MyResource struct {
 
 ### Error: "failed to read embedded template"
 
-**Fix:** Update fabrica: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.5`
+**Fix:** Update fabrica: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest`
 
 ## Further Reading
 

@@ -38,7 +38,7 @@ $ fabrica generate
 ### Install
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.5
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest
 ```
 
 ### Create Your First API
@@ -100,14 +100,9 @@ DELETE /products/{id}  # Delete
 curl -X POST http://localhost:8080/products \
   -H "Content-Type: application/json" \
   -d '{
-    "apiVersion": "v1",
-    "kind": "Product",
-    "metadata": {"name": "laptop"},
-    "spec": {
-      "name": "MacBook Pro",
-      "price": 1999.99,
-      "stock": 42
-    }
+    "name": "laptop",
+    "price": 1999.99,
+    "stock": 42
   }'
 ```
 

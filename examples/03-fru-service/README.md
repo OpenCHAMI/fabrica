@@ -306,20 +306,20 @@ go build -o fru-cli ./cmd/client
 curl -X POST http://localhost:8080/frus \
   -H "Content-Type: application/json" \
   -d '{
-  "spec": {
-    "fruType": "CPU",
-    "serialNumber": "CPU12345",
-    "partNumber": "XEON-5678",
-    "manufacturer": "Intel",
-    "model": "Xeon Gold 6248R",
-    "location": {
-      "rack": "R42",
-      "chassis": "C1",
-      "slot": "U10",
-      "socket": "CPU0"
-    },
-    "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
-  }'
+  "name": "cpu-001",
+  "fruType": "CPU",
+  "serialNumber": "CPU12345",
+  "partNumber": "XEON-5678",
+  "manufacturer": "Intel",
+  "model": "Xeon Gold 6248R",
+  "location": {
+    "rack": "R42",
+    "chassis": "C1",
+    "slot": "U10",
+    "socket": "CPU0"
+  },
+  "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
+}'
 ```
 
 Expected response (201 Created):
@@ -382,28 +382,19 @@ FRU_UID="fru-a1b2c3d4"
 curl -X PUT http://localhost:8080/frus/$FRU_UID \
   -H "Content-Type: application/json" \
   -d '{
-  "spec": {
-    "fruType": "CPU",
-    "serialNumber": "CPU12345",
-    "partNumber": "XEON-5678",
-    "manufacturer": "Intel",
-    "model": "Xeon Gold 6248R",
-    "location": {
-      "rack": "R42",
-      "chassis": "C1",
-      "slot": "U10",
-      "socket": "CPU0"
-    },
-    "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
+  "name": "cpu-001",
+  "fruType": "CPU",
+  "serialNumber": "CPU12345",
+  "partNumber": "XEON-5678",
+  "manufacturer": "Intel",
+  "model": "Xeon Gold 6248R",
+  "location": {
+    "rack": "R42",
+    "chassis": "C1",
+    "slot": "U10",
+    "socket": "CPU0"
   },
-  "status": {
-    "health": "Warning",
-    "state": "Disabled",
-    "functional": "Disabled",
-    "lastScanned": "2025-10-10T12:10:00Z",
-    "temperature": 45.5,
-    "errors": ["High temperature detected"]
-  }
+  "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
 }'
 ```
 
