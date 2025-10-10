@@ -92,3 +92,8 @@ func (f *FRU) GetName() string {
 func (f *FRU) GetUID() string {
 	return f.Metadata.UID
 }
+
+func init() {
+	// Register resource type prefix for storage
+	resource.RegisterResourcePrefix("FRU", "fru")
+}

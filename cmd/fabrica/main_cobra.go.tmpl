@@ -26,11 +26,12 @@ import (
 	// TODO: Uncomment after running 'fabrica generate --storage'
 	// "{{.ModulePath}}/internal/storage/ent"
 	// "{{.ModulePath}}/internal/storage/ent/migrate"
+
 	{{if eq .DBDriver "postgres"}}
 	_ "github.com/lib/pq"
 	{{else if eq .DBDriver "mysql"}}
 	_ "github.com/go-sql-driver/mysql"
-	{{else if eq .DBDriver "sqlite"}}
+	{{else if or (eq .DBDriver "sqlite") (eq .DBDriver "sqlite3")}}
 	_ "github.com/mattn/go-sqlite3"
 	{{end}}
 	{{end}}
