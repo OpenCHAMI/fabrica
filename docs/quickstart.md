@@ -1,16 +1,6 @@
 <!--
 Copyright © 2025 OpenCHAMI a Series of ### Install Fabrica
-
-```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.5
-```
-
-Verify installation:
-
-```bash
-fabrica version
-# Output: fabrica version v0.2.4 (or similar)
-``` LLC
+Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 
 SPDX-License-Identifier: MIT
 -->

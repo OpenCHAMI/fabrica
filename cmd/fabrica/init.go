@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -31,6 +32,12 @@ type initOptions struct {
 	withLegacyAPI bool // Enable legacy API compatibility
 	withMetrics   bool // Enable metrics/monitoring
 	withVersion   bool // Enable version command
+
+	// New feature flags for core features
+	validationMode  string // strict, warn, disabled
+	withEvents      bool   // Enable CloudEvents support
+	eventBusType    string // memory, nats, kafka
+	versionStrategy string // header, url, both
 
 	// Storage options
 	storageType string // file, ent
@@ -54,10 +61,13 @@ type templateData struct {
 
 func newInitCommand() *cobra.Command {
 	opts := &initOptions{
-		withStorage: true,     // Default to enabling storage
-		withVersion: true,     // Default to enabling version command
-		storageType: "file",   // Default to file storage
-		dbDriver:    "sqlite", // Default database
+		withStorage:     true,     // Default to enabling storage
+		withVersion:     true,     // Default to enabling version command
+		storageType:     "file",   // Default to file storage
+		dbDriver:        "sqlite", // Default database
+		validationMode:  "strict", // Default validation mode
+		eventBusType:    "memory", // Default event bus
+		versionStrategy: "header", // Default version strategy
 	}
 
 	cmd := &cobra.Command{
@@ -108,6 +118,12 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().BoolVar(&opts.withLegacyAPI, "legacy-api", false, "Enable legacy API compatibility")
 	cmd.Flags().BoolVar(&opts.withMetrics, "metrics", false, "Enable Prometheus metrics")
 	cmd.Flags().BoolVar(&opts.withVersion, "version", true, "Enable version command")
+
+	// Core feature configuration
+	cmd.Flags().StringVar(&opts.validationMode, "validation-mode", "strict", "Validation mode: strict, warn, or disabled")
+	cmd.Flags().BoolVar(&opts.withEvents, "events", false, "Enable CloudEvents support")
+	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory, nats, or kafka")
+	cmd.Flags().StringVar(&opts.versionStrategy, "version-strategy", "header", "API versioning strategy: header, url, or both")
 
 	// Storage options
 	cmd.Flags().StringVar(&opts.storageType, "storage-type", "file", "Storage backend: file or ent")
@@ -326,7 +342,6 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		"internal/storage",
 	}
 
-
 	for _, dir := range dirs {
 		path := filepath.Join(targetDir, dir)
 		if err := os.MkdirAll(path, 0755); err != nil {
@@ -518,30 +533,78 @@ func generateFeaturesText(data templateData) string {
 
 // createFabricaConfig creates a .fabrica.yaml configuration file to preserve project settings
 func createFabricaConfig(targetDir string, opts *initOptions) error {
-	configContent := fmt.Sprintf(`# Fabrica project configuration
-# This file preserves the settings used during 'fabrica init'
+	// Extract project name from module path or target directory
+	projectName := filepath.Base(targetDir)
+	if targetDir == "." {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %w", err)
+		}
+		projectName = filepath.Base(cwd)
+	}
 
-project:
-  module_path: %s
-  description: %s
+	// Build configuration from options
+	config := &FabricaConfig{
+		Project: ProjectConfig{
+			Name:        projectName,
+			Module:      opts.modulePath,
+			Description: opts.description,
+			Created:     time.Now(),
+		},
+		Features: FeaturesConfig{
+			Validation: ValidationConfig{
+				Enabled: opts.validationMode != "disabled",
+				Mode:    opts.validationMode,
+			},
+			Events: EventsConfig{
+				Enabled: opts.withEvents,
+				BusType: opts.eventBusType,
+			},
+			Conditional: ConditionalConfig{
+				Enabled:       true, // Core feature always enabled
+				ETagAlgorithm: "sha256",
+			},
+			Versioning: VersioningConfig{
+				Enabled:        true, // Core feature always enabled
+				Strategy:       opts.versionStrategy,
+				DefaultVersion: "v1",
+			},
+			Auth: AuthConfig{
+				Enabled: opts.withAuth,
+			},
+			Storage: StorageConfig{
+				Enabled:  opts.withStorage,
+				Type:     opts.storageType,
+				DBDriver: opts.dbDriver,
+			},
+			Metrics: MetricsConfig{
+				Enabled: opts.withMetrics,
+			},
+			HSM: HSMConfig{
+				Enabled: opts.withHSM,
+			},
+			LegacyAPI: LegacyAPIConfig{
+				Enabled: opts.withLegacyAPI,
+			},
+		},
+		Generation: GenerationConfig{
+			Handlers:   true,
+			Storage:    opts.withStorage,
+			Client:     true,
+			OpenAPI:    true,
+			Events:     opts.withEvents,
+			Middleware: true, // Core features always include middleware
+		},
+	}
 
-features:
-  auth: %t
-  storage: %t
-  hsm: %t
-  legacy_api: %t
-  metrics: %t
-  version: %t
+	// Save configuration
+	if err := SaveConfig(targetDir, config); err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
 
-storage:
-  type: %s      # file, ent
-  db_driver: %s # postgres, mysql, sqlite (for ent)
-`, opts.modulePath, opts.description, opts.withAuth, opts.withStorage,
-		opts.withHSM, opts.withLegacyAPI, opts.withMetrics, opts.withVersion,
-		opts.storageType, opts.dbDriver)
+	fmt.Printf("  ├─ Created %s\n", ConfigFileName)
 
-	configPath := filepath.Join(targetDir, ".fabrica.yaml")
-	return os.WriteFile(configPath, []byte(configContent), 0644)
+	return nil
 }
 
 // checkExistingProject checks if the directory already contains a Fabrica project

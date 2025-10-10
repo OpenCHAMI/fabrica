@@ -1,9 +1,7 @@
+# Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-FileCopyrightText: Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 #
 # SPDX-License-Identifier: MIT
-#
-# Dockerfile for Fabrica
-# Used by GoReleaser - binary is pre-built
 
 FROM alpine:latest
 

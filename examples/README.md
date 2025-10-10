@@ -37,7 +37,7 @@ Add production features:
 
 **What you'll build:** A secure device inventory with JWT authentication and persistent storage.
 
-### 3. [Workflows and Reconciliation](03-workflows/) - Advanced Patterns 🔄
+### 3. [Workflows and Reconciliation](03-fru-service/) - Advanced Patterns 🔄
 **Time: 30 minutes**
 
 Master declarative patterns:
@@ -47,7 +47,7 @@ Master declarative patterns:
 - Handling async operations
 - Event-driven reconciliation
 
-**What you'll build:** A device provisioning system with automated lifecycle management.
+**What you'll build:** A tracking system for field replacable units.
 
 ## Quick Reference
 
@@ -71,11 +71,11 @@ Master declarative patterns:
 Each example demonstrates the complete workflow from initialization to running server:
 
 ```bash
-# Example 1: Basic CRUD
-fabrica init device-inventory
-cd device-inventory
-fabrica add resource Device
-# Edit pkg/resources/device/device.go
+#
+cd examples/03-fru-service
+fabrica init . --events --reconcile
+fabrica add resource FRU
+# Edit pkg/resources/fru/fru.go
 fabrica generate
 # Uncomment lines in cmd/server/main.go
 go run cmd/server/main.go

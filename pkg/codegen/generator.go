@@ -95,6 +95,30 @@ type ResourceMetadata struct {
 	APIGroupVersion string          // API group version (e.g., "v2")
 }
 
+// GeneratorConfig holds configuration values for code generation
+// These values are passed to templates and affect what code is generated
+type GeneratorConfig struct {
+	// Validation configuration
+	ValidationEnabled bool
+	ValidationMode    string // strict, warn, disabled
+
+	// Conditional requests configuration
+	ConditionalEnabled bool
+	ETagAlgorithm      string // sha256, md5
+
+	// Versioning configuration
+	VersioningEnabled bool
+	VersionStrategy   string // header, url, both
+
+	// Events configuration
+	EventsEnabled bool
+	EventBusType  string // memory, nats, kafka
+
+	// Storage configuration
+	StorageType string // file, ent
+	DBDriver    string // postgres, mysql, sqlite
+}
+
 // Generator handles code generation for resources
 type Generator struct {
 	OutputDir   string
@@ -102,9 +126,10 @@ type Generator struct {
 	ModulePath  string
 	Resources   []ResourceMetadata
 	Templates   map[string]*template.Template
-	StorageType string // "file" or "ent" - type of storage backend to generate
-	DBDriver    string // "postgres", "mysql", "sqlite" - database driver for Ent
-	Verbose     bool   // Enable verbose output showing files being generated
+	StorageType string           // "file" or "ent" - type of storage backend to generate
+	DBDriver    string           // "postgres", "mysql", "sqlite" - database driver for Ent
+	Verbose     bool             // Enable verbose output showing files being generated
+	Config      *GeneratorConfig // Configuration for generation
 }
 
 // NewGenerator creates a new code generator
@@ -117,6 +142,18 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 		Templates:   make(map[string]*template.Template),
 		StorageType: "file", // Default to file storage
 		DBDriver:    "sqlite",
+		Config: &GeneratorConfig{
+			ValidationEnabled:  true,
+			ValidationMode:     "strict",
+			ConditionalEnabled: true,
+			ETagAlgorithm:      "sha256",
+			VersioningEnabled:  true,
+			VersionStrategy:    "header",
+			EventsEnabled:      false,
+			EventBusType:       "memory",
+			StorageType:        "file",
+			DBDriver:           "sqlite",
+		},
 	}
 }
 
@@ -377,6 +414,9 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateHandlers(); err != nil {
 			return err
 		}
+		if err := g.GenerateMiddleware(); err != nil {
+			return err
+		}
 		if err := g.GenerateRoutes(); err != nil {
 			return err
 		}
@@ -609,6 +649,11 @@ func (g *Generator) LoadTemplates() error {
 		"casbinModel":    "policies/model.conf.tmpl",
 		"casbinPolicy":   "policies/policy.csv.tmpl",
 		"policyHandlers": "policy_handlers.go.tmpl",
+		// Middleware templates
+		"middlewareValidation":  "middleware-validation.go.tmpl",
+		"middlewareConditional": "middleware-conditional.go.tmpl",
+		"middlewareVersioning":  "middleware-versioning.go.tmpl",
+		"eventBus":              "event-bus.go.tmpl",
 	}
 
 	g.Templates = make(map[string]*template.Template)
@@ -662,6 +707,86 @@ func (g *Generator) GenerateHandlers() error {
 		fmt.Printf("  ✓ Generated %s\n", filename)
 	}
 
+	return nil
+}
+
+// GenerateMiddleware generates middleware components based on configuration
+func (g *Generator) GenerateMiddleware() error {
+	fmt.Printf("⚙️  Generating middleware...\n")
+
+	// Middleware directory
+	middlewareDir := filepath.Join("internal", "middleware")
+	if err := os.MkdirAll(middlewareDir, 0755); err != nil {
+		return fmt.Errorf("failed to create middleware directory: %w", err)
+	}
+
+	// Data structure with config values
+	data := struct {
+		ValidationMode    string
+		ValidationEnabled bool
+		ETagAlgorithm     string
+		VersionStrategy   string
+		EventBusType      string
+		EventsEnabled     bool
+	}{
+		ValidationMode:    g.Config.ValidationMode,
+		ValidationEnabled: g.Config.ValidationEnabled,
+		ETagAlgorithm:     g.Config.ETagAlgorithm,
+		VersionStrategy:   g.Config.VersionStrategy,
+		EventBusType:      g.Config.EventBusType,
+		EventsEnabled:     g.Config.EventsEnabled,
+	}
+
+	// Generate validation middleware if enabled
+	if g.Config.ValidationEnabled {
+		if err := g.generateMiddlewareFile("middlewareValidation", "validation_middleware_generated.go", middlewareDir, data); err != nil {
+			return err
+		}
+	}
+
+	// Generate conditional middleware if enabled
+	if g.Config.ConditionalEnabled {
+		if err := g.generateMiddlewareFile("middlewareConditional", "conditional_middleware_generated.go", middlewareDir, data); err != nil {
+			return err
+		}
+	}
+
+	// Generate versioning middleware if enabled
+	if g.Config.VersioningEnabled {
+		if err := g.generateMiddlewareFile("middlewareVersioning", "versioning_middleware_generated.go", middlewareDir, data); err != nil {
+			return err
+		}
+	}
+
+	// Generate event bus if enabled
+	if g.Config.EventsEnabled {
+		if err := g.generateMiddlewareFile("eventBus", "event_bus_generated.go", middlewareDir, data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// generateMiddlewareFile generates a single middleware file from a template
+func (g *Generator) generateMiddlewareFile(templateName, filename, outputDir string, data interface{}) error {
+	var buf bytes.Buffer
+
+	if err := g.Templates[templateName].Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute %s template: %w", templateName, err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated %s code: %w", templateName, err)
+	}
+
+	fullPath := filepath.Join(outputDir, filename)
+	if err := os.WriteFile(fullPath, formatted, 0644); err != nil {
+		return fmt.Errorf("failed to write %s file: %w", templateName, err)
+	}
+
+	fmt.Printf("  ✓ Generated %s\n", fullPath)
 	return nil
 }
 

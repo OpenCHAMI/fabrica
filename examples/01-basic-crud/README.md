@@ -19,18 +19,48 @@ A device inventory API with full CRUD operations for managing network devices. T
 ### Step 1: Create Project Structure
 
 ```bash
+# Basic initialization with defaults
 fabrica init device-inventory
 cd device-inventory
+
+# Or customize during init with flags:
+fabrica init device-inventory \
+  --validation-mode warn \
+  --events \
+  --events-bus nats \
+  --version-strategy both
 ```
+
+**Available init flags:**
+- `--validation-mode`: Set validation mode (strict/warn/disabled, default: strict)
+- `--events`: Enable CloudEvents support
+- `--events-bus`: Event bus type (memory/nats/kafka, default: memory)
+- `--version-strategy`: API versioning strategy (header/url/both, default: header)
+- `--storage`: Storage backend (file/ent, default: file)
+- `--db-driver`: Database driver for ent storage (sqlite/postgres/mysql)
+- `--module`: Go module path (default: github.com/user/project-name)
 
 **What `fabrica init` creates:**
 ```
 device-inventory/
-├── cmd/server/main.go     # Server with commented storage/routes
-├── pkg/resources/         # Empty (for your resources)
+├── .fabrica.yaml           # Configuration file (NEW!)
+├── cmd/server/main.go      # Server with commented storage/routes
+├── pkg/resources/          # Empty (for your resources)
 ├── go.mod
 └── docs/
 ```
+
+The generated `.fabrica.yaml` includes:
+- Project metadata (name, module, creation date)
+- Feature configuration (validation mode, versioning strategy, events)
+- Storage settings (file/ent, database driver)
+- Generation options (package name, output directory)
+
+**Default configuration:**
+- ✅ Validation: strict mode (returns 400 on validation errors)
+- ✅ Conditional requests: ETags with sha256 algorithm
+- ✅ Versioning: header-based (`Accept: application/vnd.app.v1+json`)
+- ❌ Events: disabled by default (can enable with `--events`)
 
 The generated `main.go` includes:
 - Chi router setup
@@ -114,12 +144,23 @@ device-inventory/
 │   ├── models_generated.go             # Request/response models
 │   ├── routes_generated.go             # Route registration
 │   └── openapi_generated.go            # OpenAPI spec
-├── internal/storage/
-│   └── storage_generated.go            # File-based storage
+├── internal/
+│   ├── middleware/                     # NEW! Core middleware
+│   │   ├── validation_middleware_generated.go    # Request validation
+│   │   ├── conditional_middleware_generated.go   # ETags/If-Match
+│   │   └── versioning_middleware_generated.go    # API versioning
+│   └── storage/
+│       └── storage_generated.go        # File-based storage
 └── pkg/resources/
     ├── device/device.go (your resource)
     └── register_generated.go            # Resource registry
 ```
+
+The generator reads `.fabrica.yaml` and generates middleware based on your configuration:
+- Validation middleware with your chosen mode (strict/warn/disabled)
+- Conditional requests with ETag generation
+- API versioning with your chosen strategy (header/url/both)
+- Event bus setup if enabled
 
 ### Step 5: Uncomment Storage & Routes in main.go
 
@@ -151,6 +192,47 @@ func main() {
     log.Fatal(http.ListenAndServe(":8080", r))
 }
 ```
+
+### Step 5a: (Optional) Configure Features
+
+Edit `.fabrica.yaml` to customize behavior:
+
+```yaml
+project:
+  name: device-inventory
+  module: github.com/user/device-inventory
+
+features:
+  validation:
+    enabled: true
+    mode: strict  # Options: strict, warn, disabled
+
+  conditional:
+    enabled: true
+    etag_algorithm: sha256  # Options: sha256, md5
+
+  versioning:
+    enabled: true
+    strategy: header  # Options: header, url, both
+
+  events:
+    enabled: false  # Set to true to enable CloudEvents
+    bus_type: memory  # Options: memory, nats, kafka
+
+  storage:
+    type: file  # Options: file, ent
+    db_driver: sqlite  # Options: sqlite, postgres, mysql
+```
+
+**Validation modes:**
+- `strict`: Returns 400 Bad Request on validation errors (default)
+- `warn`: Logs warnings but allows requests through
+- `disabled`: No validation performed
+
+**Version strategies:**
+- `header`: Uses Accept header (e.g., `Accept: application/vnd.myapp.v1+json`)
+- `url`: Uses URL prefix (e.g., `/v1/devices`)
+- `both`: Supports both methods (header takes precedence)
 
 ### Step 6: Build Server and Client
 
@@ -251,6 +333,38 @@ curl http://localhost:8080/devices
 
 ## Understanding the Generated Code
 
+### Middleware (`internal/middleware/`)
+
+The generator creates middleware based on your `.fabrica.yaml` configuration:
+
+**Validation Middleware** (`validation_middleware_generated.go`):
+- Validates request payloads using struct tags
+- Mode-aware behavior:
+  - `strict`: Returns 400 Bad Request with validation details
+  - `warn`: Logs warnings but continues processing
+  - `disabled`: Skips validation entirely
+- Integrates with `pkg/validation` package
+
+**Conditional Middleware** (`conditional_middleware_generated.go`):
+- Generates ETags for responses (sha256 or md5)
+- Handles `If-Match` headers for conditional updates (returns 412 on mismatch)
+- Handles `If-None-Match` headers for conditional GET (returns 304 if unchanged)
+- Sets `Cache-Control` headers
+- Prevents lost update problem with optimistic locking
+
+**Versioning Middleware** (`versioning_middleware_generated.go`):
+- Negotiates API version from request
+- Supports header-based (`Accept: application/vnd.myapp.v1+json`)
+- Supports URL-based (`/v1/devices`)
+- Returns 406 Not Acceptable for unsupported versions
+- Sets `X-API-Version` response header
+
+**Event Bus** (`event_bus_generated.go`) - if events enabled:
+- Initializes CloudEvents publisher
+- Provides `PublishEvent()` and `PublishResourceEvent()` helpers
+- Supports memory, NATS, or Kafka backends
+- Publishes lifecycle events (created, updated, deleted)
+
 ### Client CLI (`cmd/client/main.go`)
 
 The generated client provides a production-ready CLI tool:
@@ -332,12 +446,17 @@ func RegisterGeneratedRoutes(r chi.Router) {
 
 | Component | Generated? | Notes |
 |-----------|-----------|-------|
-| Project structure | ✅ `fabrica init` | Creates skeleton |
+| Project structure | ✅ `fabrica init` | Creates skeleton + `.fabrica.yaml` |
+| Configuration file | ✅ `fabrica init` | `.fabrica.yaml` with defaults |
 | Resource definition | ⚠️ Partial | `fabrica add resource` creates template, you customize |
 | Registration file | ✅ `fabrica generate` | Auto-discovers resources |
 | HTTP handlers | ✅ `fabrica generate` | Full CRUD operations |
+| Validation middleware | ✅ `fabrica generate` | Mode-aware validation from config |
+| Conditional middleware | ✅ `fabrica generate` | ETags, If-Match, cache control |
+| Versioning middleware | ✅ `fabrica generate` | API version negotiation |
+| Event bus | ⚠️ Conditional | Only if `events.enabled: true` in config |
 | Request/response models | ✅ `fabrica generate` | Type-safe models |
-| Storage backend | ✅ `fabrica generate` | File-based implementation |
+| Storage backend | ✅ `fabrica generate` | File or Ent based on config |
 | Route registration | ✅ `fabrica generate` | Chi router setup |
 | OpenAPI spec | ✅ `fabrica generate` | Full API documentation |
 | Go client library | ✅ `fabrica generate --client` | Type-safe HTTP client |
@@ -347,34 +466,42 @@ func RegisterGeneratedRoutes(r chi.Router) {
 ## Complete Workflow Summary
 
 ```bash
-# 1. Initialize project
+# 1. Initialize project (creates .fabrica.yaml with defaults)
 fabrica init device-inventory
 cd device-inventory
 
-# 2. Add resource
+# 2. (Optional) Customize configuration
+vim .fabrica.yaml  # Edit validation mode, versioning strategy, etc.
+
+# 3. Add resource
 fabrica add resource Device
 
-# 3. Customize resource (edit pkg/resources/device/device.go)
+# 4. Customize resource (edit pkg/resources/device/device.go)
 #    - Remove Name from DeviceSpec
 #    - Add your domain fields
 
-# 4. Generate everything
+# 5. Generate everything (reads .fabrica.yaml for config)
 fabrica generate
 
-# 5. Uncomment in cmd/server/main.go:
+# 6. Uncomment in cmd/server/main.go:
 #    - import "github.com/user/device-inventory/internal/storage"
 #    - storage.InitFileBackend("./data")
 #    - RegisterGeneratedRoutes(r)
 
-# 6. Build server and client
+# 7. Build server and client
 go mod tidy
 go build -o server ./cmd/server
 fabrica generate --client
 go build -o client ./cmd/client
 
-# 7. Run and test
+# 8. Run and test
 ./server  # In one terminal
 ./client device list  # In another terminal
+
+# 9. (Optional) Modify .fabrica.yaml and regenerate
+vim .fabrica.yaml  # Change validation mode, enable events, etc.
+fabrica generate   # Regenerate with new config
+go build ./cmd/server
 ```
 
 ## Key Features
@@ -382,10 +509,85 @@ go build -o client ./cmd/client
 ✅ **Zero boilerplate** - Generate complete CRUD in seconds
 ✅ **Type-safe** - Compile-time validation of all operations
 ✅ **Kubernetes-style** - Resources with APIVersion, Kind, Metadata, Spec, Status
-✅ **Validation** - Struct tags + custom validation hooks
-✅ **Storage abstraction** - File-based by default, easily extended
+✅ **Configuration-driven** - `.fabrica.yaml` controls all feature generation
+✅ **Validation middleware** - Configurable strict/warn/disabled modes
+✅ **Conditional requests** - ETags, If-Match, If-None-Match, 304 Not Modified
+✅ **API versioning** - Header, URL, or both strategies supported
+✅ **Event support** - Optional CloudEvents integration (memory/NATS/Kafka)
+✅ **Storage abstraction** - File-based or Ent (database) storage
 ✅ **OpenAPI** - Auto-generated API documentation
 ✅ **Client SDK** - Generated Go client library and CLI tool with helpful examples
+
+## Advanced Configuration
+
+### Changing Validation Mode
+
+To switch from strict to warn mode (useful for gradual validation rollout):
+
+```yaml
+# .fabrica.yaml
+features:
+  validation:
+    enabled: true
+    mode: warn  # Changed from strict
+```
+
+Then regenerate:
+```bash
+fabrica generate
+go build ./cmd/server
+```
+
+The server will now log validation errors but continue processing requests.
+
+### Enabling Events
+
+To add event publishing to your API:
+
+```yaml
+# .fabrica.yaml
+features:
+  events:
+    enabled: true
+    bus_type: memory  # Start with memory, upgrade to nats/kafka later
+```
+
+Regenerate and the event bus will be initialized. You can publish events from handlers:
+
+```go
+import "github.com/user/device-inventory/internal/middleware"
+
+// In your handler
+middleware.PublishResourceEvent(ctx, "created", "Device", device.UID, device)
+```
+
+### Switching to URL-based Versioning
+
+To use `/v1/devices` style URLs instead of Accept headers:
+
+```yaml
+# .fabrica.yaml
+features:
+  versioning:
+    enabled: true
+    strategy: url  # Changed from header
+```
+
+The generated middleware will now parse version from URL path.
+
+### Upgrading to Database Storage
+
+To switch from file storage to Ent with PostgreSQL:
+
+```yaml
+# .fabrica.yaml
+features:
+  storage:
+    type: ent
+    db_driver: postgres
+```
+
+Then regenerate and update your connection string in `main.go`.
 
 ## Common Issues
 
@@ -417,6 +619,27 @@ type DeviceSpec struct {
 
 **Cause:** Old template bug (fixed in current version)
 **Fix:** Rebuild fabrica CLI with latest templates
+
+### Issue: Middleware not generated
+
+**Cause:** `.fabrica.yaml` missing or invalid
+**Fix:** Ensure `.fabrica.yaml` exists with proper structure. Run `fabrica init` again if needed:
+
+```bash
+# Reinitialize config only (won't overwrite existing code)
+fabrica init . --module github.com/user/device-inventory
+```
+
+### Issue: Changes to `.fabrica.yaml` not reflected
+
+**Cause:** Need to regenerate code after config changes
+**Fix:** Always run `fabrica generate` after editing `.fabrica.yaml`:
+
+```bash
+vim .fabrica.yaml  # Edit configuration
+fabrica generate   # Regenerate with new config
+go build ./cmd/server
+```
 
 ## Next Steps
 

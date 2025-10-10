@@ -287,7 +287,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		// if err != nil {
 		// 	log.Fatalf("Failed to create Casbin enforcer: %v", err)
 		// }
-		
+
 		// Apply auth to protected routes
 		r.Route("/api", func(r chi.Router) {
 			// r.Use(authMiddleware)
@@ -354,7 +354,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		{{if .WithAuth}}
 		log.Printf("Authentication: %s", map[bool]string{true: "enabled", false: "disabled"}[config.AuthEnabled])
 		{{end}}
-		
+
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)
 		}
@@ -389,10 +389,10 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 func startMetricsServer() {
 	metricsAddr := fmt.Sprintf(":%d", config.MetricsPort)
 	log.Printf("Metrics server starting on %s", metricsAddr)
-	
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", metricsHandler)
-	
+
 	if err := http.ListenAndServe(metricsAddr, mux); err != nil {
 		log.Printf("Metrics server error: %v", err)
 	}

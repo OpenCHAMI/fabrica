@@ -68,13 +68,16 @@ func ensureBackend() {
 
 // LoadAll{{.StorageName}}s retrieves all {{.Name}} resources.
 //
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//
 // Returns:
 //   - []{{.TypeName}}: Slice of {{.Name}} resources
 //   - error: Any error that occurred during loading
-func LoadAll{{.StorageName}}s() ([]{{.TypeName}}, error) {
+func LoadAll{{.StorageName}}s(ctx context.Context) ([]{{.TypeName}}, error) {
 	ensureBackend()
 
-	rawData, err := Backend.LoadAll(context.Background(), "{{.Name}}")
+	rawData, err := Backend.LoadAll(ctx, "{{.Name}}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load all {{.PluralName}}: %w", err)
 	}
@@ -94,15 +97,16 @@ func LoadAll{{.StorageName}}s() ([]{{.TypeName}}, error) {
 // Load{{.StorageName}} retrieves a single {{.Name}} resource by UID.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeouts
 //   - uid: Unique identifier of the {{.Name}} resource
 //
 // Returns:
 //   - {{.TypeName}}: The {{.Name}} resource
 //   - error: fabricaStorage.ErrNotFound if resource doesn't exist, other errors for failures
-func Load{{.StorageName}}(uid string) ({{.TypeName}}, error) {
+func Load{{.StorageName}}(ctx context.Context, uid string) ({{.TypeName}}, error) {
 	ensureBackend()
 
-	rawData, err := Backend.Load(context.Background(), "{{.Name}}", uid)
+	rawData, err := Backend.Load(ctx, "{{.Name}}", uid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
 	}
@@ -118,11 +122,12 @@ func Load{{.StorageName}}(uid string) ({{.TypeName}}, error) {
 // Save{{.StorageName}} stores a {{.Name}} resource.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeouts
 //   - {{camelCase .Name}}: The {{.Name}} resource to save
 //
 // Returns:
 //   - error: Any error that occurred during saving
-func Save{{.StorageName}}({{camelCase .Name}} {{.TypeName}}) error {
+func Save{{.StorageName}}(ctx context.Context, {{camelCase .Name}} {{.TypeName}}) error {
 	ensureBackend()
 
 	data, err := json.Marshal({{camelCase .Name}})
@@ -130,7 +135,7 @@ func Save{{.StorageName}}({{camelCase .Name}} {{.TypeName}}) error {
 		return fmt.Errorf("failed to marshal {{.Name}}: %w", err)
 	}
 
-	if err := Backend.Save(context.Background(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, data); err != nil {
+	if err := Backend.Save(ctx, "{{.Name}}", {{camelCase .Name}}.Metadata.UID, data); err != nil {
 		return fmt.Errorf("failed to save {{.Name}}: %w", err)
 	}
 
@@ -140,15 +145,16 @@ func Save{{.StorageName}}({{camelCase .Name}} {{.TypeName}}) error {
 // Update{{.StorageName}} updates an existing {{.Name}} resource.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeouts
 //   - {{camelCase .Name}}: The {{.Name}} resource to update
 //
 // Returns:
 //   - error: fabricaStorage.ErrNotFound if resource doesn't exist, other errors for failures
-func Update{{.StorageName}}({{camelCase .Name}} {{.TypeName}}) error {
+func Update{{.StorageName}}(ctx context.Context, {{camelCase .Name}} {{.TypeName}}) error {
 	ensureBackend()
 
 	// Check if resource exists first
-	exists, err := Backend.Exists(context.Background(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID)
+	exists, err := Backend.Exists(ctx, "{{.Name}}", {{camelCase .Name}}.Metadata.UID)
 	if err != nil {
 		return fmt.Errorf("failed to check {{.Name}} existence: %w", err)
 	}
@@ -161,7 +167,7 @@ func Update{{.StorageName}}({{camelCase .Name}} {{.TypeName}}) error {
 		return fmt.Errorf("failed to marshal {{.Name}}: %w", err)
 	}
 
-	if err := Backend.Save(context.Background(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, data); err != nil {
+	if err := Backend.Save(ctx, "{{.Name}}", {{camelCase .Name}}.Metadata.UID, data); err != nil {
 		return fmt.Errorf("failed to update {{.Name}}: %w", err)
 	}
 
@@ -171,14 +177,15 @@ func Update{{.StorageName}}({{camelCase .Name}} {{.TypeName}}) error {
 // Delete{{.StorageName}} removes a {{.Name}} resource by UID.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeouts
 //   - uid: Unique identifier of the {{.Name}} resource
 //
 // Returns:
 //   - error: fabricaStorage.ErrNotFound if resource doesn't exist, other errors for failures
-func Delete{{.StorageName}}(uid string) error {
+func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 	ensureBackend()
 
-	if err := Backend.Delete(context.Background(), "{{.Name}}", uid); err != nil {
+	if err := Backend.Delete(ctx, "{{.Name}}", uid); err != nil {
 		return fmt.Errorf("failed to delete {{.Name}} %s: %w", uid, err)
 	}
 
@@ -188,15 +195,16 @@ func Delete{{.StorageName}}(uid string) error {
 // Exists{{.StorageName}} checks if a {{.Name}} resource exists.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeouts
 //   - uid: Unique identifier of the {{.Name}} resource
 //
 // Returns:
 //   - bool: true if the resource exists
 //   - error: Any error that occurred during the check
-func Exists{{.StorageName}}(uid string) (bool, error) {
+func Exists{{.StorageName}}(ctx context.Context, uid string) (bool, error) {
 	ensureBackend()
 
-	exists, err := Backend.Exists(context.Background(), "{{.Name}}", uid)
+	exists, err := Backend.Exists(ctx, "{{.Name}}", uid)
 	if err != nil {
 		return false, fmt.Errorf("failed to check {{.Name}} existence: %w", err)
 	}
@@ -206,13 +214,16 @@ func Exists{{.StorageName}}(uid string) (bool, error) {
 
 // List{{.StorageName}}UIDs returns UIDs of all {{.Name}} resources.
 //
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//
 // Returns:
 //   - []string: Array of {{.Name}} resource UIDs
 //   - error: Any error that occurred during listing
-func List{{.StorageName}}UIDs() ([]string, error) {
+func List{{.StorageName}}UIDs(ctx context.Context) ([]string, error) {
 	ensureBackend()
 
-	uids, err := Backend.List(context.Background(), "{{.Name}}")
+	uids, err := Backend.List(ctx, "{{.Name}}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list {{.Name}} UIDs: %w", err)
 	}

@@ -17,68 +17,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// FabricaConfig represents the .fabrica.yaml configuration file
-type FabricaConfig struct {
-	Project struct {
-		ModulePath  string `yaml:"module_path"`
-		Description string `yaml:"description"`
-	} `yaml:"project"`
-	Features struct {
-		Auth      bool `yaml:"auth"`
-		Storage   bool `yaml:"storage"`
-		HSM       bool `yaml:"hsm"`
-		LegacyAPI bool `yaml:"legacy_api"`
-		Metrics   bool `yaml:"metrics"`
-		Version   bool `yaml:"version"`
-	} `yaml:"features"`
-	Storage struct {
-		Type     string `yaml:"type"`
-		DBDriver string `yaml:"db_driver"`
-	} `yaml:"storage"`
-}
-
 // readFabricaConfig reads the .fabrica.yaml configuration file
+// Now uses the comprehensive config system from config.go
 func readFabricaConfig() (*FabricaConfig, error) {
-	configPath := ".fabrica.yaml"
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return nil, nil // No config file found, not an error
-	}
-
-	data, err := os.ReadFile(configPath)
+	// Try to load config from current directory
+	config, err := LoadConfig("")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read .fabrica.yaml: %w", err)
+		// If file doesn't exist, return nil without error (optional config)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	var config FabricaConfig
-
-	// Simple parser for our specific YAML format
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "#") || line == "" {
-			continue
-		}
-
-		// Look for storage type
-		if strings.Contains(line, "type:") && strings.Contains(line, "ent") {
-			config.Storage.Type = "ent"
-		} else if strings.Contains(line, "type:") && strings.Contains(line, "file") {
-			config.Storage.Type = "file"
-		}
-
-		// Look for db_driver
-		if strings.Contains(line, "db_driver:") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 1 {
-				driver := strings.TrimSpace(parts[1])
-				driver = strings.Split(driver, "#")[0] // Remove comments
-				driver = strings.TrimSpace(driver)
-				config.Storage.DBDriver = driver
-			}
-		}
-	}
-
-	return &config, nil
+	return config, nil
 }
 
 func newGenerateCommand() *cobra.Command {
@@ -239,7 +191,7 @@ func getModulePath() (string, error) {
 func detectStorageType() string {
 	// First, check .fabrica.yaml configuration
 	if config, err := readFabricaConfig(); err == nil && config != nil {
-		switch config.Storage.Type {
+		switch config.Features.Storage.Type {
 		case "ent":
 			return "ent"
 		case "file":
@@ -338,6 +290,10 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
+			// Always generate middleware when generating handlers
+			generationCalls.WriteString("\tif err := gen.GenerateMiddleware(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate middleware: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
 		}
 
 		if storage {
@@ -410,10 +366,64 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 
 import (
 %s	"log"
+	"os"
 
 	"github.com/alexlovelltroy/fabrica/pkg/codegen"
 	"%s/pkg/resources"
+	"gopkg.in/yaml.v3"
 )
+
+// FabricaConfig structures to load .fabrica.yaml
+type FabricaConfig struct {
+	Features FeaturesConfig `+"`yaml:\"features\"`"+`
+}
+
+type FeaturesConfig struct {
+	Validation  ValidationConfig  `+"`yaml:\"validation\"`"+`
+	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
+	Versioning  VersioningConfig  `+"`yaml:\"versioning\"`"+`
+	Events      EventsConfig      `+"`yaml:\"events\"`"+`
+	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
+}
+
+type ValidationConfig struct {
+	Enabled bool   `+"`yaml:\"enabled\"`"+`
+	Mode    string `+"`yaml:\"mode\"`"+`
+}
+
+type ConditionalConfig struct {
+	Enabled       bool   `+"`yaml:\"enabled\"`"+`
+	ETagAlgorithm string `+"`yaml:\"etag_algorithm\"`"+`
+}
+
+type EventsConfig struct {
+	Enabled bool   `+"`yaml:\"enabled\"`"+`
+	BusType string `+"`yaml:\"bus_type\"`"+`
+}
+
+type VersioningConfig struct {
+	Enabled  bool   `+"`yaml:\"enabled\"`"+`
+	Strategy string `+"`yaml:\"strategy\"`"+`
+}
+
+type StorageConfig struct {
+	Type     string `+"`yaml:\"type\"`"+`
+	DBDriver string `+"`yaml:\"db_driver\"`"+`
+}
+
+func loadConfig() (*FabricaConfig, error) {
+	data, err := os.ReadFile(".fabrica.yaml")
+	if err != nil {
+		return nil, err
+	}
+
+	var config FabricaConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
 
 func main() {
 	gen := codegen.NewGenerator("%s", "%s", "%s")
@@ -423,6 +433,29 @@ func main() {
 	gen.SetStorageType("%s")
 	if "%s" == "ent" {
 		gen.SetDBDriver("sqlite") // Default to sqlite for now
+	}
+
+	// Load .fabrica.yaml and apply configuration to generator
+	if config, err := loadConfig(); err == nil {
+		// Update generator config from .fabrica.yaml
+		gen.Config.ValidationEnabled = config.Features.Validation.Enabled
+		gen.Config.ValidationMode = config.Features.Validation.Mode
+		gen.Config.ConditionalEnabled = config.Features.Conditional.Enabled
+		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
+		gen.Config.VersioningEnabled = config.Features.Versioning.Enabled
+		gen.Config.VersionStrategy = config.Features.Versioning.Strategy
+		gen.Config.EventsEnabled = config.Features.Events.Enabled
+		gen.Config.EventBusType = config.Features.Events.BusType
+
+		// Override storage config from .fabrica.yaml if present
+		if config.Features.Storage.Type != "" {
+			gen.SetStorageType(config.Features.Storage.Type)
+			gen.Config.StorageType = config.Features.Storage.Type
+		}
+		if config.Features.Storage.DBDriver != "" {
+			gen.SetDBDriver(config.Features.Storage.DBDriver)
+			gen.Config.DBDriver = config.Features.Storage.DBDriver
+		}
 	}
 
 	if err := resources.RegisterAllResources(gen); err != nil {
