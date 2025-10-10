@@ -320,6 +320,12 @@ func runInit(projectName string, opts *initOptions) error {
 }
 
 func createProjectStructure(targetDir, projectName string, opts *initOptions) error {
+	// Normalize database driver name (sqlite -> sqlite3 for Go driver compatibility)
+	dbDriver := opts.dbDriver
+	if dbDriver == "sqlite" {
+		dbDriver = "sqlite3"
+	}
+
 	// Template data
 	data := templateData{
 		ProjectName:   projectName,
@@ -332,7 +338,7 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		WithMetrics:   opts.withMetrics,
 		WithVersion:   opts.withVersion,
 		StorageType:   opts.storageType,
-		DBDriver:      opts.dbDriver,
+		DBDriver:      dbDriver,
 	}
 
 	// Create directories
@@ -543,6 +549,12 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 		projectName = filepath.Base(cwd)
 	}
 
+	// Normalize database driver name (sqlite -> sqlite3 for Go driver compatibility)
+	dbDriver := opts.dbDriver
+	if dbDriver == "sqlite" {
+		dbDriver = "sqlite3"
+	}
+
 	// Build configuration from options
 	config := &FabricaConfig{
 		Project: ProjectConfig{
@@ -575,7 +587,7 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 			Storage: StorageConfig{
 				Enabled:  opts.withStorage,
 				Type:     opts.storageType,
-				DBDriver: opts.dbDriver,
+				DBDriver: dbDriver,
 			},
 			Metrics: MetricsConfig{
 				Enabled: opts.withMetrics,

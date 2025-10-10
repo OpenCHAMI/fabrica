@@ -79,7 +79,7 @@ type AuthConfig struct {
 type StorageConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Type     string `yaml:"type"`                // file, ent
-	DBDriver string `yaml:"db_driver,omitempty"` // postgres, mysql, sqlite
+	DBDriver string `yaml:"db_driver,omitempty"` // postgres, mysql, sqlite, sqlite3
 }
 
 // MetricsConfig controls metrics/observability.
@@ -211,9 +211,9 @@ func ValidateConfig(config *FabricaConfig) error {
 
 		// Validate DB driver if using ent
 		if config.Features.Storage.Type == "ent" && config.Features.Storage.DBDriver != "" {
-			validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true}
+			validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true, "sqlite3": true}
 			if !validDrivers[config.Features.Storage.DBDriver] {
-				return fmt.Errorf("invalid storage.db_driver: %s (must be 'postgres', 'mysql', or 'sqlite')",
+				return fmt.Errorf("invalid storage.db_driver: %s (must be 'postgres', 'mysql', 'sqlite', or 'sqlite3')",
 					config.Features.Storage.DBDriver)
 			}
 		}
