@@ -303,7 +303,7 @@ go build -o fru-cli ./cmd/client
 
 ```bash
 # Use curl to create an FRU
-curl -X POST http://localhost:8080/frus \
+curl -X POST http://localhost:8080/api/frus \
   -H "Content-Type: application/json" \
   -d '{
   "name": "cpu-001",
