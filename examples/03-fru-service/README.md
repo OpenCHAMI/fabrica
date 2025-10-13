@@ -76,7 +76,7 @@ fabrica add resource FRU
 Copy the FRU resource from the example:
 
 ```bash
-cp -r ../fabrica/examples/03-fru-service/pkg/resources/fru pkg/resources/
+cp -r ../../fabrica/examples/03-fru-service/pkg/resources/fru pkg/resources/
 ```
 
 Or create your own `pkg/resources/fru/fru.go` with this structure:
