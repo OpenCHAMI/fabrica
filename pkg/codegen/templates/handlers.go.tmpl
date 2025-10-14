@@ -16,6 +16,7 @@
 //   - GET {{.URLPath}}/{uid} (get specific {{.Name}})
 //   - POST {{.URLPath}} (create new {{.Name}})
 //   - PUT {{.URLPath}}/{uid} (update {{.Name}})
+//   - PATCH {{.URLPath}}/{uid} (patch {{.Name}})
 //   - DELETE {{.URLPath}}/{uid} (delete {{.Name}})
 //
 // Authentication: {{if .RequiresAuth}}ENABLED{{else}}DISABLED{{end}}
@@ -33,9 +34,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/alexlovelltroy/fabrica/pkg/patch"
 	"github.com/alexlovelltroy/fabrica/pkg/resource"
 	"github.com/alexlovelltroy/fabrica/pkg/validation"
 	"github.com/alexlovelltroy/fabrica/pkg/versioning"
@@ -210,6 +213,67 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+}
+
+// Patch{{.Name}} patches an existing {{.Name}} resource spec using JSON Merge Patch, JSON Patch, or Shorthand Patch
+// Only the spec portion of the resource can be patched - metadata and status are API-managed
+func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("{{.Name}} UID is required"))
+		return
+	}
+
+	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
+		return
+	}
+
+	// Read patch document
+	patchData, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch data: %w", err))
+		return
+	}
+
+	// Marshal current spec to JSON for patching (only allow spec modifications)
+	currentSpecJSON, err := json.Marshal({{camelCase .Name}}.Spec)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current spec: %w", err))
+		return
+	}
+
+	// Detect patch type from Content-Type header
+	contentType := r.Header.Get("Content-Type")
+	patchType := patch.DetectPatchType(contentType)
+
+	// Apply patch to spec only
+	patchResult, err := patch.ApplyPatchWithOptions(currentSpecJSON, patchData, patchType, patch.PatchOptions{
+		AllowAddFields:    true,
+		AllowRemoveFields: true,
+	})
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("failed to apply patch to spec: %w", err))
+		return
+	}
+
+	// Unmarshal the patched result back to the spec
+	if err := json.Unmarshal(patchResult.Updated, &{{camelCase .Name}}.Spec); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to unmarshal patched spec: %w", err))
+		return
+	}
+
+	// Touch to update metadata
+	{{camelCase .Name}}.Touch()
+
+	// Save the patched resource
+	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}}: %w", err))
 		return
 	}
 

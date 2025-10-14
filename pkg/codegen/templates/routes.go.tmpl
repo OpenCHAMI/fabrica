@@ -19,6 +19,7 @@
 //   - GET    /resource/{uid} -> Get specific resource
 //   - POST   /resource       -> Create new resource
 //   - PUT    /resource/{uid} -> Update resource
+//   - PATCH  /resource/{uid} -> Patch resource
 //   - DELETE /resource/{uid} -> Delete resource
 //
 // To add middleware to routes:
@@ -46,6 +47,7 @@ func RegisterGeneratedRoutes(r chi.Router) {
 		r.Route("/{uid}", func(r chi.Router) {
 			r.Get("/", Get{{.Name}})
 			r.Put("/", Update{{.Name}})
+			r.Patch("/", Patch{{.Name}})
 			r.Delete("/", Delete{{.Name}})
 		})
 	})
