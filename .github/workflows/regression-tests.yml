@@ -27,6 +27,8 @@ jobs:
       run: make build
 
     - name: Run Go integration tests
+      env:
+        GOPRIVATE: "github.com/me/*,example.com/*"
       run: |
         cd test/integration
         go test -v -timeout 10m ./...
