@@ -76,7 +76,7 @@ fabrica add resource FRU
 Copy the FRU resource from the example:
 
 ```bash
-cp -r ../fabrica/examples/03-fru-service/pkg/resources/fru pkg/resources/
+cp -r ../../fabrica/examples/03-fru-service/pkg/resources/fru pkg/resources/
 ```
 
 Or create your own `pkg/resources/fru/fru.go` with this structure:
@@ -303,7 +303,7 @@ go build -o fru-cli ./cmd/client
 
 ```bash
 # Use curl to create an FRU
-curl -X POST http://localhost:8080/frus \
+curl -X POST http://localhost:8080/api/frus \
   -H "Content-Type: application/json" \
   -d '{
   "name": "cpu-001",
@@ -360,14 +360,14 @@ Save the UID from the response for later steps.
 ### 2. List All FRUs
 
 ```bash
-curl http://localhost:8080/frus
+curl http://localhost:8080/api/frus
 ```
 
 ### 3. Get Specific FRU
 
 ```bash
 # Replace {uid} with the actual FRU UID from create response
-curl http://localhost:8080/frus/{uid}
+curl http://localhost:8080/api/frus/{uid}
 ```
 
 ### 4. Update FRU Status
@@ -379,7 +379,7 @@ This demonstrates updating the status of an existing FRU:
 FRU_UID="fru-a1b2c3d4"
 
 # Update to reflect maintenance state
-curl -X PUT http://localhost:8080/frus/$FRU_UID \
+curl -X PUT http://localhost:8080/api/frus/$FRU_UID \
   -H "Content-Type: application/json" \
   -d '{
   "name": "cpu-001",
@@ -404,7 +404,7 @@ To update only the status (common for monitoring systems), you can use PATCH:
 
 ```bash
 # PATCH request to update just the status (if PATCH is implemented)
-curl -X PATCH http://localhost:8080/frus/$FRU_UID \
+curl -X PATCH http://localhost:8080/api/frus/$FRU_UID \
   -H "Content-Type: application/json" \
   -d '{
     "status": {
@@ -421,7 +421,7 @@ curl -X PATCH http://localhost:8080/frus/$FRU_UID \
 ### 5. Delete an FRU
 
 ```bash
-curl -X DELETE http://localhost:8080/frus/$FRU_UID
+curl -X DELETE http://localhost:8080/api/frus/$FRU_UID
 ```
 
 ## Advanced Features Demonstrated
