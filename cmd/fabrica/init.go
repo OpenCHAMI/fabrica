@@ -26,12 +26,10 @@ type initOptions struct {
 	description string
 
 	// Feature flags instead of modes
-	withAuth      bool // Enable authentication
-	withStorage   bool // Enable storage backend
-	withHSM       bool // Enable HSM support
-	withLegacyAPI bool // Enable legacy API compatibility
-	withMetrics   bool // Enable metrics/monitoring
-	withVersion   bool // Enable version command
+	withAuth    bool // Enable authentication
+	withStorage bool // Enable storage backend
+	withMetrics bool // Enable metrics/monitoring
+	withVersion bool // Enable version command
 
 	// New feature flags for core features
 	validationMode  string // strict, warn, disabled
@@ -46,17 +44,15 @@ type initOptions struct {
 
 // Template data structure
 type templateData struct {
-	ProjectName   string
-	ModulePath    string
-	Description   string
-	WithAuth      bool
-	WithStorage   bool
-	WithHSM       bool
-	WithLegacyAPI bool
-	WithMetrics   bool
-	WithVersion   bool
-	StorageType   string
-	DBDriver      string
+	ProjectName string
+	ModulePath  string
+	Description string
+	WithAuth    bool
+	WithStorage bool
+	WithMetrics bool
+	WithVersion bool
+	StorageType string
+	DBDriver    string
 }
 
 func newInitCommand() *cobra.Command {
@@ -78,8 +74,6 @@ func newInitCommand() *cobra.Command {
 Instead of complex modes, use feature flags to customize your project:
   --auth          Enable authentication with TokenSmith
   --storage       Enable persistent storage (file or database)
-  --hsm           Enable HSM support for cryptographic operations
-  --legacy-api    Enable legacy API compatibility
   --metrics       Enable Prometheus metrics
 
 The interactive flag launches a guided wizard to help you choose.
@@ -114,8 +108,6 @@ or by providing the name of an existing directory.`,
 	// Feature flags
 	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable authentication with TokenSmith")
 	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage")
-	cmd.Flags().BoolVar(&opts.withHSM, "hsm", false, "Enable HSM support for cryptographic operations")
-	cmd.Flags().BoolVar(&opts.withLegacyAPI, "legacy-api", false, "Enable legacy API compatibility")
 	cmd.Flags().BoolVar(&opts.withMetrics, "metrics", false, "Enable Prometheus metrics")
 	cmd.Flags().BoolVar(&opts.withVersion, "version", true, "Enable version command")
 
@@ -212,16 +204,6 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 		}
 	}
 
-	// HSM support
-	fmt.Print("Enable HSM support for cryptographic operations? [y/N]: ")
-	input, _ = reader.ReadString('\n')
-	opts.withHSM = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
-
-	// Legacy API
-	fmt.Print("Enable legacy API compatibility? [y/N]: ")
-	input, _ = reader.ReadString('\n')
-	opts.withLegacyAPI = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
-
 	// Metrics
 	fmt.Print("Enable Prometheus metrics? [y/N]: ")
 	input, _ = reader.ReadString('\n')
@@ -246,8 +228,6 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 	} else {
 		fmt.Printf("    Storage: disabled\n")
 	}
-	fmt.Printf("    HSM Support: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withHSM])
-	fmt.Printf("    Legacy API: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withLegacyAPI])
 	fmt.Printf("    Metrics: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withMetrics])
 
 	fmt.Print("\nProceed? [Y/n]: ")
@@ -328,17 +308,15 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 
 	// Template data
 	data := templateData{
-		ProjectName:   projectName,
-		ModulePath:    opts.modulePath,
-		Description:   opts.description,
-		WithAuth:      opts.withAuth,
-		WithStorage:   opts.withStorage,
-		WithHSM:       opts.withHSM,
-		WithLegacyAPI: opts.withLegacyAPI,
-		WithMetrics:   opts.withMetrics,
-		WithVersion:   opts.withVersion,
-		StorageType:   opts.storageType,
-		DBDriver:      dbDriver,
+		ProjectName: projectName,
+		ModulePath:  opts.modulePath,
+		Description: opts.description,
+		WithAuth:    opts.withAuth,
+		WithStorage: opts.withStorage,
+		WithMetrics: opts.withMetrics,
+		WithVersion: opts.withVersion,
+		StorageType: opts.storageType,
+		DBDriver:    dbDriver,
 	}
 
 	// Create directories
@@ -361,7 +339,7 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	}
 
 	// Create go.mod
-	if err := createGoMod(targetDir, opts.modulePath); err != nil {
+	if err := createGoMod(targetDir, opts.modulePath, opts.withAuth); err != nil {
 		return err
 	}
 
@@ -373,6 +351,13 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	// Create Fabrica configuration file
 	if err := createFabricaConfig(targetDir, opts); err != nil {
 		return err
+	}
+
+	// Create stub storage files if storage is enabled
+	if opts.withStorage {
+		if err := createStubStorage(targetDir, data); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -412,17 +397,27 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 	return nil
 }
 
-func createGoMod(targetDir, modulePath string) error {
+func createGoMod(targetDir, modulePath string, withAuth bool) error {
+	baseRequires := `	github.com/go-chi/chi/v5 v5.0.10
+	github.com/spf13/cobra v1.7.0
+	github.com/spf13/viper v1.16.0`
+
+	authRequires := ""
+	if withAuth {
+		authRequires = `
+	github.com/casbin/casbin/v2 v2.128.0`
+		// Note: TokenSmith integration is commented out as it's still in development
+		// github.com/OpenCHAMI/tokensmith v0.0.0-20241001120000-01ea626fab6c
+	}
+
 	content := fmt.Sprintf(`module %s
 
 go 1.21
 
 require (
-	github.com/go-chi/chi/v5 v5.0.10
-	github.com/spf13/cobra v1.7.0
-	github.com/spf13/viper v1.16.0
+%s%s
 )
-`, modulePath)
+`, modulePath, baseRequires, authRequires)
 
 	return os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte(content), 0644)
 }
@@ -520,12 +515,6 @@ func generateFeaturesText(data templateData) string {
 			features = append(features, "- 💾 File-based storage")
 		}
 	}
-	if data.WithHSM {
-		features = append(features, "- 🔒 HSM support for cryptographic operations")
-	}
-	if data.WithLegacyAPI {
-		features = append(features, "- 🔄 Legacy API compatibility")
-	}
 	if data.WithMetrics {
 		features = append(features, "- 📊 Prometheus metrics")
 	}
@@ -592,12 +581,6 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 			Metrics: MetricsConfig{
 				Enabled: opts.withMetrics,
 			},
-			HSM: HSMConfig{
-				Enabled: opts.withHSM,
-			},
-			LegacyAPI: LegacyAPIConfig{
-				Enabled: opts.withLegacyAPI,
-			},
 		},
 		Generation: GenerationConfig{
 			Handlers:   true,
@@ -631,6 +614,40 @@ func checkExistingProject(dir string) error {
 		if _, err := os.Stat(path); err == nil {
 			return fmt.Errorf("directory appears to already contain a Fabrica project (found %s)\nUse a different directory or remove existing files first", file)
 		}
+	}
+
+	return nil
+}
+
+// createStubStorage creates stub storage files to prevent import errors before generate
+func createStubStorage(targetDir string, data templateData) error {
+	storageDir := filepath.Join(targetDir, "internal", "storage")
+
+	// Create stub storage.go file
+	var stubContent string
+	switch data.StorageType {
+	case "file":
+		stubContent = `// Code generated by Fabrica. DO NOT EDIT manually.
+// This is a stub file created during init to prevent import errors.
+// It will be replaced when you run 'fabrica generate --storage'
+
+package storage
+
+// Placeholder to prevent import errors - will be replaced by generated code
+`
+	case "ent":
+		stubContent = `// Code generated by Fabrica. DO NOT EDIT manually.
+// This is a stub file created during init to prevent import errors.
+// It will be replaced when you run 'fabrica generate --storage'
+
+package storage
+
+// Placeholder to prevent import errors - will be replaced by generated code
+`
+	}
+
+	if err := os.WriteFile(filepath.Join(storageDir, "storage.go"), []byte(stubContent), 0644); err != nil {
+		return fmt.Errorf("failed to create stub storage file: %w", err)
 	}
 
 	return nil

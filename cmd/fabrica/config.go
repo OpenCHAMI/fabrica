@@ -40,8 +40,6 @@ type FeaturesConfig struct {
 	Auth        AuthConfig        `yaml:"auth"`
 	Storage     StorageConfig     `yaml:"storage"`
 	Metrics     MetricsConfig     `yaml:"metrics,omitempty"`
-	HSM         HSMConfig         `yaml:"hsm,omitempty"`
-	LegacyAPI   LegacyAPIConfig   `yaml:"legacy_api,omitempty"`
 }
 
 // ValidationConfig controls validation behavior.
@@ -86,16 +84,6 @@ type StorageConfig struct {
 type MetricsConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Provider string `yaml:"provider,omitempty"` // prometheus, datadog
-}
-
-// HSMConfig controls HSM support.
-type HSMConfig struct {
-	Enabled bool `yaml:"enabled"`
-}
-
-// LegacyAPIConfig controls legacy API compatibility.
-type LegacyAPIConfig struct {
-	Enabled bool `yaml:"enabled"`
 }
 
 // GenerationConfig controls what gets generated.
@@ -256,12 +244,6 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 				Type:    "file",
 			},
 			Metrics: MetricsConfig{
-				Enabled: false,
-			},
-			HSM: HSMConfig{
-				Enabled: false,
-			},
-			LegacyAPI: LegacyAPIConfig{
 				Enabled: false,
 			},
 		},

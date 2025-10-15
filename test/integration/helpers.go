@@ -41,7 +41,7 @@ func NewTestProject(s *suite.Suite, tempDir, name, module, storage string) *Test
 
 // Initialize creates and initializes the fabrica project
 func (p *TestProject) Initialize(fabricaBinary string) error {
-	cmd := exec.Command(fabricaBinary, "init", p.Name, "--module", p.Module, "--storage-type", p.Storage)
+	cmd := exec.Command(fabricaBinary, "init", p.Name, "--module", p.Module, "--storage-type", p.Storage, "--storage")
 	cmd.Dir = filepath.Dir(p.Dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -106,7 +106,7 @@ func (p *TestProject) AddResource(fabricaBinary, resourceName string) error {
 
 // Generate runs fabrica generate
 func (p *TestProject) Generate(fabricaBinary string) error {
-	cmd := exec.Command(fabricaBinary, "generate")
+	cmd := exec.Command(fabricaBinary, "generate", "--storage", "--openapi", "--handlers", "--client")
 	cmd.Dir = p.Dir // Set working directory instead of using -C flag
 	output, err := cmd.CombinedOutput()
 	if err != nil {
