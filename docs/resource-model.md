@@ -20,15 +20,21 @@ SPDX-License-Identifier: MIT
 
 ## Overview
 
-Fabrica follows the Kubernetes resource pattern with five core fields:
+Fabrica follows the Kubernetes resource pattern. All resources embed a common `Resource` struct:
 
 ```go
+type Device struct {
+    resource.Resource `json:",inline"`
+    Spec              DeviceSpec   `json:"spec"`
+    Status            DeviceStatus `json:"status"`
+}
+
+// The embedded Resource struct provides:
 type Resource struct {
-    APIVersion string      // "v1"
-    Kind       string      // "Device", "User", "Product"
-    Metadata   Metadata    // Name, UID, labels, annotations, timestamps
-    Spec       interface{} // Desired state (your custom type)
-    Status     interface{} // Observed state (your custom type)
+    APIVersion    string    `json:"apiVersion"`    // "v1"
+    Kind          string    `json:"kind"`          // "Device", "User", "Product"
+    SchemaVersion string    `json:"schemaVersion"` // Schema migration support
+    Metadata      Metadata  `json:"metadata"`      // Name, UID, labels, annotations, timestamps
 }
 ```
 

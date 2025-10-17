@@ -21,12 +21,11 @@ SPDX-License-Identifier: MIT
 Fabrica provides a pluggable storage system that allows you to persist resources in different backends without changing your application code.
 
 **Built-in:**
-- 📁 File-based storage (production-ready)
+- 📁 File-based storage (JSON files, great for development)
+- �️ Ent backend (SQLite, PostgreSQL, MySQL for production)
 
-**Coming Soon:**
-- 🗄️ PostgreSQL backend
-- 🍃 MongoDB backend
-- ☁️ Cloud storage (S3, GCS)
+**Planned:**
+- ☁️ Cloud storage backends (S3, GCS)
 
 ## Storage Interface
 

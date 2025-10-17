@@ -53,18 +53,18 @@ Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.2.3 (or similar)
+# Output: fabrica version v0.2.7
 ```
 
 ## Step 1: Initialize Your Project
 
-Create a new project using **simple mode** (this hides advanced features):
+Create a new project with minimal complexity:
 
 ### Option A: New Directory
 
 ```bash
-# Initialize project (creates myshop directory)
-fabrica init myshop --mode=simple
+# Initialize simple project (creates myshop directory)
+fabrica init myshop
 
 # Enter project directory
 cd myshop
@@ -80,19 +80,20 @@ gh repo create myshop --template myorg/template --public
 cd myshop
 
 # Initialize Fabrica in current directory
-fabrica init . --mode=simple
+fabrica init .
 ```
 
 This will preserve existing files like `.git`, `README.md`, `LICENSE`, etc.
 
 Both options create:
+- `.fabrica.yaml` with project configuration
 - `go.mod` with necessary dependencies
 - Basic project structure (`cmd/`, `pkg/`, etc.)
-- Makefile for common tasks
 
 You'll see:
 
 ```
+✓ Created .fabrica.yaml
 ✓ Created go.mod
 ✓ Created README.md (or skipped if exists)
 ✓ Created basic project structure
@@ -117,55 +118,34 @@ This command creates a resource definition at `pkg/resources/product/product.go`
 package product
 
 import (
-    "context"
     "github.com/alexlovelltroy/fabrica/pkg/resource"
-    "github.com/alexlovelltroy/fabrica/pkg/validation"
 )
 
 // Product represents a Product resource
 type Product struct {
-    resource.Resource
-    Spec   ProductSpec   `json:"spec" validate:"required"`
-    Status ProductStatus `json:"status,omitempty"`
+    resource.Resource `json:",inline"`
+    Spec              ProductSpec   `json:"spec"`
+    Status            ProductStatus `json:"status"`
 }
 
 // ProductSpec defines the desired state of Product
 type ProductSpec struct {
-    Name        string `json:"name" validate:"required,k8sname"`
-    Description string `json:"description,omitempty" validate:"max=200"`
-    // Add your spec fields here
+    Name        string  `json:"name" validate:"required,min=1,max=100"`
+    Description string  `json:"description,omitempty" validate:"max=500"`
+    Price       float64 `json:"price" validate:"min=0"`
+    InStock     bool    `json:"inStock"`
 }
 
 // ProductStatus defines the observed state of Product
 type ProductStatus struct {
-    Phase      string `json:"phase,omitempty"`
-    Message    string `json:"message,omitempty"`
-    Ready      bool   `json:"ready"`
-    // Add your status fields here
-}
-
-// Validate implements custom validation logic for Product
-func (r *Product) Validate(ctx context.Context) error {
-    // Add custom validation logic here
-    return nil
-}
-
-func init() {
-    // Register resource type prefix for storage
-    resource.RegisterResourcePrefix("Product", "pro")
+    Phase       string `json:"phase,omitempty"`
+    Message     string `json:"message,omitempty"`
+    Ready       bool   `json:"ready"`
+    LastUpdated string `json:"lastUpdated,omitempty"`
 }
 ```
 
-**Customize the Spec:** Edit `pkg/resources/product/product.go` to add your fields:
-
-```go
-type ProductSpec struct {
-    Name        string  `json:"name" validate:"required,k8sname"`
-    Description string  `json:"description,omitempty" validate:"max=200"`
-    Price       float64 `json:"price" validate:"required,gt=0"`
-    InStock     bool    `json:"inStock"`
-}
-```
+**Customize the Spec:** You can edit the fields in `ProductSpec` as needed:
 
 ## Step 3: Generate Code
 
@@ -225,11 +205,15 @@ Open a new terminal and try the API:
 curl -X POST http://localhost:8080/products \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "prod-1",
-    "name": "Laptop",
-    "description": "15-inch laptop",
-    "price": 999.99,
-    "inStock": true
+    "metadata": {
+      "name": "laptop-pro"
+    },
+    "spec": {
+      "name": "MacBook Pro",
+      "description": "15-inch MacBook Pro with M2 chip",
+      "price": 1999.99,
+      "inStock": true
+    }
   }'
 ```
 
@@ -237,11 +221,25 @@ Response:
 
 ```json
 {
-  "id": "prod-1",
-  "name": "Laptop",
-  "description": "15-inch laptop",
-  "price": 999.99,
-  "inStock": true
+  "apiVersion": "v1",
+  "kind": "Product",
+  "metadata": {
+    "name": "laptop-pro",
+    "uid": "pro-abc123def456",
+    "createdAt": "2025-10-15T10:30:00Z",
+    "updatedAt": "2025-10-15T10:30:00Z"
+  },
+  "spec": {
+    "name": "MacBook Pro",
+    "description": "15-inch MacBook Pro with M2 chip",
+    "price": 1999.99,
+    "inStock": true
+  },
+  "status": {
+    "phase": "Active",
+    "ready": true,
+    "lastUpdated": "2025-10-15T10:30:00Z"
+  }
 }
 ```
 
@@ -254,41 +252,61 @@ curl http://localhost:8080/products
 Response:
 
 ```json
-[
-  {
-    "id": "prod-1",
-    "name": "Laptop",
-    "description": "15-inch laptop",
-    "price": 999.99,
-    "inStock": true
-  }
-]
+{
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Product",
+      "metadata": {
+        "name": "laptop-pro",
+        "uid": "pro-abc123def456",
+        "createdAt": "2025-10-15T10:30:00Z",
+        "updatedAt": "2025-10-15T10:30:00Z"
+      },
+      "spec": {
+        "name": "MacBook Pro",
+        "description": "15-inch MacBook Pro with M2 chip",
+        "price": 1999.99,
+        "inStock": true
+      },
+      "status": {
+        "phase": "Active",
+        "ready": true,
+        "lastUpdated": "2025-10-15T10:30:00Z"
+      }
+    }
+  ]
+}
 ```
 
 ### Get a Specific Product
 
 ```bash
-curl http://localhost:8080/products/prod-1
+curl http://localhost:8080/products/pro-abc123def456
 ```
 
 ### Update a Product
 
 ```bash
-curl -X PUT http://localhost:8080/products/prod-1 \
+curl -X PUT http://localhost:8080/products/pro-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "prod-1",
-    "name": "Gaming Laptop",
-    "description": "High-performance 15-inch laptop",
-    "price": 1299.99,
-    "inStock": true
+    "metadata": {
+      "name": "laptop-pro"
+    },
+    "spec": {
+      "name": "MacBook Pro M3",
+      "description": "Latest 15-inch MacBook Pro with M3 chip",
+      "price": 2199.99,
+      "inStock": true
+    }
   }'
 ```
 
 ### Delete a Product
 
 ```bash
-curl -X DELETE http://localhost:8080/products/prod-1
+curl -X DELETE http://localhost:8080/products/pro-abc123def456
 ```
 
 Response:
@@ -307,44 +325,52 @@ Let's peek under the hood (but don't worry, you don't need to edit these files):
 
 ```
 myshop/
+├── .fabrica.yaml                   # Project configuration  
 ├── go.mod                          # Dependencies
 ├── README.md                       # Project README
 ├── pkg/
 │   └── resources/
 │       └── product/
-│           └── product.go         # Your data definition (you wrote this)
+│           └── product.go          # Your data definition (you wrote this)
 ├── cmd/
 │   └── server/
-│       ├── main.go                # Server entry point (generated)
-│       ├── routes.go              # URL routing (generated)
-│       └── product_handlers.go    # HTTP handlers (generated)
-└── internal/
-    └── storage/
-        └── product_storage.go     # In-memory storage (generated)
+│       ├── main.go                 # Server entry point (with stubs)
+│       ├── product_handlers_generated.go    # HTTP handlers (generated)
+│       ├── routes_generated.go              # URL routing (generated)
+│       ├── models_generated.go              # Server types (generated)
+│       └── openapi_generated.go             # OpenAPI spec (generated)
+├── internal/
+│   └── storage/
+│       └── storage_generated.go             # Storage operations (generated)
 ```
 
 ### What Fabrica Generated
 
-1. **HTTP Handlers** (`cmd/server/product_handlers.go`):
-   - Functions to handle each REST operation
-   - JSON marshaling/unmarshaling
-   - Error handling
+1. **HTTP Handlers** (`cmd/server/product_handlers_generated.go`):
+   - Functions to handle each REST operation (Create, Read, Update, Delete, List)
+   - JSON marshaling/unmarshaling with envelope structure
+   - Error handling and validation
 
-2. **Storage Layer** (`internal/storage/product_storage.go`):
-   - Thread-safe in-memory storage
-   - CRUD operations
-   - List filtering
+2. **Storage Layer** (`internal/storage/storage_generated.go`):
+   - File-based storage with atomic operations
+   - CRUD operations for all resource types
+   - List filtering and pagination support
 
-3. **Server & Routes** (`cmd/server/main.go`, `routes.go`):
-   - HTTP server setup
+3. **Server & Routes** (`cmd/server/routes_generated.go`):
    - URL routing configuration
-   - Middleware setup
+   - Middleware setup for validation and versioning
 
-4. **All boilerplate code** you'd normally write by hand!
+4. **Client Library** (`pkg/client/client_generated.go`):
+   - Go client with all operations
+   - Proper error handling and retries
+
+5. **OpenAPI Spec** (`cmd/server/openapi_generated.go`):
+   - Complete API documentation
+   - Swagger UI available at `/swagger/`
 
 ### What You Wrote
 
-Just the `Product` struct! That's 7 lines of code to get a full REST API.
+Just the `Product` struct definitions! That's about 20 lines of code to get a complete REST API with documentation, validation, and client libraries.
 
 ## Next Steps
 
@@ -353,12 +379,14 @@ Just the `Product` struct! That's 7 lines of code to get a full REST API.
 Need users? Orders? Categories?
 
 ```bash
-# Define your struct in a new file
-mkdir -p pkg/resources/order
-# Create pkg/resources/order/order.go with your Order struct
-
-# Generate code
+# Add a new resource type
 fabrica add resource Order
+
+# Edit the generated pkg/resources/order/order.go
+# Add your OrderSpec and OrderStatus fields
+
+# Regenerate all code
+fabrica generate
 ```
 
 Each resource gets its own complete set of CRUD endpoints automatically.
@@ -368,33 +396,23 @@ Each resource gets its own complete set of CRUD endpoints automatically.
 Want to validate input? Add struct tags:
 
 ```go
-type Product struct {
-    ID          string  `json:"id" validate:"required"`
+type ProductSpec struct {
     Name        string  `json:"name" validate:"required,min=3,max=100"`
-    Description string  `json:"description"`
+    Description string  `json:"description" validate:"max=500"`
     Price       float64 `json:"price" validate:"required,gt=0"`
     InStock     bool    `json:"inStock"`
 }
 ```
 
-Then regenerate:
+Validation happens automatically - invalid requests return 400 errors with detailed messages!
 
-```bash
-fabrica add resource Product --with-validation
-```
+### Explore the API
 
-Now invalid requests return 400 errors with helpful messages!
+Visit these URLs while your server is running:
 
-### Generate Examples
-
-Want to see example code for different scenarios?
-
-```bash
-# Generate a validation example
-fabrica example validation --level=beginner
-
-# Generated in examples/validation-beginner/
-```
+- **OpenAPI Docs**: http://localhost:8080/swagger/
+- **Health Check**: http://localhost:8080/health
+- **API Discovery**: http://localhost:8080/api/v1/
 
 ### Learn More
 

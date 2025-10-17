@@ -59,7 +59,7 @@ type Config struct {
 	{{if eq .StorageType "file"}}
 	DataDir string `mapstructure:"data_dir"`
 	{{else if eq .StorageType "ent"}}
-	DatabaseURL string `mapstructure:"database_url"`
+	DatabaseURL string `mapstructure:"database-url"`
 	{{end}}
 	{{end}}
 

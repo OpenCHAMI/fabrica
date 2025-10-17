@@ -26,7 +26,7 @@ Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.2.5
+# Output: fabrica version v0.2.7
 ```
 
 ## Create Your First API
@@ -41,15 +41,14 @@ cd bookstore
 This creates:
 ```
 bookstore/
+├── .fabrica.yaml        # Project configuration
 ├── cmd/
-│   ├── server/          # API server
-│   └── client/          # Client code
+│   └── server/          # API server (main.go with stubs)
 ├── pkg/
-│   └── resources/       # Your resource definitions
-├── internal/
-│   └── storage/         # Generated storage
+│   └── resources/       # Your resource definitions (empty initially)
+├── internal/            # Generated code will go here
 ├── go.mod
-├── Makefile
+├── go.sum
 └── README.md
 ```
 
@@ -65,38 +64,33 @@ This creates `pkg/resources/book/book.go`:
 package book
 
 import (
-    "context"
     "github.com/alexlovelltroy/fabrica/pkg/resource"
-    "github.com/alexlovelltroy/fabrica/pkg/validation"
 )
 
 // Book represents a Book resource
 type Book struct {
-    resource.Resource
-    Spec   BookSpec   `json:"spec" validate:"required"`
-    Status BookStatus `json:"status,omitempty"`
+    resource.Resource `json:",inline"`
+    Spec              BookSpec   `json:"spec"`
+    Status            BookStatus `json:"status"`
 }
 
 // BookSpec defines the desired state of Book
 type BookSpec struct {
-    Name        string `json:"name" validate:"required,k8sname"`
-    Description string `json:"description,omitempty" validate:"max=200"`
-    // Add your spec fields here
+    Title       string `json:"title" validate:"required,min=1,max=100"`
+    Author      string `json:"author" validate:"required,min=1,max=50"`
+    Description string `json:"description,omitempty" validate:"max=500"`
+    Price       float64 `json:"price" validate:"min=0"`
+    InStock     bool   `json:"inStock"`
 }
 
 // BookStatus defines the observed state of Book
 type BookStatus struct {
-    Phase   string `json:"phase,omitempty"`
-    Message string `json:"message,omitempty"`
-    Ready   bool   `json:"ready"`
-    // Add your status fields here
+    Phase       string `json:"phase,omitempty"`
+    Message     string `json:"message,omitempty"`
+    Ready       bool   `json:"ready"`
+    LastUpdated string `json:"lastUpdated,omitempty"`
 }
-
-// Validate implements custom validation logic
-func (r *Book) Validate(ctx context.Context) error {
-    // Add custom validation here
-    return nil
-}
+```
 
 func init() {
     resource.RegisterResourcePrefix("Book", "boo")
@@ -105,16 +99,22 @@ func init() {
 
 ### Step 3: Customize Your Resource
 
-Edit `pkg/resources/book/book.go` and add fields to `BookSpec`:
+Edit `pkg/resources/book/book.go` and modify the `BookSpec` fields as needed:
 
 ```go
 type BookSpec struct {
-    Title       string   `json:"title" validate:"required,min=1,max=200"`
-    Author      string   `json:"author" validate:"required,min=1,max=100"`
-    ISBN        string   `json:"isbn" validate:"required,isbn"`
-    Price       float64  `json:"price" validate:"required,gt=0"`
-    InStock     bool     `json:"inStock"`
-    Categories  []string `json:"categories,omitempty"`
+    Title       string `json:"title" validate:"required,min=1,max=200"`
+    Author      string `json:"author" validate:"required,min=1,max=100"`
+    Description string `json:"description,omitempty" validate:"max=500"`
+    Price       float64 `json:"price" validate:"min=0"`
+    InStock     bool   `json:"inStock"`
+}
+
+type BookStatus struct {
+    Phase       string `json:"phase,omitempty"`
+    Message     string `json:"message,omitempty"`
+    Ready       bool   `json:"ready"`
+    LastUpdated string `json:"lastUpdated,omitempty"`
 }
 ```
 
@@ -161,13 +161,16 @@ Your API is now running at `http://localhost:8080`!
 curl -X POST http://localhost:8080/books \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "golang-guide",
-    "title": "The Go Programming Language",
-    "author": "Alan Donovan",
-    "isbn": "978-0134190440",
-    "price": 44.99,
-    "inStock": true,
-    "categories": ["programming", "go"]
+    "metadata": {
+      "name": "golang-guide"
+    },
+    "spec": {
+      "title": "The Go Programming Language",
+      "author": "Alan Donovan",
+      "description": "A comprehensive guide to Go programming",
+      "price": 44.99,
+      "inStock": true
+    }
   }'
 ```
 
@@ -179,15 +182,20 @@ Response:
   "metadata": {
     "name": "golang-guide",
     "uid": "boo-abc123def456",
-    "createdAt": "2025-10-05T10:00:00Z"
+    "createdAt": "2025-10-15T10:00:00Z",
+    "updatedAt": "2025-10-15T10:00:00Z"
   },
   "spec": {
     "title": "The Go Programming Language",
     "author": "Alan Donovan",
-    "isbn": "978-0134190440",
+    "description": "A comprehensive guide to Go programming",
     "price": 44.99,
-    "inStock": true,
-    "categories": ["programming", "go"]
+    "inStock": true
+  },
+  "status": {
+    "phase": "Active",
+    "ready": true,
+    "lastUpdated": "2025-10-15T10:00:00Z"
   }
 }
 ```
@@ -210,13 +218,16 @@ curl http://localhost:8080/books/boo-abc123def456
 curl -X PUT http://localhost:8080/books/boo-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "golang-guide",
-    "title": "The Go Programming Language",
-    "author": "Alan Donovan",
-    "isbn": "978-0134190440",
-    "price": 39.99,
-    "inStock": false,
-    "categories": ["programming", "go"]
+    "metadata": {
+      "name": "golang-guide"
+    },
+    "spec": {
+      "title": "The Go Programming Language",
+      "author": "Alan Donovan",
+      "description": "Updated comprehensive guide to Go programming",
+      "price": 39.99,
+      "inStock": false
+    }
   }'
 ```
 
@@ -228,64 +239,40 @@ curl -X DELETE http://localhost:8080/books/boo-abc123def456
 
 ## Understanding the Resource Model
 
-Fabrica uses a Kubernetes-style resource model:
+Fabrica uses a Kubernetes-style resource model with an envelope pattern:
 
 ```go
 type Book struct {
-    APIVersion string        // "v1"
-    Kind       string        // "Book"
-    Metadata   Metadata      // Name, UID, labels, annotations
-    Spec       BookSpec      // Desired state (your fields)
-    Status     BookStatus    // Observed state (system updates)
+    resource.Resource `json:",inline"`  // Embeds apiVersion, kind, metadata
+    Spec              BookSpec         `json:"spec"`      // Your desired state
+    Status            BookStatus       `json:"status"`    // Observed state
 }
 ```
 
 **Key concepts:**
 - **Spec** - What you want (your data model)
-- **Status** - What the system knows (read-only, system updates)
+- **Status** - What the system observes (runtime state, health info)
 - **Metadata** - Standard fields (name, UID, timestamps, labels)
+- **Resource** - Embedded base with apiVersion, kind, metadata
 
 ## Validation
 
-Fabrica provides three levels of validation:
-
-### 1. Struct Tag Validation
+Fabrica uses struct tag validation for request validation:
 
 ```go
 type BookSpec struct {
     Title  string  `json:"title" validate:"required,min=1,max=200"`
-    Price  float64 `json:"price" validate:"required,gt=0,lt=1000"`
-    ISBN   string  `json:"isbn" validate:"required,isbn"`
+    Price  float64 `json:"price" validate:"min=0"`
+    Author string  `json:"author" validate:"required,min=1,max=100"`
 }
 ```
 
 **Common validators:**
 - `required` - Field must be present
-- `min=N,max=N` - Length constraints
+- `min=N,max=N` - Length/value constraints  
 - `gt=N,lt=N` - Numeric comparisons
-- `email`, `url`, `isbn` - Format validators
-- `k8sname` - Kubernetes-style name (lowercase, alphanumeric, hyphens)
-
-### 2. Kubernetes-Style Validators
-
-```go
-type BookSpec struct {
-    Title string `json:"title" validate:"required,k8sname"`
-    //                                   ^^^^^^^^ Kubernetes name rules
-}
-```
-
-### 3. Custom Validation
-
-```go
-func (r *Book) Validate(ctx context.Context) error {
-    // Business logic validation
-    if r.Spec.Price > 100 && !r.Spec.InStock {
-        return errors.New("expensive books must be in stock")
-    }
-    return nil
-}
-```
+- `email`, `url`, `ip` - Format validators
+- `oneof=a b c` - Enum validation
 
 ## Storage Options
 
