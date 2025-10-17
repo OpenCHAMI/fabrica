@@ -81,15 +81,14 @@ cd device-api
 fabrica add resource Device
 ```
 
-**3. Define your resource in `pkg/resources/device/device.go`:**
+**3. Update your Spec and Status fields in `pkg/resources/device/device.go`:**
+
+Add desired fields to generated `DeviceSpec` and `DeviceStatus` structs, retaining other code.
 
 ```go
-package device
-
-import "time"
-
 // DeviceSpec defines the desired state of a Device
 type DeviceSpec struct {
+    // copy contents to generated DeviceSpec
     Type         string            `json:"type" validate:"required,oneof=server switch router storage"`
     IPAddress    string            `json:"ipAddress" validate:"required,ip"`
     Status       string            `json:"status" validate:"required,oneof=active inactive maintenance"`
@@ -100,6 +99,7 @@ type DeviceSpec struct {
 
 // DeviceStatus represents the observed state of a Device
 type DeviceStatus struct {
+    // copy contents to generated DeviceSpec
     Health       string    `json:"health" validate:"required,oneof=healthy degraded unhealthy unknown"`
     Uptime       int64     `json:"uptime" validate:"min=0"`
     LastChecked  time.Time `json:"lastChecked"`
