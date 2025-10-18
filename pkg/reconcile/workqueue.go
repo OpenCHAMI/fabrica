@@ -52,12 +52,14 @@ func (q *WorkQueue) Add(item interface{}) {
 
 	// Check if already processing
 	if _, exists := q.processing[item]; exists {
+		// Item is already being processed, skip
 		return
 	}
 
 	// Check if already in queue
 	for _, existing := range q.queue {
 		if existing == item {
+			// Item already in queue, skip
 			return
 		}
 	}
@@ -132,6 +134,10 @@ func (q *WorkQueue) Done(item interface{}) {
 func (q *WorkQueue) ShutDown() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	// Debug: print stack trace to see who's calling ShutDown
+	// fmt.Printf("⚠️  WorkQueue.ShutDown() called!\n")
+	// debug.PrintStack()
 
 	q.shuttingDown = true
 	q.cond.Broadcast()

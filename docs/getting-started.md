@@ -269,7 +269,7 @@ type BookSpec struct {
 
 **Common validators:**
 - `required` - Field must be present
-- `min=N,max=N` - Length/value constraints  
+- `min=N,max=N` - Length/value constraints
 - `gt=N,lt=N` - Numeric comparisons
 - `email`, `url`, `ip` - Format validators
 - `oneof=a b c` - Enum validation

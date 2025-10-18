@@ -1,5 +1,4 @@
 <!--
-Copyright © 2025 OpenCHAMI a Series of ### Install Fabrica
 Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 
 SPDX-License-Identifier: MIT
@@ -325,7 +324,7 @@ Let's peek under the hood (but don't worry, you don't need to edit these files):
 
 ```
 myshop/
-├── .fabrica.yaml                   # Project configuration  
+├── .fabrica.yaml                   # Project configuration
 ├── go.mod                          # Dependencies
 ├── README.md                       # Project README
 ├── pkg/
