@@ -20,8 +20,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	// TODO: Uncomment after running 'fabrica generate'
-	{{if .WithStorage}}// "{{.ModulePath}}/internal/storage"{{end}}
+	{{if .WithAuth}}
+	"github.com/casbin/casbin/v2"
+	"github.com/alexlovelltroy/fabrica/pkg/middleware"
+	// tokensmithmw "github.com/OpenCHAMI/tokensmith/middleware" // TODO: Enable when TokenSmith is stable
+	{{end}}
+
+	{{if .WithStorage}}
+	// TODO: Uncomment after running 'fabrica generate --storage'
+	// "{{.ModulePath}}/internal/storage"
+	{{end}}
 	{{if eq .StorageType "ent"}}
 	// TODO: Uncomment after running 'fabrica generate --storage'
 	// "{{.ModulePath}}/internal/storage/ent"
@@ -63,15 +71,7 @@ type Config struct {
 	CasbinPolicyPath string `mapstructure:"casbin_policy_path"`
 	{{end}}
 
-	{{if .WithHSM}}
-	// Hardware State Manager Configuration
-	HSMURL     string `mapstructure:"hsm_url"`
-	{{end}}
-
 	// Feature Flags
-	{{if .WithLegacyAPI}}
-	EnableLegacyAPI bool `mapstructure:"enable_legacy_api"`
-	{{end}}
 	{{if .WithMetrics}}
 	EnableMetrics bool   `mapstructure:"enable_metrics"`
 	MetricsPort   int    `mapstructure:"metrics_port"`
@@ -163,15 +163,6 @@ func init() {
 	serveCmd.Flags().String("jwks-url", "", "JWKS URL for dynamic key validation")
 	serveCmd.Flags().String("jwt-issuer", "", "Expected JWT issuer")
 	serveCmd.Flags().String("jwt-audience", "", "Expected JWT audience")
-	{{end}}
-
-	{{if .WithHSM}}
-	// Hardware State Manager flags
-	serveCmd.Flags().String("hsm-url", "", "Hardware State Manager service URL (enables HSM when provided)")
-	{{end}}
-
-	{{if .WithLegacyAPI}}
-	serveCmd.Flags().Bool("enable-legacy-api", false, "Enable legacy API endpoints")
 	{{end}}
 
 	{{if .WithMetrics}}
@@ -280,21 +271,25 @@ func runServer(cmd *cobra.Command, args []string) error {
 	{{if .WithAuth}}
 	// Setup authentication middleware
 	if config.AuthEnabled {
-		// TODO: Integrate with TokenSmith middleware
-		// authMiddleware := tokensmith.NewMiddleware(config.TokenSmithURL)
+		// TODO: Setup TokenSmith JWT middleware when TokenSmith is stable
+		// tokensmithOpts := tokensmithmw.DefaultMiddlewareOptions()
+		// tokensmithOpts.JWKSURL = config.TokenSmithURL + "/.well-known/jwks.json"
+		// jwtMiddleware := tokensmithmw.JWTMiddleware(nil, tokensmithOpts)
 
-		// TODO: Setup Casbin authorization
-		// enforcer, err := casbin.NewEnforcer(config.CasbinModelPath, config.CasbinPolicyPath)
-		// if err != nil {
-		// 	log.Fatalf("Failed to create Casbin enforcer: %v", err)
-		// }
+		// Setup Casbin authorization
+		enforcer, err := casbin.NewEnforcer(config.CasbinModelPath, config.CasbinPolicyPath)
+		if err != nil {
+		   log.Fatalf("Failed to create Casbin enforcer: %v", err)
+		}
+		casbinMiddleware := middleware.CasbinMiddleware(enforcer)
 
 		// Apply auth to protected routes
 		r.Route("/api", func(r chi.Router) {
-			// r.Use(authMiddleware)
-			// r.Use(casbinMiddleware(enforcer))
+			// r.Use(jwtMiddleware) // TODO: Enable when TokenSmith is ready
+			r.Use(casbinMiddleware)
 			// Protected API routes will be registered here
-			// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
+			// TODO: Uncomment after running 'fabrica generate'
+			// RegisterGeneratedRoutes(r)
 		})
 
 		// Public routes (health checks, etc.)
@@ -308,21 +303,15 @@ func runServer(cmd *cobra.Command, args []string) error {
 		})
 	} else {
 		log.Println("Authentication disabled")
-		// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
+		// TODO: Uncomment after running 'fabrica generate'
+		// RegisterGeneratedRoutes(r)
 		r.Get("/health", healthHandler)
 	}
 	{{else}}
 	// Register routes (no authentication)
-	// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
+	// TODO: Uncomment after running 'fabrica generate'
+	// RegisterGeneratedRoutes(r)
 	r.Get("/health", healthHandler)
-	{{end}}
-
-	{{if .WithLegacyAPI}}
-	// Register legacy API if enabled
-	if config.EnableLegacyAPI {
-		log.Println("Legacy API enabled")
-		// Register legacy routes here
-	}
 	{{end}}
 
 	{{if .WithMetrics}}

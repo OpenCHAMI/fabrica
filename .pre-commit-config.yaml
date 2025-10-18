@@ -23,6 +23,7 @@ repos:
 
     -   id: go-mod-tidy
     -   id: go-test-mod
+        exclude: '^test/integration/'
     -   id: go-vet-mod
 
     #

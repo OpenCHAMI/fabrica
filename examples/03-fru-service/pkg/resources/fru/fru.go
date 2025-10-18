@@ -73,9 +73,10 @@ type FRUStatus struct { //nolint:revive
 	Errors []string `json:"errors,omitempty"`
 
 	// Additional status information
-	Temperature float64            `json:"temperature,omitempty"`
-	Power       float64            `json:"power,omitempty"`
-	Metrics     map[string]float64 `json:"metrics,omitempty"`
+	Temperature float64              `json:"temperature,omitempty"`
+	Power       float64              `json:"power,omitempty"`
+	Metrics     map[string]float64   `json:"metrics,omitempty"`
+	Conditions  []resource.Condition `json:"conditions,omitempty"`
 }
 
 // GetKind returns the kind of the resource

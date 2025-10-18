@@ -158,6 +158,54 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 	return nil
 }
 
+// doPatchRequest performs a PATCH request with custom content type
+func (c *Client) doPatchRequest(ctx context.Context, endpoint string, patchData []byte, contentType string, result interface{}) error {
+	u := *c.baseURL
+	u.Path = path.Join(u.Path, endpoint)
+
+	req, err := http.NewRequestWithContext(ctx, "PATCH", u.String(), bytes.NewBuffer(patchData))
+	if err != nil {
+		return fmt.Errorf("failed to create patch request: %w", err)
+	}
+
+	// Set patch-specific Content-Type
+	req.Header.Set("Content-Type", contentType)
+
+	// Set Accept header with optional version
+	acceptType := "application/json"
+	if c.version != "" {
+		acceptType = fmt.Sprintf("application/json;version=%s", c.version)
+	}
+	req.Header.Set("Accept", acceptType)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("patch request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read patch response body: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var errorResp ErrorResponse
+		if err := json.Unmarshal(respBody, &errorResp); err != nil {
+			return fmt.Errorf("PATCH HTTP error %d: %s", resp.StatusCode, string(respBody))
+		}
+		return fmt.Errorf("PATCH API error (%d): %s", resp.StatusCode, errorResp.Error)
+	}
+
+	if result != nil {
+		if err := json.Unmarshal(respBody, result); err != nil {
+			return fmt.Errorf("failed to unmarshal patch response: %w", err)
+		}
+	}
+
+	return nil
+}
+
 {{range .Resources}}
 // Get{{.Name}}s retrieves all {{.PluralName}}
 func (c *Client) Get{{.Name}}s(ctx context.Context) ([]{{.PackageAlias}}.{{.Name}}, error) {
@@ -192,6 +240,16 @@ func (c *Client) Update{{.Name}}(ctx context.Context, uid string, req Update{{.N
 	var result {{.PackageAlias}}.{{.Name}}
 	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
 	if err := c.doRequest(ctx, "PUT", endpoint, req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Patch{{.Name}} patches an existing {{.Name}} with the specified patch data and content type
+func (c *Client) Patch{{.Name}}(ctx context.Context, uid string, patchData []byte, contentType string) ({{.TypeName}}, error) {
+	var result {{.PackageAlias}}.{{.Name}}
+	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
+	if err := c.doPatchRequest(ctx, endpoint, patchData, contentType, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2025 Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+#
+# SPDX-License-Identifier: MIT
+
+name: Integration Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: 
+      - main
+      - 'feature/**'
+      - 'fix/**'
+      - 'testing/**'
+      - 'feat/**'
+  
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Build fabrica
+      run: make build
+
+    - name: Run Go integration tests
+      env:
+        GOPRIVATE: "github.com/me/*,example.com/*"
+      run: |
+        cd test/integration
+        go test -v -timeout 10m ./...
+
+    - name: Upload test artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-artifacts
+        path: |
+          test/integration/testdata/
+        retention-days: 7
