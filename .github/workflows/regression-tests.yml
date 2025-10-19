@@ -38,9 +38,7 @@ jobs:
         GOPRIVATE: "github.com/me/*,example.com/*"
       run: |
         cd test/integration
-        go mod tidy
-        go mod download github.com/go-chi/chi/v5
-        go test -v -timeout 10m ./...
+        go test -v -timeout 10m
 
     - name: Upload test artifacts
       if: failure()

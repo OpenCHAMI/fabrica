@@ -119,7 +119,9 @@ func (s *FabricaTestSuite) TestEntStorageGeneration() {
 
 	// Verify Ent-specific files exist
 	project.AssertFileExists("internal/storage/ent/schema/resource.go") // Updated to match actual Ent structure
-	project.AssertFileExists("internal/storage/storage_generated.go")   // Updated to match actual structure	err = project.Build()
+	project.AssertFileExists("internal/storage/storage_generated.go")   // Updated to match actual structure
+
+	err = project.Build()
 	s.Require().NoError(err)
 }
 

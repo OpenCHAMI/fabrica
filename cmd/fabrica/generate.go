@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -116,15 +117,49 @@ Examples:
 				fmt.Println("📥 Ensuring dependencies are available...")
 			}
 			tidyCmd := exec.Command("go", "mod", "tidy")
+			var tidyOutput bytes.Buffer
 			if debug {
 				tidyCmd.Stdout = os.Stdout
 				tidyCmd.Stderr = os.Stderr
 			} else {
-				tidyCmd.Stdout = nil // Suppress output unless there's an error
-				tidyCmd.Stderr = nil
+				tidyCmd.Stdout = &tidyOutput
+				tidyCmd.Stderr = &tidyOutput
 			}
 			if err := tidyCmd.Run(); err != nil {
-				fmt.Println("⚠️  Warning: go mod tidy failed, continuing anyway...")
+				// If go mod tidy fails, try go mod download all followed by another tidy
+				if debug {
+					fmt.Printf("⚠️  go mod tidy failed: %v\n", err)
+					if tidyOutput.Len() > 0 {
+						fmt.Printf("Output: %s\n", tidyOutput.String())
+					}
+					fmt.Println("📥 Trying 'go mod download all' followed by 'go mod tidy'...")
+				} else {
+					fmt.Println("⚠️  Warning: go mod tidy failed, trying download + tidy...")
+				}
+				downloadCmd := exec.Command("go", "mod", "download", "all")
+				if debug {
+					downloadCmd.Stdout = os.Stdout
+					downloadCmd.Stderr = os.Stderr
+				}
+				if err := downloadCmd.Run(); err == nil {
+					// Try tidy again after download
+					tidyCmd2 := exec.Command("go", "mod", "tidy")
+					if debug {
+						tidyCmd2.Stdout = os.Stdout
+						tidyCmd2.Stderr = os.Stderr
+					}
+					if err := tidyCmd2.Run(); err != nil {
+						if debug {
+							fmt.Printf("⚠️  Second go mod tidy also failed: %v\n", err)
+						}
+						fmt.Println("⚠️  Warning: dependency resolution incomplete, continuing anyway...")
+					}
+				} else {
+					if debug {
+						fmt.Printf("⚠️  go mod download all failed: %v\n", err)
+					}
+					fmt.Println("⚠️  Warning: dependency download failed, continuing anyway...")
+				}
 			}
 
 			// Check if authorization is enabled (policies directory exists)
