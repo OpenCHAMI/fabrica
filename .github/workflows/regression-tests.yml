@@ -27,7 +27,8 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.24'
+        check-latest: true
 
     - name: Build fabrica
       run: make build
