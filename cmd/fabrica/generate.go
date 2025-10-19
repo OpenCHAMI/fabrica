@@ -151,6 +151,15 @@ Examples:
 				}
 			}
 
+			// Check if reconciliation is enabled in config
+			config, err := readFabricaConfig()
+			if err == nil && config != nil && config.Features.Reconciliation.Enabled {
+				fmt.Println("🔄 Generating reconciliation code...")
+				if err := generateCodeWithRunner(modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, false, debug); err != nil {
+					return fmt.Errorf("failed to generate reconciliation code: %w", err)
+				}
+			}
+
 			fmt.Println("  └─ Done!")
 			fmt.Println()
 			fmt.Println("✅ Code generation complete!")
@@ -352,6 +361,35 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 		}
 		generationCalls.WriteString("\tif err := gen.GenerateClientCmd(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client CLI: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+	} else if packageName == "reconcile" {
+		// Reconciliation code generation
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Loading templates...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
+		generationCalls.WriteString("\t}\n\n")
+
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating reconcilers...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.GenerateReconcilers(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate reconcilers: %v\", err)\n")
+		generationCalls.WriteString("\t}\n\n")
+
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating reconciler registration...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.GenerateReconcilerRegistration(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate reconciler registration: %v\", err)\n")
+		generationCalls.WriteString("\t}\n\n")
+
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating event handlers...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.GenerateEventHandlers(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate event handlers: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 	}
 

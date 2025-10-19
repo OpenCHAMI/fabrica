@@ -37,6 +37,11 @@ type initOptions struct {
 	eventBusType    string // memory, nats, kafka
 	versionStrategy string // header, url, both
 
+	// Reconciliation options
+	withReconcile      bool // Enable reconciliation framework
+	reconcileWorkers   int  // Number of reconciler workers
+	reconcileRequeueMs int  // Default requeue delay in minutes
+
 	// Storage options
 	storageType string // file, ent
 	dbDriver    string // postgres, mysql, sqlite
@@ -44,15 +49,19 @@ type initOptions struct {
 
 // Template data structure
 type templateData struct {
-	ProjectName string
-	ModulePath  string
-	Description string
-	WithAuth    bool
-	WithStorage bool
-	WithMetrics bool
-	WithVersion bool
-	StorageType string
-	DBDriver    string
+	ProjectName      string
+	ModulePath       string
+	Description      string
+	WithAuth         bool
+	WithStorage      bool
+	WithMetrics      bool
+	WithVersion      bool
+	WithReconcile    bool
+	WithEvents       bool
+	StorageType      string
+	DBDriver         string
+	EventBusType     string
+	ReconcileWorkers int
 }
 
 func newInitCommand() *cobra.Command {
@@ -116,6 +125,11 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().BoolVar(&opts.withEvents, "events", false, "Enable CloudEvents support")
 	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory, nats, or kafka")
 	cmd.Flags().StringVar(&opts.versionStrategy, "version-strategy", "header", "API versioning strategy: header, url, or both")
+
+	// Reconciliation configuration
+	cmd.Flags().BoolVar(&opts.withReconcile, "reconcile", false, "Enable reconciliation framework")
+	cmd.Flags().IntVar(&opts.reconcileWorkers, "reconcile-workers", 5, "Number of reconciler workers")
+	cmd.Flags().IntVar(&opts.reconcileRequeueMs, "reconcile-requeue", 5, "Default requeue delay in minutes")
 
 	// Storage options
 	cmd.Flags().StringVar(&opts.storageType, "storage-type", "file", "Storage backend: file or ent")
@@ -308,15 +322,19 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 
 	// Template data
 	data := templateData{
-		ProjectName: projectName,
-		ModulePath:  opts.modulePath,
-		Description: opts.description,
-		WithAuth:    opts.withAuth,
-		WithStorage: opts.withStorage,
-		WithMetrics: opts.withMetrics,
-		WithVersion: opts.withVersion,
-		StorageType: opts.storageType,
-		DBDriver:    dbDriver,
+		ProjectName:      projectName,
+		ModulePath:       opts.modulePath,
+		Description:      opts.description,
+		WithAuth:         opts.withAuth,
+		WithStorage:      opts.withStorage,
+		WithMetrics:      opts.withMetrics,
+		WithVersion:      opts.withVersion,
+		WithReconcile:    opts.withReconcile,
+		WithEvents:       opts.withEvents,
+		StorageType:      opts.storageType,
+		DBDriver:         dbDriver,
+		EventBusType:     opts.eventBusType,
+		ReconcileWorkers: opts.reconcileWorkers,
 	}
 
 	// Create directories
@@ -581,14 +599,20 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 			Metrics: MetricsConfig{
 				Enabled: opts.withMetrics,
 			},
+			Reconciliation: ReconciliationConfig{
+				Enabled:      opts.withReconcile,
+				WorkerCount:  opts.reconcileWorkers,
+				RequeueDelay: opts.reconcileRequeueMs,
+			},
 		},
 		Generation: GenerationConfig{
-			Handlers:   true,
-			Storage:    opts.withStorage,
-			Client:     true,
-			OpenAPI:    true,
-			Events:     opts.withEvents,
-			Middleware: true, // Core features always include middleware
+			Handlers:       true,
+			Storage:        opts.withStorage,
+			Client:         true,
+			OpenAPI:        true,
+			Events:         opts.withEvents,
+			Middleware:     true, // Core features always include middleware
+			Reconciliation: opts.withReconcile,
 		},
 	}
 

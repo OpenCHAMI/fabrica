@@ -33,13 +33,14 @@ type ProjectConfig struct {
 
 // FeaturesConfig defines which features are enabled for the project.
 type FeaturesConfig struct {
-	Validation  ValidationConfig  `yaml:"validation"`
-	Events      EventsConfig      `yaml:"events"`
-	Conditional ConditionalConfig `yaml:"conditional"`
-	Versioning  VersioningConfig  `yaml:"versioning"`
-	Auth        AuthConfig        `yaml:"auth"`
-	Storage     StorageConfig     `yaml:"storage"`
-	Metrics     MetricsConfig     `yaml:"metrics,omitempty"`
+	Validation     ValidationConfig     `yaml:"validation"`
+	Events         EventsConfig         `yaml:"events"`
+	Conditional    ConditionalConfig    `yaml:"conditional"`
+	Versioning     VersioningConfig     `yaml:"versioning"`
+	Auth           AuthConfig           `yaml:"auth"`
+	Storage        StorageConfig        `yaml:"storage"`
+	Metrics        MetricsConfig        `yaml:"metrics,omitempty"`
+	Reconciliation ReconciliationConfig `yaml:"reconciliation,omitempty"`
 }
 
 // ValidationConfig controls validation behavior.
@@ -86,14 +87,22 @@ type MetricsConfig struct {
 	Provider string `yaml:"provider,omitempty"` // prometheus, datadog
 }
 
+// ReconciliationConfig controls reconciliation framework.
+type ReconciliationConfig struct {
+	Enabled      bool `yaml:"enabled"`
+	WorkerCount  int  `yaml:"worker_count,omitempty"`  // Number of reconciler workers (default: 5)
+	RequeueDelay int  `yaml:"requeue_delay,omitempty"` // Default requeue delay in minutes (default: 5)
+}
+
 // GenerationConfig controls what gets generated.
 type GenerationConfig struct {
-	Handlers   bool `yaml:"handlers"`
-	Storage    bool `yaml:"storage"`
-	Client     bool `yaml:"client"`
-	OpenAPI    bool `yaml:"openapi"`
-	Events     bool `yaml:"events"`
-	Middleware bool `yaml:"middleware"`
+	Handlers       bool `yaml:"handlers"`
+	Storage        bool `yaml:"storage"`
+	Client         bool `yaml:"client"`
+	OpenAPI        bool `yaml:"openapi"`
+	Events         bool `yaml:"events"`
+	Middleware     bool `yaml:"middleware"`
+	Reconciliation bool `yaml:"reconciliation"`
 }
 
 // LoadConfig reads .fabrica.yaml from the specified directory.

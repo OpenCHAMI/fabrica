@@ -22,18 +22,17 @@ import (
 
 	{{if .WithAuth}}
 	"github.com/casbin/casbin/v2"
-	"github.com/alexlovelltroy/fabrica/pkg/middleware"
-	// tokensmithmw "github.com/OpenCHAMI/tokensmith/middleware" // TODO: Enable when TokenSmith is stable
+	fabrica_middleware "github.com/alexlovelltroy/fabrica/pkg/middleware"
 	{{end}}
 
 	{{if .WithStorage}}
-	// TODO: Uncomment after running 'fabrica generate --storage'
-	// "{{.ModulePath}}/internal/storage"
+
+	 "{{.ModulePath}}/internal/storage"
 	{{end}}
 	{{if eq .StorageType "ent"}}
-	// TODO: Uncomment after running 'fabrica generate --storage'
-	// "{{.ModulePath}}/internal/storage/ent"
-	// "{{.ModulePath}}/internal/storage/ent/migrate"
+
+	 "{{.ModulePath}}/internal/storage/ent"
+	 "{{.ModulePath}}/internal/storage/ent/migrate"
 
 	{{if eq .DBDriver "postgres"}}
 	_ "github.com/lib/pq"
@@ -42,6 +41,15 @@ import (
 	{{else if or (eq .DBDriver "sqlite") (eq .DBDriver "sqlite3")}}
 	_ "github.com/mattn/go-sqlite3"
 	{{end}}
+	{{end}}
+
+	{{if .WithEvents}}
+	"github.com/alexlovelltroy/fabrica/pkg/events"
+	{{end}}
+
+	{{if .WithReconcile}}
+	"github.com/alexlovelltroy/fabrica/pkg/reconcile"
+	"{{.ModulePath}}/pkg/reconcilers"
 	{{end}}
 )
 
@@ -69,6 +77,12 @@ type Config struct {
 	TokenSmithURL  string `mapstructure:"tokensmith_url"`
 	CasbinModelPath string `mapstructure:"casbin_model_path"`
 	CasbinPolicyPath string `mapstructure:"casbin_policy_path"`
+	{{end}}
+
+	{{if .WithReconcile}}
+	// Reconciliation Configuration
+	ReconcileEnabled bool `mapstructure:"reconcile_enabled"`
+	ReconcileWorkers int  `mapstructure:"reconcile_workers"`
 	{{end}}
 
 	// Feature Flags
@@ -99,6 +113,10 @@ func DefaultConfig() *Config {
 		TokenSmithURL:   "http://localhost:3333",
 		CasbinModelPath: "./casbin_model.conf",
 		CasbinPolicyPath: "./casbin_policy.csv",
+		{{end}}
+		{{if .WithReconcile}}
+		ReconcileEnabled: true,
+		ReconcileWorkers: {{.ReconcileWorkers}},
 		{{end}}
 		{{if .WithMetrics}}
 		EnableMetrics: true,
@@ -224,34 +242,74 @@ func runServer(cmd *cobra.Command, args []string) error {
 	{{if .WithStorage}}
 	// Initialize storage backend
 	{{if eq .StorageType "file"}}
-	// TODO: Initialize storage - Run 'fabrica generate --storage' to create storage backend
-	// if err := storage.InitFileBackend(config.DataDir); err != nil {
-	// 	return fmt.Errorf("failed to initialize file storage: %w", err)
-	// }
-	log.Printf("File storage not yet generated - run 'fabrica generate --storage'")
+	if err := storage.InitFileBackend(config.DataDir); err != nil {
+	  return fmt.Errorf("failed to initialize file storage: %w", err)
+	}
+	log.Printf("File storage initialized in %s", config.DataDir)
 	{{else if eq .StorageType "ent"}}
-	// TODO: Connect to database after running 'fabrica generate --storage'
-	// client, err := ent.Open("{{.DBDriver}}", config.DatabaseURL)
-	// if err != nil {
-	// 	return fmt.Errorf("failed opening connection to {{.DBDriver}}: %w", err)
-	// }
-	// defer client.Close()
+	// Connect to database
+	client, err := ent.Open("{{.DBDriver}}", config.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("failed opening connection to {{.DBDriver}}: %w", err)
+	}
+	defer client.Close()
 
 	// Run auto-migration
-	// ctx := context.Background()
-	// if err := client.Schema.Create(
-	// 	ctx,
-	// 	migrate.WithDropIndex(true),
-	// 	migrate.WithDropColumn(true),
-	// ); err != nil {
-	// 	return fmt.Errorf("failed creating schema resources: %w", err)
-	// }
-	// log.Println("Database schema migrated successfully")
+	ctx := context.Background()
+	if err := client.Schema.Create(
+		ctx,
+		migrate.WithDropIndex(true),
+		migrate.WithDropColumn(true),
+	); err != nil {
+		return fmt.Errorf("failed creating schema resources: %w", err)
+	}
+	log.Println("Database schema migrated successfully")
 
 	// Set Ent client for storage operations
-	// TODO: Uncomment after running 'fabrica generate --storage'
-	// storage.SetEntClient(client)
-	log.Println("Ent client configuration not yet generated - run 'fabrica generate --storage'")
+	storage.SetEntClient(client)
+	log.Printf("Ent storage initialized with {{.DBDriver}} database")
+	{{end}}
+	{{end}}
+
+	{{if .WithReconcile}}
+	// Initialize reconciliation controller
+	var controller *reconcile.Controller
+	{{if .WithEvents}}
+	if config.ReconcileEnabled {
+		ctx := context.Background()
+
+		// Initialize event bus
+		{{if eq .EventBusType "memory"}}
+		eventBus := events.NewInMemoryEventBus(100, {{.ReconcileWorkers}})
+		{{else}}
+		// TODO: Configure {{.EventBusType}} event bus
+		eventBus := events.NewInMemoryEventBus(100, {{.ReconcileWorkers}})
+		{{end}}
+		eventBus.Start()
+		defer eventBus.Close()
+
+		// Create reconciliation controller
+		controller = reconcile.NewController(eventBus, storage.Backend)
+
+		// Create storage client for reconcilers
+		storageClient := storage.NewStorageClient()
+
+		// Register reconcilers
+		if err := reconcilers.RegisterReconcilers(controller, storageClient, eventBus); err != nil {
+			log.Fatalf("Failed to register reconcilers: %v", err)
+		}
+
+		// Start controller
+		if err := controller.Start(ctx); err != nil {
+			log.Fatalf("Failed to start reconciliation controller: %v", err)
+		}
+		defer controller.Stop()
+
+		log.Printf("Reconciliation controller started with %d workers", {{.ReconcileWorkers}})
+	}
+	{{else}}
+	// Reconciliation requires events to be enabled
+	log.Printf("Warning: Reconciliation is enabled but events are disabled. Enable --events to use reconciliation.")
 	{{end}}
 	{{end}}
 
@@ -271,25 +329,18 @@ func runServer(cmd *cobra.Command, args []string) error {
 	{{if .WithAuth}}
 	// Setup authentication middleware
 	if config.AuthEnabled {
-		// TODO: Setup TokenSmith JWT middleware when TokenSmith is stable
-		// tokensmithOpts := tokensmithmw.DefaultMiddlewareOptions()
-		// tokensmithOpts.JWKSURL = config.TokenSmithURL + "/.well-known/jwks.json"
-		// jwtMiddleware := tokensmithmw.JWTMiddleware(nil, tokensmithOpts)
-
 		// Setup Casbin authorization
 		enforcer, err := casbin.NewEnforcer(config.CasbinModelPath, config.CasbinPolicyPath)
 		if err != nil {
 		   log.Fatalf("Failed to create Casbin enforcer: %v", err)
 		}
-		casbinMiddleware := middleware.CasbinMiddleware(enforcer)
+		casbinMiddleware := fabrica_middleware.CasbinMiddleware(enforcer)
 
 		// Apply auth to protected routes
 		r.Route("/api", func(r chi.Router) {
-			// r.Use(jwtMiddleware) // TODO: Enable when TokenSmith is ready
 			r.Use(casbinMiddleware)
-			// Protected API routes will be registered here
-			// TODO: Uncomment after running 'fabrica generate'
-			// RegisterGeneratedRoutes(r)
+			// Protected API routes - generated by 'fabrica generate'
+			RegisterGeneratedRoutes(r)
 		})
 
 		// Public routes (health checks, etc.)
@@ -303,14 +354,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 		})
 	} else {
 		log.Println("Authentication disabled")
-		// TODO: Uncomment after running 'fabrica generate'
-		// RegisterGeneratedRoutes(r)
+		RegisterGeneratedRoutes(r)
 		r.Get("/health", healthHandler)
 	}
 	{{else}}
-	// Register routes (no authentication)
-	// TODO: Uncomment after running 'fabrica generate'
-	// RegisterGeneratedRoutes(r)
+	// Register routes (no authentication) - generated by 'fabrica generate'
+	RegisterGeneratedRoutes(r)
 	r.Get("/health", healthHandler)
 	{{end}}
 
