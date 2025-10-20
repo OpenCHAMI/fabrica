@@ -114,13 +114,19 @@ type DeviceStatus struct {
 fabrica generate
 ```
 
-**5. Run your server:**
+**5. Update dependencies:**
+
+```bash
+go mod tidy
+```
+
+**6. Run your server:**
 
 ```bash
 go run cmd/server/main.go
 ```
 
-**6. Test your API:**
+**7. Test your API:**
 
 ```bash
 # Create a device

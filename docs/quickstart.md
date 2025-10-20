@@ -100,7 +100,8 @@ You'll see:
 Your project is ready! Next steps:
   1. fabrica add resource Product
   2. fabrica generate
-  3. go run cmd/server/main.go
+  3. go mod tidy
+  4. go run cmd/server/main.go
 ```
 
 ## Step 2: Add Your Resource
@@ -161,6 +162,16 @@ This command:
 - Generates API routes
 - Updates server registration
 
+## Step 4: Update Dependencies
+
+After code generation, update your Go module dependencies:
+
+```bash
+go mod tidy
+```
+
+This resolves all the new imports that were added by the code generator.
+
 You'll see:
 
 ```
@@ -175,7 +186,7 @@ You'll see:
 ✅ Code generation complete!
 ```
 
-## Step 4: Run Your API
+## Step 5: Run Your API
 
 Start the server:
 
@@ -194,7 +205,7 @@ Server listening on :8080
 
 Your API is now running at `http://localhost:8080`!
 
-## Step 5: Test Your API
+## Step 6: Test Your API
 
 Open a new terminal and try the API:
 

@@ -91,6 +91,7 @@ fabrica init . --events --reconcile
 fabrica add resource FRU
 # Edit pkg/resources/fru/fru.go
 fabrica generate
+go mod tidy  # Update dependencies
 # Uncomment lines in cmd/server/main.go
 go run cmd/server/main.go
 ```
@@ -211,6 +212,7 @@ go run cmd/server/main.go
 fabrica add resource MyResource
 # Edit pkg/resources/myresource/myresource.go
 fabrica generate
+go mod tidy  # Update dependencies
 go run cmd/server/main.go
 ```
 
@@ -219,6 +221,7 @@ go run cmd/server/main.go
 ```bash
 # Edit pkg/resources/device/device.go
 fabrica generate  # Regenerates handlers/storage
+go mod tidy  # Update dependencies
 go run cmd/server/main.go
 ```
 
@@ -228,6 +231,7 @@ go run cmd/server/main.go
 fabrica init myapi --storage=postgres
 # Or edit after init
 fabrica generate
+go mod tidy  # Update dependencies
 ```
 
 ## Generated Code Overview
@@ -285,6 +289,7 @@ The generator is idempotent - safe to run multiple times:
 ```bash
 # After modifying resources
 fabrica generate  # Regenerates all code
+go mod tidy       # Update dependencies
 go build ./cmd/server
 ```
 

@@ -163,7 +163,17 @@ Represents a physical rack that references a RackTemplate:
 fabrica generate
 ```
 
-This generates:
+### Step 5: Update Dependencies
+
+After generation, update your Go module dependencies:
+
+```bash
+go mod tidy
+```
+
+This resolves all the new imports that were added by the code generator.
+
+**What `fabrica generate` creates:**
 - HTTP handlers for all 6 resources
 - Storage layer
 - Request/response models
@@ -282,9 +292,6 @@ defer controller.Stop()
 ### Step 7: Build and Run
 
 ```bash
-# Install dependencies
-go mod tidy
-
 # Build
 go build -o rack-server ./cmd/server
 

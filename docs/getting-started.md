@@ -121,7 +121,6 @@ type BookStatus struct {
 ### Step 4: Generate Code
 
 ```bash
-go mod tidy
 fabrica generate
 ```
 
@@ -145,7 +144,17 @@ This generates:
 - `cmd/server/openapi_generated.go` - OpenAPI spec
 - `pkg/client/client_generated.go` - Go client library
 
-### Step 5: Run Your API
+### Step 5: Update Dependencies
+
+After code generation, update your Go module dependencies:
+
+```bash
+go mod tidy
+```
+
+This resolves all the new imports that were added by the code generator.
+
+### Step 6: Run Your API
 
 ```bash
 go run cmd/server/main.go
@@ -341,7 +350,7 @@ go test ./...
 
 ### Error: "go: updates to go.mod needed"
 
-**Fix:** Run `go mod tidy` before `fabrica generate`
+**Fix:** Run `go mod tidy` after `fabrica generate` to resolve all new imports created by the code generator.
 
 ### Error: "no resources found"
 

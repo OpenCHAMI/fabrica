@@ -136,6 +136,16 @@ fabrica ent generate
 
 This step is **required** when using Ent storage. It generates the Ent ORM client code based on the schemas created in Step 6.
 
+### Step 5b: Update Dependencies
+
+After all code generation is complete, update your Go module dependencies:
+
+```bash
+go mod tidy
+```
+
+This resolves all the new imports that were added by the code generators.
+
 **What gets generated:**
 ```
 fru-service/
@@ -255,13 +265,9 @@ There are two occurrences - one in the auth-enabled block and one in the auth-di
 
 **Note:** The generated code does NOT include Casbin or TokenSmith integration by default. Those are mentioned in this README as advanced features but require manual implementation. For now, we'll run without them to get a working server
 
-### Step 7: Install Dependencies
+### Step 7: Verify Dependencies
 
-```bash
-go mod tidy
-```
-
-Required dependencies:
+The required dependencies should now be installed:
 - `entgo.io/ent` - ORM framework
 - `github.com/mattn/go-sqlite3` - SQLite driver
 - `github.com/casbin/casbin/v2` - Authorization
