@@ -35,7 +35,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	// Update phase to Provisioning
 	if rackResource.Status.Phase != "Provisioning" {
 		rackResource.Status.Phase = "Provisioning"
-		if err := r.saveResource(ctx, rackResource.GetKind(), rackResource.GetUID(), rackResource); err != nil {
+		if err := r.Client.Update(ctx, &rackResource); err != nil {
 			return fmt.Errorf("failed to update rack status: %w", err)
 		}
 	}
@@ -46,7 +46,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	if err != nil {
 		r.Logger.Errorf("Failed to load RackTemplate %s: %v", templateUID, err)
 		rackResource.Status.Phase = "Error"
-		r.saveResource(ctx, rackResource.GetKind(), rackResource.GetUID(), rackResource)
+		r.Client.Update(ctx, &rackResource)
 		return fmt.Errorf("failed to load rack template: %w", err)
 	}
 
@@ -78,7 +78,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 		if err != nil {
 			r.Logger.Errorf("Failed to create chassis %d: %v", chassisNum, err)
 			rackResource.Status.Phase = "Error"
-			r.saveResource(ctx, rackResource.GetKind(), rackResource.GetUID(), rackResource)
+			r.Client.Update(ctx, &rackResource)
 			return err
 		}
 		chassisUIDs = append(chassisUIDs, chassisUID)
@@ -150,7 +150,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	rackResource.Status.TotalNodes = totalNodes
 	rackResource.Status.TotalBMCs = totalBMCs
 
-	if err := r.saveResource(ctx, rackResource.GetKind(), rackResource.GetUID(), rackResource); err != nil {
+	if err := r.Client.Update(ctx, &rackResource); err != nil {
 		return fmt.Errorf("failed to update rack status: %w", err)
 	}
 
@@ -187,7 +187,7 @@ func (r *RackReconciler) createChassis(ctx context.Context, rackResource *rack.R
 	}
 	c.Metadata.Initialize(c.Metadata.Name, c.Metadata.UID)
 
-	if err := r.saveResource(ctx, c.GetKind(), c.GetUID(), c); err != nil {
+	if err := r.Client.Update(ctx, &c); err != nil {
 		return "", fmt.Errorf("failed to save chassis: %w", err)
 	}
 
@@ -222,7 +222,7 @@ func (r *RackReconciler) createBlade(ctx context.Context, chassisUID string, bla
 	}
 	b.Metadata.Initialize(b.Metadata.Name, b.Metadata.UID)
 
-	if err := r.saveResource(ctx, b.GetKind(), b.GetUID(), b); err != nil {
+	if err := r.Client.Update(ctx, &b); err != nil {
 		return "", fmt.Errorf("failed to save blade: %w", err)
 	}
 
@@ -256,7 +256,7 @@ func (r *RackReconciler) createBMC(ctx context.Context, bladeUID string) (string
 	}
 	b.Metadata.Initialize(b.Metadata.Name, b.Metadata.UID)
 
-	if err := r.saveResource(ctx, b.GetKind(), b.GetUID(), b); err != nil {
+	if err := r.Client.Update(ctx, &b); err != nil {
 		return "", fmt.Errorf("failed to save BMC: %w", err)
 	}
 
@@ -293,7 +293,7 @@ func (r *RackReconciler) createNode(ctx context.Context, bladeUID, bmcUID string
 	}
 	n.Metadata.Initialize(n.Metadata.Name, n.Metadata.UID)
 
-	if err := r.saveResource(ctx, n.GetKind(), n.GetUID(), n); err != nil {
+	if err := r.Client.Update(ctx, &n); err != nil {
 		return "", fmt.Errorf("failed to save node: %w", err)
 	}
 
@@ -319,7 +319,7 @@ func (r *RackReconciler) updateChassisStatus(ctx context.Context, chassisUID str
 	}
 
 	c.Status.BladeUIDs = bladeUIDs
-	return r.saveResource(ctx, c.GetKind(), c.GetUID(), &c)
+	return r.Client.Update(ctx, &c)
 }
 
 // updateBladeStatus updates the blade with node and BMC UIDs
@@ -341,14 +341,5 @@ func (r *RackReconciler) updateBladeStatus(ctx context.Context, bladeUID string,
 
 	b.Status.NodeUIDs = nodeUIDs
 	b.Status.BMCUIDs = bmcUIDs
-	return r.saveResource(ctx, b.GetKind(), b.GetUID(), &b)
-}
-
-// saveResource marshals and saves a resource to storage
-func (r *RackReconciler) saveResource(ctx context.Context, kind, uid string, resource interface{}) error {
-	data, err := json.Marshal(resource)
-	if err != nil {
-		return fmt.Errorf("failed to marshal resource: %w", err)
-	}
-	return r.Client.Update(ctx, kind, uid, data)
+	return r.Client.Update(ctx, &b)
 }
