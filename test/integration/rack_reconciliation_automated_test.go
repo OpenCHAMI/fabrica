@@ -5,6 +5,7 @@
 package integration
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -99,6 +100,21 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 		Module: projectModule,
 	}
 
+	// Add replace directive for local fabrica development
+	goModPath := filepath.Join(projectDir, "go.mod")
+	goModContent, err := os.ReadFile(goModPath)
+	s.Require().NoError(err, "should be able to read go.mod")
+
+	wd, err := os.Getwd()
+	s.Require().NoError(err, "should be able to get working directory")
+	fabricaRoot := filepath.Join(wd, "..", "..")
+	fabricaRootAbs, err := filepath.Abs(fabricaRoot)
+	s.Require().NoError(err, "should be able to get absolute path to fabrica root")
+
+	newGoModContent := string(goModContent) + fmt.Sprintf("\nreplace github.com/alexlovelltroy/fabrica => %s\n", fabricaRootAbs)
+	err = os.WriteFile(goModPath, []byte(newGoModContent), 0644)
+	s.Require().NoError(err, "should be able to update go.mod with replace directive")
+
 	// Step 2: Verify .fabrica.yaml contains reconciliation config
 	s.T().Log("Step 2: Verify .fabrica.yaml configuration")
 	configPath := filepath.Join(projectDir, ".fabrica.yaml")
@@ -155,11 +171,17 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 	s.Require().DirExists(reconcilersDir, "pkg/reconcilers directory should exist")
 
 	// Check for generated reconciler files
-	deviceReconciler := filepath.Join(reconcilersDir, "device_reconciler_generated.go")
-	s.Assert().FileExists(deviceReconciler, "device_reconciler_generated.go should exist")
+	deviceReconcilerGenerated := filepath.Join(reconcilersDir, "device_reconciler_generated.go")
+	s.Assert().FileExists(deviceReconcilerGenerated, "device_reconciler_generated.go should exist")
 
-	rackReconciler := filepath.Join(reconcilersDir, "rack_reconciler_generated.go")
-	s.Assert().FileExists(rackReconciler, "rack_reconciler_generated.go should exist")
+	deviceReconcilerStub := filepath.Join(reconcilersDir, "device_reconciler.go")
+	s.Assert().FileExists(deviceReconcilerStub, "device_reconciler.go should exist")
+
+	rackReconcilerGenerated := filepath.Join(reconcilersDir, "rack_reconciler_generated.go")
+	s.Assert().FileExists(rackReconcilerGenerated, "rack_reconciler_generated.go should exist")
+
+	rackReconcilerStub := filepath.Join(reconcilersDir, "rack_reconciler.go")
+	s.Assert().FileExists(rackReconcilerStub, "rack_reconciler.go should exist")
 
 	registration := filepath.Join(reconcilersDir, "registration_generated.go")
 	s.Assert().FileExists(registration, "registration_generated.go should exist")
@@ -169,18 +191,24 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 
 	s.T().Log("✓ All reconciler files generated")
 
-	// Step 7: Verify reconciler content
+	// Step 7: Verify generated reconciler structure
 	s.T().Log("Step 7: Verify generated reconciler structure")
-	deviceReconcilerContent, err := os.ReadFile(deviceReconciler)
-	s.Require().NoError(err, "should be able to read device reconciler")
-	deviceStr := string(deviceReconcilerContent)
+	deviceGenContent, err := os.ReadFile(deviceReconcilerGenerated)
+	s.Require().NoError(err, "should be able to read device reconciler generated file")
+	deviceGenStr := string(deviceGenContent)
 
-	s.Assert().Contains(deviceStr, "type DeviceReconciler struct", "should define DeviceReconciler struct")
-	s.Assert().Contains(deviceStr, "func NewDefaultDeviceReconciler", "should have factory function")
-	s.Assert().Contains(deviceStr, "func (r *DeviceReconciler) GetResourceKind()", "should implement GetResourceKind")
-	s.Assert().Contains(deviceStr, "func (r *DeviceReconciler) Reconcile(", "should implement Reconcile method")
-	s.Assert().Contains(deviceStr, "func (r *DeviceReconciler) reconcileDevice(", "should have custom reconcileDevice stub")
-	s.Assert().Contains(deviceStr, "TODO: Implement Device-specific reconciliation logic", "should have TODO comment")
+	s.Assert().Contains(deviceGenStr, "type DeviceReconciler struct", "generated file should define DeviceReconciler struct")
+	s.Assert().Contains(deviceGenStr, "func NewDefaultDeviceReconciler", "generated file should have factory function")
+	s.Assert().Contains(deviceGenStr, "func (r *DeviceReconciler) GetResourceKind()", "generated file should implement GetResourceKind")
+	s.Assert().Contains(deviceGenStr, "func (r *DeviceReconciler) Reconcile(", "generated file should implement Reconcile method")
+
+	// Verify stub reconciler file
+	deviceStubContent, err := os.ReadFile(deviceReconcilerStub)
+	s.Require().NoError(err, "should be able to read device reconciler stub file")
+	deviceStubStr := string(deviceStubContent)
+
+	s.Assert().Contains(deviceStubStr, "func (r *DeviceReconciler) reconcileDevice(", "stub file should have custom reconcileDevice method")
+	s.Assert().Contains(deviceStubStr, "TODO: Implement Device-specific reconciliation logic", "stub file should have TODO comment")
 	s.T().Log("✓ Reconciler structure is correct")
 
 	// Step 8: Verify registration file
