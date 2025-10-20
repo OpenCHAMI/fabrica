@@ -140,6 +140,18 @@ func (p *TestProject) Generate(fabricaBinary string) error {
 	return nil
 }
 
+// GenerateEnt runs Ent code generation for Ent storage projects using fabrica ent generate
+func (p *TestProject) GenerateEnt(fabricaBinary string) error {
+	// Run fabrica ent generate to trigger Ent code generation
+	cmd := exec.Command(fabricaBinary, "ent", "generate")
+	cmd.Dir = p.Dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ent generation failed: %w\nOutput: %s", err, output)
+	}
+	return nil
+}
+
 // Build builds the server and client binaries
 func (p *TestProject) Build() error {
 	// First try go get ./... to resolve all missing dependencies

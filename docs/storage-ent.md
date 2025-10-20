@@ -54,8 +54,7 @@ fabrica generate
 # 4. Generate Ent client code from schemas
 # This reads internal/storage/ent/schema/*.go
 # and generates type-safe database client code
-go generate ./internal/storage
-# Or use: fabrica ent generate
+fabrica ent generate
 
 # 5. Update dependencies
 go mod tidy
@@ -547,9 +546,6 @@ This means Ent client code hasn't been generated yet:
 
 ```bash
 # Generate Ent client code
-go generate ./internal/storage
-
-# Or use the Fabrica command
 fabrica ent generate
 ```
 
