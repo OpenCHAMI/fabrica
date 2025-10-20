@@ -10,6 +10,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.8] - 2025-10-20
+
+### Fixed
+- Fixed reconciler code generation templates
+- Fixed integration test for rack reconciliation
+- Fixed integration test expectations to properly validate both generated and stub reconciler files
+- Fixed Ent storage integration test to use `fabrica ent generate` command instead of direct `go generate`
+
+### Changed
+- Removed automatic `go mod tidy` execution from `fabrica generate` command to avoid circular dependency issues
+- Modified workflow to make `go mod tidy` a user responsibility after code generation
+- Updated `fabrica ent generate` helper in integration tests to accept binary path parameter
+
+### Added
+- Added stub files for Ent schema sub-packages (`annotation`, `label`, `resource`) during `fabrica init --storage-type ent`
+- Added `GenerateEnt()` helper method in integration test utilities
+- Added instructions in success messages to run `go mod tidy` after `fabrica generate`
+
+### Documentation
+- Updated README.md to include `go mod tidy` step in quickstart workflow
+- Updated docs/quickstart.md with dependency resolution step
+- Updated docs/getting-started.md with proper workflow steps
+- Updated docs/storage-ent.md to clarify `fabrica ent generate` usage
+- Updated all example READMEs to include `go mod tidy` in workflows (examples/01-basic-crud, examples/03-fru-service, examples/04-rack-reconciliation)
+- Updated examples/README.md with complete workflow including dependency management
+
 ## [v0.2.4] - 2025-10-06
 
 ### Added
@@ -99,7 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Storage system architecture documentation
 - Getting started guide
 
-[Unreleased]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.8...HEAD
+[v0.2.8]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.4...v0.2.8
+[v0.2.4]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.3...v0.2.4
 [v0.2.3]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.2...v0.2.3
 [v0.2.2]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.1...v0.2.2
 [v0.2.1]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.0...v0.2.1
