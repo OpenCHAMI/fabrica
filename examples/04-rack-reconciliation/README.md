@@ -317,15 +317,14 @@ curl -X POST http://localhost:8080/racktemplates \
   -H "Content-Type: application/json" \
   -d '{
     "name": "standard-rack",
-    "spec": {
-      "chassisCount": 2,
-      "chassisConfig": {
-        "bladeCount": 4,
-        "bladeConfig": {
-          "nodeCount": 2,
-          "bmcMode": "shared"
-        }
-      },
+    "chassisCount": 2,
+    "chassisConfig": {
+    "bladeCount": 4,
+    "bladeConfig": {
+      "nodeCount": 2,
+      "bmcMode": "shared"
+      }
+    },
       "description": "Standard 2-chassis rack with 4 blades per chassis"
     }
   }'
@@ -341,12 +340,11 @@ curl -X POST http://localhost:8080/racks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "rack-01",
-    "spec": {
-      "templateUID": "rktmpl-abc123",
-      "location": "datacenter-1",
-      "datacenter": "DC1",
-      "row": "A",
-      "position": "01"
+    "templateUID": "rktmpl-abc123",
+    "location": "datacenter-1",
+    "datacenter": "DC1",
+    "row": "A",
+    "position": "01"
     }
   }'
 ```
@@ -428,14 +426,12 @@ curl -X POST http://localhost:8080/racktemplates \
   -H "Content-Type: application/json" \
   -d '{
     "name": "dedicated-bmc-rack",
-    "spec": {
-      "chassisCount": 1,
-      "chassisConfig": {
-        "bladeCount": 2,
-        "bladeConfig": {
-          "nodeCount": 4,
-          "bmcMode": "dedicated"
-        }
+    "chassisCount": 1,
+    "chassisConfig": {
+      "bladeCount": 2,
+      "bladeConfig": {
+        "nodeCount": 4,
+        "bmcMode": "dedicated"
       }
     }
   }'
@@ -445,10 +441,8 @@ curl -X POST http://localhost:8080/racks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "rack-02",
-    "spec": {
-      "templateUID": "<template-uid>",
-      "location": "datacenter-1"
-    }
+    "templateUID": "<template-uid>",
+    "location": "datacenter-1"
   }'
 
 # Wait a few seconds, then check
