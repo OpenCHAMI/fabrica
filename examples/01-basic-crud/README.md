@@ -134,6 +134,16 @@ type DeviceSpec struct {
 fabrica generate
 ```
 
+### Step 4a: Update Dependencies
+
+After generation, update your Go module dependencies:
+
+```bash
+go mod tidy
+```
+
+This resolves all the new imports that were added by the code generator.
+
 **What `fabrica generate` creates:**
 
 ```
@@ -237,9 +247,6 @@ features:
 ### Step 6: Build Server and Client
 
 ```bash
-# Run go mod tidy first
-go mod tidy
-
 # Build the server
 go build -o server ./cmd/server
 
@@ -479,22 +486,24 @@ fabrica add resource Device
 # 5. Generate everything (reads .fabrica.yaml for config)
 fabrica generate
 
-# 6. Uncomment in cmd/server/main.go:
+# 6. Update dependencies
+go mod tidy
+
+# 7. Uncomment in cmd/server/main.go:
 #    - import "github.com/user/device-inventory/internal/storage"
 #    - storage.InitFileBackend("./data")
 #    - RegisterGeneratedRoutes(r)
 
-# 7. Build server and client
-go mod tidy
+# 8. Build server and client
 go build -o server ./cmd/server
 fabrica generate --client
 go build -o client ./cmd/client
 
-# 8. Run and test
+# 9. Run and test
 ./server  # In one terminal
 ./client device list  # In another terminal
 
-# 9. (Optional) Modify .fabrica.yaml and regenerate
+# 10. (Optional) Modify .fabrica.yaml and regenerate
 vim .fabrica.yaml  # Change validation mode, enable events, etc.
 fabrica generate   # Regenerate with new config
 go build ./cmd/server

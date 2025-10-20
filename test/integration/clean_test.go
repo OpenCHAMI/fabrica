@@ -117,9 +117,15 @@ func (s *FabricaTestSuite) TestEntStorageGeneration() {
 	err = project.Generate(s.fabricaBinary)
 	s.Require().NoError(err)
 
+	// For Ent storage, we need to run Ent code generation
+	err = project.GenerateEnt(s.fabricaBinary)
+	s.Require().NoError(err)
+
 	// Verify Ent-specific files exist
 	project.AssertFileExists("internal/storage/ent/schema/resource.go") // Updated to match actual Ent structure
-	project.AssertFileExists("internal/storage/storage_generated.go")   // Updated to match actual structure	err = project.Build()
+	project.AssertFileExists("internal/storage/storage_generated.go")   // Updated to match actual structure
+
+	err = project.Build()
 	s.Require().NoError(err)
 }
 

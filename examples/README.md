@@ -37,34 +37,48 @@ Add production features:
 
 **What you'll build:** A secure device inventory with JWT authentication and persistent storage.
 
-### 3. [Workflows and Reconciliation](03-fru-service/) - Advanced Patterns 🔄
+### 3. [FRU Service](03-fru-service/) - Production Features 🔐
 **Time: 30 minutes**
 
-Master declarative patterns:
-- Implementing reconciliation loops
-- Building state machines for workflows
-- Working with resource status updates
-- Handling async operations
-- Event-driven reconciliation
+Master production features:
+- SQLite database with Ent ORM
+- Generated middleware (validation, conditional requests, versioning)
+- Status lifecycle management
+- Kubernetes-style conditions
+- Working with metadata (labels, annotations)
 
-**What you'll build:** A tracking system for field replacable units.
+**What you'll build:** A field replaceable unit tracking system with persistent storage.
+
+### 4. [Rack Reconciliation](04-rack-reconciliation/) - Event-Driven Architecture 🔄
+**Time: 45 minutes**
+
+Master declarative patterns:
+- Event-driven reconciliation controllers
+- Hierarchical resource provisioning
+- Kubernetes-style declarative workflows
+- Parent-child resource relationships
+- Asynchronous operations with status tracking
+
+**What you'll build:** A data center rack inventory system that automatically provisions child resources (chassis, blades, nodes, BMCs) when a Rack is created.
 
 ## Quick Reference
 
 ### Example Comparison
 
-| Feature | Basic CRUD | Storage & Auth | Workflows |
-|---------|------------|----------------|-----------|
-| CRUD Operations | ✅ | ✅ | ✅ |
-| Code Generation | ✅ | ✅ | ✅ |
-| OpenAPI Spec | ✅ | ✅ | ✅ |
-| Storage Backends | File | File/DB | DB |
-| Authentication | ❌ | ✅ JWT | ✅ JWT |
-| Authorization | ❌ | ✅ RBAC | ✅ RBAC |
-| Validation | Basic | ✅ Custom | ✅ Custom |
-| Reconciliation | ❌ | ❌ | ✅ |
-| State Machines | ❌ | ❌ | ✅ |
-| Events | ❌ | ❌ | ✅ |
+| Feature | Basic CRUD | Storage & Auth | FRU Service | Rack Reconciliation |
+|---------|------------|----------------|-------------|---------------------|
+| CRUD Operations | ✅ | ✅ | ✅ | ✅ |
+| Code Generation | ✅ | ✅ | ✅ | ✅ |
+| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ |
+| Storage Backends | File | File/DB | DB | File |
+| Authentication | ❌ | ✅ JWT | ✅ JWT | ❌ |
+| Authorization | ❌ | ✅ RBAC | ✅ RBAC | ❌ |
+| Validation | Basic | ✅ Custom | ✅ Custom | ✅ Custom |
+| Reconciliation | ❌ | ❌ | ❌ | ✅ |
+| Event-Driven | ❌ | ❌ | ❌ | ✅ |
+| Hierarchical Resources | ❌ | ❌ | ❌ | ✅ |
+| State Machines | ❌ | ❌ | ✅ | ✅ |
+| Events | ❌ | ❌ | ❌ | ✅ |
 
 ### Running Examples
 
@@ -77,6 +91,7 @@ fabrica init . --events --reconcile
 fabrica add resource FRU
 # Edit pkg/resources/fru/fru.go
 fabrica generate
+go mod tidy  # Update dependencies
 # Uncomment lines in cmd/server/main.go
 go run cmd/server/main.go
 ```
@@ -197,6 +212,7 @@ go run cmd/server/main.go
 fabrica add resource MyResource
 # Edit pkg/resources/myresource/myresource.go
 fabrica generate
+go mod tidy  # Update dependencies
 go run cmd/server/main.go
 ```
 
@@ -205,6 +221,7 @@ go run cmd/server/main.go
 ```bash
 # Edit pkg/resources/device/device.go
 fabrica generate  # Regenerates handlers/storage
+go mod tidy  # Update dependencies
 go run cmd/server/main.go
 ```
 
@@ -214,6 +231,7 @@ go run cmd/server/main.go
 fabrica init myapi --storage=postgres
 # Or edit after init
 fabrica generate
+go mod tidy  # Update dependencies
 ```
 
 ## Generated Code Overview
@@ -271,6 +289,7 @@ The generator is idempotent - safe to run multiple times:
 ```bash
 # After modifying resources
 fabrica generate  # Regenerates all code
+go mod tidy       # Update dependencies
 go build ./cmd/server
 ```
 

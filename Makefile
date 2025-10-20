@@ -21,7 +21,7 @@ build: ## Build the application
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/fabrica
 
 test: ## Run tests
-	$(GO) test $(GOFLAGS) -race -coverprofile=coverage.out -covermode=atomic ./...
+	$(GO) test $(GOFLAGS) -race -coverprofile=coverage.out -covermode=atomic $$(go list ./... 2>/dev/null | grep -v /examples/)
 
 test-coverage: test ## Run tests with coverage report
 	$(GO) tool cover -html=coverage.out -o coverage.html

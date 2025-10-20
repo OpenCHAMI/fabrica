@@ -109,23 +109,10 @@ Examples:
 				fmt.Printf("📝 Registration file exists: %s\n", regFile)
 			}
 
-			// Ensure dependencies are available by running go mod tidy
-			if debug {
-				fmt.Println("📥 Running go mod tidy...")
-			} else {
-				fmt.Println("📥 Ensuring dependencies are available...")
-			}
-			tidyCmd := exec.Command("go", "mod", "tidy")
-			if debug {
-				tidyCmd.Stdout = os.Stdout
-				tidyCmd.Stderr = os.Stderr
-			} else {
-				tidyCmd.Stdout = nil // Suppress output unless there's an error
-				tidyCmd.Stderr = nil
-			}
-			if err := tidyCmd.Run(); err != nil {
-				fmt.Println("⚠️  Warning: go mod tidy failed, continuing anyway...")
-			}
+			// Note: We don't run go mod tidy here because:
+			// 1. Generated code may introduce new imports
+			// 2. The user should run it after generation completes
+			// This avoids circular dependency issues with code generators like Ent
 
 			// Check if authorization is enabled (policies directory exists)
 			authEnabled := false
@@ -151,9 +138,22 @@ Examples:
 				}
 			}
 
+			// Check if reconciliation is enabled in config
+			config, err := readFabricaConfig()
+			if err == nil && config != nil && config.Features.Reconciliation.Enabled {
+				fmt.Println("🔄 Generating reconciliation code...")
+				if err := generateCodeWithRunner(modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, false, debug); err != nil {
+					return fmt.Errorf("failed to generate reconciliation code: %w", err)
+				}
+			}
+
 			fmt.Println("  └─ Done!")
 			fmt.Println()
 			fmt.Println("✅ Code generation complete!")
+			fmt.Println()
+			fmt.Println("Next steps:")
+			fmt.Println("  go mod tidy                     # Update dependencies")
+			fmt.Println("  go run cmd/server/main.go       # Start the server")
 
 			return nil
 		},
@@ -253,7 +253,8 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 		fmt.Println("  Running code generator...")
 	}
 	// Use relative path starting with ./ so go run uses the project's go.mod and replace directives
-	cmd := exec.Command("go", "run", "./"+runnerDir)
+	// Use -mod=mod to allow go.mod updates during code generation (needed for Ent and other generators)
+	cmd := exec.Command("go", "run", "-mod=mod", "./"+runnerDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = "." // Run in project root
@@ -352,6 +353,35 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 		}
 		generationCalls.WriteString("\tif err := gen.GenerateClientCmd(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client CLI: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+	} else if packageName == "reconcile" {
+		// Reconciliation code generation
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Loading templates...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
+		generationCalls.WriteString("\t}\n\n")
+
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating reconcilers...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.GenerateReconcilers(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate reconcilers: %v\", err)\n")
+		generationCalls.WriteString("\t}\n\n")
+
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating reconciler registration...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.GenerateReconcilerRegistration(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate reconciler registration: %v\", err)\n")
+		generationCalls.WriteString("\t}\n\n")
+
+		if debug {
+			generationCalls.WriteString("\tfmt.Println(\"  Generating event handlers...\")\n")
+		}
+		generationCalls.WriteString("\tif err := gen.GenerateEventHandlers(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate event handlers: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 	}
 
@@ -580,6 +610,7 @@ func generateRegistrationFile(debug bool) error {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  fabrica generate                # Generate handlers and storage")
+	fmt.Println("  go mod tidy                     # Update dependencies")
 	fmt.Println("  go run cmd/server/main.go       # Start the server")
 
 	return nil

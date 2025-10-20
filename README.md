@@ -15,7 +15,7 @@ SPDX-License-Identifier: MIT
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexlovelltroy/fabrica)](https://goreportcard.com/report/github.com/alexlovelltroy/fabrica)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/alexlovelltroy/fabrica/badge)](https://securityscorecards.dev/viewer/?uri=github.com/alexlovelltroy/fabrica)
 
-> **🏗️ Code Generator for Go REST APIs**  
+> **🏗️ Code Generator for Go REST APIs**
 > Transform Go structs into production-ready REST APIs with OpenAPI specs, storage backends, and middleware in minutes.
 
 Fabrica is a powerful code generation tool that accelerates API development by transforming simple Go struct definitions into complete, production-ready REST APIs. Define your resources once, and Fabrica generates everything you need: handlers, storage layers, clients, validation, OpenAPI documentation, and more.
@@ -114,13 +114,19 @@ type DeviceStatus struct {
 fabrica generate
 ```
 
-**5. Run your server:**
+**5. Update dependencies:**
+
+```bash
+go mod tidy
+```
+
+**6. Run your server:**
 
 ```bash
 go run cmd/server/main.go
 ```
 
-**6. Test your API:**
+**7. Test your API:**
 
 ```bash
 # Create a device
@@ -193,23 +199,23 @@ Fabrica follows clean architecture principles and generates well-structured proj
 - ✅ Middleware for authentication, authorization, versioning, and caching
 
 > **⚠️ IMPORTANT: Code Regeneration**
-> 
+>
 > Fabrica supports **regenerating code** when you modify your resources or configuration. This means:
-> 
+>
 > **✅ SAFE TO EDIT:**
 > - `pkg/resources/*/` - Your resource definitions (spec/status structs)
 > - `.fabrica.yaml` - Project configuration
 > - `cmd/server/main.go` - Server customizations (before first `// Generated` comment)
-> 
+>
 > **❌ NEVER EDIT:**
 > - **Any file ending in `_generated.go`** - These are completely regenerated on each `fabrica generate`
 > - Files in generated directories after running `fabrica generate`
-> 
+>
 > **🔄 Regeneration Command:**
 > ```bash
 > fabrica generate  # Safely regenerates all *_generated.go files
 > ```
-> 
+>
 > Your custom code in resource definitions and main.go will be preserved, but all generated files will be completely rewritten.
 
 ## 📦 Resource Structure
@@ -219,7 +225,7 @@ Fabrica uses a **Kubernetes-inspired envelope pattern** that provides consistent
 ```json
 {
   "apiVersion": "v1",
-  "kind": "Device", 
+  "kind": "Device",
   "metadata": {
     "name": "web-server-01",
     "uid": "550e8400-e29b-41d4-a716-446655440000",
@@ -235,7 +241,7 @@ Fabrica uses a **Kubernetes-inspired envelope pattern** that provides consistent
   },
   "spec": {
     "type": "server",
-    "ipAddress": "192.168.1.100", 
+    "ipAddress": "192.168.1.100",
     "status": "active",
     "port": 443,
     "tags": {"role": "web", "datacenter": "us-west-2"}

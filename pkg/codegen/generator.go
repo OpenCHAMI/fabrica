@@ -539,6 +539,7 @@ func (g *Generator) GenerateClientModels() error {
 // GenerateReconcilers generates reconciler code for all resources
 func (g *Generator) GenerateReconcilers() error {
 	for _, resource := range g.Resources {
+		// Generate the boilerplate file (always regenerated)
 		var buf bytes.Buffer
 		data := struct {
 			ResourceMetadata
@@ -560,6 +561,24 @@ func (g *Generator) GenerateReconcilers() error {
 		filename := filepath.Join(g.OutputDir, fmt.Sprintf("%s_reconciler_generated.go", strings.ToLower(resource.Name)))
 		if err := os.WriteFile(filename, formatted, 0644); err != nil {
 			return fmt.Errorf("failed to write reconciler file for %s: %w", resource.Name, err)
+		}
+
+		// Generate the user-editable stub file (only if it doesn't exist)
+		stubFilename := filepath.Join(g.OutputDir, fmt.Sprintf("%s_reconciler.go", strings.ToLower(resource.Name)))
+		if _, err := os.Stat(stubFilename); os.IsNotExist(err) {
+			var stubBuf bytes.Buffer
+			if err := g.Templates["reconcilerStub"].Execute(&stubBuf, data); err != nil {
+				return fmt.Errorf("failed to execute reconciler stub template for %s: %w", resource.Name, err)
+			}
+
+			stubFormatted, err := format.Source(stubBuf.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to format generated reconciler stub code for %s: %w", resource.Name, err)
+			}
+
+			if err := os.WriteFile(stubFilename, stubFormatted, 0644); err != nil {
+				return fmt.Errorf("failed to write reconciler stub file for %s: %w", resource.Name, err)
+			}
 		}
 	}
 
@@ -637,6 +656,7 @@ func (g *Generator) LoadTemplates() error {
 		"clientCmd":              "client-cmd.go.tmpl",
 		"openapi":                "openapi.go.tmpl",
 		"reconciler":             "reconciler.go.tmpl",
+		"reconcilerStub":         "reconciler-stub.go.tmpl",
 		"reconcilerRegistration": "reconciler-registration.go.tmpl",
 		"eventHandlers":          "event-handlers.go.tmpl",
 		// Ent templates

@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	fabricaStorage "github.com/alexlovelltroy/fabrica/pkg/storage"
+	"github.com/alexlovelltroy/fabrica/pkg/reconcile"
 {{range .Resources}}
 	"{{.Package}}"
 {{- end}}
@@ -232,3 +233,142 @@ func List{{.StorageName}}UIDs(ctx context.Context) ([]string, error) {
 }
 
 {{end}}
+
+// StorageClient wraps a StorageBackend to implement reconcile.ClientInterface.
+//
+// This adapter allows reconcilers to use the storage backend through a
+// standard interface that provides typed resource access.
+type StorageClient struct {
+	backend fabricaStorage.StorageBackend
+}
+
+// Compile-time check that StorageClient implements reconcile.ClientInterface
+var _ reconcile.ClientInterface = (*StorageClient)(nil)
+
+// NewStorageClient creates a new storage client that wraps the configured backend.
+//
+// This is used by the reconciliation system to provide reconcilers with
+// access to resource storage.
+//
+// Returns:
+//   - *StorageClient: Client that implements reconcile.ClientInterface
+func NewStorageClient() *StorageClient {
+	ensureBackend()
+	return &StorageClient{backend: Backend}
+}
+
+// Get retrieves a resource by kind and UID.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - kind: Resource kind (e.g., "Device", "Rack")
+//   - uid: Unique identifier
+//
+// Returns:
+//   - interface{}: The resource (type-specific)
+//   - error: Any error that occurred
+func (c *StorageClient) Get(ctx context.Context, kind, uid string) (interface{}, error) {
+	rawData, err := c.backend.Load(ctx, kind, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal based on kind
+	switch kind {
+{{- range .Resources}}
+	case "{{.Name}}":
+		var resource {{.PackageAlias}}.{{.Name}}
+		if err := json.Unmarshal(rawData, &resource); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+		}
+		return &resource, nil
+{{- end}}
+	default:
+		return nil, fmt.Errorf("unknown resource kind: %s", kind)
+	}
+}
+
+// List retrieves all resources of a given kind.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - kind: Resource kind (e.g., "Device", "Rack")
+//
+// Returns:
+//   - []interface{}: Slice of resources
+//   - error: Any error that occurred
+func (c *StorageClient) List(ctx context.Context, kind string) ([]interface{}, error) {
+	rawData, err := c.backend.LoadAll(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal based on kind
+	switch kind {
+{{- range .Resources}}
+	case "{{.Name}}":
+		result := make([]interface{}, 0, len(rawData))
+		for _, raw := range rawData {
+			var resource {{.PackageAlias}}.{{.Name}}
+			if err := json.Unmarshal(raw, &resource); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+			}
+			result = append(result, &resource)
+		}
+		return result, nil
+{{- end}}
+	default:
+		return nil, fmt.Errorf("unknown resource kind: %s", kind)
+	}
+}
+
+// Update updates an existing resource.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - resource: The resource to update
+//
+// Returns:
+//   - error: Any error that occurred
+func (c *StorageClient) Update(ctx context.Context, resource interface{}) error {
+	data, err := json.Marshal(resource)
+	if err != nil {
+		return fmt.Errorf("failed to marshal resource: %w", err)
+	}
+
+	// Extract kind and UID based on type
+	switch res := resource.(type) {
+{{- range .Resources}}
+	case *{{.PackageAlias}}.{{.Name}}:
+		return c.backend.Save(ctx, "{{.Name}}", res.Metadata.UID, data)
+{{- end}}
+	default:
+		return fmt.Errorf("unknown resource type: %T", resource)
+	}
+}
+
+// Create creates a new resource.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - resource: The resource to create
+//
+// Returns:
+//   - error: Any error that occurred
+func (c *StorageClient) Create(ctx context.Context, resource interface{}) error {
+	// For storage backend, Create is the same as Update (Save handles both)
+	return c.Update(ctx, resource)
+}
+
+// Delete deletes a resource by kind and UID.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - kind: Resource kind
+//   - uid: Unique identifier
+//
+// Returns:
+//   - error: Any error that occurred
+func (c *StorageClient) Delete(ctx context.Context, kind, uid string) error {
+	return c.backend.Delete(ctx, kind, uid)
+}

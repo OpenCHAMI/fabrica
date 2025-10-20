@@ -54,18 +54,20 @@ fabrica generate
 # 4. Generate Ent client code from schemas
 # This reads internal/storage/ent/schema/*.go
 # and generates type-safe database client code
-go generate ./internal/storage
-# Or use: fabrica ent generate
+fabrica ent generate
 
-# 5. Set up your database connection
+# 5. Update dependencies
+go mod tidy
+
+# 6. Set up your database connection
 export DATABASE_URL="postgres://user:pass@localhost:5432/mydb?sslmode=disable"
 # For SQLite development: export DATABASE_URL="file:test.db?cache=shared&_fk=1"
 
-# 6. Build and run (migrations run automatically on startup)
+# 7. Build and run (migrations run automatically on startup)
 go build -o api ./cmd/server
 ./api
 
-# 7. Test your API
+# 8. Test your API
 curl http://localhost:8080/api/v1/devices
 ```
 
@@ -544,9 +546,6 @@ This means Ent client code hasn't been generated yet:
 
 ```bash
 # Generate Ent client code
-go generate ./internal/storage
-
-# Or use the Fabrica command
 fabrica ent generate
 ```
 

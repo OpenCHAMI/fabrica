@@ -72,20 +72,33 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 		return fmt.Errorf("failed to update go.mod: %w", err)
 	}
 
-	// Download dependencies after adding replace directive
-	downloadCmd := exec.Command("go", "mod", "download")
-	downloadCmd.Dir = p.Dir
-	_, err = downloadCmd.CombinedOutput() // Ignore output, but check for errors
+	// Add the fabrica module as a requirement after adding replace directive
+	// Use go get with -d flag to download without building
+	getCmd := exec.Command("go", "get", "-d", "github.com/alexlovelltroy/fabrica")
+	getCmd.Dir = p.Dir
+	getOutput, err := getCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to download dependencies: %w", err)
+		return fmt.Errorf("failed to get fabrica module: %w\nOutput: %s", err, getOutput)
 	}
 
-	// Run go mod tidy to resolve dependencies
+	// Run go mod tidy to resolve all transitive dependencies
+	// This is important to ensure go.sum has entries for fabrica's dependencies
 	tidyCmd := exec.Command("go", "mod", "tidy")
 	tidyCmd.Dir = p.Dir
-	_, err = tidyCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to tidy dependencies: %w", err)
+	_, tidyErr := tidyCmd.CombinedOutput()
+	if tidyErr != nil {
+		// If tidy fails, try to download all modules and tidy again
+		fmt.Printf("⚠️  First go mod tidy failed, trying download and retry...\n")
+		downloadCmd := exec.Command("go", "mod", "download", "all")
+		downloadCmd.Dir = p.Dir
+		if _, downloadErr := downloadCmd.CombinedOutput(); downloadErr == nil {
+			// Try tidy one more time after download
+			tidyCmd2 := exec.Command("go", "mod", "tidy")
+			tidyCmd2.Dir = p.Dir
+			if tidy2Output, tidy2Err := tidyCmd2.CombinedOutput(); tidy2Err != nil {
+				fmt.Printf("⚠️  Warning: go mod tidy still failed after download: %s\n", string(tidy2Output))
+			}
+		}
 	}
 
 	return nil
@@ -112,20 +125,58 @@ func (p *TestProject) Generate(fabricaBinary string) error {
 	if err != nil {
 		return fmt.Errorf("fabrica generate failed: %w\nOutput: %s", err, output)
 	}
+
+	// Run go mod tidy after generation as recommended in the success message
+	// Note: We don't fail if this errors because some generated code (like Ent)
+	// creates local sub-packages that go mod tidy might struggle with initially
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = p.Dir
+	tidyOutput, tidyErr := tidyCmd.CombinedOutput()
+	if tidyErr != nil {
+		fmt.Printf("⚠️  go mod tidy after generation had issues (continuing anyway): %s\n", string(tidyOutput))
+		// Don't return error - the Build step will try again with better error handling
+	}
+
+	return nil
+}
+
+// GenerateEnt runs Ent code generation for Ent storage projects using fabrica ent generate
+func (p *TestProject) GenerateEnt(fabricaBinary string) error {
+	// Run fabrica ent generate to trigger Ent code generation
+	cmd := exec.Command(fabricaBinary, "ent", "generate")
+	cmd.Dir = p.Dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ent generation failed: %w\nOutput: %s", err, output)
+	}
 	return nil
 }
 
 // Build builds the server and client binaries
 func (p *TestProject) Build() error {
-	// Go mod tidy
-	cmd := exec.Command("go", "mod", "tidy")
-	cmd.Dir = p.Dir
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("go mod tidy failed: %w\nOutput: %s", err, output)
+	// First try go get ./... to resolve all missing dependencies
+	getCmd := exec.Command("go", "get", "./...")
+	getCmd.Dir = p.Dir
+	if getOutput, getErr := getCmd.CombinedOutput(); getErr != nil {
+		fmt.Printf("⚠️  go get ./... had issues: %s\n", string(getOutput))
+	}
+
+	// Then run go mod tidy to clean up
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = p.Dir
+	if tidyOutput, tidyErr := tidyCmd.CombinedOutput(); tidyErr != nil {
+		fmt.Printf("⚠️  go mod tidy had issues: %s\n", string(tidyOutput))
+		// Try go mod download as final fallback
+		downloadCmd := exec.Command("go", "mod", "download", "all")
+		downloadCmd.Dir = p.Dir
+		if _, downloadErr := downloadCmd.CombinedOutput(); downloadErr != nil {
+			// Continue anyway - the build might still work
+			fmt.Printf("⚠️  go mod download also had issues, continuing anyway...\n")
+		}
 	}
 
 	// Build server
-	cmd = exec.Command("go", "build", "-o", "server", "./cmd/server")
+	cmd := exec.Command("go", "build", "-o", "server", "./cmd/server")
 	cmd.Dir = p.Dir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("server build failed: %w\nOutput: %s", err, output)

@@ -8,8 +8,7 @@ version: 2
 
 before:
   hooks:
-    # Clean up any previous builds
-    - go mod tidy
+    # Download dependencies for the main module only
     - go mod download
 
 builds:
@@ -48,7 +47,6 @@ archives:
       - README.md
       - docs/**/*
       - templates/**/*
-      - examples/**/*
 
 checksum:
   name_template: 'checksums.txt'

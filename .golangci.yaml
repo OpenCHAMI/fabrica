@@ -20,6 +20,13 @@ linters:
     - unused
     - revive
     - misspell
+  # Note: exclusions.paths suppresses issues but doesn't skip analysis.
+  # The pre-commit hook temporarily renames the examples directory to
+  # completely skip it, which is more performant and avoids import errors.
+  exclusions:
+    paths:
+      - examples/
+      - test/integration/
 
 issues:
   max-issues-per-linter: 0

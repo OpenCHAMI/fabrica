@@ -8,13 +8,13 @@ on:
   pull_request:
     branches: [ main ]
   push:
-    branches: 
+    branches:
       - main
       - 'feature/**'
       - 'fix/**'
       - 'testing/**'
       - 'feat/**'
-  
+
 
 jobs:
   integration-tests:
@@ -22,12 +22,13 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.24'
+        check-latest: true
 
     - name: Build fabrica
       run: make build
@@ -37,7 +38,7 @@ jobs:
         GOPRIVATE: "github.com/me/*,example.com/*"
       run: |
         cd test/integration
-        go test -v -timeout 10m ./...
+        go test -v -timeout 10m
 
     - name: Upload test artifacts
       if: failure()

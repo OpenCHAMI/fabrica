@@ -162,15 +162,16 @@ func (c *Controller) worker(id int) {
 	c.logger.Debugf("Worker %d started", id)
 
 	for {
-		item, shutdown := c.queue.Get()
-		if shutdown {
+		item, ok := c.queue.Get()
+		if !ok {
+			// Queue is shutting down
 			c.logger.Debugf("Worker %d shutting down", id)
 			return
 		}
 
-		request, ok := item.(ReconcileRequest)
-		if !ok {
-			c.logger.Errorf("Worker %d: invalid item type in queue", id)
+		request, isRequest := item.(ReconcileRequest)
+		if !isRequest {
+			c.logger.Errorf("Worker %d: invalid item type in queue (expected ReconcileRequest, got %T)", id, item)
 			c.queue.Done(item)
 			continue
 		}
