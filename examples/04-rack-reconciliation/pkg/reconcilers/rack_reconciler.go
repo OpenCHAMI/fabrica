@@ -42,7 +42,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 
 	// Load the RackTemplate
 	templateUID := rackResource.Spec.TemplateUID
-	templateData, err := r.Client.Load(ctx, "RackTemplate", templateUID)
+	templateData, err := r.Client.Get(ctx, "RackTemplate", templateUID)
 	if err != nil {
 		r.Logger.Errorf("Failed to load RackTemplate %s: %v", templateUID, err)
 		rackResource.Status.Phase = "Error"
@@ -303,7 +303,7 @@ func (r *RackReconciler) createNode(ctx context.Context, bladeUID, bmcUID string
 
 // updateChassisStatus updates the chassis with blade UIDs
 func (r *RackReconciler) updateChassisStatus(ctx context.Context, chassisUID string, bladeUIDs []string) error {
-	data, err := r.Client.Load(ctx, "Chassis", chassisUID)
+	data, err := r.Client.Get(ctx, "Chassis", chassisUID)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (r *RackReconciler) updateChassisStatus(ctx context.Context, chassisUID str
 
 // updateBladeStatus updates the blade with node and BMC UIDs
 func (r *RackReconciler) updateBladeStatus(ctx context.Context, bladeUID string, nodeUIDs, bmcUIDs []string) error {
-	data, err := r.Client.Load(ctx, "Blade", bladeUID)
+	data, err := r.Client.Get(ctx, "Blade", bladeUID)
 	if err != nil {
 		return err
 	}
@@ -350,5 +350,5 @@ func (r *RackReconciler) saveResource(ctx context.Context, kind, uid string, res
 	if err != nil {
 		return fmt.Errorf("failed to marshal resource: %w", err)
 	}
-	return r.Client.Save(ctx, kind, uid, data)
+	return r.Client.Update(ctx, kind, uid, data)
 }

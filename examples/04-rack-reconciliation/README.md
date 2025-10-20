@@ -124,7 +124,7 @@ Copy the resource definitions from this example directory to your project:
 
 ```bash
 # From the fabrica repository
-cp -r examples/04-rack-reconciliation/pkg/resources/* pkg/resources/
+cp -r ../examples/04-rack-reconciliation/pkg/resources/* pkg/resources/
 ```
 
 Or create each resource file manually following the structures below.
@@ -257,7 +257,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, res *rack.Rack) erro
 **You can copy the example implementation:**
 ```bash
 # Copy the complete rack reconciler implementation
-cp examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go \
+cp ../examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go \
    pkg/reconcilers/rack_reconciler.go
 ```
 
