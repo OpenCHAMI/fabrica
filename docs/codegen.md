@@ -124,7 +124,6 @@ When using Ent storage (`--storage ent`), additional templates are used:
 | `ent/schema/annotation.go.tmpl` | Resource annotation schema | `internal/storage/ent/schema/annotation.go` |
 | `ent_adapter.go.tmpl` | Adapter between Fabrica and Ent | `internal/storage/ent_adapter.go` |
 | `generate.go.tmpl` | Ent code generation directive | `internal/storage/generate.go` |
-| `main_ent.go.tmpl` | Server main with Ent database | `cmd/server/main.go` |
 
 ### Casbin (Authorization) Templates
 

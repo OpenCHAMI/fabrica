@@ -271,6 +271,36 @@ func runServer(cmd *cobra.Command, args []string) error {
 	{{end}}
 	{{end}}
 
+	{{if .WithEvents}}
+	// Initialize event system with configuration from environment
+	eventConfig := &events.EventConfig{
+		Enabled:                true,
+		EventTypePrefix:        viper.GetString("event_type_prefix"),
+		LifecycleEventsEnabled: viper.GetBool("lifecycle_events_enabled"),
+		ConditionEventsEnabled: viper.GetBool("condition_events_enabled"),
+	}
+
+	// Use defaults if not configured
+	if eventConfig.EventTypePrefix == "" {
+		eventConfig.EventTypePrefix = "{{.ProjectName}}.resource"
+	}
+	if !viper.IsSet("lifecycle_events_enabled") {
+		eventConfig.LifecycleEventsEnabled = true
+	}
+	if !viper.IsSet("condition_events_enabled") {
+		eventConfig.ConditionEventsEnabled = true
+	}
+
+	// Initialize event configuration
+	events.SetEventConfig(eventConfig)
+
+	// Initialize event bridge for condition events
+	events.InitializeEventBridge()
+
+	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
+		eventConfig.LifecycleEventsEnabled, eventConfig.ConditionEventsEnabled, eventConfig.EventTypePrefix)
+	{{end}}
+
 	{{if .WithReconcile}}
 	// Initialize reconciliation controller
 	var controller *reconcile.Controller

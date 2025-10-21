@@ -36,8 +36,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/alexlovelltroy/fabrica/pkg/events"
 	"github.com/alexlovelltroy/fabrica/pkg/patch"
 	"github.com/alexlovelltroy/fabrica/pkg/resource"
 	"github.com/alexlovelltroy/fabrica/pkg/validation"
@@ -170,6 +172,12 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Publish resource created event
+	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource created event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+	}
+
 	respondJSON(w, http.StatusCreated, {{camelCase .Name}})
 }
 
@@ -214,6 +222,15 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
+	}
+
+	// Publish resource updated event
+	updateMetadata := map[string]interface{}{
+		"updatedAt": {{camelCase .Name}}.Metadata.UpdatedAt,
+	}
+	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, updateMetadata); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource updated event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	}
 
 	respondJSON(w, http.StatusOK, {{camelCase .Name}})
@@ -277,6 +294,16 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Publish resource patched event
+	patchMetadata := map[string]interface{}{
+		"patchType": patchType,
+		"updatedAt": {{camelCase .Name}}.Metadata.UpdatedAt,
+	}
+	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, patchMetadata); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource patched event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+	}
+
 	respondJSON(w, http.StatusOK, {{camelCase .Name}})
 }
 
@@ -288,9 +315,25 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load resource before deletion for event publishing
+	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
+		return
+	}
+
 	if err := storage.Delete{{.StorageName}}(r.Context(), uid); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete {{.Name}}: %w", err))
 		return
+	}
+
+	// Publish resource deleted event
+	deleteMetadata := map[string]interface{}{
+		"deletedAt": time.Now(),
+	}
+	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), deleteMetadata); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource deleted event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	}
 
 	respondJSON(w, http.StatusOK, &DeleteResponse{

@@ -153,6 +153,15 @@ func TestController_EnqueueAndProcess(t *testing.T) {
 func TestController_EventTriggersReconciliation(t *testing.T) {
 	ctx := context.Background()
 
+	// Initialize event system for testing
+	config := &events.EventConfig{
+		Enabled:                true,
+		EventTypePrefix:        "io.fabrica",
+		LifecycleEventsEnabled: true,
+		ConditionEventsEnabled: true,
+	}
+	events.SetEventConfig(config)
+
 	// Create temp directory for storage
 	tempDir := t.TempDir()
 
@@ -228,6 +237,16 @@ func TestController_EventTriggersReconciliation(t *testing.T) {
 
 func TestController_OnlyReconcileRegisteredKinds(t *testing.T) {
 	ctx := context.Background()
+
+	// Configure events system
+	eventConfig := &events.EventConfig{
+		Enabled:                true,
+		LifecycleEventsEnabled: true,
+		ConditionEventsEnabled: true,
+		EventTypePrefix:        "io.fabrica",
+		Source:                 "fabrica-test",
+	}
+	events.SetEventConfig(eventConfig)
 
 	// Create temp directory for storage
 	tempDir := t.TempDir()

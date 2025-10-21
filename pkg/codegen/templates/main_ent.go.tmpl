@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexlovelltroy/fabrica/pkg/events"
 	"{{.ModulePath}}/internal/storage"
 	"{{.ModulePath}}/internal/storage/ent"
 	"{{.ModulePath}}/internal/storage/ent/migrate"
@@ -63,6 +64,28 @@ func main() {
 
 	// Set Ent client for storage operations
 	storage.SetEntClient(client)
+
+	// Initialize event system with configuration from environment
+	config := events.EventConfig{
+		EventTypePrefix:        os.Getenv("EVENT_TYPE_PREFIX"),        // Default: "" (disabled)
+		LifecycleEventsEnabled: os.Getenv("LIFECYCLE_EVENTS_ENABLED") == "true", // Default: false
+		ConditionEventsEnabled: os.Getenv("CONDITION_EVENTS_ENABLED") == "true", // Default: false
+	}
+
+	// If no prefix is set but events are enabled, use a default
+	if (config.LifecycleEventsEnabled || config.ConditionEventsEnabled) && config.EventTypePrefix == "" {
+		config.EventTypePrefix = "{{.ProjectName}}.resource"
+		log.Println("Event publishing enabled with default prefix:", config.EventTypePrefix)
+	}
+
+	// Initialize event configuration
+	events.SetEventConfig(config)
+
+	// Initialize event bridge for condition events (if needed by your resources)
+	events.InitializeEventBridge()
+
+	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
+		config.LifecycleEventsEnabled, config.ConditionEventsEnabled, config.EventTypePrefix)
 
 	// Register routes
 	mux := http.NewServeMux()

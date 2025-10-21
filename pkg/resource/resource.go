@@ -5,6 +5,7 @@
 package resource
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -598,4 +599,24 @@ func GetResourceTypeFromUID(uid string) (string, error) {
 	}
 
 	return "", fmt.Errorf("prefix '%s' is not registered", prefix)
+}
+
+// ResourceWithConditions represents a resource that has a Status field with Conditions.
+// This interface allows condition management with automatic event publishing.
+type ResourceWithConditions interface { //nolint:revive
+	GetUID() string
+	GetKind() string
+	GetConditions() *[]Condition
+}
+
+// SetResourceCondition is a helper function for resources that implement ResourceWithConditions.
+// It sets a condition and automatically publishes events if configured.
+//
+// Example:
+//
+//	// For a Device that implements ResourceWithConditions
+//	SetResourceCondition(ctx, device, "Ready", "True", "Healthy", "All systems operational")
+func SetResourceCondition(ctx context.Context, resource ResourceWithConditions, conditionType, status, reason, message string) bool {
+	conditions := resource.GetConditions()
+	return SetConditionWithEvents(ctx, conditions, conditionType, status, reason, message, resource.GetKind(), resource.GetUID())
 }

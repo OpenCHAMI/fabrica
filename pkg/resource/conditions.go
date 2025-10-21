@@ -5,7 +5,10 @@
 // Package resource provides Kubernetes-style resource conditions for tracking resource status.
 package resource
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Condition represents a specific condition of a resource.
 //
@@ -206,19 +209,62 @@ func FindCondition(conditions []Condition, conditionType string) *Condition {
 //	    // Update resource or trigger events
 //	}
 func SetCondition(conditions *[]Condition, conditionType, status, reason, message string) bool {
+	return SetConditionWithEvents(context.Background(), conditions, conditionType, status, reason, message, "", "")
+}
+
+// SetConditionWithEvents sets or updates a condition in a slice and publishes events if configured.
+//
+// This function works like SetCondition but also publishes condition change events
+// if an event publisher is registered. This enables automatic event publishing
+// for condition changes without requiring explicit event calls.
+//
+// Parameters:
+//   - ctx: Context for event publishing
+//   - conditions: Pointer to the conditions slice
+//   - conditionType: The type of condition to set
+//   - status: The condition status ("True", "False", "Unknown")
+//   - reason: Machine-readable reason
+//   - message: Human-readable message
+//   - resourceKind: Kind of resource (for events) - can be empty to disable events
+//   - resourceUID: Unique identifier of resource (for events) - can be empty to disable events
+//
+// Returns:
+//   - bool: True if any changes were made
+//
+// Example:
+//
+//	changed := SetConditionWithEvents(ctx, &device.Status.Conditions, "Ready", "True", "Healthy", "All checks passed", "Device", device.GetUID())
+func SetConditionWithEvents(ctx context.Context, conditions *[]Condition, conditionType, status, reason, message, resourceKind, resourceUID string) bool {
 	if *conditions == nil {
 		*conditions = make([]Condition, 0)
 	}
 
+	var previousStatus string
+	var changed bool
+
 	// Find existing condition
 	for i := range *conditions {
 		if (*conditions)[i].Type == conditionType {
-			return (*conditions)[i].Update(status, reason, message)
+			previousStatus = (*conditions)[i].Status
+			changed = (*conditions)[i].Update(status, reason, message)
+
+			// Publish event if condition changed and we have resource info
+			if changed && resourceKind != "" && resourceUID != "" {
+				publishConditionEvent(ctx, conditionType, status, previousStatus, resourceKind, resourceUID, reason, message)
+			}
+
+			return changed
 		}
 	}
 
 	// Add new condition
 	*conditions = append(*conditions, NewCondition(conditionType, status, reason, message))
+
+	// Publish event for new condition if we have resource info
+	if resourceKind != "" && resourceUID != "" {
+		publishConditionEvent(ctx, conditionType, status, "Unknown", resourceKind, resourceUID, reason, message)
+	}
+
 	return true
 }
 
@@ -299,4 +345,43 @@ func GetConditionStatus(conditions []Condition, conditionType string) string {
 		return "Unknown"
 	}
 	return condition.Status
+}
+
+// ConditionEventPublisher is a function type for publishing condition change events.
+// This allows the conditions package to publish events without directly depending
+// on the events package, maintaining clean separation of concerns.
+type ConditionEventPublisher func(ctx context.Context, conditionType, status, previousStatus, resourceKind, resourceUID, reason, message string) error
+
+// globalConditionEventPublisher holds the registered event publisher
+var globalConditionEventPublisher ConditionEventPublisher
+
+// SetConditionEventPublisher registers a function to publish condition change events.
+// This should be called during application initialization to enable automatic
+// event publishing when conditions change.
+//
+// Example:
+//
+//	// In main.go or initialization code
+//	resource.SetConditionEventPublisher(func(ctx context.Context, conditionType, status, previousStatus, resourceKind, resourceUID, reason, message string) error {
+//	    return events.PublishConditionEvent(ctx, conditionType, status, resourceKind, resourceUID, events.ConditionChangeData{
+//	        ConditionType:  conditionType,
+//	        Status:         status,
+//	        PreviousStatus: previousStatus,
+//	        Reason:         reason,
+//	        Message:        message,
+//	        TransitionTime: time.Now(),
+//	        ResourceKind:   resourceKind,
+//	        ResourceUID:    resourceUID,
+//	    })
+//	})
+func SetConditionEventPublisher(publisher ConditionEventPublisher) {
+	globalConditionEventPublisher = publisher
+}
+
+// publishConditionEvent publishes a condition change event if a publisher is registered
+func publishConditionEvent(ctx context.Context, conditionType, status, previousStatus, resourceKind, resourceUID, reason, message string) {
+	if globalConditionEventPublisher != nil {
+		// Call the publisher, but don't let event publishing errors affect condition updates
+		_ = globalConditionEventPublisher(ctx, conditionType, status, previousStatus, resourceKind, resourceUID, reason, message)
+	}
 }
