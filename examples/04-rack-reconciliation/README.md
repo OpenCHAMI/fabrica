@@ -124,7 +124,7 @@ Copy the resource definitions from this example directory to your project:
 
 ```bash
 # From the fabrica repository
-cp -r examples/04-rack-reconciliation/pkg/resources/* pkg/resources/
+cp -r ../examples/04-rack-reconciliation/pkg/resources/* pkg/resources/
 ```
 
 Or create each resource file manually following the structures below.
@@ -257,7 +257,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, res *rack.Rack) erro
 **You can copy the example implementation:**
 ```bash
 # Copy the complete rack reconciler implementation
-cp examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go \
+cp ../examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go \
    pkg/reconcilers/rack_reconciler.go
 ```
 
@@ -317,15 +317,14 @@ curl -X POST http://localhost:8080/racktemplates \
   -H "Content-Type: application/json" \
   -d '{
     "name": "standard-rack",
-    "spec": {
-      "chassisCount": 2,
-      "chassisConfig": {
-        "bladeCount": 4,
-        "bladeConfig": {
-          "nodeCount": 2,
-          "bmcMode": "shared"
-        }
-      },
+    "chassisCount": 2,
+    "chassisConfig": {
+    "bladeCount": 4,
+    "bladeConfig": {
+      "nodeCount": 2,
+      "bmcMode": "shared"
+      }
+    },
       "description": "Standard 2-chassis rack with 4 blades per chassis"
     }
   }'
@@ -341,12 +340,11 @@ curl -X POST http://localhost:8080/racks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "rack-01",
-    "spec": {
-      "templateUID": "rktmpl-abc123",
-      "location": "datacenter-1",
-      "datacenter": "DC1",
-      "row": "A",
-      "position": "01"
+    "templateUID": "rktmpl-abc123",
+    "location": "datacenter-1",
+    "datacenter": "DC1",
+    "row": "A",
+    "position": "01"
     }
   }'
 ```
@@ -428,14 +426,12 @@ curl -X POST http://localhost:8080/racktemplates \
   -H "Content-Type: application/json" \
   -d '{
     "name": "dedicated-bmc-rack",
-    "spec": {
-      "chassisCount": 1,
-      "chassisConfig": {
-        "bladeCount": 2,
-        "bladeConfig": {
-          "nodeCount": 4,
-          "bmcMode": "dedicated"
-        }
+    "chassisCount": 1,
+    "chassisConfig": {
+      "bladeCount": 2,
+      "bladeConfig": {
+        "nodeCount": 4,
+        "bmcMode": "dedicated"
       }
     }
   }'
@@ -445,10 +441,8 @@ curl -X POST http://localhost:8080/racks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "rack-02",
-    "spec": {
-      "templateUID": "<template-uid>",
-      "location": "datacenter-1"
-    }
+    "templateUID": "<template-uid>",
+    "location": "datacenter-1"
   }'
 
 # Wait a few seconds, then check
