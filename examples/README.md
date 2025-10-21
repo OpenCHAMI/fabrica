@@ -53,7 +53,7 @@ Master production features:
 **Time: 15 minutes**
 
 Master event-driven patterns:
-- CloudEvents-compliant event publishing  
+- CloudEvents-compliant event publishing
 - Automatic lifecycle event publishing (create, update, delete)
 - Condition change events
 - Event subscription and monitoring

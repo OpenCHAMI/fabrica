@@ -106,7 +106,7 @@ fabrica generate
    ```go
    func (h *SensorHandler) CreateSensor(w http.ResponseWriter, r *http.Request) {
        // ... validation and creation logic ...
-       
+
        // Automatically publish lifecycle event
        if err := events.PublishResourceCreated(ctx, "Sensor", createdResource.Metadata.UID, createdResource); err != nil {
            h.Logger.Warn("Failed to publish create event", "error", err)
@@ -116,7 +116,7 @@ fabrica generate
 
 3. **Event Types Generated:**
    - `io.fabrica.sensor.created` - When a sensor is created
-   - `io.fabrica.sensor.updated` - When a sensor is updated  
+   - `io.fabrica.sensor.updated` - When a sensor is updated
    - `io.fabrica.sensor.patched` - When a sensor is patched
    - `io.fabrica.sensor.deleted` - When a sensor is deleted
    - `io.fabrica.condition.ready` - When sensor becomes ready
@@ -144,7 +144,7 @@ FABRICA_EVENT_SOURCE=production-sensors \
 
 **Environment Variables for Event Configuration:**
 - `FABRICA_EVENTS_ENABLED`: Enable/disable all events (true/false)
-- `FABRICA_LIFECYCLE_EVENTS_ENABLED`: Enable lifecycle events (true/false)  
+- `FABRICA_LIFECYCLE_EVENTS_ENABLED`: Enable lifecycle events (true/false)
 - `FABRICA_CONDITION_EVENTS_ENABLED`: Enable condition events (true/false)
 - `FABRICA_EVENT_PREFIX`: Custom event type prefix (default: "io.fabrica")
 - `FABRICA_EVENT_SOURCE`: Event source identifier (default: project name)
@@ -165,7 +165,7 @@ curl -X POST http://localhost:8080/sensors \
 # Expected response:
 # {
 #   "apiVersion": "v1",
-#   "kind": "Sensor", 
+#   "kind": "Sensor",
 #   "metadata": {
 #     "name": "temp-01",
 #     "uid": "sen-abc123",
@@ -178,7 +178,7 @@ curl -X POST http://localhost:8080/sensors \
 #   "status": {"ready": false}
 # }
 
-# Update the sensor - triggers 'updated' event  
+# Update the sensor - triggers 'updated' event
 curl -X PUT http://localhost:8080/sensors/sen-abc123 \
   -H "Content-Type: application/json" \
   -d '{
@@ -238,7 +238,7 @@ func main() {
         fmt.Printf("   Source: %s\n", event.Source())
         fmt.Printf("   Subject: %s\n", event.Subject())
         fmt.Printf("   Time: %s\n", event.Time().Format(time.RFC3339))
-        
+
         // Pretty print event data
         var data map[string]interface{}
         if err := event.DataAs(&data); err == nil {
@@ -246,13 +246,13 @@ func main() {
                 fmt.Printf("   Data: %s\n", string(jsonData))
             }
         }
-        
+
         return nil
     })
-    
+
     fmt.Println("🔊 Event subscriber started. Listening for sensor events...")
     fmt.Println("   Press Ctrl+C to stop")
-    
+
     // Keep running
     select {}
 }
@@ -268,7 +268,7 @@ All lifecycle events follow the CloudEvents specification:
 {
   "specversion": "1.0",
   "type": "io.fabrica.sensor.created",
-  "source": "sensor-monitor", 
+  "source": "sensor-monitor",
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "time": "2025-01-15T10:30:00Z",
   "datacontenttype": "application/json",
@@ -298,7 +298,7 @@ When resource conditions change:
 
 ```json
 {
-  "specversion": "1.0", 
+  "specversion": "1.0",
   "type": "io.fabrica.condition.ready",
   "source": "sensor-monitor",
   "id": "550e8400-e29b-41d4-a716-446655440001",
@@ -307,7 +307,7 @@ When resource conditions change:
   "subject": "sensors/temp-01",
   "data": {
     "resourceKind": "Sensor",
-    "resourceUID": "temp-01", 
+    "resourceUID": "temp-01",
     "condition": {
       "type": "Ready",
       "status": "True",
@@ -333,11 +333,11 @@ eventBus.Subscribe("sensor-alerts", func(ctx context.Context, event cloudevents.
                 Reason string `json:"reason"`
             } `json:"condition"`
         }
-        
+
         if err := event.DataAs(&conditionData); err == nil {
             if conditionData.Condition.Status == "False" {
                 // Send alert to monitoring system
-                sendAlert(fmt.Sprintf("Sensor %s is unhealthy: %s", 
+                sendAlert(fmt.Sprintf("Sensor %s is unhealthy: %s",
                     event.Subject(), conditionData.Condition.Reason))
             }
         }
@@ -357,7 +357,7 @@ eventBus.Subscribe("data-pipeline", func(ctx context.Context, event cloudevents.
                 Value float64 `json:"value"`
             } `json:"status"`
         }
-        
+
         if err := event.DataAs(&sensor); err == nil {
             // Send to time-series database
             timeseriesDB.Record(event.Subject(), sensor.Status.Value, event.Time())
@@ -397,7 +397,7 @@ eventBus := events.NewInMemoryEventBus(
 While this example uses in-memory events, production systems should integrate with external brokers:
 
 - **NATS**: Lightweight, high-performance messaging
-- **Apache Kafka**: High-throughput, persistent messaging  
+- **Apache Kafka**: High-throughput, persistent messaging
 - **Redis Streams**: Simple setup with good performance
 - **Cloud Pub/Sub**: Managed cloud messaging services
 
@@ -409,7 +409,7 @@ Use event type prefixes to organize and filter events:
 // Development environment
 config.EventTypePrefix = "dev.fabrica"
 
-// Production environment  
+// Production environment
 config.EventTypePrefix = "prod.fabrica"
 
 // Service-specific prefix
@@ -422,12 +422,12 @@ config.EventTypePrefix = "sensors.iot.company"
 
 If you see warnings like `"Warning: Failed to publish resource created event: no event bus configured"`, this indicates:
 
-✅ **Good News**: The CloudEvents integration is working and trying to publish events  
+✅ **Good News**: The CloudEvents integration is working and trying to publish events
 ⚠️  **Configuration Issue**: The in-memory event bus needs to be connected to the global event system
 
 **Common Issues:**
 
-1. **Duplicate Name Field**: 
+1. **Duplicate Name Field**:
    ```bash
    # Remove conflicting name field from SensorSpec
    sed -i '' '/Name.*string.*json:"name"/d' pkg/resources/sensor/sensor.go
@@ -487,7 +487,7 @@ Warning: Failed to publish resource created event for Sensor sen-ae96fc07: no ev
 
 {"apiVersion":"v1","kind":"Sensor","schemaVersion":"v1","metadata":{"name":"test-sensor","uid":"sen-ae96fc07","createdAt":"2025-10-21T11:37:43.478174-04:00","updatedAt":"2025-10-21T11:37:43.478174-04:00"},"spec":{},"status":{"ready":false}}
 
-# Updating the sensor  
+# Updating the sensor
 $ curl -X PUT http://localhost:8080/sensors/sen-ae96fc07 -H "Content-Type: application/json" -d '{"name": "test-sensor", "description": "Updated sensor description"}'
 
 Warning: Failed to publish resource updated event for Sensor sen-ae96fc07: no event bus configured
@@ -506,7 +506,7 @@ Warning: Failed to publish resource updated event for Sensor sen-ae96fc07: no ev
 
 ✅ **Correct Resource Structure**: Use flat structure with metadata fields at top level, not wrapped in `spec`
 
-✅ **Generated API**: Routes are at `/sensors` not `/api/v1/sensors` by default  
+✅ **Generated API**: Routes are at `/sensors` not `/api/v1/sensors` by default
 
 ✅ **Production Ready**: Configurable event system suitable for production deployments
 

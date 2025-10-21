@@ -75,7 +75,7 @@ SENSOR_RESPONSE=$(curl -s -X POST "$API_URL/sensors" \
 if echo "$SENSOR_RESPONSE" | grep -q '"kind":"Sensor"'; then
     log_success "Sensor created successfully"
     echo "📧 Event published: io.fabrica.sensor.created"
-    
+
     # Extract UID for subsequent tests
     SENSOR_UID=$(echo "$SENSOR_RESPONSE" | grep -o '"uid":"[^"]*"' | cut -d'"' -f4)
     log_info "Sensor UID: $SENSOR_UID"
@@ -196,14 +196,14 @@ UNHEALTHY_RESPONSE=$(curl -s -X PATCH "$API_URL/sensors/$HUMIDITY_UID" \
   -H "Content-Type: application/json" \
   -d '{
     "status": {
-      "phase": "degraded", 
+      "phase": "degraded",
       "value": 95.0,
       "lastReading": "2025-01-15T10:35:00Z",
       "conditions": [
         {
           "type": "Healthy",
           "status": "False",
-          "reason": "ThresholdExceeded", 
+          "reason": "ThresholdExceeded",
           "message": "Humidity level exceeds safe threshold",
           "lastTransitionTime": "2025-01-15T10:35:00Z"
         }
@@ -234,7 +234,7 @@ else
     echo "Response: $DELETE_TEMP_RESPONSE"
 fi
 
-# Delete humidity sensor  
+# Delete humidity sensor
 DELETE_HUM_RESPONSE=$(curl -s -X DELETE "$API_URL/sensors/$HUMIDITY_UID" || echo "ERROR")
 if [ "$DELETE_HUM_RESPONSE" = "" ]; then
     log_success "Humidity sensor deleted successfully"
@@ -264,7 +264,7 @@ log_success "All CRUD operations completed successfully"
 echo
 echo "📧 Events Published During Test:"
 echo "   • io.fabrica.sensor.created (3 times - temp + humidity + any previous)"
-echo "   • io.fabrica.sensor.updated (1 time - temp sensor)"  
+echo "   • io.fabrica.sensor.updated (1 time - temp sensor)"
 echo "   • io.fabrica.sensor.patched (2 times - temp + humidity status)"
 echo "   • io.fabrica.sensor.deleted (2 times - both sensors)"
 echo "   • io.fabrica.condition.ready (1 time - temp sensor ready)"
