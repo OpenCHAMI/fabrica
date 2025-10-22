@@ -134,18 +134,13 @@ go run cmd/server/main.go
 curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
-    "metadata": {
-      "name": "web-server-01",
-      "labels": {"environment": "production", "team": "platform"}
-    },
-    "spec": {
-      "name": "web-server-01",
-      "type": "server",
-      "ipAddress": "192.168.1.100",
-      "status": "active",
-      "port": 443,
-      "tags": {"role": "web", "datacenter": "us-west-2"}
-    }
+    "name": "web-server-01",
+    "type": "server",
+    "ipAddress": "192.168.1.100",
+    "status": "active",
+    "port": 443,
+    "tags": {"role": "web", "datacenter": "us-west-2"},
+    "labels": {"environment": "production", "team": "platform"}
   }'
 
 # List all devices

@@ -63,13 +63,11 @@ log_info "Test 1: Creating a temperature sensor"
 SENSOR_RESPONSE=$(curl -s -X POST "$API_URL/sensors" \
   -H "Content-Type: application/json" \
   -d '{
-    "spec": {
-      "name": "temp-sensor-01",
-      "description": "Office temperature sensor for CloudEvents demo",
-      "sensorType": "temperature",
-      "location": "Building A, Floor 2, Room 201",
-      "threshold": 75.0
-    }
+    "name": "temp-sensor-01",
+    "description": "Office temperature sensor for CloudEvents demo",
+    "sensorType": "temperature",
+    "location": "Building A, Floor 2, Room 201",
+    "threshold": 75.0
   }' || echo "ERROR")
 
 if echo "$SENSOR_RESPONSE" | grep -q '"kind":"Sensor"'; then
@@ -170,13 +168,11 @@ log_info "Test 6: Creating a humidity sensor"
 HUMIDITY_RESPONSE=$(curl -s -X POST "$API_URL/sensors" \
   -H "Content-Type: application/json" \
   -d '{
-    "spec": {
-      "name": "humidity-sensor-01",
-      "description": "Office humidity sensor",
-      "sensorType": "humidity",
-      "location": "Building A, Floor 2, Room 202",
-      "threshold": 60.0
-    }
+    "name": "humidity-sensor-01",
+    "description": "Office humidity sensor",
+    "sensorType": "humidity",
+    "location": "Building A, Floor 2, Room 202",
+    "threshold": 60.0
   }' || echo "ERROR")
 
 if echo "$HUMIDITY_RESPONSE" | grep -q '"sensorType":"humidity"'; then

@@ -105,7 +105,7 @@ fabrica add resource FRU
 fabrica generate
 go mod tidy  # Update dependencies
 # Uncomment lines in cmd/server/main.go
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ## Prerequisites
@@ -204,7 +204,7 @@ fabrica generate
 #    - Route registration
 
 # 6. Run!
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ## Key Features
@@ -225,7 +225,7 @@ fabrica add resource MyResource
 # Edit pkg/resources/myresource/myresource.go
 fabrica generate
 go mod tidy  # Update dependencies
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ### Modifying an Existing Resource
@@ -234,7 +234,7 @@ go run cmd/server/main.go
 # Edit pkg/resources/device/device.go
 fabrica generate  # Regenerates handlers/storage
 go mod tidy  # Update dependencies
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ### Switching Storage Backends
