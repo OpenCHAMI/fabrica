@@ -46,36 +46,55 @@ cd sensor-monitor
 fabrica add resource Sensor
 ```
 
-This creates a Sensor resource with the standard Spec/Status pattern. **Important**: The generated structure includes a `Name` field in the spec that conflicts with metadata. We need to remove it:
+This creates a basic Sensor resource. Now customize it to match our monitoring needs:
 
+**Edit `pkg/resources/sensor/sensor.go`:**
 ```go
-// pkg/resources/sensor/sensor.go - Generated structure
+// pkg/resources/sensor/sensor.go
+package sensor
+
+import (
+    "context"
+    "time"
+    "github.com/alexlovelltroy/fabrica/pkg/resource"
+)
+
+// Sensor represents a monitoring sensor resource
 type Sensor struct {
     resource.Resource
     Spec   SensorSpec   `json:"spec" validate:"required"`
     Status SensorStatus `json:"status,omitempty"`
 }
 
-// BEFORE (problematic - has duplicate Name field)
+// SensorSpec defines the desired state of Sensor
 type SensorSpec struct {
-    Name        string `json:"name" validate:"required,k8sname"`  // ❌ Remove this
-    Description string `json:"description,omitempty" validate:"max=200"`
+    Description string  `json:"description,omitempty" validate:"max=200"`
+    SensorType  string  `json:"sensorType" validate:"required,oneof=temperature humidity pressure light motion"`
+    Location    string  `json:"location" validate:"required"`
+    Threshold   float64 `json:"threshold" validate:"min=0"`
 }
 
-// AFTER (corrected - Name comes from metadata)
-type SensorSpec struct {
-    Description string `json:"description,omitempty" validate:"max=200"`
-    // Add your custom spec fields here
+// SensorStatus defines the observed state of Sensor
+type SensorStatus struct {
+    Phase       string      `json:"phase,omitempty" validate:"omitempty,oneof=pending active degraded inactive"`
+    Message     string      `json:"message,omitempty"`
+    Ready       bool        `json:"ready"`
+    Value       float64     `json:"value,omitempty"`
+    LastReading time.Time   `json:"lastReading,omitempty"`
+    Conditions  []resource.Condition `json:"conditions,omitempty"`
+}
+
+// Validate implements custom validation logic for Sensor
+func (r *Sensor) Validate(ctx context.Context) error {
+    // Add custom validation logic here
+    return nil
+}
+
+func init() {
+    // Register resource type prefix for storage
+    resource.RegisterResourcePrefix("Sensor", "sen")
 }
 ```
-
-**Fix the duplicate name field:**
-```bash
-# Remove the conflicting Name field from SensorSpec
-sed -i '' '/Name.*string.*json:"name"/d' pkg/resources/sensor/sensor.go
-```
-
-This is necessary because Fabrica's resource system provides the `name` field through metadata, not the spec.
 
 ### Step 3: Generate the Complete API
 
@@ -158,8 +177,11 @@ Let's create some sensors and observe the events. **Note**: The API endpoints ar
 curl -X POST http://localhost:8080/sensors \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "temp-01",
-    "description": "Office temperature sensor"
+    "name": "temp-sensor-01",
+    "description": "Office temperature sensor for CloudEvents demo",
+    "sensorType": "temperature",
+    "location": "Building A, Floor 2, Room 201",
+    "threshold": 75.0
   }'
 
 # Expected response:
@@ -173,7 +195,10 @@ curl -X POST http://localhost:8080/sensors \
 #     "updatedAt": "2025-10-21T11:37:43Z"
 #   },
 #   "spec": {
-#     "description": "Office temperature sensor"
+#     "description": "Office temperature sensor for CloudEvents demo",
+#     "sensorType": "temperature",
+#     "location": "Building A, Floor 2, Room 201",
+#     "threshold": 75.0
 #   },
 #   "status": {"ready": false}
 # }
@@ -182,8 +207,11 @@ curl -X POST http://localhost:8080/sensors \
 curl -X PUT http://localhost:8080/sensors/sen-abc123 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "temp-01",
-    "description": "Updated office temperature sensor"
+    "name": "temp-sensor-01",
+    "description": "Updated office temperature sensor with higher threshold",
+    "sensorType": "temperature",
+    "location": "Building A, Floor 2, Room 201",
+    "threshold": 80.0
   }'
 
 # Patch the sensor status - triggers 'patched' event
@@ -192,7 +220,16 @@ curl -X PATCH http://localhost:8080/sensors/sen-abc123 \
   -d '{
     "status": {
       "phase": "active",
-      "ready": true
+      "value": 72.5,
+      "lastReading": "2025-01-15T10:30:00Z",
+      "conditions": [
+        {
+          "type": "Ready",
+          "status": "True",
+          "reason": "SensorActive",
+          "message": "Sensor is actively monitoring temperature"
+        }
+      ]
     }
   }'
 
@@ -201,10 +238,11 @@ curl -X DELETE http://localhost:8080/sensors/sen-abc123
 ```
 
 **Key Points About Fabrica Resource Structure:**
-- ✅ Use flat structure: `{"name": "value"}` not `{"spec": {"name": "value"}}`
+- ✅ Use flat structure for creation: spec fields go at the top level alongside name
 - ✅ The `name` field goes at the top level (becomes metadata.name)
-- ✅ Spec fields go at the top level alongside name
+- ✅ Fabrica converts flat input to proper spec/status structure internally
 - ✅ Use the generated UID from the response for subsequent operations
+- ✅ Status updates use nested structure: `{"status": {...}}`
 
 ### Step 6: Event Subscriber Example
 

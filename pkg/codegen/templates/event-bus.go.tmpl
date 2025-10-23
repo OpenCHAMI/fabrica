@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"time"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/alexlovelltroy/fabrica/pkg/events"
 )
 
@@ -29,9 +28,6 @@ const EventsEnabled = {{.EventsEnabled}}
 var (
 	// GlobalEventBus is the singleton event bus instance
 	GlobalEventBus events.EventBus
-
-	// EventClient is the CloudEvents client for publishing
-	EventClient cloudevents.Client
 )
 
 // InitializeEventBus sets up the event bus based on configuration
@@ -64,15 +60,8 @@ func InitializeEventBus() error {
 
 // initMemoryBus creates an in-memory event bus
 func initMemoryBus() (events.EventBus, error) {
-	bus := events.NewMemoryBus()
-
-	// Create CloudEvents client with memory transport
-	client, err := cloudevents.NewClientHTTP()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create CloudEvents client: %w", err)
-	}
-	EventClient = client
-
+	bus := events.NewInMemoryEventBus(100, 5)
+	events.SetGlobalEventBus(bus)
 	return bus, nil
 }
 
@@ -98,23 +87,19 @@ func initKafkaBus() (events.EventBus, error) {
 	return nil, fmt.Errorf("Kafka event bus not yet implemented")
 }
 
-// PublishEvent publishes a CloudEvent to the event bus
-func PublishEvent(ctx context.Context, eventType, source string, data interface{}) error {
+// PublishEvent publishes a generic event to the event bus
+func PublishEvent(ctx context.Context, eventType string, source string, data interface{}) error {
 	if !EventsEnabled || GlobalEventBus == nil {
-		return nil // Events disabled, skip silently
+		return fmt.Errorf("events are not enabled")
 	}
 
-	event := cloudevents.NewEvent()
-	event.SetID(fmt.Sprintf("%d", time.Now().UnixNano()))
-	event.SetType(eventType)
-	event.SetSource(source)
-	event.SetTime(time.Now())
-
-	if err := event.SetData(cloudevents.ApplicationJSON, data); err != nil {
-		return fmt.Errorf("failed to set event data: %w", err)
+	// Create events.Event using the events package
+	evt, err := events.NewEvent(eventType, source, data)
+	if err != nil {
+		return fmt.Errorf("failed to create event: %w", err)
 	}
 
-	return GlobalEventBus.Publish(ctx, event)
+	return GlobalEventBus.Publish(ctx, *evt)
 }
 
 // PublishResourceEvent publishes a resource lifecycle event
@@ -134,30 +119,28 @@ func PublishResourceEvent(ctx context.Context, action, resourceType, resourceID 
 }
 
 // SubscribeToEvents subscribes to events matching the given type pattern
-func SubscribeToEvents(ctx context.Context, eventTypePattern string, handler events.EventHandler) error {
+func SubscribeToEvents(ctx context.Context, eventTypePattern string, handler func(ctx context.Context, event events.Event) error) error {
 	if !EventsEnabled || GlobalEventBus == nil {
 		return fmt.Errorf("events are not enabled")
 	}
 
-	return GlobalEventBus.Subscribe(ctx, eventTypePattern, handler)
+	_, err := GlobalEventBus.Subscribe(eventTypePattern, handler)
+	return err
 }
 
 // CloseEventBus gracefully shuts down the event bus
-func CloseEventBus(ctx context.Context) error {
+func CloseEventBus() error {
 	if !EventsEnabled || GlobalEventBus == nil {
 		return nil
 	}
 
 	log.Println("Closing event bus...")
-	return GlobalEventBus.Close(ctx)
+	return GlobalEventBus.Close()
 }
 
 // EventMiddleware adds event publishing to HTTP handlers
 func EventMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Add event publishing context
-		ctx := r.Context()
-
 		// TODO: Capture response for event publishing
 		// This would require a response recorder to capture status and body
 

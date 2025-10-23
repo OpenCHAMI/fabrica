@@ -10,7 +10,7 @@ echo "🎯 Testing CloudEvents Integration Example"
 echo "=========================================="
 
 # Configuration
-API_URL="http://localhost:8080/api/v1"
+API_URL="http://localhost:8080"
 SERVER_PID=""
 
 # Colors for output
@@ -89,13 +89,11 @@ log_info "Test 2: Updating the sensor"
 UPDATE_RESPONSE=$(curl -s -X PUT "$API_URL/sensors/$SENSOR_UID" \
   -H "Content-Type: application/json" \
   -d '{
-    "spec": {
       "name": "temp-sensor-01",
       "description": "Updated office temperature sensor with higher threshold",
       "sensorType": "temperature",
       "location": "Building A, Floor 2, Room 201",
       "threshold": 80.0
-    }
   }' || echo "ERROR")
 
 if echo "$UPDATE_RESPONSE" | grep -q '"threshold":80'; then
@@ -142,12 +140,17 @@ echo
 log_info "Test 4: Listing all sensors"
 LIST_RESPONSE=$(curl -s "$API_URL/sensors" || echo "ERROR")
 
-if echo "$LIST_RESPONSE" | grep -q '"items"'; then
-    SENSOR_COUNT=$(echo "$LIST_RESPONSE" | grep -o '"uid":"[^"]*"' | wc -l)
-    log_success "Found $SENSOR_COUNT sensors"
+if [ "$LIST_RESPONSE" != "ERROR" ] && echo "$LIST_RESPONSE" | jq -e '.' > /dev/null 2>&1; then
+  SENSOR_COUNT=$(echo "$LIST_RESPONSE" | jq '. | length')
+  log_success "Found $SENSOR_COUNT sensors"
+
+  # Display sensor details if any exist
+  if [ "$SENSOR_COUNT" -gt 0 ]; then
+    echo "$LIST_RESPONSE" | jq -r '.[] | "  - \(.metadata.name) (\(.spec.sensorType)): \(.metadata.uid)"'
+  fi
 else
-    log_error "Failed to list sensors"
-    echo "Response: $LIST_RESPONSE"
+  log_error "Failed to list sensors"
+  echo "Response: $LIST_RESPONSE"
 fi
 
 # Test 5: Get specific sensor
@@ -155,7 +158,7 @@ echo
 log_info "Test 5: Getting specific sensor"
 GET_RESPONSE=$(curl -s "$API_URL/sensors/$SENSOR_UID" || echo "ERROR")
 
-if echo "$GET_RESPONSE" | grep -q '"phase":"active"'; then
+if echo "$GET_RESPONSE" | grep -q '"kind":"Sensor"'; then
     log_success "Retrieved sensor details successfully"
 else
     log_error "Failed to get sensor details"
@@ -222,7 +225,7 @@ log_info "Test 8: Deleting sensors"
 
 # Delete temperature sensor
 DELETE_TEMP_RESPONSE=$(curl -s -X DELETE "$API_URL/sensors/$SENSOR_UID" || echo "ERROR")
-if [ "$DELETE_TEMP_RESPONSE" = "" ]; then
+if [ "$DELETE_TEMP_RESPONSE" != "ERROR" ]; then
     log_success "Temperature sensor deleted successfully"
     echo "📧 Event published: io.fabrica.sensor.deleted"
 else
@@ -232,7 +235,7 @@ fi
 
 # Delete humidity sensor
 DELETE_HUM_RESPONSE=$(curl -s -X DELETE "$API_URL/sensors/$HUMIDITY_UID" || echo "ERROR")
-if [ "$DELETE_HUM_RESPONSE" = "" ]; then
+if [ "$DELETE_HUM_RESPONSE" != "ERROR" ]; then
     log_success "Humidity sensor deleted successfully"
     echo "📧 Event published: io.fabrica.sensor.deleted"
 else
@@ -245,10 +248,10 @@ echo
 log_info "Test 9: Verifying sensors are deleted"
 FINAL_LIST=$(curl -s "$API_URL/sensors" || echo "ERROR")
 
-if echo "$FINAL_LIST" | grep -q '"items":\[\]'; then
+if echo "$FINAL_LIST" | jq -e '. == []' > /dev/null 2>&1; then
     log_success "All sensors successfully deleted"
 else
-    REMAINING_COUNT=$(echo "$FINAL_LIST" | grep -o '"uid":"[^"]*"' | wc -l)
+    REMAINING_COUNT=$(echo "$FINAL_LIST" | jq '. | length')
     log_warning "$REMAINING_COUNT sensors still remain"
 fi
 
