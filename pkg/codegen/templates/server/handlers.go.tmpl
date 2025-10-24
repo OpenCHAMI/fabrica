@@ -292,39 +292,8 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-{{if .RequiresAuth}}
-	// Check authorization for status updates (separate permission)
-	auth, _ := GetAuthFromContext(r.Context())
-
-	if policy, exists := policyRegistry.GetPolicy("{{.Name}}"); exists {
-		// Check if policy implements StatusPolicy interface for fine-grained control
-		if statusPolicy, ok := policy.(interface {
-			CanUpdateStatus(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision
-		}); ok {
-			if decision := statusPolicy.CanUpdateStatus(r.Context(), auth, r, uid); !decision.Allowed {
-				status := http.StatusForbidden
-				if auth == nil {
-					status = http.StatusUnauthorized
-				}
-				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
-				return
-			}
-		} else {
-			// Fallback to regular update permission if StatusPolicy not implemented
-			if decision := policy.CanUpdate(r.Context(), auth, r, uid); !decision.Allowed {
-				status := http.StatusForbidden
-				if auth == nil {
-					status = http.StatusUnauthorized
-				}
-				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
-				return
-			}
-		}
-	} else {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("no policy configured for {{.Name}}"))
-		return
-	}
-{{end}}
+	// Authorization: Add custom middleware for status update authorization
+	// Status updates can have different permissions than spec updates
 
 	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
@@ -370,37 +339,8 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-{{if .RequiresAuth}}
-	// Check authorization for status patches
-	auth, _ := GetAuthFromContext(r.Context())
-
-	if policy, exists := policyRegistry.GetPolicy("{{.Name}}"); exists {
-		if statusPolicy, ok := policy.(interface {
-			CanUpdateStatus(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision
-		}); ok {
-			if decision := statusPolicy.CanUpdateStatus(r.Context(), auth, r, uid); !decision.Allowed {
-				status := http.StatusForbidden
-				if auth == nil {
-					status = http.StatusUnauthorized
-				}
-				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
-				return
-			}
-		} else {
-			if decision := policy.CanUpdate(r.Context(), auth, r, uid); !decision.Allowed {
-				status := http.StatusForbidden
-				if auth == nil {
-					status = http.StatusUnauthorized
-				}
-				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
-				return
-			}
-		}
-	} else {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("no policy configured for {{.Name}}"))
-		return
-	}
-{{end}}
+	// Authorization: Add custom middleware for status patch authorization
+	// Status patches can have different permissions than spec patches
 
 	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {

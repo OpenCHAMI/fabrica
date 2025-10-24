@@ -491,26 +491,20 @@ func main() {
 
 ```go
 // Different permissions for spec vs status
-type DevicePolicy struct {
-    enforcer *casbin.Enforcer
+type DeviceAuthMiddleware struct {
+    // Your auth implementation here
 }
 
 // Users can update spec
-func (p *DevicePolicy) CanUpdate(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision {
-    user := getUserFromAuth(auth)
-    if hasRole(user, "device-admin") {
-        return PolicyDecision{Allowed: true}
-    }
-    return PolicyDecision{Allowed: false}
+func (m *DeviceAuthMiddleware) CheckUpdatePermission(r *http.Request, uid string) bool {
+    user := getUserFromRequest(r)
+    return hasRole(user, "device-admin")
 }
 
 // Controllers can update status
-func (p *DevicePolicy) CanUpdateStatus(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision {
-    user := getUserFromAuth(auth)
-    if hasRole(user, "controller") {
-        return PolicyDecision{Allowed: true}
-    }
-    return PolicyDecision{Allowed: false}
+func (m *DeviceAuthMiddleware) CheckStatusUpdatePermission(r *http.Request, uid string) bool {
+    user := getUserFromRequest(r)
+    return hasRole(user, "controller")
 }
 ```
 

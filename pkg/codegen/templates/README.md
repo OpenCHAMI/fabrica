@@ -189,13 +189,14 @@ Each generated file includes comprehensive header comments explaining:
 
 ## Template-Specific Features
 
-- **`storage.go.tmpl`** - Backend configuration, storage patterns
-- **`handlers.go.tmpl`** - Handler patterns, auth integration, versioning
-- **`routes.go.tmpl`** - Route patterns, middleware integration
-- **`models.go.tmpl`** - Request/response structures, validation
-- **`policies.go.tmpl`** - Authorization patterns, policy implementation
-- **`client.go.tmpl`** - Client usage, authentication, error handling
-- **`client-cmd.go.tmpl`** - CLI usage, configuration, custom commands
+- **`storage/file.go.tmpl`** - File backend configuration, storage patterns
+- **`storage/ent.go.tmpl`** - Ent database backend patterns
+- **`server/handlers.go.tmpl`** - Handler patterns, middleware integration, versioning
+- **`server/routes.go.tmpl`** - Route patterns, middleware integration
+- **`server/models.go.tmpl`** - Request/response structures, validation
+- **`client/client.go.tmpl`** - Client usage, authentication, error handling
+- **`client/cmd.go.tmpl`** - CLI usage, configuration, custom commands
+- **`middleware/*.go.tmpl`** - Validation, versioning, conditional requests, event bus
 
 ## Documentation
 
