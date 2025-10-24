@@ -4,7 +4,7 @@ Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 SPDX-License-Identifier: MIT
 -->
 
-# Example 3: FRU Service with SQLite, Casbin, and TokenSmith
+# Example 3: FRU Service with SQLite and Ent Storage
 
 **Time to complete:** ~30 minutes
 **Difficulty:** Advanced

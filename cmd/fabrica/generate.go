@@ -444,6 +444,7 @@ func loadConfig() (*FabricaConfig, error) {
 func main() {
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	gen.Verbose = %s
+	gen.Version = "%s" // Fabrica version used for generation
 
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
@@ -479,7 +480,7 @@ func main() {
 	}
 
 %s}
-`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans pkg/resources for resource definitions

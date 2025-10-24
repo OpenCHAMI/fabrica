@@ -129,6 +129,7 @@ type Generator struct {
 	DBDriver    string           // "postgres", "mysql", "sqlite" - database driver for Ent
 	Verbose     bool             // Enable verbose output showing files being generated
 	Config      *GeneratorConfig // Configuration for generation
+	Version     string           // Fabrica version used for generation
 }
 
 // NewGenerator creates a new code generator
@@ -685,9 +686,11 @@ func (g *Generator) GenerateHandlers() error {
 		data := struct {
 			ResourceMetadata
 			ModulePath string
+			Version    string
 		}{
 			ResourceMetadata: resource,
 			ModulePath:       g.ModulePath,
+			Version:          g.Version,
 		}
 
 		if err := g.Templates["handlers"].Execute(&buf, data); err != nil {
@@ -837,10 +840,12 @@ func (g *Generator) GenerateModels() error {
 		PackageName string
 		ModulePath  string
 		Resources   []ResourceMetadata
+		Version     string
 	}{
 		PackageName: g.PackageName,
 		ModulePath:  g.ModulePath,
 		Resources:   g.Resources,
+		Version:     g.Version,
 	}
 
 	if err := g.Templates["models"].Execute(&buf, data); err != nil {

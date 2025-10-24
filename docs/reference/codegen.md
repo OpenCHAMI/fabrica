@@ -104,8 +104,6 @@ All templates are located in [pkg/codegen/templates/](../pkg/codegen/templates/)
 | `routes.go.tmpl` | HTTP route registration | `cmd/server/routes_generated.go` | Server |
 | `models.go.tmpl` | Request/response types | `cmd/server/models_generated.go` | Server |
 | `openapi.go.tmpl` | OpenAPI 3.0 specification | `cmd/server/openapi_generated.go` | Server |
-| `policies.go.tmpl` | Casbin policy scaffolding | `cmd/server/policies_generated.go` | Server |
-| `policy_handlers.go.tmpl` | Casbin authorization handlers | `cmd/server/policy_handlers.go` | Server |
 | `client.go.tmpl` | HTTP client library | `pkg/client/client_generated.go` | Client |
 | `client-models.go.tmpl` | Client-side types | `pkg/client/models_generated.go` | Client |
 | `client-cmd.go.tmpl` | CLI application (Cobra-based) | `cmd/cli/main_generated.go` | CLI |
@@ -125,14 +123,17 @@ When using Ent storage (`--storage ent`), additional templates are used:
 | `ent_adapter.go.tmpl` | Adapter between Fabrica and Ent | `internal/storage/ent_adapter.go` |
 | `generate.go.tmpl` | Ent code generation directive | `internal/storage/generate.go` |
 
-### Casbin (Authorization) Templates
+### Middleware Templates
 
-For RBAC authorization policies:
+Fabrica generates several middleware templates for common functionality:
 
 | Template | Purpose | Output Location |
 |----------|---------|-----------------|
-| `policies/model.conf.tmpl` | Casbin model definition | `policies/model.conf` |
-| `policies/policy.csv.tmpl` | Default authorization policies | `policies/policy.csv` |
+| `validation_middleware.go.tmpl` | Request validation | `internal/middleware/validation_middleware_generated.go` |
+| `versioning_middleware.go.tmpl` | API versioning | `internal/middleware/versioning_middleware_generated.go` |
+| `conditional_middleware.go.tmpl` | Conditional requests (ETags) | `internal/middleware/conditional_middleware_generated.go` |
+
+For custom authorization, implement your own middleware in `internal/middleware/`.
 
 ### Template Variables
 
@@ -194,9 +195,9 @@ Generates complete server-side code:
 - `GenerateRoutes()` - URL routing configuration
 - `GenerateModels()` - Request/response types
 - `GenerateOpenAPI()` - OpenAPI specification
-- `GenerateCasbinPolicies()` - Authorization policies
+- `GenerateMiddleware()` - Validation, versioning, conditional requests
 
-**Output:** Files in `cmd/server/` and `internal/storage/`
+**Output:** Files in `cmd/server/`, `internal/storage/`, and `internal/middleware/`
 
 ### 2. Client Mode (`PackageName: "client"`)
 
@@ -495,15 +496,21 @@ gen.AddResourceVersion("Device", codegen.SchemaVersion{
 })
 ```
 
-### Authorization Integration
+### Custom Middleware
 
-Enable auth for specific resources:
+Add custom authentication/authorization middleware:
 
 ```go
-gen.EnableAuthForResource("Device")
+// In internal/middleware/auth.go
+func AuthMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Implement your auth logic
+        next.ServeHTTP(w, r)
+    })
+}
 ```
 
-Generated handlers will check Casbin policies before allowing access.
+Apply middleware in your routes or main.go.
 
 ### Custom Template Functions
 
@@ -702,16 +709,15 @@ The result: **Write resource definitions once, get complete CRUD APIs automatica
 - Two-phase registration and generation
 - HTTP handlers with CRUD operations
 - File-based storage wrappers
+- Ent (database) storage backend
 - Route registration
 - Request/response models with helper functions
 - OpenAPI specification generation
-- Makefile with dev workflow
-
-**🚧 Templates available but need verification:**
-- Ent (database) storage backend
-- Casbin authorization policies
+- Middleware (validation, versioning, conditional requests)
 - Client library generation
 - CLI application generation
 - Reconciler generation
+- Event system integration
+- Makefile with dev workflow
 
-**Note:** The core infrastructure is complete. Templates that reference features not yet in fabrica (like Fuego framework, Casbin) may need adjustments to work with the current codebase.
+**Note:** The core infrastructure is complete and production-ready. For authentication/authorization, implement custom middleware in `internal/middleware/`.
