@@ -89,7 +89,7 @@ reuse-annotate: ## Add REUSE headers to all files in the repository
 	year=$${year:-$(shell date +%Y)}; \
 	echo "Annotating with: SPDX-FileCopyrightText: $$year $$holder"; \
 	echo "                 SPDX-License-Identifier: $$license"; \
-	reuse annotate --copyright="$$holder" --license="$$license" --year="$$year" --skip-existing --recursive .
+	reuse annotate --copyright="$$holder" --license="$$license" --year="$$year" --skip-existing --recursive --skip-unrecognized .
 # REUSE-IgnoreEnd
 
 reuse-download-license: ## Download a license file (usage: make reuse-download-license LICENSE=MIT)
