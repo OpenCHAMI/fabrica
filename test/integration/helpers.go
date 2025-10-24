@@ -140,15 +140,12 @@ func (p *TestProject) Generate(fabricaBinary string) error {
 	return nil
 }
 
-// GenerateEnt runs Ent code generation for Ent storage projects using fabrica ent generate
+// GenerateEnt runs Ent code generation for Ent storage projects
+// DEPRECATED: Ent generation now runs automatically during Generate()
+// This method is kept for backward compatibility but is a no-op
 func (p *TestProject) GenerateEnt(fabricaBinary string) error {
-	// Run fabrica ent generate to trigger Ent code generation
-	cmd := exec.Command(fabricaBinary, "ent", "generate")
-	cmd.Dir = p.Dir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ent generation failed: %w\nOutput: %s", err, output)
-	}
+	// Ent generation now happens automatically in Generate() when storage type is "ent"
+	// This is a no-op for backward compatibility
 	return nil
 }
 

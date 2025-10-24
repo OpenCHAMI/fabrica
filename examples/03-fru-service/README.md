@@ -125,19 +125,11 @@ The FRU resource tracks hardware inventory with detailed location and status inf
 fabrica generate
 ```
 
-### Step 5a: Generate Ent Client Code
+**Note:** Ent client code generation now runs automatically when Ent storage is detected. The `fabrica ent generate` command is deprecated but still available for backward compatibility.
 
-After running `fabrica generate`, you must generate the Ent client code:
+### Step 5: Update Dependencies
 
-```bash
-fabrica ent generate
-```
-
-This step is **required** when using Ent storage. It generates the Ent ORM client code based on the schemas created in Step 6.
-
-### Step 5b: Update Dependencies
-
-After all code generation is complete, update your Go module dependencies:
+After code generation is complete, update your Go module dependencies:
 
 ```bash
 go mod tidy

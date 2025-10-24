@@ -48,26 +48,22 @@ cd my-api
 # 2. Add your resources
 fabrica add resource Device
 
-# 3. Generate Fabrica code (handlers, storage, etc.)
+# 3. Generate all code (handlers, storage, Ent client)
+# Ent client generation now runs automatically when using Ent storage
 fabrica generate
 
-# 4. Generate Ent client code from schemas
-# This reads internal/storage/ent/schema/*.go
-# and generates type-safe database client code
-fabrica ent generate
-
-# 5. Update dependencies
+# 4. Update dependencies
 go mod tidy
 
-# 6. Set up your database connection
+# 5. Set up your database connection
 export DATABASE_URL="postgres://user:pass@localhost:5432/mydb?sslmode=disable"
 # For SQLite development: export DATABASE_URL="file:test.db?cache=shared&_fk=1"
 
-# 7. Build and run (migrations run automatically on startup)
+# 6. Build and run (migrations run automatically on startup)
 go build -o api ./cmd/server
 ./api
 
-# 8. Test your API
+# 7. Test your API
 curl http://localhost:8080/api/v1/devices
 ```
 
@@ -83,7 +79,7 @@ When you run `fabrica init --storage=ent`, the following files are created:
 | `internal/storage/storage_ent.go` | Ent-backed storage implementation |
 | `cmd/server/main.go` | Includes database connection and auto-migration |
 
-**Note:** After running `go generate ./internal/storage`, Ent will create `internal/storage/ent/*.go` files with the generated client code.
+**Note:** `fabrica generate` automatically runs Ent code generation when Ent storage is detected, creating `internal/storage/ent/*.go` files with the generated client code.
 
 ### Database Connection Strings
 
@@ -545,8 +541,10 @@ fabrica init my-new-api --storage=ent
 This means Ent client code hasn't been generated yet:
 
 ```bash
-# Generate Ent client code
-fabrica ent generate
+# Ent generation happens automatically during fabrica generate
+fabrica generate
+
+# Note: 'fabrica ent generate' is deprecated but still works for backward compatibility
 ```
 
 ### Connection Issues
@@ -624,8 +622,7 @@ To migrate existing file-based projects to Ent:
 3. **Regenerate with Ent:**
    ```bash
    cd new-project
-   fabrica generate
-   fabrica ent generate
+   fabrica generate  # Automatically generates Ent client code
    ```
 
 4. **Migrate data** (write custom script):

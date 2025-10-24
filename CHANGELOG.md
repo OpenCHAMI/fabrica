@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration tests for spec/status separation in `test/integration/status_subresource_test.go`
 
 ### Changed
+- **Automatic Ent Generation** - Simplified Ent storage workflow
+  - `fabrica generate` now automatically runs Ent client code generation when Ent storage is detected
+  - Eliminates the need for separate `fabrica ent generate` command
+  - Provides consistent single-command workflow across all storage backends
+  - `fabrica ent generate` is deprecated but still functional for backward compatibility (will be removed in v0.4.0)
+- **Template Organization** - Improved codebase maintainability
+  - Reorganized templates into feature-based directory structure
+  - Server templates: `server/` (handlers, routes, models, openapi)
+  - Client templates: `client/` (client, models, cmd)
+  - Storage templates: `storage/` (file, ent, adapter, generate)
+  - Middleware templates: `middleware/` (validation, conditional, versioning, event-bus)
+  - Reconciliation templates: `reconciliation/` (reconciler, stub, registration, event-handlers)
+  - Authorization templates: `authorization/` (policies, model.conf, policy.csv)
+  - Standardized all template names to use hyphens consistently
+  - Removed unused `policy_handlers.go.tmpl` template
 - Updated `Update{Resource}()` handler documentation to clarify it updates spec only
 - Modified status subresource handlers to use `res` variable name to avoid package import shadowing
 - Enhanced reconciler patterns to use status-only updates by default
@@ -40,6 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added [Example 6: Status Subresource](examples/06-status-subresource/README.md)
 - Updated main documentation index to include status subresource guide
 - Added implementation guide in `.claude/status-subresource-implementation-guide.md`
+- Updated [Ent Storage Guide](docs/storage-ent.md) to reflect automatic Ent generation
+- Updated [Example 3: FRU Service](examples/03-fru-service/README.md) to remove manual Ent generation step
+- Added [Command Structure Analysis](.claude/command-structure-analysis.md) documenting the consolidation rationale
+- Added [Template Usage Analysis](.claude/template-usage-analysis.md) documenting template organization and cleanup
+
+### Deprecated
+- `fabrica ent generate` command is deprecated in favor of automatic generation during `fabrica generate`
+  - Still functional for backward compatibility
+  - Will be removed in v0.4.0
+  - Displays deprecation warning when used
 
 ## [v0.2.8] - 2025-10-20
 
