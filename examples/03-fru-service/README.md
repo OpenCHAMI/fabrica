@@ -41,12 +41,11 @@ FRU Service
 ### Step 1: Initialize with Advanced Features
 
 ```bash
-# Create project with SQLite storage and authentication
+# Create project with SQLite storage
 fabrica init fru-service \
   --module github.com/example/fru-service \
   --storage-type ent \
   --db sqlite \
-  --auth \
   --validation-mode strict
 
 cd fru-service
@@ -126,19 +125,11 @@ The FRU resource tracks hardware inventory with detailed location and status inf
 fabrica generate
 ```
 
-### Step 5a: Generate Ent Client Code
+**Note:** Ent client code generation now runs automatically when Ent storage is detected. The `fabrica ent generate` command is deprecated but still available for backward compatibility.
 
-After running `fabrica generate`, you must generate the Ent client code:
+### Step 5: Update Dependencies
 
-```bash
-fabrica ent generate
-```
-
-This step is **required** when using Ent storage. It generates the Ent ORM client code based on the schemas created in Step 6.
-
-### Step 5b: Update Dependencies
-
-After all code generation is complete, update your Go module dependencies:
+After code generation is complete, update your Go module dependencies:
 
 ```bash
 go mod tidy
@@ -276,11 +267,14 @@ The required dependencies should now be installed:
 ### Step 8: Build and Run
 
 ```bash
+# Create directory for database
+mkdir -p data
+
 # Build server
 go build -o fru-server ./cmd/server
 
-# Run server
-./fru-server serve
+# Run server with SQLite foreign keys enabled
+./fru-server serve --database-url "file:data/fru.db?_fk=1"
 ```
 
 Expected output:
@@ -932,13 +926,21 @@ sqlite3 fru.db ".restore fru-backup.db"
 
 ## Troubleshooting
 
+### Issue: "sqlite: foreign_keys pragma is off: missing '_fk=1' in the connection string"
+
+**Cause:** SQLite foreign keys are not enabled in the database connection
+**Fix:** Use the correct database URL format with foreign keys enabled:
+```bash
+./fru-server serve --database-url "file:data/fru.db?_fk=1"
+```
+
 ### Issue: "failed to open database: unable to open database file"
 
 **Cause:** SQLite file path or permissions issue
 **Fix:** Ensure the directory is writable:
 ```bash
 mkdir -p data
-./fru-server --data-dir ./data
+./fru-server serve --database-url "file:data/fru.db?_fk=1"
 ```
 
 ### Issue: "failed to load policies: file does not exist"

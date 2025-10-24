@@ -20,7 +20,7 @@ import (
 // Example usage in main.go or initialization code:
 //
 //	// Set up event bus (memory, NATS, etc.)
-//	eventBus := events.NewMemoryEventBus()
+//	eventBus := events.NewInMemoryEventBus()
 //	events.SetGlobalEventBus(eventBus)
 //
 //	// Configure events

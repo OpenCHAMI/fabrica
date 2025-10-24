@@ -45,6 +45,7 @@ Technical reference and in-depth explanations:
 - **[Code Generation](reference/codegen.md)** - How templates work and customization
 - **[Framework Comparison](reference/comparison.md)** - Fabrica vs other Go frameworks
 - **[Releasing](reference/releasing.md)** - Release process and versioning
+- **[Status Subresources](status-subresource.md)** - Kubernetes-style status management
 
 ## 🎯 Learning Paths
 

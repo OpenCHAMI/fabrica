@@ -28,7 +28,8 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 - **📋 OpenAPI Native** - Auto-generated specs with Swagger UI out of the box
 - **🎯 Smart Validation** - Request validation with detailed, structured error responses
 - **⚡ Developer Experience** - CLI tools, hot-reload development, comprehensive testing
-- **🌐 Cloud-Native Ready** - CloudEvents, API versioning, conditional requests (ETags)
+- **📡 CloudEvents Integration** - Automatic event publishing for resource lifecycle (CRUD) and condition changes
+- **🌐 Cloud-Native Ready** - API versioning, conditional requests (ETags), event-driven patterns
 - **🏗️ Production Patterns** - Consistent API structure, error handling, and middleware
 
 ## 🎯 Perfect For
@@ -133,18 +134,13 @@ go run cmd/server/main.go
 curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
-    "metadata": {
-      "name": "web-server-01",
-      "labels": {"environment": "production", "team": "platform"}
-    },
-    "spec": {
-      "name": "web-server-01",
-      "type": "server",
-      "ipAddress": "192.168.1.100",
-      "status": "active",
-      "port": 443,
-      "tags": {"role": "web", "datacenter": "us-west-2"}
-    }
+    "name": "web-server-01",
+    "type": "server",
+    "ipAddress": "192.168.1.100",
+    "status": "active",
+    "port": 443,
+    "tags": {"role": "web", "datacenter": "us-west-2"},
+    "labels": {"environment": "production", "team": "platform"}
   }'
 
 # List all devices
@@ -161,11 +157,16 @@ open http://localhost:8080/swagger/
 
 ## 📚 Learn by Example
 
-Explore hands-on examples in the [`examples/`](examples/) directory
+Explore hands-on examples in the [`examples/`](examples/) directory:
+
+- **[Basic CRUD](examples/01-basic-crud/)** ⚡ - Start here! Complete CRUD API in 5 minutes
+- **[FRU Service](examples/03-fru-service/)** 🔐 - Production patterns with database integration
+- **[CloudEvents Integration](examples/05-cloud-events/)** 📡 - Automatic event publishing for lifecycle and condition changes
+- **[Rack Reconciliation](examples/04-rack-reconciliation/)** 🔄 - Event-driven resource management
 
 ---
 
-> **🎓 Learning Path:** Start with Example 1 to understand core concepts, then advance to Example 3 for production patterns and database integration.
+> **🎓 Learning Path:** Start with Example 1 to understand core concepts, try Example 5 for CloudEvents, then advance to Example 3 for production patterns and database integration.
 
 ## 🏗️ Architecture Overview
 

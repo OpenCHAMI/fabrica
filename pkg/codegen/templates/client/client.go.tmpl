@@ -15,7 +15,10 @@
 //   - GetResources(ctx) - List all resources
 //   - GetResource(ctx, uid) - Get specific resource by UID
 //   - CreateResource(ctx, req) - Create new resource
-//   - UpdateResource(ctx, uid, req) - Update existing resource
+//   - UpdateResource(ctx, uid, req) - Update existing resource spec
+//   - PatchResource(ctx, uid, patchData, contentType) - Patch existing resource spec
+//   - UpdateResourceStatus(ctx, uid, status) - Update resource status only
+//   - PatchResourceStatus(ctx, uid, patchData) - Patch resource status only
 //   - DeleteResource(ctx, uid) - Delete resource
 //
 // Usage example:
@@ -245,10 +248,39 @@ func (c *Client) Update{{.Name}}(ctx context.Context, uid string, req Update{{.N
 	return &result, nil
 }
 
-// Patch{{.Name}} patches an existing {{.Name}} with the specified patch data and content type
+// Patch{{.Name}} patches an existing {{.Name}} spec with the specified patch data and content type
 func (c *Client) Patch{{.Name}}(ctx context.Context, uid string, patchData []byte, contentType string) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
 	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
+	if err := c.doPatchRequest(ctx, endpoint, patchData, contentType, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Update{{.Name}}Status updates only the status of an existing {{.Name}}
+// This method is intended for controllers, reconcilers, and monitoring systems.
+// It preserves the spec and only updates the status portion of the resource.
+func (c *Client) Update{{.Name}}Status(ctx context.Context, uid string, status {{.PackageAlias}}.{{.Name}}Status) ({{.TypeName}}, error) {
+	var result {{.PackageAlias}}.{{.Name}}
+	endpoint := fmt.Sprintf("{{.URLPath}}/%s/status", uid)
+	if err := c.doRequest(ctx, "PUT", endpoint, status, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Patch{{.Name}}Status patches only the status of an existing {{.Name}}
+// Supports JSON Merge Patch by default. Use Patch{{.Name}}StatusWithType for other patch formats.
+func (c *Client) Patch{{.Name}}Status(ctx context.Context, uid string, patchData []byte) ({{.TypeName}}, error) {
+	return c.Patch{{.Name}}StatusWithType(ctx, uid, patchData, "application/merge-patch+json")
+}
+
+// Patch{{.Name}}StatusWithType patches status with a specific patch content type
+// Supported types: application/merge-patch+json, application/json-patch+json, application/fabrica-patch+json
+func (c *Client) Patch{{.Name}}StatusWithType(ctx context.Context, uid string, patchData []byte, contentType string) ({{.TypeName}}, error) {
+	var result {{.PackageAlias}}.{{.Name}}
+	endpoint := fmt.Sprintf("{{.URLPath}}/%s/status", uid)
 	if err := c.doPatchRequest(ctx, endpoint, patchData, contentType, &result); err != nil {
 		return nil, err
 	}

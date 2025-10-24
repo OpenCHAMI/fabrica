@@ -13,8 +13,27 @@ Fabrica provides a CloudEvents-compliant event system for building event-driven 
 The event system consists of:
 - **Event Bus**: Central hub for publishing and subscribing to events
 - **CloudEvents**: Standard event format for interoperability
+- **Lifecycle Events**: Automatic events for resource CRUD operations (create, update, patch, delete)
+- **Condition Events**: Events triggered when resource conditions change
 - **Wildcard Subscriptions**: Pattern-based event routing
 - **In-Memory Implementation**: Low-latency event delivery
+
+## Event Types
+
+Fabrica automatically publishes two categories of events:
+
+### 1. Lifecycle Events
+Published automatically when resources are created, updated, patched, or deleted:
+- `{prefix}.{resource}.created` - Resource creation
+- `{prefix}.{resource}.updated` - Resource updates via PUT
+- `{prefix}.{resource}.patched` - Resource updates via PATCH
+- `{prefix}.{resource}.deleted` - Resource deletion
+
+### 2. Condition Events
+Published automatically when resource conditions change:
+- `{prefix}.condition.{conditiontype}` - When a condition status changes
+- Includes full condition details and resource context
+- Only published when condition status actually changes
 
 ## Quick Start
 
@@ -69,6 +88,60 @@ id, err := eventBus.Subscribe(
 // Unsubscribe when done
 defer eventBus.Unsubscribe(id)
 ```
+
+## Event Configuration
+
+Configure Fabrica's automatic event publishing with `EventConfig`:
+
+### Basic Configuration
+
+```go
+import "github.com/alexlovelltroy/fabrica/pkg/events"
+
+// Configure event system
+config := &events.EventConfig{
+    Enabled:                true,  // Enable/disable all events
+    LifecycleEventsEnabled: true,  // Enable CRUD operation events
+    ConditionEventsEnabled: true,  // Enable condition change events
+    EventTypePrefix:        "io.fabrica",           // Event type prefix
+    ConditionEventPrefix:   "io.fabrica.condition", // Condition event prefix
+    Source:                 "inventory-api",        // Event source identifier
+}
+
+// Apply configuration globally
+events.SetEventConfig(config)
+```
+
+### Environment Variables
+
+Configure events via environment variables in generated servers:
+
+```bash
+# Enable/disable event publishing
+FABRICA_EVENTS_ENABLED=true
+FABRICA_LIFECYCLE_EVENTS_ENABLED=true
+FABRICA_CONDITION_EVENTS_ENABLED=true
+
+# Customize event prefixes
+FABRICA_EVENT_PREFIX=io.mycompany.inventory
+FABRICA_CONDITION_EVENT_PREFIX=io.mycompany.inventory.condition
+FABRICA_EVENT_SOURCE=production-api
+```
+
+### Generated Event Types
+
+With prefix `io.fabrica` and resource `Device`:
+
+**Lifecycle Events:**
+- `io.fabrica.device.created` - Device creation
+- `io.fabrica.device.updated` - Device update (PUT)
+- `io.fabrica.device.patched` - Device patch (PATCH)
+- `io.fabrica.device.deleted` - Device deletion
+
+**Condition Events:**
+- `io.fabrica.condition.ready` - Ready condition changed
+- `io.fabrica.condition.healthy` - Healthy condition changed
+- `io.fabrica.condition.available` - Available condition changed
 
 ## CloudEvents
 
@@ -204,6 +277,133 @@ events.NewResourceEvent("io.example.device.failed", kind, uid, resource)
 events.NewResourceEvent("io.example.order.shipped", kind, uid, order)
 events.NewResourceEvent("io.example.payment.processed", kind, uid, payment)
 ```
+
+## Condition Events
+
+Fabrica automatically publishes events when resource conditions change, following Kubernetes condition patterns.
+
+### What are Conditions?
+
+Conditions represent the current state of a resource:
+
+```go
+type Condition struct {
+    Type               string    `json:"type"`               // "Ready", "Healthy", "Available"
+    Status             string    `json:"status"`             // "True", "False", "Unknown"
+    LastTransitionTime time.Time `json:"lastTransitionTime"` // When status last changed
+    Reason             string    `json:"reason,omitempty"`   // Machine-readable reason
+    Message            string    `json:"message,omitempty"`  // Human-readable message
+}
+```
+
+### Automatic Condition Events
+
+When you update resource conditions, events are published automatically:
+
+```go
+import "github.com/alexlovelltroy/fabrica/pkg/resource"
+
+// This will publish a condition event if the status changes
+changed := resource.SetResourceCondition(ctx, device,
+    "Ready",           // condition type
+    "True",            // status
+    "DeviceOnline",    // reason
+    "Device is operational" // message
+)
+
+if changed {
+    // Event published: "io.fabrica.condition.ready"
+    log.Println("Ready condition changed - event published")
+}
+```
+
+### Condition Event Format
+
+Condition events use the CloudEvents format:
+
+```json
+{
+  "specversion": "1.0",
+  "type": "io.fabrica.condition.ready",
+  "source": "inventory-api",
+  "id": "condition-event-abc123",
+  "time": "2025-10-21T15:30:45Z",
+  "datacontenttype": "application/json",
+  "subject": "devices/dev-123",
+  "data": {
+    "resourceKind": "Device",
+    "resourceUID": "dev-123",
+    "condition": {
+      "type": "Ready",
+      "status": "True",
+      "reason": "DeviceOnline",
+      "message": "Device is operational",
+      "lastTransitionTime": "2025-10-21T15:30:45Z"
+    }
+  }
+}
+```
+
+### Working with Condition Events
+
+Subscribe to condition events using wildcards:
+
+```go
+// All condition events
+eventBus.Subscribe("io.fabrica.condition.**", handleConditionEvent)
+
+// Specific condition type
+eventBus.Subscribe("io.fabrica.condition.ready", handleReadyCondition)
+
+// Condition events for specific resource
+eventBus.Subscribe("io.fabrica.condition.*", func(ctx context.Context, event events.Event) error {
+    var conditionData struct {
+        ResourceKind string `json:"resourceKind"`
+        ResourceUID  string `json:"resourceUID"`
+        Condition    struct {
+            Type   string `json:"type"`
+            Status string `json:"status"`
+            Reason string `json:"reason"`
+        } `json:"condition"`
+    }
+
+    if err := event.DataAs(&conditionData); err != nil {
+        return err
+    }
+
+    if conditionData.ResourceKind == "Device" && conditionData.Condition.Type == "Ready" {
+        if conditionData.Condition.Status == "False" {
+            // Send alert - device became not ready
+            sendDeviceAlert(conditionData.ResourceUID, conditionData.Condition.Reason)
+        }
+    }
+
+    return nil
+})
+```
+
+### Common Condition Types
+
+**Standard Kubernetes-style conditions:**
+- `Ready` - Resource is ready to serve requests
+- `Available` - Resource is available for use
+- `Progressing` - Resource is making progress toward desired state
+
+**Custom application conditions:**
+- `Healthy` - Health check status
+- `Connected` - Network connectivity status
+- `Authenticated` - Authentication status
+- `Validated` - Data validation status
+
+### Lifecycle vs Condition Events
+
+| Aspect | Lifecycle Events | Condition Events |
+|--------|-----------------|------------------|
+| **Trigger** | CRUD operations | Condition status changes |
+| **Frequency** | Every operation | Only when status changes |
+| **Data** | Full resource | Condition + resource context |
+| **Use Cases** | Audit, integration | Monitoring, alerting |
+| **Examples** | `device.created`, `user.updated` | `condition.ready`, `condition.healthy` |
 
 ## In-Memory Event Bus
 

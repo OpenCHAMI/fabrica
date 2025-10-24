@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-
-	"github.com/alexlovelltroy/fabrica/pkg/conditional"
 )
 
 // ETagAlgorithm defines the hashing algorithm for ETags

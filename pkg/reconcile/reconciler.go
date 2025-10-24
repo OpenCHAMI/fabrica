@@ -117,7 +117,12 @@ type BaseReconciler struct {
 
 // UpdateStatus updates the status of a resource in storage.
 //
-// This is a convenience method that handles marshaling and error handling.
+// IMPORTANT: This method loads a fresh copy of the resource from storage
+// and only updates the status portion, preserving any spec changes that may
+// have occurred concurrently. This prevents reconcilers from accidentally
+// overwriting spec updates made by users.
+//
+// This is the recommended way for reconcilers to update status.
 //
 // Parameters:
 //   - ctx: Context for cancellation
@@ -129,7 +134,71 @@ func (r *BaseReconciler) UpdateStatus(ctx context.Context, resource interface{})
 	if r.Client == nil {
 		return fmt.Errorf("client is not configured")
 	}
-	return r.Client.Update(ctx, resource)
+
+	// Extract resource kind and UID
+	type resourceMetadata interface {
+		GetKind() string
+		GetUID() string
+	}
+
+	res, ok := resource.(resourceMetadata)
+	if !ok {
+		return fmt.Errorf("resource does not implement required metadata methods")
+	}
+
+	kind := res.GetKind()
+	uid := res.GetUID()
+
+	// Load fresh copy from storage to avoid overwriting spec changes
+	current, err := r.Client.Get(ctx, kind, uid)
+	if err != nil {
+		return fmt.Errorf("failed to load current resource: %w", err)
+	}
+
+	// Marshal both resources to JSON for status extraction
+	resourceData, err := json.Marshal(resource)
+	if err != nil {
+		return fmt.Errorf("failed to marshal resource: %w", err)
+	}
+
+	currentData, err := json.Marshal(current)
+	if err != nil {
+		return fmt.Errorf("failed to marshal current resource: %w", err)
+	}
+
+	var resourceMap map[string]interface{}
+	if err := json.Unmarshal(resourceData, &resourceMap); err != nil {
+		return fmt.Errorf("failed to unmarshal resource: %w", err)
+	}
+
+	var currentMap map[string]interface{}
+	if err := json.Unmarshal(currentData, &currentMap); err != nil {
+		return fmt.Errorf("failed to unmarshal current resource: %w", err)
+	}
+
+	// Copy status from reconciled resource to current resource
+	if status, ok := resourceMap["status"]; ok {
+		currentMap["status"] = status
+	}
+
+	// Update metadata.updatedAt timestamp
+	if metadata, ok := currentMap["metadata"].(map[string]interface{}); ok {
+		metadata["updatedAt"] = time.Now().Format(time.RFC3339)
+		currentMap["metadata"] = metadata
+	}
+
+	// Marshal back to current resource
+	updatedData, err := json.Marshal(currentMap)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated resource: %w", err)
+	}
+
+	if err := json.Unmarshal(updatedData, current); err != nil {
+		return fmt.Errorf("failed to unmarshal updated resource: %w", err)
+	}
+
+	// Save the updated resource (with preserved spec, updated status)
+	return r.Client.Update(ctx, current)
 }
 
 // EmitEvent publishes an event for a resource.

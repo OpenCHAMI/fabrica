@@ -85,9 +85,8 @@ func VersioningMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Set version in context
-		ctx := versioning.WithVersion(r.Context(), version)
-		r = r.WithContext(ctx)
+		// Note: Version context is handled by versioning middleware
+		// The versioning.VersionNegotiationMiddleware should be used instead
 
 		// Set version header in response
 		w.Header().Set("X-API-Version", fmt.Sprintf("%d", version))
@@ -157,11 +156,12 @@ func isVersionSupported(version int) bool {
 }
 
 // GetVersionFromContext retrieves the API version from request context
-func GetVersionFromContext(r *http.Request) int {
-	if version := versioning.GetVersion(r.Context()); version != 0 {
-		return version
+func GetVersionFromContext(r *http.Request) string {
+	versionCtx := versioning.GetVersionContext(r.Context())
+	if versionCtx != nil {
+		return versionCtx.ServeVersion
 	}
-	return DefaultVersion
+	return "v1"
 }
 
 // VersionDeprecatedWarning adds deprecation warning header

@@ -500,25 +500,53 @@ type DeviceStatus struct {
 ```
 
 **Condition Pattern:**
+
+Conditions follow Kubernetes conventions and automatically publish events when changed:
+
 ```go
+import "github.com/alexlovelltroy/fabrica/pkg/resource"
+
 type Condition struct {
-    Type               string    `json:"type"`
-    Status             string    `json:"status"` // "True", "False", "Unknown"
-    LastTransitionTime time.Time `json:"lastTransitionTime"`
-    Reason             string    `json:"reason,omitempty"`
-    Message            string    `json:"message,omitempty"`
+    Type               string    `json:"type"`               // "Ready", "Healthy", "Available"
+    Status             string    `json:"status"`             // "True", "False", "Unknown"
+    LastTransitionTime time.Time `json:"lastTransitionTime"` // Auto-set when status changes
+    Reason             string    `json:"reason,omitempty"`   // Machine-readable reason
+    Message            string    `json:"message,omitempty"`  // Human-readable description
 }
 
-// Example
+// Manual condition setting
 device.Status.Conditions = []Condition{
     {
-        Type:    "Ready",
-        Status:  "True",
-        Reason:  "DeviceOnline",
-        Message: "Device is ready to accept commands",
+        Type:               "Ready",
+        Status:             "True",
+        Reason:             "DeviceOnline",
+        Message:            "Device is ready to accept commands",
+        LastTransitionTime: time.Now(),
     },
 }
+
+// Recommended: Use helper functions (publishes events automatically)
+ctx := context.Background()
+changed := resource.SetResourceCondition(ctx, device,
+    "Ready", "True", "DeviceOnline", "Device is operational")
+
+if changed {
+    // CloudEvent published: "io.fabrica.condition.ready"
+    log.Println("Ready condition changed")
+}
+
+// Common condition patterns
+resource.SetResourceCondition(ctx, device, "Healthy", "True", "HealthCheckPassed", "All health checks passing")
+resource.SetResourceCondition(ctx, device, "Available", "False", "Maintenance", "Device under maintenance")
+resource.SetResourceCondition(ctx, device, "Connected", "Unknown", "NetworkTimeout", "Network connectivity uncertain")
 ```
+
+**Condition Event Integration:**
+- Conditions automatically publish CloudEvents when status changes
+- Event type: `{prefix}.condition.{type}` (e.g., `io.fabrica.condition.ready`)
+- Only publishes when status actually changes (not on every update)
+- Includes full condition details and resource context
+- See [Events Guide](events.md) for complete condition event documentation
 
 ## Summary
 

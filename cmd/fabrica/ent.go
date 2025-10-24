@@ -30,16 +30,21 @@ These commands are only relevant for projects using Ent storage backend.`,
 
 func newEntGenerateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "generate",
-		Short: "Generate Ent code from schemas",
-		Long: `Generate Ent client code from schema definitions.
+		Use:        "generate",
+		Short:      "Generate Ent code from schemas [DEPRECATED]",
+		Deprecated: "Ent generation now runs automatically with 'fabrica generate'. This command will be removed in v0.4.0.",
+		Long: `[DEPRECATED] This command is no longer necessary.
 
-This runs 'go generate ./internal/storage' to generate:
-  - Type-safe CRUD operations
-  - Query builders
-  - Mutation builders
-  - Edge traversal methods`,
+Ent code generation now happens automatically during 'fabrica generate'
+when your project uses Ent storage.
+
+This command will be removed in v0.4.0.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			fmt.Println("⚠️  WARNING: 'fabrica ent generate' is deprecated")
+			fmt.Println("   Ent generation now runs automatically with 'fabrica generate'")
+			fmt.Println("   This command will be removed in v0.4.0")
+			fmt.Println()
+
 			fmt.Println("🔄 Generating Ent code...")
 
 			// Check if ent directory exists

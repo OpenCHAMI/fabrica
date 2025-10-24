@@ -45,6 +45,7 @@ import (
 
 	{{if .WithEvents}}
 	"github.com/alexlovelltroy/fabrica/pkg/events"
+	. "{{.ModulePath}}/internal/middleware"
 	{{end}}
 
 	{{if .WithReconcile}}
@@ -292,6 +293,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Initialize event bridge for condition events
 	events.InitializeEventBridge()
+
+	// Initialize event bus for handlers
+	if err := InitializeEventBus(); err != nil {
+		log.Fatalf("Failed to initialize event bus: %v", err)
+	}
 
 	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
 		eventConfig.LifecycleEventsEnabled, eventConfig.ConditionEventsEnabled, eventConfig.EventTypePrefix)
