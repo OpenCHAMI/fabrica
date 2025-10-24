@@ -59,7 +59,29 @@ Example:
 	return cmd
 }
 
+// isFabricaProject checks if the current directory is a fabrica project
+func isFabricaProject() bool {
+	_, err := os.Stat(ConfigFileName)
+	return err == nil
+}
+
 func runAddResource(resourceName string, opts *addOptions) error {
+	// Check if we're in a fabrica project directory
+	if !isFabricaProject() {
+		fmt.Println("⚠️  Warning: This doesn't appear to be a fabrica project directory.")
+		fmt.Println("Expected to find .fabrica.yaml in the current directory.")
+		fmt.Print("\nAre you sure you want to continue? (y/N): ")
+
+		var response string
+		_, _ = fmt.Scanln(&response)
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response != "y" && response != "yes" {
+			return fmt.Errorf("operation cancelled")
+		}
+		fmt.Println()
+	}
+
 	if opts.packageName == "" {
 		opts.packageName = strings.ToLower(resourceName)
 	}

@@ -71,7 +71,7 @@ type VersioningConfig struct {
 // AuthConfig controls authorization/authentication.
 type AuthConfig struct {
 	Enabled  bool   `yaml:"enabled"`
-	Provider string `yaml:"provider,omitempty"` // casbin, jwt, oauth2
+	Provider string `yaml:"provider,omitempty"` // jwt, oauth2, custom
 }
 
 // StorageConfig controls storage backend.

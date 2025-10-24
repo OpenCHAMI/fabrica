@@ -358,7 +358,7 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	}
 
 	// Create go.mod
-	if err := createGoMod(targetDir, opts.modulePath, opts.withAuth); err != nil {
+	if err := createGoMod(targetDir, opts.modulePath); err != nil {
 		return err
 	}
 
@@ -416,18 +416,12 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 	return nil
 }
 
-func createGoMod(targetDir, modulePath string, withAuth bool) error {
+func createGoMod(targetDir, modulePath string) error {
 	baseRequires := `	github.com/go-chi/chi/v5 v5.0.10
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0`
 
 	authRequires := ""
-	if withAuth {
-		authRequires = `
-	github.com/casbin/casbin/v2 v2.128.0`
-		// Note: TokenSmith integration is commented out as it's still in development
-		// github.com/OpenCHAMI/tokensmith v0.0.0-20241001120000-01ea626fab6c
-	}
 
 	content := fmt.Sprintf(`module %s
 

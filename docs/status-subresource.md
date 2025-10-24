@@ -356,62 +356,53 @@ type DeviceStatus struct {
 Status subresources support fine-grained authorization:
 
 ```go
-// In your policy implementation
-type DevicePolicy struct {
-    enforcer *casbin.Enforcer
+// In your custom authorization middleware
+type DeviceAuthMiddleware struct {
+    // Your authorization implementation
 }
 
 // Users can update spec
-func (p *DevicePolicy) CanUpdate(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision {
-    user := getUserFromAuth(auth)
-
-    if p.enforcer.HasPermission(user, "devices", "update") {
-        return PolicyDecision{Allowed: true}
-    }
-
-    return PolicyDecision{
-        Allowed: false,
-        Reason:  "requires devices:update permission",
-    }
+func (m *DeviceAuthMiddleware) CheckUpdate(r *http.Request, uid string) bool {
+    user := getUserFromRequest(r)
+    return hasPermission(user, "devices:update")
 }
 
-// Controllers can update status (optional interface)
-func (p *DevicePolicy) CanUpdateStatus(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision {
-    user := getUserFromAuth(auth)
-
+// Controllers can update status (separate permission)
+func (m *DeviceAuthMiddleware) CheckStatusUpdate(r *http.Request, uid string) bool {
+    user := getUserFromRequest(r)
     // Only controllers can update status
-    if p.enforcer.HasRoleForUser(user, "controller") {
-        return PolicyDecision{Allowed: true}
-    }
-
-    return PolicyDecision{
-        Allowed: false,
-        Reason:  "requires controller role",
-    }
+    return hasRole(user, "controller")
 }
 ```
 
-### Casbin Policy Example
+### Authorization Policy Example
 
-```csv
-# policies.csv
+```yaml
+# Example RBAC rules for status subresources
 
 # Users can update device specs
-p, user, devices, update, allow
-p, user, devices, update_status, deny
+- role: user
+  permissions:
+    - devices:update
 
 # Controllers can update device status
-p, controller, devices, update, deny
-p, controller, devices, update_status, allow
+- role: controller
+  permissions:
+    - devices:update_status
 
 # Admins can do both
-p, admin, devices, update, allow
-p, admin, devices, update_status, allow
+- role: admin
+  permissions:
+    - devices:update
+    - devices:update_status
 
 # Role assignments
-g, alice, user
-g, device-controller, controller
-g, bob, admin
+- user: alice
+  role: user
+- user: device-controller
+  role: controller
+- user: bob
+  role: admin
 ```
 
 ## Events

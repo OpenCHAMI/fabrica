@@ -302,7 +302,7 @@ See [Storage Guide](storage.md) for details.
 Now that you have a working API:
 
 1. **Add More Resources** - `fabrica add resource Author`
-2. **Add Authorization** - See [Policy Guide](policy-casbin.md)
+2. **Add Custom Middleware** - Implement authentication/authorization in `internal/middleware/`
 3. **Add Validation** - See [Validation Guide](validation.md)
 4. **Use the Client** - Generated Go client in `pkg/client/`
 5. **Add Events** - See [Events Guide](events.md)
@@ -363,7 +363,8 @@ type MyResource struct {
 - [Quick Start](quickstart.md) - 30-minute tutorial
 - [Resource Model](resource-model.md) - Deep dive into resources
 - [Code Generation](codegen.md) - How generation works
-- [Authorization](policy-casbin.md) - RBAC/ABAC setup
+- [Validation](validation.md) - Request validation
+- [Events](events.md) - Event-driven architecture
 - [API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)
 
 ## Get Help

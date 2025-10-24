@@ -4,7 +4,7 @@ Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 SPDX-License-Identifier: MIT
 -->
 
-# Example 3: FRU Service with SQLite, Casbin, and TokenSmith
+# Example 3: FRU Service with SQLite and Ent Storage
 
 **Time to complete:** ~30 minutes
 **Difficulty:** Advanced
@@ -34,7 +34,7 @@ FRU Service
     └── CRUD operations for FRUs
 ```
 
-**Note:** This example focuses on the core Fabrica features. Casbin and TokenSmith integration mentioned in testing sections are advanced features that require additional manual setup beyond the generated code
+**Note:** This example focuses on the core Fabrica features including resource management, storage, and API generation
 
 ## Step-by-Step Guide
 
@@ -145,7 +145,7 @@ fru-service/
 │   ├── models_generated.go           # Request/response models
 │   ├── routes_generated.go           # Routes with auth middleware
 │   ├── openapi_generated.go          # OpenAPI spec
-│   └── policy_handlers.go            # Casbin policy endpoints
+│   └── *_handlers_generated.go       # Generated CRUD handlers
 ├── internal/
 │   ├── middleware/                   # Core middleware
 │   │   ├── validation_middleware_generated.go
@@ -254,15 +254,14 @@ RegisterGeneratedRoutes(r)
 
 There are two occurrences - one in the auth-enabled block and one in the auth-disabled block. Uncomment both.
 
-**Note:** The generated code does NOT include Casbin or TokenSmith integration by default. Those are mentioned in this README as advanced features but require manual implementation. For now, we'll run without them to get a working server
+**Note:** Generated code includes CRUD handlers, storage, validation, and middleware. Custom authorization can be added via middleware as needed.
 
 ### Step 7: Verify Dependencies
 
 The required dependencies should now be installed:
 - `entgo.io/ent` - ORM framework
 - `github.com/mattn/go-sqlite3` - SQLite driver
-- `github.com/casbin/casbin/v2` - Authorization
-- `github.com/OpenCHAMI/tokensmith/middleware` - JWT authentication
+- `github.com/alexlovelltroy/fabrica/pkg/*` - Fabrica framework packages
 
 ### Step 8: Build and Run
 
@@ -907,8 +906,9 @@ sqlite3 fru.db
 # View FRU resources
 SELECT * FROM resources WHERE type = 'FRU';
 
-# View Casbin policies (if using Ent adapter)
-SELECT * FROM casbin_rule;
+# View labels and annotations
+SELECT * FROM labels;
+SELECT * FROM annotations;
 
 # Exit
 .quit
@@ -945,7 +945,7 @@ mkdir -p data
 
 ### Issue: "failed to load policies: file does not exist"
 
-**Cause:** Casbin policy files not found
+**Cause:** Missing configuration files
 **Fix:** Ensure `policies/` directory exists with `model.conf` and `policy.csv`:
 ```bash
 ls -la policies/
@@ -988,8 +988,8 @@ features:
     bus_type: memory
 
   auth:
-    enabled: true          # Enable Casbin authorization
-    provider: casbin
+    enabled: false         # Add custom auth middleware if needed
+    provider: custom       # Implement your own auth provider
 
   storage:
     enabled: true
@@ -1063,14 +1063,14 @@ resource.RemoveCondition(&conditions, "Progressing")
 
 ## Adding Authentication and Authorization (Advanced)
 
-The basic example above works without authentication. To add Casbin and TokenSmith:
+The basic example above works without authentication. To add custom authentication/authorization:
 
-### Option 1: Add Casbin for Authorization
+### Option 1: Add Custom Authorization Middleware
 
-1. Create policies directory and files (see original Step 4 above - Casbin setup)
-2. Add Casbin imports and initialization in main.go
-3. Create middleware to check policies before handler execution
-4. See [docs/policy-casbin.md](../../docs/policy-casbin.md) for details
+1. Create your authorization middleware in `internal/middleware/`
+2. Implement your policy checking logic
+3. Apply middleware to protected routes in `routes_generated.go`
+4. Example: JWT-based authorization, RBAC, or ABAC
 
 ### Option 2: Add TokenSmith for Authentication
 
@@ -1094,7 +1094,7 @@ These features require manual integration and are beyond the scope of this basic
 
 - [ ] Switch to PostgreSQL or MySQL for production
 - [ ] Add authentication (TokenSmith or similar)
-- [ ] Add authorization (Casbin or similar)
+- [ ] Add custom authorization middleware
 - [ ] Enable HTTPS/TLS
 - [ ] Set up database backups
 - [ ] Configure log aggregation

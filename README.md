@@ -24,7 +24,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 
 - **🚀 Zero-Config Generation** - Define resources as Go structs, get complete APIs instantly
 - **📊 Multiple Storage Backends** - Choose between file-based storage or SQL databases (SQLite, PostgreSQL, MySQL)
-- **🔒 Security Built-in** - Authentication and authorization with Casbin RBAC support
+- **🔒 Security Ready** - Flexible middleware system for custom authentication and authorization
 - **📋 OpenAPI Native** - Auto-generated specs with Swagger UI out of the box
 - **🎯 Smart Validation** - Request validation with detailed, structured error responses
 - **⚡ Developer Experience** - CLI tools, hot-reload development, comprehensive testing
@@ -303,22 +303,22 @@ type DeviceStatus struct {
 ## 📖 Documentation
 
 **🚀 Getting Started:**
-- [Complete Getting Started Guide](docs/getting-started.md) - Step-by-step tutorial
+- [Complete Getting Started Guide](docs/guides/getting-started.md) - Step-by-step tutorial
 - [Quick Start Examples](examples/) - Hands-on learning
 
 **🏗️ Architecture & Design:**
-- [Architecture Overview](docs/architecture.md) - Understanding Fabrica's design principles
-- [Resource Model Guide](docs/resource-model.md) - How to design and define resources
+- [Architecture Overview](docs/reference/architecture.md) - Understanding Fabrica's design principles
+- [Resource Model Guide](docs/guides/resource-model.md) - How to design and define resources
 
 **💾 Storage & Data:**
-- [Storage Systems](docs/storage.md) - File vs database backends comparison
-- [Ent Storage Integration](docs/storage-ent.md) - Database setup and configuration
+- [Storage Systems](docs/guides/storage.md) - File vs database backends comparison
+- [Ent Storage Integration](docs/guides/storage-ent.md) - Database setup and configuration
 
 **⚙️ Advanced Topics:**
-- [Code Generation](docs/codegen.md) - How templates work and customization
-- [Validation System](docs/validation.md) - Request validation and error handling
-- [Event System](docs/events.md) - CloudEvents integration
-- [Policy & Security](docs/policy-casbin.md) - Authentication and authorization
+- [Code Generation](docs/reference/codegen.md) - How templates work and customization
+- [Validation System](docs/guides/validation.md) - Request validation and error handling
+- [Event System](docs/guides/events.md) - CloudEvents integration
+- [Reconciliation](docs/guides/reconciliation.md) - Controller pattern for resource management
 
 ## 🤝 Contributing
 

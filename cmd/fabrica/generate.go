@@ -114,18 +114,12 @@ Examples:
 			// 2. The user should run it after generation completes
 			// This avoids circular dependency issues with code generators like Ent
 
-			// Check if authorization is enabled (policies directory exists)
-			authEnabled := false
-			if _, err := os.Stat("policies"); err == nil {
-				authEnabled = true
-			}
-
 			// Generate server code (handlers, storage, openapi)
 			if all || handlers || storage || openapi {
 				if debug {
 					fmt.Println("📦 Generating server code...")
 				}
-				if err := generateCodeWithRunner(modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, authEnabled, debug); err != nil {
+				if err := generateCodeWithRunner(modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
@@ -133,7 +127,7 @@ Examples:
 			// Generate client code
 			if all || client {
 				fmt.Println("📦 Generating client code...")
-				if err := generateCodeWithRunner(modulePath, "pkg/client", "client", false, false, false, true, false, debug); err != nil {
+				if err := generateCodeWithRunner(modulePath, "pkg/client", "client", false, false, false, true, debug); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
 				}
 			}
@@ -142,7 +136,7 @@ Examples:
 			config, err := readFabricaConfig()
 			if err == nil && config != nil && config.Features.Reconciliation.Enabled {
 				fmt.Println("🔄 Generating reconciliation code...")
-				if err := generateCodeWithRunner(modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, false, debug); err != nil {
+				if err := generateCodeWithRunner(modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
 				}
 			}
@@ -228,7 +222,7 @@ func detectStorageType() string {
 }
 
 // generateCodeWithRunner creates and runs a temporary codegen program
-func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool) error {
+func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool) error {
 	// Create output directory if it doesn't exist
 	if debug {
 		fmt.Printf("  Creating output directory: %s\n", outputDir)
@@ -255,7 +249,7 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 		fmt.Printf("  Detected storage type: %s\n", storageType)
 	}
 
-	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, authEnabled, debug, storageType)
+	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
 
 	runnerPath := filepath.Join(runnerDir, "main.go")
 	if err := os.WriteFile(runnerPath, []byte(runnerCode), 0644); err != nil {
@@ -281,7 +275,7 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 }
 
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, authEnabled, debug bool, storageType string) string {
+func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
@@ -292,14 +286,6 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
-
-		// Enable auth for all resources if auth is enabled
-		if authEnabled {
-			generationCalls.WriteString("\t// Enable authorization for all resources\n")
-			generationCalls.WriteString("\tfor _, res := range gen.Resources {\n")
-			generationCalls.WriteString("\t\tgen.EnableAuthForResource(res.Name)\n")
-			generationCalls.WriteString("\t}\n\n")
-		}
 
 		if handlers {
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
@@ -472,6 +458,7 @@ func loadConfig() (*FabricaConfig, error) {
 func main() {
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	gen.Verbose = %s
+	gen.Version = "%s" // Fabrica version used for generation
 
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
@@ -507,7 +494,7 @@ func main() {
 	}
 
 %s}
-`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans pkg/resources for resource definitions
