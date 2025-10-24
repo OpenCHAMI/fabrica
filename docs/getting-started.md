@@ -170,16 +170,12 @@ Your API is now running at `http://localhost:8080`!
 curl -X POST http://localhost:8080/books \
   -H "Content-Type: application/json" \
   -d '{
-    "metadata": {
-      "name": "golang-guide"
-    },
-    "spec": {
-      "title": "The Go Programming Language",
-      "author": "Alan Donovan",
-      "description": "A comprehensive guide to Go programming",
-      "price": 44.99,
-      "inStock": true
-    }
+    "name": "golang-guide",
+    "title": "The Go Programming Language",
+    "author": "Alan Donovan",
+    "description": "A comprehensive guide to Go programming",
+    "price": 44.99,
+    "inStock": true
   }'
 ```
 
@@ -227,16 +223,12 @@ curl http://localhost:8080/books/boo-abc123def456
 curl -X PUT http://localhost:8080/books/boo-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "metadata": {
-      "name": "golang-guide"
-    },
-    "spec": {
-      "title": "The Go Programming Language",
-      "author": "Alan Donovan",
-      "description": "Updated comprehensive guide to Go programming",
-      "price": 39.99,
-      "inStock": false
-    }
+    "name": "golang-guide",
+    "title": "The Go Programming Language",
+    "author": "Alan Donovan",
+    "description": "Updated comprehensive guide to Go programming",
+    "price": 39.99,
+    "inStock": false
   }'
 ```
 

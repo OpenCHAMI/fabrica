@@ -644,36 +644,46 @@ func (g *Generator) GenerateEventHandlers() error {
 // LoadTemplates loads code generation templates from embedded filesystem
 func (g *Generator) LoadTemplates() error {
 	// Templates are embedded in the binary using go:embed directive
+	// Organized by feature for better maintainability
 	templateFiles := map[string]string{
-		"handlers":               "handlers.go.tmpl",
-		"clientModels":           "client-models.go.tmpl",
-		"routes":                 "routes.go.tmpl",
-		"storage":                "storage.go.tmpl",
-		"storageEnt":             "storage_ent.go.tmpl",
-		"models":                 "models.go.tmpl",
-		"client":                 "client.go.tmpl",
-		"policies":               "policies.go.tmpl",
-		"clientCmd":              "client-cmd.go.tmpl",
-		"openapi":                "openapi.go.tmpl",
-		"reconciler":             "reconciler.go.tmpl",
-		"reconcilerStub":         "reconciler-stub.go.tmpl",
-		"reconcilerRegistration": "reconciler-registration.go.tmpl",
-		"eventHandlers":          "event-handlers.go.tmpl",
-		// Ent templates
+		// Server templates
+		"handlers": "server/handlers.go.tmpl",
+		"routes":   "server/routes.go.tmpl",
+		"models":   "server/models.go.tmpl",
+		"openapi":  "server/openapi.go.tmpl",
+
+		// Client templates
+		"client":       "client/client.go.tmpl",
+		"clientModels": "client/models.go.tmpl",
+		"clientCmd":    "client/cmd.go.tmpl",
+
+		// Storage templates
+		"storage":    "storage/file.go.tmpl",
+		"storageEnt": "storage/ent.go.tmpl",
+		"entAdapter": "storage/adapter.go.tmpl",
+		"generate":   "storage/generate.go.tmpl",
+
+		// Ent schema templates
 		"entSchemaResource":   "ent/schema/resource.go.tmpl",
 		"entSchemaLabel":      "ent/schema/label.go.tmpl",
 		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
-		"entAdapter":          "ent_adapter.go.tmpl",
-		"generate":            "generate.go.tmpl",
-		// Casbin templates
-		"casbinModel":    "policies/model.conf.tmpl",
-		"casbinPolicy":   "policies/policy.csv.tmpl",
-		"policyHandlers": "policy_handlers.go.tmpl",
+
 		// Middleware templates
-		"middlewareValidation":  "middleware-validation.go.tmpl",
-		"middlewareConditional": "middleware-conditional.go.tmpl",
-		"middlewareVersioning":  "middleware-versioning.go.tmpl",
-		"eventBus":              "event-bus.go.tmpl",
+		"middlewareValidation":  "middleware/validation.go.tmpl",
+		"middlewareConditional": "middleware/conditional.go.tmpl",
+		"middlewareVersioning":  "middleware/versioning.go.tmpl",
+		"eventBus":              "middleware/event-bus.go.tmpl",
+
+		// Reconciliation templates
+		"reconciler":             "reconciliation/reconciler.go.tmpl",
+		"reconcilerStub":         "reconciliation/stub.go.tmpl",
+		"reconcilerRegistration": "reconciliation/registration.go.tmpl",
+		"eventHandlers":          "reconciliation/event-handlers.go.tmpl",
+
+		// Authorization templates
+		"policies":     "authorization/policies.go.tmpl",
+		"casbinModel":  "authorization/model.conf.tmpl",
+		"casbinPolicy": "authorization/policy.csv.tmpl",
 	}
 
 	g.Templates = make(map[string]*template.Template)

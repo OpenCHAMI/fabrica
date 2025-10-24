@@ -15,12 +15,14 @@
 {{range .Resources}}//   - {{.URLPath}} ({{.Name}} operations)
 {{end}}//
 // Route patterns:
-//   - GET    /resource       -> List all resources
-//   - GET    /resource/{uid} -> Get specific resource
-//   - POST   /resource       -> Create new resource
-//   - PUT    /resource/{uid} -> Update resource
-//   - PATCH  /resource/{uid} -> Patch resource
-//   - DELETE /resource/{uid} -> Delete resource
+//   - GET    /resource              -> List all resources
+//   - GET    /resource/{uid}        -> Get specific resource
+//   - POST   /resource              -> Create new resource
+//   - PUT    /resource/{uid}        -> Update resource spec
+//   - PATCH  /resource/{uid}        -> Patch resource spec
+//   - DELETE /resource/{uid}        -> Delete resource
+//   - PUT    /resource/{uid}/status -> Update resource status
+//   - PATCH  /resource/{uid}/status -> Patch resource status
 //
 // To add middleware to routes:
 //   1. Apply middleware in cmd/server/main.go before calling RegisterGeneratedRoutes
@@ -49,6 +51,12 @@ func RegisterGeneratedRoutes(r chi.Router) {
 			r.Put("/", Update{{.Name}})
 			r.Patch("/", Patch{{.Name}})
 			r.Delete("/", Delete{{.Name}})
+
+			// Status subresource
+			r.Route("/status", func(r chi.Router) {
+				r.Put("/", Update{{.Name}}Status)
+				r.Patch("/", Patch{{.Name}}Status)
+			})
 		})
 	})
 {{end}}

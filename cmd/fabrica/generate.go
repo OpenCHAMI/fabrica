@@ -147,6 +147,20 @@ Examples:
 				}
 			}
 
+			// Auto-generate Ent client code if using Ent storage
+			storageType := detectStorageType()
+			if storageType == "ent" && (all || storage) {
+				fmt.Println("🔄 Generating Ent client code...")
+
+				if err := generateEntCode(debug); err != nil {
+					return fmt.Errorf("failed to generate ent code: %w", err)
+				}
+
+				if debug {
+					fmt.Println("  ✅ Ent client code generated")
+				}
+			}
+
 			fmt.Println("  └─ Done!")
 			fmt.Println()
 			fmt.Println("✅ Code generation complete!")
@@ -645,4 +659,34 @@ func RegisterAllResources(gen *codegen.Generator) error {
 	return nil
 }
 `, imports.String(), registrations.String())
+}
+
+// generateEntCode runs 'go generate ./internal/storage' to generate Ent client code
+// This is automatically called by 'fabrica generate' when Ent storage is detected
+func generateEntCode(debug bool) error {
+	// Check prerequisites
+	if _, err := os.Stat("internal/storage/ent/schema"); os.IsNotExist(err) {
+		return fmt.Errorf("ent schema directory not found")
+	}
+
+	if _, err := os.Stat("internal/storage/generate.go"); os.IsNotExist(err) {
+		return fmt.Errorf("generate.go not found in internal/storage")
+	}
+
+	// Run go generate
+	entCmd := exec.Command("go", "generate", "./internal/storage")
+	if debug {
+		entCmd.Stdout = os.Stdout
+		entCmd.Stderr = os.Stderr
+	}
+
+	if err := entCmd.Run(); err != nil {
+		return err
+	}
+
+	if !debug {
+		fmt.Println("✅ Ent client code generated")
+	}
+
+	return nil
 }

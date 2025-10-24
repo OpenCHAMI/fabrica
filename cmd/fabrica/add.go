@@ -133,11 +133,9 @@ type %sSpec struct {`, resourceName, resourceName, resourceName)
 
 	if opts.withValidation {
 		content += `
-	Name        string ` + "`json:\"name\" validate:\"required,k8sname\"`" + `
 	Description string ` + "`json:\"description,omitempty\" validate:\"max=200\"`"
 	} else {
 		content += `
-	Name        string ` + "`json:\"name\"`" + `
 	Description string ` + "`json:\"description,omitempty\"`"
 	}
 

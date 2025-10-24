@@ -49,7 +49,19 @@ Master production features:
 
 **What you'll build:** A field replaceable unit tracking system with persistent storage.
 
-### 4. [Rack Reconciliation](04-rack-reconciliation/) - Event-Driven Architecture 🔄
+### 4. [CloudEvents Integration](05-cloud-events/) - Event Publishing 📡
+**Time: 15 minutes**
+
+Master event-driven patterns:
+- CloudEvents-compliant event publishing
+- Automatic lifecycle event publishing (create, update, delete)
+- Condition change events
+- Event subscription and monitoring
+- Integration with external event systems
+
+**What you'll build:** A sensor monitoring API with comprehensive event publishing and a real-time event subscriber.
+
+### 5. [Rack Reconciliation](04-rack-reconciliation/) - Event-Driven Architecture 🔄
 **Time: 45 minutes**
 
 Master declarative patterns:
@@ -65,20 +77,20 @@ Master declarative patterns:
 
 ### Example Comparison
 
-| Feature | Basic CRUD | Storage & Auth | FRU Service | Rack Reconciliation |
-|---------|------------|----------------|-------------|---------------------|
-| CRUD Operations | ✅ | ✅ | ✅ | ✅ |
-| Code Generation | ✅ | ✅ | ✅ | ✅ |
-| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ |
-| Storage Backends | File | File/DB | DB | File |
-| Authentication | ❌ | ✅ JWT | ✅ JWT | ❌ |
-| Authorization | ❌ | ✅ RBAC | ✅ RBAC | ❌ |
-| Validation | Basic | ✅ Custom | ✅ Custom | ✅ Custom |
-| Reconciliation | ❌ | ❌ | ❌ | ✅ |
-| Event-Driven | ❌ | ❌ | ❌ | ✅ |
-| Hierarchical Resources | ❌ | ❌ | ❌ | ✅ |
-| State Machines | ❌ | ❌ | ✅ | ✅ |
-| Events | ❌ | ❌ | ❌ | ✅ |
+| Feature | Basic CRUD | Storage & Auth | FRU Service | CloudEvents | Rack Reconciliation |
+|---------|------------|----------------|-------------|-------------|---------------------|
+| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Storage Backends | File | File/DB | DB | File | File |
+| Authentication | ❌ | ✅ JWT | ✅ JWT | ❌ | ❌ |
+| Authorization | ❌ | ✅ RBAC | ✅ RBAC | ❌ | ❌ |
+| Validation | Basic | ✅ Custom | ✅ Custom | Basic | ✅ Custom |
+| Reconciliation | ❌ | ❌ | ❌ | ❌ | ✅ |
+| CloudEvents | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Event Monitoring | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Hierarchical Resources | ❌ | ❌ | ❌ | ❌ | ✅ |
+| State Machines | ❌ | ❌ | ✅ | ❌ | ✅ |
 
 ### Running Examples
 
@@ -93,7 +105,7 @@ fabrica add resource FRU
 fabrica generate
 go mod tidy  # Update dependencies
 # Uncomment lines in cmd/server/main.go
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ## Prerequisites
@@ -192,7 +204,7 @@ fabrica generate
 #    - Route registration
 
 # 6. Run!
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ## Key Features
@@ -213,7 +225,7 @@ fabrica add resource MyResource
 # Edit pkg/resources/myresource/myresource.go
 fabrica generate
 go mod tidy  # Update dependencies
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ### Modifying an Existing Resource
@@ -222,7 +234,7 @@ go run cmd/server/main.go
 # Edit pkg/resources/device/device.go
 fabrica generate  # Regenerates handlers/storage
 go mod tidy  # Update dependencies
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ### Switching Storage Backends
