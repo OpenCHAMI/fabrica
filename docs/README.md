@@ -80,6 +80,13 @@ Learn about the main framework systems.
   - HTTP version negotiation
   - Best practices
 
+- **[Status Subresources](status-subresource.md)** - Kubernetes-style status management ✨ NEW
+  - Separate spec and status updates
+  - Prevent controller/user conflicts
+  - Fine-grained authorization
+  - Reconciler patterns
+  - API usage and best practices
+
 - **[Authorization](policy.md)** - Policy framework
   - Policy framework overview
   - Implementing custom policies
@@ -150,6 +157,7 @@ Help make Fabrica better!
 - **Store data** → [Storage System Guide](storage.md)
 - **Add authentication** → [Authorization Guide](policy.md)
 - **Support multiple versions** → [Versioning Guide](versioning.md)
+- **Separate spec and status** → [Status Subresources Guide](status-subresource.md) ✨ NEW
 - **See examples** → [Examples](examples.md)
 - **Contribute** → [Contributing Guide](../CONTRIBUTING.md)
 

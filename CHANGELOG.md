@@ -10,6 +10,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Status Subresource Pattern** - Kubernetes-style status management ✨
+  - Separate endpoints for spec (`PUT /resources/{uid}`) and status (`PUT /resources/{uid}/status`) updates
+  - Prevents conflicts between user updates and controller/reconciler updates
+  - Enhanced `BaseReconciler.UpdateStatus()` to load fresh resource and preserve spec changes
+  - Generated client library includes `UpdateResourceStatus()` and `PatchResourceStatus()` methods
+  - Support for fine-grained authorization via optional `StatusPolicy` interface
+  - Status updates publish events with `updateType: "status"` metadata for differentiation
+  - Comprehensive documentation in `docs/status-subresource.md`
+  - Example implementation in `examples/06-status-subresource/`
+  - Integration tests for spec/status separation in `test/integration/status_subresource_test.go`
+
+### Changed
+- Updated `Update{Resource}()` handler documentation to clarify it updates spec only
+- Modified status subresource handlers to use `res` variable name to avoid package import shadowing
+- Enhanced reconciler patterns to use status-only updates by default
+
+### Documentation
+- Added comprehensive [Status Subresource Guide](docs/status-subresource.md) with:
+  - Architecture overview and problem/solution explanation
+  - API usage examples (curl and client library)
+  - Reconciler patterns and best practices
+  - Authorization examples with Casbin
+  - Event semantics and subscription patterns
+  - Troubleshooting guide
+- Added [Example 6: Status Subresource](examples/06-status-subresource/README.md)
+- Updated main documentation index to include status subresource guide
+- Added implementation guide in `.claude/status-subresource-implementation-guide.md`
+
 ## [v0.2.8] - 2025-10-20
 
 ### Fixed

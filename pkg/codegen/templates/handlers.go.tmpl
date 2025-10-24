@@ -15,9 +15,11 @@
 //   - GET {{.URLPath}} (list all {{.PluralName}})
 //   - GET {{.URLPath}}/{uid} (get specific {{.Name}})
 //   - POST {{.URLPath}} (create new {{.Name}})
-//   - PUT {{.URLPath}}/{uid} (update {{.Name}})
-//   - PATCH {{.URLPath}}/{uid} (patch {{.Name}})
+//   - PUT {{.URLPath}}/{uid} (update {{.Name}} spec)
+//   - PATCH {{.URLPath}}/{uid} (patch {{.Name}} spec)
 //   - DELETE {{.URLPath}}/{uid} (delete {{.Name}})
+//   - PUT {{.URLPath}}/{uid}/status (update {{.Name}} status)
+//   - PATCH {{.URLPath}}/{uid}/status (patch {{.Name}} status)
 //
 // Authentication: {{if .RequiresAuth}}ENABLED{{else}}DISABLED{{end}}
 // Storage: Uses storage.Load{{.StorageName}}*/Save{{.StorageName}}*/Delete{{.StorageName}}*
@@ -181,7 +183,8 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, {{camelCase .Name}})
 }
 
-// Update{{.Name}} updates an existing {{.Name}} resource
+// Update{{.Name}} updates the spec of an existing {{.Name}} resource
+// NOTE: This endpoint ONLY updates the spec. Use PUT /{{.URLPath}}/{uid}/status to update status.
 func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -206,7 +209,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{camelCase .Name}}.SetName(req.Name)
 	}
 
-	// Update spec fields - merge non-zero values from request
+	// Update spec fields ONLY - status should use /status subresource
 	{{camelCase .Name}}.Spec = req.{{.Name}}Spec
 
 	// Update labels and annotations
@@ -305,6 +308,186 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+}
+
+// Update{{.Name}}Status updates only the status of a {{.Name}} resource
+// This endpoint is intended for controllers, reconcilers, and monitoring systems.
+// It does not modify the spec or metadata (except updatedAt timestamp).
+//
+// Authorization: Requires 'update_status' permission (separate from 'update' permission)
+// Events: Publishes resource updated event with updateType: "status"
+func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("{{.Name}} UID is required"))
+		return
+	}
+
+{{if .RequiresAuth}}
+	// Check authorization for status updates (separate permission)
+	auth, _ := GetAuthFromContext(r.Context())
+
+	if policy, exists := policyRegistry.GetPolicy("{{.Name}}"); exists {
+		// Check if policy implements StatusPolicy interface for fine-grained control
+		if statusPolicy, ok := policy.(interface {
+			CanUpdateStatus(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision
+		}); ok {
+			if decision := statusPolicy.CanUpdateStatus(r.Context(), auth, r, uid); !decision.Allowed {
+				status := http.StatusForbidden
+				if auth == nil {
+					status = http.StatusUnauthorized
+				}
+				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
+				return
+			}
+		} else {
+			// Fallback to regular update permission if StatusPolicy not implemented
+			if decision := policy.CanUpdate(r.Context(), auth, r, uid); !decision.Allowed {
+				status := http.StatusForbidden
+				if auth == nil {
+					status = http.StatusUnauthorized
+				}
+				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
+				return
+			}
+		}
+	} else {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("no policy configured for {{.Name}}"))
+		return
+	}
+{{end}}
+
+	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
+		return
+	}
+
+	var statusUpdate {{.PackageAlias}}.{{.Name}}Status
+	if err := json.NewDecoder(r.Body).Decode(&statusUpdate); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid status body: %w", err))
+		return
+	}
+
+	// Preserve spec - only update status
+	res.Status = statusUpdate
+	res.Touch()
+
+	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}} status: %w", err))
+		return
+	}
+
+	// Publish status update event
+	statusMetadata := map[string]interface{}{
+		"updatedAt":  res.Metadata.UpdatedAt,
+		"updateType": "status",
+	}
+	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, statusMetadata); err != nil {
+		// Log but don't fail - events are non-critical
+		fmt.Printf("Warning: Failed to publish status update event for {{.Name}} %s: %v\n", res.GetUID(), err)
+	}
+
+	respondJSON(w, http.StatusOK, res)
+}
+
+// Patch{{.Name}}Status patches only the status of a {{.Name}} resource
+// Supports JSON Merge Patch, JSON Patch, and Shorthand Patch formats.
+// Only modifies status fields - spec and metadata are preserved.
+func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("{{.Name}} UID is required"))
+		return
+	}
+
+{{if .RequiresAuth}}
+	// Check authorization for status patches
+	auth, _ := GetAuthFromContext(r.Context())
+
+	if policy, exists := policyRegistry.GetPolicy("{{.Name}}"); exists {
+		if statusPolicy, ok := policy.(interface {
+			CanUpdateStatus(ctx context.Context, auth interface{}, r *http.Request, uid string) PolicyDecision
+		}); ok {
+			if decision := statusPolicy.CanUpdateStatus(r.Context(), auth, r, uid); !decision.Allowed {
+				status := http.StatusForbidden
+				if auth == nil {
+					status = http.StatusUnauthorized
+				}
+				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
+				return
+			}
+		} else {
+			if decision := policy.CanUpdate(r.Context(), auth, r, uid); !decision.Allowed {
+				status := http.StatusForbidden
+				if auth == nil {
+					status = http.StatusUnauthorized
+				}
+				respondError(w, status, fmt.Errorf("access denied: %s", decision.Reason))
+				return
+			}
+		}
+	} else {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("no policy configured for {{.Name}}"))
+		return
+	}
+{{end}}
+
+	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
+		return
+	}
+
+	patchData, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch data: %w", err))
+		return
+	}
+
+	// Marshal current status for patching
+	currentStatusJSON, err := json.Marshal(res.Status)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current status: %w", err))
+		return
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	patchType := patch.DetectPatchType(contentType)
+
+	patchResult, err := patch.ApplyPatchWithOptions(currentStatusJSON, patchData, patchType, patch.PatchOptions{
+		AllowAddFields:    true,
+		AllowRemoveFields: false, // Don't allow removing status fields
+	})
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("failed to apply patch to status: %w", err))
+		return
+	}
+
+	// Unmarshal patched status back
+	if err := json.Unmarshal(patchResult.Updated, &res.Status); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to unmarshal patched status: %w", err))
+		return
+	}
+
+	res.Touch()
+
+	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}} status: %w", err))
+		return
+	}
+
+	// Publish status patch event
+	patchMetadata := map[string]interface{}{
+		"patchType":  patchType,
+		"updatedAt":  res.Metadata.UpdatedAt,
+		"updateType": "status",
+	}
+	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, patchMetadata); err != nil {
+		fmt.Printf("Warning: Failed to publish status patch event for {{.Name}} %s: %v\n", res.GetUID(), err)
+	}
+
+	respondJSON(w, http.StatusOK, res)
 }
 
 // Delete{{.Name}} deletes a {{.Name}} resource
