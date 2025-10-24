@@ -40,10 +40,6 @@ import (
 {{range .Resources}}
 	"{{.Package}}"
 {{end}}
-{{if .RequiresAuth}}
-	"context"
-	"github.com/alexlovelltroy/fabrica/pkg/policy"
-{{end}}
 )
 
 {{range .Resources}}
@@ -102,19 +98,3 @@ func respondError(w http.ResponseWriter, status int, err error) {
 	}
 	json.NewEncoder(w).Encode(response)
 }
-
-{{if .RequiresAuth}}
-// Context key for auth
-type contextKey string
-
-const authContextKey contextKey = "auth"
-
-// policyRegistry is the global policy registry for authorization
-var policyRegistry = policy.NewPolicyRegistry()
-
-// GetAuthFromContext retrieves the auth context from the request context
-func GetAuthFromContext(ctx context.Context) (*policy.AuthContext, bool) {
-	auth, ok := ctx.Value(authContextKey).(*policy.AuthContext)
-	return auth, ok
-}
-{{end}}

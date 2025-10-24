@@ -22,15 +22,15 @@
 //
 // Generated artifacts:
 //   - REST API handlers (CRUD operations)
-//   - Storage operations (file-based persistence)
+//   - Storage operations (file-based or Ent persistence)
 //   - HTTP client library
 //   - Request/response models
 //   - Route registration
-//   - Authorization integration
+//   - Middleware (validation, versioning, conditional requests)
 //
 // Customization:
 //   - Edit templates to change generated code patterns
-//   - Implement resource-specific policies
+//   - Implement custom middleware for authorization
 //   - Override storage methods for custom behavior
 package codegen
 
@@ -86,7 +86,6 @@ type ResourceMetadata struct {
 	URLPath      string            // e.g., "/users"
 	StorageName  string            // e.g., "User" for storage function names
 	Tags         map[string]string // Additional metadata
-	RequiresAuth bool              // Whether this resource requires authentication
 	SpecFields   []SpecField       // Fields in the Spec struct
 
 	// Multi-version support
@@ -376,17 +375,6 @@ func (g *Generator) GetResourceByName(name string) (*ResourceMetadata, bool) {
 	return nil, false
 }
 
-// EnableAuthForResource enables authentication for a specific resource type
-func (g *Generator) EnableAuthForResource(resourceName string) error {
-	for i, resource := range g.Resources {
-		if resource.Name == resourceName {
-			g.Resources[i].RequiresAuth = true
-			return nil
-		}
-	}
-	return fmt.Errorf("resource %s not found", resourceName)
-}
-
 // GenerateAll generates all code artifacts
 func (g *Generator) GenerateAll() error {
 	if err := g.LoadTemplates(); err != nil {
@@ -424,9 +412,6 @@ func (g *Generator) GenerateAll() error {
 			return err
 		}
 		if err := g.GenerateOpenAPI(); err != nil {
-			return err
-		}
-		if err := g.GenerateCasbinPolicies(); err != nil {
 			return err
 		}
 	case "client":
@@ -652,7 +637,6 @@ func (g *Generator) LoadTemplates() error {
 		"storageEnt":             "storage_ent.go.tmpl",
 		"models":                 "models.go.tmpl",
 		"client":                 "client.go.tmpl",
-		"policies":               "policies.go.tmpl",
 		"clientCmd":              "client-cmd.go.tmpl",
 		"openapi":                "openapi.go.tmpl",
 		"reconciler":             "reconciler.go.tmpl",
@@ -665,10 +649,6 @@ func (g *Generator) LoadTemplates() error {
 		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
 		"entAdapter":          "ent_adapter.go.tmpl",
 		"generate":            "generate.go.tmpl",
-		// Casbin templates
-		"casbinModel":    "policies/model.conf.tmpl",
-		"casbinPolicy":   "policies/policy.csv.tmpl",
-		"policyHandlers": "policy_handlers.go.tmpl",
 		// Middleware templates
 		"middlewareValidation":  "middleware-validation.go.tmpl",
 		"middlewareConditional": "middleware-conditional.go.tmpl",
@@ -853,25 +833,14 @@ func (g *Generator) GenerateModels() error {
 	fmt.Printf("📊 Generating models...\n")
 	var buf bytes.Buffer
 
-	// Check if any resource requires auth
-	requiresAuth := false
-	for _, res := range g.Resources {
-		if res.RequiresAuth {
-			requiresAuth = true
-			break
-		}
-	}
-
 	data := struct {
-		PackageName  string
-		ModulePath   string
-		Resources    []ResourceMetadata
-		RequiresAuth bool
+		PackageName string
+		ModulePath  string
+		Resources   []ResourceMetadata
 	}{
-		PackageName:  g.PackageName,
-		ModulePath:   g.ModulePath,
-		Resources:    g.Resources,
-		RequiresAuth: requiresAuth,
+		PackageName: g.PackageName,
+		ModulePath:  g.ModulePath,
+		Resources:   g.Resources,
 	}
 
 	if err := g.Templates["models"].Execute(&buf, data); err != nil {
@@ -922,36 +891,6 @@ func (g *Generator) GenerateRoutes() error {
 	}
 
 	fmt.Printf("  ✓ Generated %s\n", filename)
-
-	return nil
-}
-
-// GeneratePolicies generates authorization policy interfaces and scaffolding
-func (g *Generator) GeneratePolicies() error {
-	var buf bytes.Buffer
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-	}
-
-	if err := g.Templates["policies"].Execute(&buf, data); err != nil {
-		return fmt.Errorf("failed to execute policies template: %w", err)
-	}
-
-	formatted, err := format.Source(buf.Bytes())
-	if err != nil {
-		return fmt.Errorf("failed to format generated policies code: %w", err)
-	}
-
-	filename := filepath.Join(g.OutputDir, "policies_generated.go")
-	if err := os.WriteFile(filename, formatted, 0644); err != nil {
-		return fmt.Errorf("failed to write policies file: %w", err)
-	}
 
 	return nil
 }
@@ -1133,37 +1072,6 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 	}
 
 	fmt.Printf("  ✓ Generated %s\n", outputPath)
-
-	return nil
-}
-
-// GenerateCasbinPolicies generates Casbin policy files for RBAC authorization
-func (g *Generator) GenerateCasbinPolicies() error {
-	fmt.Printf("🔐 Generating Casbin policies...\n")
-	// Create policies directory
-	policiesDir := filepath.Join("policies")
-	if err := os.MkdirAll(policiesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create policies directory: %w", err)
-	}
-
-	// Template data
-	data := struct {
-		ProjectName string
-		Resources   []ResourceMetadata
-	}{
-		ProjectName: g.ModulePath,
-		Resources:   g.Resources,
-	}
-
-	// Generate model.conf
-	if err := g.executeTemplate("casbinModel", filepath.Join(policiesDir, "model.conf"), data); err != nil {
-		return fmt.Errorf("failed to generate Casbin model: %w", err)
-	}
-
-	// Generate policy.csv
-	if err := g.executeTemplate("casbinPolicy", filepath.Join(policiesDir, "policy.csv"), data); err != nil {
-		return fmt.Errorf("failed to generate Casbin policies: %w", err)
-	}
 
 	return nil
 }
