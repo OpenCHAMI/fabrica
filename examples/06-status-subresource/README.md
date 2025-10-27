@@ -260,9 +260,11 @@ func main() {
 }
 ```
 
-Run the file with: `go run client-spec.go`.
+Run the file with: `go run client-spec.go`. Make sure that the device ID has been updated.
 
 ### Updating Status
+
+Create the following file in the `device-manager` root directory:
 
 ```go
 package main
@@ -290,6 +292,7 @@ func main() {
         Message:  "All systems operational",
     }
 
+    // TODO: Update with real device ID from database
     dev, err := c.UpdateDeviceStatus(context.Background(), "dev-abc123", status)
     if err != nil {
         log.Fatal(err)
@@ -298,6 +301,8 @@ func main() {
     log.Printf("Updated status to: %s\n", dev.Status.Phase)
 }
 ```
+
+Run the file with: `go run client-status.go`. Make sure that the device ID has been updated.
 
 ## Building a Controller
 
