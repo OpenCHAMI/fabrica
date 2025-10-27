@@ -90,7 +90,6 @@ type Device struct {
 
 // DeviceSpec - User-defined desired state
 type DeviceSpec struct {
-    Name     string `json:"name" validate:"required"`
     Location string `json:"location" validate:"required"`
     Model    string `json:"model,omitempty"`
 }
@@ -142,11 +141,8 @@ curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
     "name": "sensor-01",
-    "spec": {
-      "name": "Temperature Sensor",
-      "location": "datacenter-1",
-      "model": "TempPro-2000"
-    }
+    "location": "datacenter-1",
+    "model": "TempPro-2000"
   }'
 ```
 
@@ -155,15 +151,13 @@ Save the UID from the response (e.g., `dev-abc123`).
 ### User Updates Spec
 
 ```bash
-# User changes device location
+# User changes device location and name
 curl -X PUT http://localhost:8080/devices/dev-abc123 \
   -H "Content-Type: application/json" \
   -d '{
-    "spec": {
-      "name": "Temperature Sensor",
-      "location": "datacenter-2",
-      "model": "TempPro-2000"
-    }
+    "name": "Temperature Sensor",
+    "location": "datacenter-2",
+    "model": "TempPro-2000"
   }'
 
 # Response shows updated spec, status unchanged
@@ -179,8 +173,7 @@ curl -X PUT http://localhost:8080/devices/dev-abc123 \
     "location": "datacenter-2",  // ✅ Updated by user
     ...
   },
-  "status": {
-    "phase": "Pending"  // ✅ Unchanged
+  "status": { // unchaged
   }
 }
 ```
@@ -192,12 +185,10 @@ curl -X PUT http://localhost:8080/devices/dev-abc123 \
 curl -X PUT http://localhost:8080/devices/dev-abc123/status \
   -H "Content-Type: application/json" \
   -d '{
-    "status": {
-      "phase": "Ready",
-      "health": "Healthy",
-      "lastSeen": "2025-10-24T16:00:00Z",
-      "message": "Device is operational"
-    }
+    "phase": "Ready",
+    "health": "Healthy",
+    "lastSeen": "2025-10-24T16:00:00Z",
+    "message": "Device is operational"
   }'
 
 # Response shows updated status, spec unchanged
@@ -220,15 +211,15 @@ curl -X PUT http://localhost:8080/devices/dev-abc123/status \
 curl -X PATCH http://localhost:8080/devices/dev-abc123/status \
   -H "Content-Type: application/merge-patch+json" \
   -d '{
-    "status": {
-      "health": "Degraded"
-    }
+    "health": "Degraded"
   }'
 ```
 
 ## Using the Client Library
 
 ### Updating Spec
+
+Create the following file in the `device-manager` root directory:
 
 ```go
 package main
@@ -250,16 +241,15 @@ func main() {
 
     // User updates device location (spec)
     spec := device.DeviceSpec{
-        Name:     "Temperature Sensor",
         Location: "datacenter-3",
         Model:    "TempPro-2000",
     }
 
     req := client.UpdateDeviceRequest{
-        Name:       "sensor-01",
         DeviceSpec: spec,
     }
 
+    // TODO: Update with real deviceID from database
     dev, err := c.UpdateDevice(context.Background(), "dev-abc123", req)
     if err != nil {
         log.Fatal(err)
@@ -269,7 +259,11 @@ func main() {
 }
 ```
 
+Run the file with: `go run client-spec.go`. Make sure that the device ID has been updated.
+
 ### Updating Status
+
+Create the following file in the `device-manager` root directory:
 
 ```go
 package main
@@ -297,6 +291,7 @@ func main() {
         Message:  "All systems operational",
     }
 
+    // TODO: Update with real device ID from database
     dev, err := c.UpdateDeviceStatus(context.Background(), "dev-abc123", status)
     if err != nil {
         log.Fatal(err)
@@ -305,6 +300,8 @@ func main() {
     log.Printf("Updated status to: %s\n", dev.Status.Phase)
 }
 ```
+
+Run the file with: `go run client-status.go`. Make sure that the device ID has been updated.
 
 ## Building a Controller
 
@@ -433,6 +430,7 @@ func main() {
     dc.Run(ctx)
 }
 ```
+Now run with `go run main.go`. Ensure that the `device_controller.go` file is in `pkg/controller/`, while `main.go` is in `cmd/controller/`
 
 ## Key Takeaways
 
