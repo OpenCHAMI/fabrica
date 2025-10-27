@@ -12,6 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.9] - 2025-10-27
+
+### Fixed
+- CloudEvents event-bus template aligned with current events package API
+  - Switched to `events.NewInMemoryEventBus(buffer, workers)` for the in-memory bus
+  - `Publish` now receives `events.Event` (no direct CloudEvents struct leakage)
+  - `Subscribe` signature corrected to return `(SubscriptionID, error)` and no context argument
+  - `Close()` called without context parameter
+- Middleware templates updated to compile against actual APIs
+  - Validation middleware uses the functions from `pkg/validation` correctly (no `NewValidator` stub)
+  - Versioning middleware replaced non-existent `WithVersion`/`GetVersion` calls with the proper helpers
+  - Conditional middleware cleans up unused imports when not required
+
+### Changed
+- Generated main template initializes the event system and event bus on startup when events are enabled
+- CloudEvents example README now matches the generated API
+  - Sensor spec includes `sensorType`, `location`, and `threshold`
+  - Status examples use `resource.Condition` for condition changes
+  - Clarified that list endpoints return arrays and showed accurate curl examples
+- FRU example and other READMEs
+  - Fixed SQLite foreign key configuration (`?_fk=1`) and ensured data directory setup
+  - Normalized server run commands to `go run ./cmd/server/` (trailing slash)
+  - Documented adding a `go mod edit -replace` directive before `go mod tidy` when testing with a local fabrica checkout
+
+### Documentation
+- Updated example READMEs (01-basic-crud, 03-fru-service, 05-cloud-events) for accuracy and troubleshooting
+- examples/README.md refreshed to reflect the verified workflows
+
+### Notes
+- No breaking changes to the fabrica CLI. Projects generated with prior versions that hit event bus API mismatches can be fixed by regenerating code with v0.2.9.
+
 ### Added
 - **Status Subresource Pattern** - Kubernetes-style status management ✨
   - Separate endpoints for spec (`PUT /resources/{uid}`) and status (`PUT /resources/{uid}/status`) updates
@@ -23,13 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Comprehensive documentation in `docs/status-subresource.md`
   - Example implementation in `examples/06-status-subresource/`
   - Integration tests for spec/status separation in `test/integration/status_subresource_test.go`
+  - unified previous Conditions API and Cloud-Events tooling so every status update triggers a cloud-event publish
 
 ### Changed
 - **Automatic Ent Generation** - Simplified Ent storage workflow
   - `fabrica generate` now automatically runs Ent client code generation when Ent storage is detected
-  - Eliminates the need for separate `fabrica ent generate` command
   - Provides consistent single-command workflow across all storage backends
-  - `fabrica ent generate` is deprecated but still functional for backward compatibility (will be removed in v0.4.0)
 - **Template Organization** - Improved codebase maintainability
   - Reorganized templates into feature-based directory structure
   - Server templates: `server/` (handlers, routes, models, openapi)
@@ -41,7 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Standardized all template names to use hyphens consistently
   - Removed unused `policy_handlers.go.tmpl` template
 - Updated `Update{Resource}()` handler documentation to clarify it updates spec only
-- Modified status subresource handlers to use `res` variable name to avoid package import shadowing
 - Enhanced reconciler patterns to use status-only updates by default
 
 ### Documentation
@@ -181,7 +210,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Storage system architecture documentation
 - Getting started guide
 
-[Unreleased]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.9...HEAD
+[v0.2.9]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.8...v0.2.9
 [v0.2.8]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.4...v0.2.8
 [v0.2.4]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.3...v0.2.4
 [v0.2.3]: https://github.com/alexlovelltroy/fabrica/compare/v0.2.2...v0.2.3

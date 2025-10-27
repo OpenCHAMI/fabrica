@@ -41,12 +41,12 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 
 ## 📦 Installation
 
-### Latest Release (v0.2.8)
+### Latest Release (v0.2.9)
 
 **macOS/Linux:**
 ```bash
 # Direct download and install
-curl -L https://github.com/alexlovelltroy/fabrica/releases/download/v0.2.8/fabrica-$(uname -s)-$(uname -m) -o fabrica
+curl -L https://github.com/alexlovelltroy/fabrica/releases/download/v0.2.9/fabrica-$(uname -s)-$(uname -m) -o fabrica
 chmod +x fabrica
 sudo mv fabrica /usr/local/bin/
 
@@ -56,7 +56,7 @@ fabrica version
 
 **Using Go:**
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.8
+go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.9
 ```
 
 ### Development Version
@@ -339,7 +339,7 @@ We welcome contributions from the community! Here's how to get involved:
 
 ## 🏷️ Releases & Roadmap
 
-**Current Version:** [v0.2.8](https://github.com/alexlovelltroy/fabrica/releases/tag/v0.2.8)
+**Current Version:** [v0.2.9](https://github.com/alexlovelltroy/fabrica/releases/tag/v0.2.9)
 
 **📅 Recent Updates:**
 - ✅ Enhanced template system with better error handling
