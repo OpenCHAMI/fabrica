@@ -193,6 +193,23 @@ func (r *%s) Validate(ctx context.Context) error {
 `, resourceName, resourceName)
 	}
 
+	// Add basic GetKind, GetName, GetUID methods
+	content += `// GetKind returns the kind of the resource
+func (r *` + resourceName + `) GetKind() string {
+	return "` + resourceName + `"
+}
+	
+// GetName returns the name of the resource
+func (r *` + resourceName + `) GetName() string {
+	return r.Metadata.Name
+}
+
+// GetUID returns the UID of the resource
+func (r *` + resourceName + `) GetUID() string {
+	return r.Metadata.UID
+}
+`
+
 	content += fmt.Sprintf(`
 func init() {
 	// Register resource type prefix for storage

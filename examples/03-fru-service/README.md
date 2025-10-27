@@ -101,6 +101,20 @@ type FRUSpec struct {
     RedfishPath string `json:"redfishPath,omitempty"`
 }
 
+// FRULocation defines where the FRU is located
+type FRULocation struct { //nolint:revive
+	BMCUID   string `json:"bmcUID,omitempty"`  // BMC managing this FRU
+	NodeUID  string `json:"nodeUID,omitempty"` // Node containing this FRU
+	Rack     string `json:"rack,omitempty"`
+	Chassis  string `json:"chassis,omitempty"`
+	Slot     string `json:"slot,omitempty"`
+	Bay      string `json:"bay,omitempty"`
+	Position string `json:"position,omitempty"`
+	Socket   string `json:"socket,omitempty"`
+	Channel  string `json:"channel,omitempty"`
+	Port     string `json:"port,omitempty"`
+}
+
 // FRUStatus defines the observed state of FRU
 type FRUStatus struct {
     Health      string               `json:"health"`      // "OK", "Warning", "Critical", "Unknown"
@@ -125,7 +139,7 @@ The FRU resource tracks hardware inventory with detailed location and status inf
 fabrica generate
 ```
 
-**Note:** Ent client code generation now runs automatically when Ent storage is detected. The `fabrica ent generate` command is deprecated but still available for backward compatibility.
+**Note:** Ent client code generation runs automatically when Ent storage is detected. The `fabrica ent generate` command is deprecated but still available for backward compatibility.
 
 ### Step 5: Update Dependencies
 
@@ -161,109 +175,14 @@ fru-service/
     └── ...                           # Client library
 ```
 
-### Step 5: Uncomment Server Setup in main.go
-
-The generated `cmd/server/main.go` has storage and routing code commented out. You need to uncomment these sections to activate them.
-
-#### Step 6a: Uncomment Storage Imports
-
-Find these lines near the top of `cmd/server/main.go` (around line 23-28):
-
-```go
-// TODO: Uncomment after running 'fabrica generate'
-// "github.com/example/fru-service/internal/storage"
-
-// TODO: Uncomment after running 'fabrica generate --storage'
-// "github.com/example/fru-service/internal/storage/ent"
-// "github.com/example/fru-service/internal/storage/ent/migrate"
-```
-
-Uncomment them:
-
-```go
-"github.com/example/fru-service/internal/storage"
-"github.com/example/fru-service/internal/storage/ent"
-"github.com/example/fru-service/internal/storage/ent/migrate"
-```
-
-#### Step 6b: Uncomment Storage Initialization
-
-Find the storage initialization section (around line 207-227):
-
-```go
-// TODO: Connect to database after running 'fabrica generate --storage'
-// client, err := ent.Open("sqlite3", config.DatabaseURL)
-// if err != nil {
-//     return fmt.Errorf("failed opening connection to sqlite: %w", err)
-// }
-// defer client.Close()
-
-// Run auto-migration
-// ctx := context.Background()
-// if err := client.Schema.Create(
-//     ctx,
-//     migrate.WithDropIndex(true),
-//     migrate.WithDropColumn(true),
-// ); err != nil {
-//     return fmt.Errorf("failed creating schema resources: %w", err)
-// }
-// log.Println("Database schema migrated successfully")
-
-// Set Ent client for storage operations
-// TODO: Uncomment after running 'fabrica generate --storage'
-// storage.SetEntClient(client)
-```
-
-Uncomment all the storage code:
-
-```go
-client, err := ent.Open("sqlite3", config.DatabaseURL)
-if err != nil {
-    return fmt.Errorf("failed opening connection to sqlite: %w", err)
-}
-defer client.Close()
-
-// Run auto-migration
-ctx := context.Background()
-if err := client.Schema.Create(
-    ctx,
-    migrate.WithDropIndex(true),
-    migrate.WithDropColumn(true),
-); err != nil {
-    return fmt.Errorf("failed creating schema resources: %w", err)
-}
-log.Println("Database schema migrated successfully")
-
-// Set Ent client for storage operations
-storage.SetEntClient(client)
-```
-
-#### Step 6c: Uncomment Route Registration
-
-Find the route registration calls (around lines 261 and 271). Change:
-
-```go
-// TODO: RegisterGeneratedRoutes(r) - Run 'fabrica generate' to create routes
-```
-
-To:
-
-```go
-RegisterGeneratedRoutes(r)
-```
-
-There are two occurrences - one in the auth-enabled block and one in the auth-disabled block. Uncomment both.
-
-**Note:** Generated code includes CRUD handlers, storage, validation, and middleware. Custom authorization can be added via middleware as needed.
-
-### Step 7: Verify Dependencies
+### Step 6: Verify Dependencies
 
 The required dependencies should now be installed:
 - `entgo.io/ent` - ORM framework
 - `github.com/mattn/go-sqlite3` - SQLite driver
 - `github.com/alexlovelltroy/fabrica/pkg/*` - Fabrica framework packages
 
-### Step 8: Build and Run
+### Step 7: Build and Run
 
 ```bash
 # Create directory for database
@@ -285,7 +204,7 @@ Expected output:
 2025/10/10 12:00:00 Authentication: enabled
 ```
 
-### Step 9: Build Client CLI
+### Step 8: Build Client CLI
 
 ```bash
 fabrica generate --client
@@ -382,7 +301,7 @@ memory-001 Memory   MEM12345    Samsung       OK        R42/C1/U10/DIMM_A1
 ./fru-cli fru get fru-a1b2c3d4 --output json
 ```
 
-**Note:** The CLI supports getting resources by UID only. Name-based lookups would require additional implementation in the generated code.
+**Note:** The CLI supports getting resources by UID only.
 
 Example output:
 ```
@@ -475,111 +394,6 @@ cat fru-spec-update.json | ./fru-cli fru update $FRU_UID
 # - External integrations
 ```
 
-### 6. Working with Conditions
-
-#### Setting Multiple Conditions
-
-Create an FRU with comprehensive condition tracking:
-
-```bash
-# Create memory FRU with conditions using --spec
-./fru-cli fru create --spec '{
-  "name": "memory-001",
-  "fruType": "Memory",
-  "serialNumber": "MEM12345",
-  "partNumber": "DDR4-3200",
-  "manufacturer": "Samsung",
-  "model": "32GB DDR4",
-  "location": {
-    "rack": "R42",
-    "chassis": "C1",
-    "slot": "U10",
-    "socket": "DIMM_A1"
-  },
-  "status": {
-    "health": "OK",
-    "state": "Present",
-    "functional": "Enabled",
-    "temperature": 45.0,
-    "conditions": [
-      {
-        "type": "Ready",
-        "status": "True",
-        "reason": "MemoryOnline",
-        "message": "Memory module is ready for use",
-        "lastTransitionTime": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-      },
-      {
-        "type": "Healthy",
-        "status": "True",
-        "reason": "TemperatureNormal",
-        "message": "Operating temperature within normal range (45°C)",
-        "lastTransitionTime": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-      },
-      {
-        "type": "Reachable",
-        "status": "True",
-        "reason": "BMCConnected",
-        "message": "Memory accessible via BMC DIMM sensors",
-        "lastTransitionTime": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-      }
-    ]
-  }
-}'
-```
-
-Alternatively, create from a comprehensive JSON file:
-
-```bash
-cat > memory-with-conditions.json <<EOF
-{
-  "name": "memory-001",
-  "fruType": "Memory",
-  "serialNumber": "MEM12345",
-  "partNumber": "DDR4-3200",
-  "manufacturer": "Samsung",
-  "model": "32GB DDR4",
-  "location": {
-    "rack": "R42",
-    "chassis": "C1",
-    "slot": "U10",
-    "socket": "DIMM_A1"
-  },
-  "status": {
-    "health": "OK",
-    "state": "Present",
-    "functional": "Enabled",
-    "temperature": 45.0,
-    "conditions": [
-      {
-        "type": "Ready",
-        "status": "True",
-        "reason": "MemoryOnline",
-        "message": "Memory module is ready for use",
-        "lastTransitionTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      },
-      {
-        "type": "Healthy",
-        "status": "True",
-        "reason": "TemperatureNormal",
-        "message": "Operating temperature within normal range (45°C)",
-        "lastTransitionTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      },
-      {
-        "type": "Reachable",
-        "status": "True",
-        "reason": "BMCConnected",
-        "message": "Memory accessible via BMC DIMM sensors",
-        "lastTransitionTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      }
-    ]
-  }
-}
-EOF
-
-cat memory-with-conditions.json | ./fru-cli fru create
-```
-
 ### 5. Patch Operations
 
 The patch command allows efficient partial updates to FRU specifications. Only spec fields can be modified - status and metadata are API-managed.
@@ -633,123 +447,6 @@ Status updates happen automatically based on:
 - External system integrations
 - Condition controllers
 
-#### Working with Conditions
-
-**Note:** Conditions are status fields managed by the API. The examples below show what the API might set automatically:
-
-```bash
-# View current conditions
-./fru-cli fru get $FRU_UID --output json | jq '.status.conditions'
-```
-
-Expected condition structure (API-managed):
-```json
-{
-  "status": {
-    "conditions": [
-      {
-        "type": "Ready",
-        "status": "True",
-        "reason": "MemoryOnline",
-        "message": "Memory module is ready for use",
-        "lastTransitionTime": "2025-10-10T12:05:00Z"
-      }
-    ]
-  }
-}
-```
-
-#### Updating Conditions for Failures
-
-Update conditions to reflect a failure state:
-
-```bash
-# Get the FRU UID from previous command
-FRU_UID="fru-a1b2c3d4"
-
-# IMPORTANT: Conditions and status are API-managed, not user-modifiable
-# The following shows what the API might set automatically during failure detection
-
-# Instead of updating status directly, you might update spec fields that trigger status changes:
-./fru-cli fru patch $FRU_UID --spec '{
-  "properties": {
-    "maintenanceMode": "true",
-    "lastMaintenanceReason": "ECC errors detected"
-  }
-}'
-
-# The API would then automatically update status.conditions based on:
-# - Hardware monitoring detecting ECC errors
-# - Temperature sensors reporting critical levels
-# - Health check failures
-#
-# Resulting in conditions like:
-# {
-#   "type": "Ready",
-#   "status": "False",
-#   "reason": "MemoryErrors",
-#   "message": "Memory module has ECC errors and is not reliable"
-# }
-```
-
-#### Recovery and Progress Tracking
-
-Track recovery operations with spec updates that trigger API status management:
-
-```bash
-# Update spec to indicate maintenance operations
-./fru-cli fru patch $FRU_UID --spec '{
-  "properties": {
-    "maintenanceMode": "true",
-    "maintenanceType": "ECC_SCRUBBING",
-    "maintenanceStarted": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-    "expectedDuration": "5m"
-  }
-}'
-
-# The API monitoring system would then automatically update status to reflect:
-# - Health changing to "Warning" (maintenance in progress)
-# - Conditions showing maintenance state:
-#   {
-#     "type": "Ready",
-#     "status": "False",
-#     "reason": "MaintenanceMode",
-#     "message": "Memory module in maintenance mode for ECC scrubbing"
-#   },
-#   {
-#     "type": "Progressing",
-#     "status": "True",
-#     "reason": "ECCScrubInProgress",
-#     "message": "ECC scrub operation 65% complete (estimated 2 minutes remaining)"
-#   }
-
-# When maintenance completes, update spec to clear maintenance flags:
-./fru-cli fru patch $FRU_UID --spec '{
-  "properties": {
-    "maintenanceMode": "false",
-    "lastMaintenanceCompleted": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-    "maintenanceResult": "SUCCESS"
-  }
-}'
-```
-
-#### Condition Best Practices
-
-**Common Condition Types for FRUs:**
-- `Ready`: FRU is ready for normal operation
-- `Healthy`: FRU is functioning within normal parameters
-- `Reachable`: FRU can be accessed for management
-- `Progressing`: FRU is making progress toward desired state
-- `Available`: FRU is available for allocation/use
-- `Degraded`: FRU is functional but with reduced capability
-
-**Status Guidelines:**
-- Use `"True"` when the condition is satisfied
-- Use `"False"` when the condition is explicitly not satisfied
-- Use `"Unknown"` when the condition status cannot be determined
-- Always include meaningful `reason` and `message` fields
-- Update `lastTransitionTime` only when status changes
-
 ### 6. Delete an FRU
 
 ```bash
@@ -784,113 +481,6 @@ Benefits:
 - Automatic migrations
 - Relationship management
 - Transaction support
-
-### 2. Status Lifecycle Management
-
-FRUs track detailed status information:
-
-```go
-// Status fields track operational state
-type FRUStatus struct {
-    Health      string             // "OK", "Warning", "Critical", "Unknown"
-    State       string             // "Present", "Absent", "Disabled", "Unknown"
-    Functional  string             // "Enabled", "Disabled", "Unknown"
-    LastSeen    string             // Last time FRU was detected
-    LastScanned string             // Last inventory scan timestamp
-    Errors      []string           // Error conditions
-    Temperature float64            // Temperature in Celsius
-    Power       float64            // Power consumption in watts
-    Metrics     map[string]float64 // Custom metrics
-    Conditions  []resource.Condition `json:"conditions,omitempty"` // Kubernetes-style conditions
-}
-```
-
-### 3. Kubernetes-Style Conditions
-
-The FRU resource includes support for **Conditions**, following the Kubernetes pattern for tracking detailed resource status. Conditions provide a standardized way to represent different aspects of a resource's state.
-
-#### Understanding Conditions
-
-Each condition has:
-- **Type**: The aspect being tracked (e.g., "Ready", "Healthy", "Reachable")
-- **Status**: Current state ("True", "False", "Unknown")
-- **Reason**: Machine-readable reason code
-- **Message**: Human-readable explanation
-- **LastTransitionTime**: When the condition last changed status
-
-#### Common FRU Condition Types
-
-```go
-// Example conditions for FRU resources
-conditions := []resource.Condition{
-    {
-        Type:    "Ready",
-        Status:  "True",
-        Reason:  "FRUOnline",
-        Message: "FRU is ready for use",
-    },
-    {
-        Type:    "Healthy",
-        Status:  "False",
-        Reason:  "TemperatureHigh",
-        Message: "CPU temperature exceeds 80°C threshold",
-    },
-    {
-        Type:    "Reachable",
-        Status:  "True",
-        Reason:  "BMCResponding",
-        Message: "FRU accessible via BMC management interface",
-    },
-    {
-        Type:    "Progressing",
-        Status:  "True",
-        Reason:  "FirmwareUpdate",
-        Message: "Firmware update in progress (45% complete)",
-    },
-}
-```
-
-#### Working with Conditions
-
-**Creating Conditions:**
-```go
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
-
-// Create a new condition
-condition := resource.NewCondition("Ready", "True", "FRUOnline", "FRU is operational")
-
-// Add to FRU status
-var conditions []resource.Condition
-resource.SetCondition(&conditions, "Ready", "True", "FRUOnline", "FRU is operational")
-```
-
-**Checking Conditions:**
-```go
-// Check if FRU is ready
-if resource.IsConditionTrue(fru.Status.Conditions, "Ready") {
-    // FRU is ready for use
-}
-
-// Get condition status
-status := resource.GetConditionStatus(fru.Status.Conditions, "Healthy")
-switch status {
-case "True":
-    // FRU is healthy
-case "False":
-    // FRU has health issues
-default: // "Unknown"
-    // Health status unknown
-}
-```
-
-**Updating Conditions:**
-```go
-// Update existing condition or create new one
-resource.SetCondition(&fru.Status.Conditions, "Healthy", "False", "OverTemp", "Temperature critical: 85°C")
-
-// Remove a condition
-resource.RemoveCondition(&fru.Status.Conditions, "Progressing")
-```
 
 ## Database Management
 
@@ -943,24 +533,6 @@ mkdir -p data
 ./fru-server serve --database-url "file:data/fru.db?_fk=1"
 ```
 
-### Issue: "failed to load policies: file does not exist"
-
-**Cause:** Missing configuration files
-**Fix:** Ensure `policies/` directory exists with `model.conf` and `policy.csv`:
-```bash
-ls -la policies/
-```
-
-### Issue: "Connection refused"
-
-**Cause:** Server is not running
-**Fix:** Start the server with `./fru-server serve`
-
-### Issue: "404 Not Found"
-
-**Cause:** Routes not registered or wrong URL
-**Fix:** Ensure you uncommented `RegisterGeneratedRoutes(r)` in Step 6c
-
 ## Configuration Reference
 
 ### .fabrica.yaml
@@ -1002,64 +574,6 @@ generation:
   client: true
   openapi: true
 ```
-
-### Conditions Quick Reference
-
-#### Creating Conditions
-```go
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
-
-// Create new condition
-condition := resource.NewCondition("Ready", "True", "FRUOnline", "FRU is operational")
-
-// Set condition on resource
-resource.SetCondition(&fru.Status.Conditions, "Ready", "True", "FRUOnline", "FRU is operational")
-```
-
-#### Checking Conditions
-```go
-// Check if condition is true
-if resource.IsConditionTrue(fru.Status.Conditions, "Ready") {
-    // Handle ready state
-}
-
-// Get condition status
-status := resource.GetConditionStatus(fru.Status.Conditions, "Healthy")
-// Returns: "True", "False", or "Unknown"
-
-// Find specific condition
-condition := resource.FindCondition(fru.Status.Conditions, "Ready")
-if condition != nil && condition.IsTrue() {
-    // Handle condition
-}
-```
-
-#### Common Patterns
-```go
-// Set multiple conditions
-resource.SetCondition(&conditions, "Ready", "True", "Online", "FRU ready")
-resource.SetCondition(&conditions, "Healthy", "True", "Normal", "All checks passed")
-resource.SetCondition(&conditions, "Reachable", "True", "Connected", "BMC responding")
-
-// Update condition status
-resource.SetCondition(&conditions, "Healthy", "False", "OverTemp", "Temperature critical")
-
-// Remove condition
-resource.RemoveCondition(&conditions, "Progressing")
-```
-
-#### Status Values
-- **"True"**: Condition is satisfied
-- **"False"**: Condition is explicitly not satisfied
-- **"Unknown"**: Condition status cannot be determined
-
-#### Common Condition Types
-- **Ready**: Resource ready for normal operation
-- **Healthy**: Resource functioning within normal parameters
-- **Reachable**: Resource accessible for management
-- **Progressing**: Resource making progress toward desired state
-- **Available**: Resource available for allocation
-- **Degraded**: Resource functional but with reduced capability
 
 ## Adding Authentication and Authorization (Advanced)
 
