@@ -22,13 +22,6 @@ A device inventory API with full CRUD operations for managing network devices. T
 # Basic initialization with defaults
 fabrica init device-inventory
 cd device-inventory
-
-# Or customize during init with flags:
-fabrica init device-inventory \
-  --validation-mode warn \
-  --events \
-  --events-bus nats \
-  --version-strategy both
 ```
 
 **Available init flags:**
@@ -64,8 +57,8 @@ The generated `.fabrica.yaml` includes:
 
 The generated `main.go` includes:
 - Chi router setup
-- Commented storage initialization (uncomment after generate)
-- Commented route registration (uncomment after generate)
+- Storage initialization 
+- Route registration 
 
 ### Step 2: Add a Resource
 
@@ -91,7 +84,6 @@ type Device struct {
 }
 
 type DeviceSpec struct {
-    Name        string `json:"name" validate:"required,k8sname"`
     Description string `json:"description,omitempty" validate:"max=200"`
     // Add your spec fields here
 }
@@ -116,8 +108,6 @@ func init() {
 ### Step 3: Customize Your Resource
 
 Edit `pkg/resources/device/device.go` to add domain-specific fields.
-
-**Important:** Remove the `Name` field from DeviceSpec - the name belongs in metadata, not the spec!
 
 ```go
 type DeviceSpec struct {
@@ -172,38 +162,8 @@ The generator reads `.fabrica.yaml` and generates middleware based on your confi
 - API versioning with your chosen strategy (header/url/both)
 - Event bus setup if enabled
 
-### Step 5: Uncomment Storage & Routes in main.go
 
-Edit `cmd/server/main.go` and uncomment the generated lines:
-
-```go
-package main
-
-import (
-    "log"
-    "net/http"
-
-    "github.com/go-chi/chi/v5"
-    "github.com/user/device-inventory/internal/storage"  // Uncomment this
-)
-
-func main() {
-    // Uncomment storage initialization
-    if err := storage.InitFileBackend("./data"); err != nil {
-        log.Fatalf("Failed to initialize storage: %v", err)
-    }
-
-    r := chi.NewRouter()
-
-    // Uncomment route registration
-    RegisterGeneratedRoutes(r)
-
-    log.Println("Server starting on :8080")
-    log.Fatal(http.ListenAndServe(":8080", r))
-}
-```
-
-### Step 5a: (Optional) Configure Features
+### Step 5: (Optional) Configure Features
 
 Edit `.fabrica.yaml` to customize behavior:
 
