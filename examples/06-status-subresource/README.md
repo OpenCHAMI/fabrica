@@ -80,7 +80,7 @@ Edit `pkg/resources/device/device.go`:
 ```go
 package device
 
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
+import "github.com/openchami/fabrica/pkg/resource"
 
 type Device struct {
     resource.Resource `json:",inline"`

@@ -11,7 +11,7 @@
 package fru
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // FRU represents a Field Replaceable Unit

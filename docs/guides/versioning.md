@@ -484,4 +484,4 @@ Fabrica versioning provides:
 
 ---
 
-**Questions?** [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)

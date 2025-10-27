@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -596,7 +596,7 @@ rack.Status.ChassisUIDs = append(rack.Status.ChassisUIDs, chassis.GetUID())
 ### 5. Use Conditions for Detailed Status
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
+import "github.com/openchami/fabrica/pkg/resource"
 
 // Set conditions during reconciliation
 resource.SetCondition(&rack.Status.Conditions, "Ready", "False", "Provisioning", "Creating chassis")

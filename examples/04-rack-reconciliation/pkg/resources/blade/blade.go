@@ -5,7 +5,7 @@
 package blade
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Blade represents a blade server

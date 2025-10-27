@@ -5,7 +5,7 @@
 package bmc
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // BMC represents a Baseboard Management Controller

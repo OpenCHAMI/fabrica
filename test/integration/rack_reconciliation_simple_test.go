@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/alexlovelltroy/fabrica/test/integration/testdata"
+	"github.com/openchami/fabrica/test/integration/testdata"
 )
 
 // RackReconciliationSimpleTestSuite tests that rack reconciliation code generation works

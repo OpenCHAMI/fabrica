@@ -111,7 +111,7 @@ go run ./cmd/server
 ## Prerequisites
 
 - **Go 1.23+** installed
-- **Fabrica CLI** installed: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest`
+- **Fabrica CLI** installed: `go install github.com/openchami/fabrica/cmd/fabrica@latest`
 - Basic knowledge of:
   - REST APIs
   - Go programming
@@ -120,7 +120,7 @@ go run ./cmd/server
 ## Getting Help
 
 - **Documentation:** See [../docs/](../docs/) for comprehensive guides
-- **Issues:** https://github.com/alexlovelltroy/fabrica/issues
+- **Issues:** https://github.com/openchami/fabrica/issues
 - **Discussions:** Use GitHub Discussions for questions
 
 ## Example Structure
@@ -291,7 +291,7 @@ If developing Fabrica itself, add a replace directive to use local templates:
 
 ```go
 // In your test project's go.mod
-replace github.com/alexlovelltroy/fabrica => /path/to/local/fabrica
+replace github.com/openchami/fabrica => /path/to/local/fabrica
 ```
 
 ### Regenerating Code

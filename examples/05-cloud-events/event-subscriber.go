@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexlovelltroy/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/events"
 )
 
 // Colors for terminal output

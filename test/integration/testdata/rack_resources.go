@@ -14,7 +14,7 @@ const RackTemplateResource = `// Copyright © 2025 OpenCHAMI a Series of LF Proj
 package racktemplate
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // RackTemplate represents a template for rack configuration
@@ -91,7 +91,7 @@ const RackResource = `// Copyright © 2025 OpenCHAMI a Series of LF Projects, LL
 package rack
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Rack represents a physical rack in a data center
@@ -163,7 +163,7 @@ const ChassisResource = `// Copyright © 2025 OpenCHAMI a Series of LF Projects,
 package chassis
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Chassis represents a chassis containing blades
@@ -229,7 +229,7 @@ const BladeResource = `// Copyright © 2025 OpenCHAMI a Series of LF Projects, L
 package blade
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Blade represents a blade server
@@ -298,7 +298,7 @@ const BMCResource = `// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 package bmc
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // BMC represents a Baseboard Management Controller
@@ -366,7 +366,7 @@ const NodeResource = `// Copyright © 2025 OpenCHAMI a Series of LF Projects, LL
 package node
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Node represents a compute node

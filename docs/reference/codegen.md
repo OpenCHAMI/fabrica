@@ -314,7 +314,7 @@ package resources
 
 import (
 	"fmt"
-	"github.com/alexlovelltroy/fabrica/pkg/codegen"
+	"github.com/openchami/fabrica/pkg/codegen"
 	"github.com/user/project/pkg/resources/device"
 )
 

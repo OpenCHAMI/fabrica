@@ -34,8 +34,8 @@ Proper validation:
 package main
 
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/resource"
-    "github.com/alexlovelltroy/fabrica/pkg/validation"
+    "github.com/openchami/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/validation"
 )
 
 type Device struct {

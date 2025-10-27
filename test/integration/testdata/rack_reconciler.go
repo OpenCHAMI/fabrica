@@ -17,10 +17,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alexlovelltroy/fabrica/pkg/reconcile"
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
-	"github.com/alexlovelltroy/fabrica/pkg/storage"
-	"github.com/alexlovelltroy/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/reconcile"
+	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/storage"
+	"github.com/openchami/fabrica/pkg/events"
 
 	"` + "{{.Module}}" + `/pkg/resources/rack"
 	"` + "{{.Module}}" + `/pkg/resources/racktemplate"

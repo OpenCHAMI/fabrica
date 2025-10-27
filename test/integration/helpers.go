@@ -66,7 +66,7 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 		return fmt.Errorf("failed to get absolute path to fabrica root: %w", err)
 	}
 
-	newContent := string(content) + fmt.Sprintf("\nreplace github.com/alexlovelltroy/fabrica => %s\n", fabricaRootAbs)
+	newContent := string(content) + fmt.Sprintf("\nreplace github.com/openchami/fabrica => %s\n", fabricaRootAbs)
 	err = os.WriteFile(goModPath, []byte(newContent), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to update go.mod: %w", err)
@@ -74,7 +74,7 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 
 	// Add the fabrica module as a requirement after adding replace directive
 	// Use go get with -d flag to download without building
-	getCmd := exec.Command("go", "get", "-d", "github.com/alexlovelltroy/fabrica")
+	getCmd := exec.Command("go", "get", "-d", "github.com/openchami/fabrica")
 	getCmd.Dir = p.Dir
 	getOutput, err := getCmd.CombinedOutput()
 	if err != nil {

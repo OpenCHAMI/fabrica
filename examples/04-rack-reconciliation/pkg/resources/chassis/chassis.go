@@ -5,7 +5,7 @@
 package chassis
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Chassis represents a chassis containing blades

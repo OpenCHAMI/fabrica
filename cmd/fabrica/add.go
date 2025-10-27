@@ -123,7 +123,7 @@ package %s
 
 import (
 	"context"
-	"github.com/alexlovelltroy/fabrica/pkg/resource"`, packageName)
+	"github.com/openchami/fabrica/pkg/resource"`, packageName)
 
 	// Note: validation package is imported in the fabrica library
 	// and used implicitly through struct tags

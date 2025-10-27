@@ -21,8 +21,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	fabricaStorage "github.com/alexlovelltroy/fabrica/pkg/storage"
-	"github.com/alexlovelltroy/fabrica/pkg/reconcile"
+	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
+	"github.com/openchami/fabrica/pkg/reconcile"
 {{range .Resources}}
 	"{{.Package}}"
 {{- end}}

@@ -5,7 +5,7 @@
 package node
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Node represents a compute node

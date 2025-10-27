@@ -576,4 +576,4 @@ Fabrica provides:
 
 ---
 
-**Questions?** [Open an Issue](https://github.com/alexlovelltroy/fabrica/issues) | **Want to contribute?** [Contributing Guide](../CONTRIBUTING.md)
+**Questions?** [Open an Issue](https://github.com/openchami/fabrica/issues) | **Want to contribute?** [Contributing Guide](../CONTRIBUTING.md)

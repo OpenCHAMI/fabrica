@@ -19,7 +19,7 @@ This guide will walk you through creating your first REST API with Fabrica in ab
 Install the Fabrica CLI:
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest
+go install github.com/openchami/fabrica/cmd/fabrica@latest
 ```
 
 Verify installation:
@@ -64,7 +64,7 @@ This creates `pkg/resources/book/book.go`:
 package book
 
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/resource"
 )
 
 // Book represents a Book resource
@@ -356,7 +356,7 @@ type MyResource struct {
 
 ### Error: "failed to read embedded template"
 
-**Fix:** Update fabrica: `go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest`
+**Fix:** Update fabrica: `go install github.com/openchami/fabrica/cmd/fabrica@latest`
 
 ## Further Reading
 
@@ -365,10 +365,10 @@ type MyResource struct {
 - [Code Generation](codegen.md) - How generation works
 - [Validation](validation.md) - Request validation
 - [Events](events.md) - Event-driven architecture
-- [API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)
+- [API Reference](https://pkg.go.dev/github.com/openchami/fabrica)
 
 ## Get Help
 
-- [GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues)
-- [Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
-- [Documentation](https://github.com/alexlovelltroy/fabrica/tree/main/docs)
+- [GitHub Issues](https://github.com/openchami/fabrica/issues)
+- [Discussions](https://github.com/openchami/fabrica/discussions)
+- [Documentation](https://github.com/openchami/fabrica/tree/main/docs)

@@ -39,7 +39,7 @@ This package provides comprehensive support for HTTP conditional requests and PA
 HTTP conditional request support with ETags and cache control.
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/conditional"
+import "github.com/openchami/fabrica/pkg/conditional"
 
 // Generate ETag
 etag := conditional.DefaultETagGenerator(resourceData)
@@ -63,7 +63,7 @@ conditional.SetCacheControl(w, conditional.CacheControlOptions{
 PATCH operation support with multiple formats.
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/patch"
+import "github.com/openchami/fabrica/pkg/patch"
 
 // JSON Merge Patch
 updated, err := patch.ApplyMergePatch(original, patchData)
@@ -90,8 +90,8 @@ import (
     "encoding/json"
     "net/http"
 
-    "github.com/alexlovelltroy/fabrica/pkg/conditional"
-    "github.com/alexlovelltroy/fabrica/pkg/patch"
+    "github.com/openchami/fabrica/pkg/conditional"
+    "github.com/openchami/fabrica/pkg/patch"
     "github.com/go-chi/chi/v5"
 )
 
@@ -200,7 +200,7 @@ curl -X PATCH http://localhost:8080/resources/1 \
 ## Documentation
 
 - [Conditional and PATCH Guide](../docs/conditional-and-patch.md) - Comprehensive usage guide
-- [API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica/pkg/conditional) - Package documentation
+- [API Reference](https://pkg.go.dev/github.com/openchami/fabrica/pkg/conditional) - Package documentation
 - [Examples](../examples/conditional-patch/) - Working examples
 
 ## Supported RFCs

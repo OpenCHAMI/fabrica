@@ -26,7 +26,7 @@ Conditional requests allow clients to perform optimistic concurrency control and
 ETags are opaque identifiers that represent a specific version of a resource.
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/conditional"
+import "github.com/openchami/fabrica/pkg/conditional"
 
 // Generate ETag for resource
 etag := conditional.DefaultETagGenerator(resourceData)
@@ -105,7 +105,7 @@ Automatically add ETags to responses:
 
 ```go
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/conditional"
+    "github.com/openchami/fabrica/pkg/conditional"
 )
 
 // Add ETag middleware to your router
@@ -180,7 +180,7 @@ curl -X PATCH http://localhost:8080/resources/123 \
 
 **Code:**
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/patch"
+import "github.com/openchami/fabrica/pkg/patch"
 
 updated, err := patch.ApplyMergePatch(original, patchData)
 if err != nil {
@@ -216,7 +216,7 @@ curl -X PATCH http://localhost:8080/resources/123 \
 
 **Code:**
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/patch"
+import "github.com/openchami/fabrica/pkg/patch"
 
 // Apply JSON Patch
 updated, err := patch.ApplyJSONPatch(original, patchData)
@@ -261,7 +261,7 @@ curl -X PATCH http://localhost:8080/resources/123 \
 
 **Code:**
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/patch"
+import "github.com/openchami/fabrica/pkg/patch"
 
 updated, err := patch.ApplyShorthandPatch(original, patchData)
 ```
@@ -328,7 +328,7 @@ func UpdateResource(w http.ResponseWriter, r *http.Request) {
 
 ```go
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/patch"
+    "github.com/openchami/fabrica/pkg/patch"
 )
 
 // Automatic PATCH middleware
@@ -505,8 +505,8 @@ curl -X PATCH http://localhost:8080/resources/123 \
 
 ```go
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/client"
-    "github.com/alexlovelltroy/fabrica/pkg/patch"
+    "github.com/openchami/fabrica/pkg/client"
+    "github.com/openchami/fabrica/pkg/patch"
 )
 
 // Get with ETag support

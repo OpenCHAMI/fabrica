@@ -240,7 +240,7 @@ import (
     "context"
     "time"
 
-    "github.com/alexlovelltroy/fabrica/pkg/reconcile"
+    "github.com/openchami/fabrica/pkg/reconcile"
     "github.com/example/my-api/pkg/resources/device"
 )
 
@@ -313,7 +313,7 @@ Define resources with separate Spec and Status:
 ```go
 package device
 
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
+import "github.com/openchami/fabrica/pkg/resource"
 
 // Device represents a monitored device
 type Device struct {
@@ -664,4 +664,4 @@ paths:
 
 **Implementation Status:** ✅ Complete
 **Version:** Fabrica 0.3.0+
-**Questions?** [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)

@@ -5,7 +5,7 @@
 package rack
 
 import (
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // Rack represents a physical rack in a data center

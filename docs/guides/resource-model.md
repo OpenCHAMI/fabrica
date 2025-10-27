@@ -504,7 +504,7 @@ type DeviceStatus struct {
 Conditions follow Kubernetes conventions and automatically publish events when changed:
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
+import "github.com/openchami/fabrica/pkg/resource"
 
 type Condition struct {
     Type               string    `json:"type"`               // "Ready", "Healthy", "Available"
@@ -566,4 +566,4 @@ Fabrica resources provide:
 
 ---
 
-**Questions?** [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexlovelltroy/fabrica/pkg/events"
-	"github.com/alexlovelltroy/fabrica/pkg/storage"
+	"github.com/openchami/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/storage"
 )
 
 // Controller manages the lifecycle of reconcilers.

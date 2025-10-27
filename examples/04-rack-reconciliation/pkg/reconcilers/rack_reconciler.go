@@ -14,13 +14,13 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/alexlovelltroy/fabrica/pkg/resource"
 	"github.com/example/rack-inventory/pkg/resources/blade"
 	"github.com/example/rack-inventory/pkg/resources/bmc"
 	"github.com/example/rack-inventory/pkg/resources/chassis"
 	"github.com/example/rack-inventory/pkg/resources/node"
 	"github.com/example/rack-inventory/pkg/resources/rack"
 	"github.com/example/rack-inventory/pkg/resources/racktemplate"
+	"github.com/openchami/fabrica/pkg/resource"
 )
 
 // reconcileRack implements the custom business logic for Rack reconciliation.

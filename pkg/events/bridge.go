@@ -55,8 +55,8 @@ func InitializeEventBridge() {
 // Call this function in your main.go after setting up the event configuration:
 //
 //	import (
-//	    "github.com/alexlovelltroy/fabrica/pkg/events"
-//	    "github.com/alexlovelltroy/fabrica/pkg/resource"
+//	    "github.com/openchami/fabrica/pkg/events"
+//	    "github.com/openchami/fabrica/pkg/resource"
 //	)
 //
 //	func main() {
@@ -101,8 +101,8 @@ var conditionEventPublisherFunc func(ctx context.Context, conditionType, status,
 // Usage in main.go:
 //
 //	import (
-//	    "github.com/alexlovelltroy/fabrica/pkg/events"
-//	    "github.com/alexlovelltroy/fabrica/pkg/resource"
+//	    "github.com/openchami/fabrica/pkg/events"
+//	    "github.com/openchami/fabrica/pkg/resource"
 //	)
 //
 //	func main() {

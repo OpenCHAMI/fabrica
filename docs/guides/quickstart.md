@@ -45,7 +45,7 @@ A simple REST API for managing products with these endpoints:
 ### Install Fabrica CLI
 
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@latest
+go install github.com/openchami/fabrica/cmd/fabrica@latest
 ```
 
 Verify installation:
@@ -118,7 +118,7 @@ This command creates a resource definition at `pkg/resources/product/product.go`
 package product
 
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/resource"
 )
 
 // Product represents a Product resource

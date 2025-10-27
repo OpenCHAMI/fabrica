@@ -180,7 +180,7 @@ fru-service/
 The required dependencies should now be installed:
 - `entgo.io/ent` - ORM framework
 - `github.com/mattn/go-sqlite3` - SQLite driver
-- `github.com/alexlovelltroy/fabrica/pkg/*` - Fabrica framework packages
+- `github.com/openchami/fabrica/pkg/*` - Fabrica framework packages
 
 ### Step 7: Build and Run
 

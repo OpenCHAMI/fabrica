@@ -55,7 +55,7 @@ The default file-based storage backend stores resources as JSON files.
 ### Basic Usage
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/storage"
+import "github.com/openchami/fabrica/pkg/storage"
 
 // Create backend
 backend := storage.NewFileBackend("./data")
@@ -437,4 +437,4 @@ Fabrica storage provides:
 
 ---
 
-**Questions?** [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)

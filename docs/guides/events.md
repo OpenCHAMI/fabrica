@@ -40,7 +40,7 @@ Published automatically when resource conditions change:
 ### Creating an Event Bus
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/events"
+import "github.com/openchami/fabrica/pkg/events"
 
 // Create in-memory event bus
 eventBus := events.NewInMemoryEventBus(
@@ -96,7 +96,7 @@ Configure Fabrica's automatic event publishing with `EventConfig`:
 ### Basic Configuration
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/events"
+import "github.com/openchami/fabrica/pkg/events"
 
 // Configure event system
 config := &events.EventConfig{
@@ -301,7 +301,7 @@ type Condition struct {
 When you update resource conditions, events are published automatically:
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/resource"
+import "github.com/openchami/fabrica/pkg/resource"
 
 // This will publish a condition event if the status changes
 changed := resource.SetResourceCondition(ctx, device,
@@ -573,7 +573,7 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/alexlovelltroy/fabrica/pkg/events"
+    "github.com/openchami/fabrica/pkg/events"
 )
 
 type Device struct {

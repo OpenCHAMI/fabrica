@@ -2,14 +2,14 @@
 //
 // SPDX-License-Identifier: MIT
 
-module github.com/alexlovelltroy/fabrica/test/integration
+module github.com/openchami/fabrica/test/integration
 
 go 1.24.8
 
-replace github.com/alexlovelltroy/fabrica => ../..
+replace github.com/openchami/fabrica => ../..
 
 require (
-	github.com/alexlovelltroy/fabrica v0.0.0-00010101000000-000000000000
+	github.com/openchami/fabrica v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )

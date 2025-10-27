@@ -22,7 +22,7 @@ import (
 
 	{{if .WithAuth}}
 	// Import your custom auth middleware package here
-	// fabrica_middleware "github.com/alexlovelltroy/fabrica/pkg/middleware"
+	// fabrica_middleware "github.com/openchami/fabrica/pkg/middleware"
 	{{end}}
 
 	{{if .WithStorage}}
@@ -44,12 +44,12 @@ import (
 	{{end}}
 
 	{{if .WithEvents}}
-	"github.com/alexlovelltroy/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/events"
 	. "{{.ModulePath}}/internal/middleware"
 	{{end}}
 
 	{{if .WithReconcile}}
-	"github.com/alexlovelltroy/fabrica/pkg/reconcile"
+	"github.com/openchami/fabrica/pkg/reconcile"
 	"{{.ModulePath}}/pkg/reconcilers"
 	{{end}}
 )

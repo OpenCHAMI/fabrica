@@ -8,12 +8,12 @@ SPDX-License-Identifier: MIT
 
 > Build production-ready REST APIs in Go with automatic code generation
 
-[![REUSE status](https://api.reuse.software/badge/github.com/alexlovelltroy/fabrica)](https://api.reuse.software/info/github.com/alexlovelltroy/fabrica)[![golangci-lint](https://github.com/alexlovelltroy/fabrica/actions/workflows/lint.yaml/badge.svg)](https://github.com/alexlovelltroy/fabrica/actions/workflows/lint.yaml)
-[![Build](https://github.com/alexlovelltroy/fabrica/actions/workflows/release.yaml/badge.svg)](https://github.com/alexlovelltroy/fabrica/actions/workflows/release.yaml)
-[![Release](https://img.shields.io/github/v/release/alexlovelltroy/fabrica?sort=semver)](https://github.com/alexlovelltroy/fabrica/releases)
-[![Go Reference](https://pkg.go.dev/badge/github.com/alexlovelltroy/fabrica.svg)](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)
-[![Go Report Card](https://goreportcard.com/badge/github.com/alexlovelltroy/fabrica)](https://goreportcard.com/report/github.com/alexlovelltroy/fabrica)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/alexlovelltroy/fabrica/badge)](https://securityscorecards.dev/viewer/?uri=github.com/alexlovelltroy/fabrica)
+[![REUSE status](https://api.reuse.software/badge/github.com/openchami/fabrica)](https://api.reuse.software/info/github.com/openchami/fabrica)[![golangci-lint](https://github.com/openchami/fabrica/actions/workflows/lint.yaml/badge.svg)](https://github.com/openchami/fabrica/actions/workflows/lint.yaml)
+[![Build](https://github.com/openchami/fabrica/actions/workflows/release.yaml/badge.svg)](https://github.com/openchami/fabrica/actions/workflows/release.yaml)
+[![Release](https://img.shields.io/github/v/release/openchami/fabrica?sort=semver)](https://github.com/openchami/fabrica/releases)
+[![Go Reference](https://pkg.go.dev/badge/github.com/openchami/fabrica.svg)](https://pkg.go.dev/github.com/openchami/fabrica)
+[![Go Report Card](https://goreportcard.com/badge/github.com/openchami/fabrica)](https://goreportcard.com/report/github.com/openchami/fabrica)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/openchami/fabrica/badge)](https://securityscorecards.dev/viewer/?uri=github.com/openchami/fabrica)
 
 > **🏗️ Code Generator for Go REST APIs**
 > Transform Go structs into production-ready REST APIs with OpenAPI specs, storage backends, and middleware in minutes.
@@ -46,7 +46,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 **macOS/Linux:**
 ```bash
 # Direct download and install
-curl -L https://github.com/alexlovelltroy/fabrica/releases/download/v0.2.9/fabrica-$(uname -s)-$(uname -m) -o fabrica
+curl -L https://github.com/openchami/fabrica/releases/download/v0.2.9/fabrica-$(uname -s)-$(uname -m) -o fabrica
 chmod +x fabrica
 sudo mv fabrica /usr/local/bin/
 
@@ -56,13 +56,13 @@ fabrica version
 
 **Using Go:**
 ```bash
-go install github.com/alexlovelltroy/fabrica/cmd/fabrica@v0.2.9
+go install github.com/openchami/fabrica/cmd/fabrica@v0.2.9
 ```
 
 ### Development Version
 
 ```bash
-git clone https://github.com/alexlovelltroy/fabrica.git
+git clone https://github.com/openchami/fabrica.git
 cd fabrica
 make install
 ```
@@ -325,8 +325,8 @@ type DeviceStatus struct {
 We welcome contributions from the community! Here's how to get involved:
 
 **🐛 Report Issues:**
-- [Bug Reports](https://github.com/alexlovelltroy/fabrica/issues/new?template=bug_report.md)
-- [Feature Requests](https://github.com/alexlovelltroy/fabrica/issues/new?template=feature_request.md)
+- [Bug Reports](https://github.com/openchami/fabrica/issues/new?template=bug_report.md)
+- [Feature Requests](https://github.com/openchami/fabrica/issues/new?template=feature_request.md)
 
 **💻 Code Contributions:**
 - Fork the repository and create a feature branch
@@ -335,11 +335,11 @@ We welcome contributions from the community! Here's how to get involved:
 - Submit a pull request with a clear description
 
 **💬 Community:**
-- [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions) - Ask questions and share ideas
+- [GitHub Discussions](https://github.com/openchami/fabrica/discussions) - Ask questions and share ideas
 
 ## 🏷️ Releases & Roadmap
 
-**Current Version:** [v0.2.9](https://github.com/alexlovelltroy/fabrica/releases/tag/v0.2.9)
+**Current Version:** [v0.2.9](https://github.com/openchami/fabrica/releases/tag/v0.2.9)
 
 **📅 Recent Updates:**
 - ✅ Enhanced template system with better error handling
@@ -349,7 +349,7 @@ We welcome contributions from the community! Here's how to get involved:
 
 
 **📚 Resources:**
-- [📋 Release Notes](https://github.com/alexlovelltroy/fabrica/releases) - Detailed changelog for each version
+- [📋 Release Notes](https://github.com/openchami/fabrica/releases) - Detailed changelog for each version
 - [ Full Changelog](CHANGELOG.md) - Complete project history
 
 ## 📄 License

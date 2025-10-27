@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/alexlovelltroy/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/events"
 )
 
 // TestEventConfiguration tests the basic event configuration functionality

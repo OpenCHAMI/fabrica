@@ -398,7 +398,7 @@ import (
 %s	"log"
 	"os"
 
-	"github.com/alexlovelltroy/fabrica/pkg/codegen"
+	"github.com/openchami/fabrica/pkg/codegen"
 	"%s/pkg/resources"
 	"gopkg.in/yaml.v3"
 )
@@ -636,7 +636,7 @@ package resources
 import (
 	"fmt"
 
-	"github.com/alexlovelltroy/fabrica/pkg/codegen"
+	"github.com/openchami/fabrica/pkg/codegen"
 %s)
 
 // RegisterAllResources registers all discovered resources with the generator.

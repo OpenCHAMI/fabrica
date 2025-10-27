@@ -101,7 +101,7 @@ func (d *Device) GetUID() string  { return d.UID }
 ### 2. Create a Reconciler
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/reconcile"
+import "github.com/openchami/fabrica/pkg/reconcile"
 
 type DeviceReconciler struct {
     reconcile.BaseReconciler
@@ -138,9 +138,9 @@ func (r *DeviceReconciler) GetResourceKind() string {
 
 ```go
 import (
-    "github.com/alexlovelltroy/fabrica/pkg/events"
-    "github.com/alexlovelltroy/fabrica/pkg/reconcile"
-    "github.com/alexlovelltroy/fabrica/pkg/storage"
+    "github.com/openchami/fabrica/pkg/events"
+    "github.com/openchami/fabrica/pkg/reconcile"
+    "github.com/openchami/fabrica/pkg/storage"
 )
 
 func main() {
@@ -425,9 +425,9 @@ import (
     "fmt"
     "time"
 
-    "github.com/alexlovelltroy/fabrica/pkg/events"
-    "github.com/alexlovelltroy/fabrica/pkg/reconcile"
-    "github.com/alexlovelltroy/fabrica/pkg/storage"
+    "github.com/openchami/fabrica/pkg/events"
+    "github.com/openchami/fabrica/pkg/reconcile"
+    "github.com/openchami/fabrica/pkg/storage"
 )
 
 // Resource definition

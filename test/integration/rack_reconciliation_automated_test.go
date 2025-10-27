@@ -111,7 +111,7 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 	fabricaRootAbs, err := filepath.Abs(fabricaRoot)
 	s.Require().NoError(err, "should be able to get absolute path to fabrica root")
 
-	newGoModContent := string(goModContent) + fmt.Sprintf("\nreplace github.com/alexlovelltroy/fabrica => %s\n", fabricaRootAbs)
+	newGoModContent := string(goModContent) + fmt.Sprintf("\nreplace github.com/openchami/fabrica => %s\n", fabricaRootAbs)
 	err = os.WriteFile(goModPath, []byte(newGoModContent), 0644)
 	s.Require().NoError(err, "should be able to update go.mod with replace directive")
 

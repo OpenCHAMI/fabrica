@@ -444,7 +444,7 @@ What are you building?
 ## 🎓 Learning Resources
 
 ### Fabrica
-- **Docs**: [github.com/alexlovelltroy/fabrica](https://github.com/alexlovelltroy/fabrica)
+- **Docs**: [github.com/openchami/fabrica](https://github.com/openchami/fabrica)
 - **Best for**: Inventory and asset management systems
 
 ### Huma

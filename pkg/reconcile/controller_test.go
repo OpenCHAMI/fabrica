@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexlovelltroy/fabrica/pkg/events"
-	"github.com/alexlovelltroy/fabrica/pkg/storage"
+	"github.com/openchami/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/storage"
 )
 
 // Mock reconciler for testing

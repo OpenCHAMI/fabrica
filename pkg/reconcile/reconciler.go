@@ -38,7 +38,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alexlovelltroy/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/events"
 )
 
 // Reconciler handles resource reconciliation.

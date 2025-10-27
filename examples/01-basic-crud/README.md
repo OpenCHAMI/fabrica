@@ -74,7 +74,7 @@ package device
 
 import (
     "context"
-    "github.com/alexlovelltroy/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/resource"
 )
 
 type Device struct {
@@ -621,7 +621,7 @@ go build ./cmd/server
 If developing Fabrica itself, add a replace directive to your test project's `go.mod`:
 
 ```go
-replace github.com/alexlovelltroy/fabrica => /path/to/local/fabrica
+replace github.com/openchami/fabrica => /path/to/local/fabrica
 ```
 
 This ensures `fabrica generate` uses your local templates instead of the published version.

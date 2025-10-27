@@ -56,7 +56,7 @@ package sensor
 import (
     "context"
     "time"
-    "github.com/alexlovelltroy/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/resource"
 )
 
 // Sensor represents a monitoring sensor resource
@@ -259,7 +259,7 @@ import (
     "log"
     "time"
 
-    "github.com/alexlovelltroy/fabrica/pkg/events"
+    "github.com/openchami/fabrica/pkg/events"
     cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 

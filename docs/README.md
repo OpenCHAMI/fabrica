@@ -13,7 +13,7 @@ SPDX-License-Identifier: MIT
 - **[Quick Start](guides/quickstart.md)** - Get started in 30 minutes
 - **[Getting Started Guide](guides/getting-started.md)** - Full tutorial
 - **[Architecture Overview](reference/architecture.md)** - Framework design
-- **[API Reference](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)** - Go package docs
+- **[API Reference](https://pkg.go.dev/github.com/openchami/fabrica)** - Go package docs
 
 ## 📖 Documentation Structure
 
@@ -85,16 +85,16 @@ Technical reference and in-depth explanations:
 
 ### Resources
 
-- **[GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues)** - Report bugs or request features
-- **[Discussions](https://github.com/alexlovelltroy/fabrica/discussions)** - Ask questions
-- **[API Docs](https://pkg.go.dev/github.com/alexlovelltroy/fabrica)** - Package reference
+- **[GitHub Issues](https://github.com/openchami/fabrica/issues)** - Report bugs or request features
+- **[Discussions](https://github.com/openchami/fabrica/discussions)** - Ask questions
+- **[API Docs](https://pkg.go.dev/github.com/openchami/fabrica)** - Package reference
 - **[Examples](../examples/)** - Working code samples
 
 ### Support Channels
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues/new?template=bug_report.md)
-- 💡 **Feature Requests**: [GitHub Issues](https://github.com/alexlovelltroy/fabrica/issues/new?template=feature_request.md)
-- ❓ **Questions**: [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/openchami/fabrica/issues/new?template=bug_report.md)
+- 💡 **Feature Requests**: [GitHub Issues](https://github.com/openchami/fabrica/issues/new?template=feature_request.md)
+- ❓ **Questions**: [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
 
 ## 🤝 Contributing
 
@@ -107,7 +107,7 @@ Help make Fabrica better!
 
 1. **Start Building**: Follow the [Getting Started Guide](guides/getting-started.md)
 2. **Explore Examples**: Check out the [examples directory](../examples/)
-3. **Join the Community**: Participate in [GitHub Discussions](https://github.com/alexlovelltroy/fabrica/discussions)
+3. **Join the Community**: Participate in [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
 4. **Contribute**: Help improve Fabrica - see the [Contributing Guide](../CONTRIBUTING.md)
 
 ---

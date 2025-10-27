@@ -21,7 +21,7 @@ The validation package provides comprehensive validation for Fabrica resources, 
 ### Basic Struct Validation
 
 ```go
-import "github.com/alexlovelltroy/fabrica/pkg/validation"
+import "github.com/openchami/fabrica/pkg/validation"
 
 type Device struct {
     Name        string `json:"name" validate:"required,k8sname"`

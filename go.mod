@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-module github.com/alexlovelltroy/fabrica
+module github.com/openchami/fabrica
 
 go 1.23.4
 

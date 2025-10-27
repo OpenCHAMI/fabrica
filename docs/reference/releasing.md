@@ -50,8 +50,8 @@ When you push a tag matching `v*.*.*`, GitHub Actions automatically:
    - Multi-arch manifest
 
 3. ✅ Publishes Docker images to:
-   - `ghcr.io/alexlovelltroy/fabrica:vX.Y.Z`
-   - `ghcr.io/alexlovelltroy/fabrica:latest`
+   - `ghcr.io/openchami/fabrica:vX.Y.Z`
+   - `ghcr.io/openchami/fabrica:latest`
 
 4. ✅ Creates GitHub Release with:
    - Binaries for all platforms
@@ -67,7 +67,7 @@ gh run list --workflow=release.yaml
 gh run view <run-id>
 ```
 
-Or visit: https://github.com/alexlovelltroy/fabrica/actions
+Or visit: https://github.com/openchami/fabrica/actions
 
 ### 5. Test the Release
 
@@ -77,12 +77,12 @@ Download and test a binary:
 
 ```bash
 # Linux AMD64
-wget https://github.com/alexlovelltroy/fabrica/releases/download/v1.0.0/fabrica_1.0.0_linux_x86_64.tar.gz
+wget https://github.com/openchami/fabrica/releases/download/v1.0.0/fabrica_1.0.0_linux_x86_64.tar.gz
 tar xzf fabrica_1.0.0_linux_x86_64.tar.gz
 ./fabrica version
 
 # macOS ARM64
-wget https://github.com/alexlovelltroy/fabrica/releases/download/v1.0.0/fabrica_1.0.0_darwin_arm64.tar.gz
+wget https://github.com/openchami/fabrica/releases/download/v1.0.0/fabrica_1.0.0_darwin_arm64.tar.gz
 tar xzf fabrica_1.0.0_darwin_arm64.tar.gz
 ./fabrica version
 ```
@@ -91,12 +91,12 @@ tar xzf fabrica_1.0.0_darwin_arm64.tar.gz
 
 ```bash
 # Pull and test
-docker pull ghcr.io/alexlovelltroy/fabrica:v1.0.0
-docker run --rm ghcr.io/alexlovelltroy/fabrica:v1.0.0 version
+docker pull ghcr.io/openchami/fabrica:v1.0.0
+docker run --rm ghcr.io/openchami/fabrica:v1.0.0 version
 
 # Test multi-arch (should work on both AMD64 and ARM64)
-docker pull ghcr.io/alexlovelltroy/fabrica:latest
-docker run --rm ghcr.io/alexlovelltroy/fabrica:latest --help
+docker pull ghcr.io/openchami/fabrica:latest
+docker run --rm ghcr.io/openchami/fabrica:latest --help
 ```
 
 ## Release Configuration
@@ -133,9 +133,9 @@ The release process is configured in:
 
 | Platform | Image |
 |----------|-------|
-| Linux AMD64 | `ghcr.io/alexlovelltroy/fabrica:*-amd64` |
-| Linux ARM64 | `ghcr.io/alexlovelltroy/fabrica:*-arm64` |
-| Multi-arch | `ghcr.io/alexlovelltroy/fabrica:*` |
+| Linux AMD64 | `ghcr.io/openchami/fabrica:*-amd64` |
+| Linux ARM64 | `ghcr.io/openchami/fabrica:*-arm64` |
+| Multi-arch | `ghcr.io/openchami/fabrica:*` |
 
 ## Version Numbering
 
