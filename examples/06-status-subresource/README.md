@@ -220,6 +220,8 @@ curl -X PATCH http://localhost:8080/devices/dev-abc123/status \
 
 ### Updating Spec
 
+Create the following file in the `device-manager` root directory:
+
 ```go
 package main
 
@@ -240,16 +242,15 @@ func main() {
 
     // User updates device location (spec)
     spec := device.DeviceSpec{
-        Name:     "Temperature Sensor",
         Location: "datacenter-3",
         Model:    "TempPro-2000",
     }
 
     req := client.UpdateDeviceRequest{
-        Name:       "sensor-01",
         DeviceSpec: spec,
     }
 
+    // TODO: Update with real deviceID from database
     dev, err := c.UpdateDevice(context.Background(), "dev-abc123", req)
     if err != nil {
         log.Fatal(err)
@@ -258,6 +259,8 @@ func main() {
     log.Printf("Updated location to: %s\n", dev.Spec.Location)
 }
 ```
+
+Run the file with: `go run client-spec.go`.
 
 ### Updating Status
 
