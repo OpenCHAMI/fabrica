@@ -151,7 +151,7 @@ Save the UID from the response (e.g., `dev-abc123`).
 ### User Updates Spec
 
 ```bash
-# User changes device location
+# User changes device location and name
 curl -X PUT http://localhost:8080/devices/dev-abc123 \
   -H "Content-Type: application/json" \
   -d '{
@@ -173,8 +173,7 @@ curl -X PUT http://localhost:8080/devices/dev-abc123 \
     "location": "datacenter-2",  // ✅ Updated by user
     ...
   },
-  "status": {
-    "phase": "Pending"  // ✅ Unchanged
+  "status": { // unchaged
   }
 }
 ```
@@ -431,6 +430,7 @@ func main() {
     dc.Run(ctx)
 }
 ```
+Now run with `go run main.go`. Ensure that the `device_controller.go` file is in `pkg/controller/`, while `main.go` is in `cmd/controller/`
 
 ## Key Takeaways
 
