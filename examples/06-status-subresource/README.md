@@ -90,7 +90,6 @@ type Device struct {
 
 // DeviceSpec - User-defined desired state
 type DeviceSpec struct {
-    Name     string `json:"name" validate:"required"`
     Location string `json:"location" validate:"required"`
     Model    string `json:"model,omitempty"`
 }
@@ -142,11 +141,8 @@ curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
     "name": "sensor-01",
-    "spec": {
-      "name": "Temperature Sensor",
-      "location": "datacenter-1",
-      "model": "TempPro-2000"
-    }
+    "location": "datacenter-1",
+    "model": "TempPro-2000"
   }'
 ```
 
@@ -159,11 +155,9 @@ Save the UID from the response (e.g., `dev-abc123`).
 curl -X PUT http://localhost:8080/devices/dev-abc123 \
   -H "Content-Type: application/json" \
   -d '{
-    "spec": {
-      "name": "Temperature Sensor",
-      "location": "datacenter-2",
-      "model": "TempPro-2000"
-    }
+    "name": "Temperature Sensor",
+    "location": "datacenter-2",
+    "model": "TempPro-2000"
   }'
 
 # Response shows updated spec, status unchanged
@@ -192,12 +186,10 @@ curl -X PUT http://localhost:8080/devices/dev-abc123 \
 curl -X PUT http://localhost:8080/devices/dev-abc123/status \
   -H "Content-Type: application/json" \
   -d '{
-    "status": {
-      "phase": "Ready",
-      "health": "Healthy",
-      "lastSeen": "2025-10-24T16:00:00Z",
-      "message": "Device is operational"
-    }
+    "phase": "Ready",
+    "health": "Healthy",
+    "lastSeen": "2025-10-24T16:00:00Z",
+    "message": "Device is operational"
   }'
 
 # Response shows updated status, spec unchanged
@@ -220,9 +212,7 @@ curl -X PUT http://localhost:8080/devices/dev-abc123/status \
 curl -X PATCH http://localhost:8080/devices/dev-abc123/status \
   -H "Content-Type: application/merge-patch+json" \
   -d '{
-    "status": {
-      "health": "Degraded"
-    }
+    "health": "Degraded"
   }'
 ```
 
