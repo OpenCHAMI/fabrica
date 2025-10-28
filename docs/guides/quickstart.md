@@ -52,7 +52,7 @@ Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.2.9
+# Output: fabrica version v0.3.0
 ```
 
 ## Step 1: Initialize Your Project
