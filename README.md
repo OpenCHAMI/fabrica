@@ -124,7 +124,7 @@ go mod tidy
 **6. Run your server:**
 
 ```bash
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 **7. Test your API:**
