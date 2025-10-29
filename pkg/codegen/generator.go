@@ -44,6 +44,7 @@ import (
 	"reflect"
 	"strings"
 	"text/template"
+	"time"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -51,6 +52,12 @@ import (
 
 //go:embed templates/*
 var embeddedTemplates embed.FS
+
+// GetEmbeddedTemplates returns the embedded template filesystem
+// This allows other packages (like cmd/fabrica/init.go) to access init templates
+func GetEmbeddedTemplates() embed.FS {
+	return embeddedTemplates
+}
 
 // SchemaVersion represents a specific version of a resource schema
 type SchemaVersion struct {
@@ -165,6 +172,63 @@ func (g *Generator) SetStorageType(storageType string) {
 // SetDBDriver sets the database driver for Ent ("postgres", "mysql", "sqlite")
 func (g *Generator) SetDBDriver(driver string) {
 	g.DBDriver = driver
+}
+
+// templateData creates a standardized data structure for template execution
+// This ensures all templates have access to version, timestamp, and template name
+func (g *Generator) templateData(resource ResourceMetadata, templateName string) map[string]interface{} {
+	return map[string]interface{}{
+		"Name":            resource.Name,
+		"PluralName":      resource.PluralName,
+		"Package":         resource.Package,
+		"PackageAlias":    resource.PackageAlias,
+		"TypeName":        resource.TypeName,
+		"SpecType":        resource.SpecType,
+		"StatusType":      resource.StatusType,
+		"URLPath":         resource.URLPath,
+		"StorageName":     resource.StorageName,
+		"Tags":            resource.Tags,
+		"SpecFields":      resource.SpecFields,
+		"Versions":        resource.Versions,
+		"DefaultVersion":  resource.DefaultVersion,
+		"APIGroupVersion": resource.APIGroupVersion,
+		"ModulePath":      g.ModulePath,
+		"Version":         g.Version,
+		"GeneratedAt":     time.Now().Format(time.RFC3339),
+		"Template":        templateName,
+	}
+}
+
+// globalTemplateData creates template data for templates that process all resources at once
+// (e.g., models, routes, registration files)
+func (g *Generator) globalTemplateData(templateName string) map[string]interface{} {
+	return map[string]interface{}{
+		"PackageName": g.PackageName,
+		"ModulePath":  g.ModulePath,
+		"Resources":   g.Resources,
+		"ProjectName": g.extractProjectName(),
+		"StorageType": g.StorageType,
+		"DBDriver":    g.DBDriver,
+		"Config":      g.Config,
+		"Version":     g.Version,
+		"GeneratedAt": time.Now().Format(time.RFC3339),
+		"Template":    templateName,
+	}
+}
+
+// middlewareData creates template data for middleware templates
+func (g *Generator) middlewareData(templateName string) map[string]interface{} {
+	return map[string]interface{}{
+		"ValidationMode":    g.Config.ValidationMode,
+		"ValidationEnabled": g.Config.ValidationEnabled,
+		"ETagAlgorithm":     g.Config.ETagAlgorithm,
+		"VersionStrategy":   g.Config.VersionStrategy,
+		"EventBusType":      g.Config.EventBusType,
+		"EventsEnabled":     g.Config.EventsEnabled,
+		"Version":           g.Version,
+		"GeneratedAt":       time.Now().Format(time.RFC3339),
+		"Template":          templateName,
+	}
 }
 
 // RegisterResource adds a resource type for code generation
@@ -445,23 +509,16 @@ func (g *Generator) GenerateAll() error {
 func (g *Generator) GenerateStorage() error {
 	fmt.Printf("📁 Generating storage layer (%s)...\n", g.StorageType)
 	var buf bytes.Buffer
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-		StorageType string
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-		StorageType: g.StorageType,
-	}
 
 	// Use appropriate template based on storage type
 	templateName := "storage"
+	templatePath := "storage/file.go.tmpl"
 	if g.StorageType == "ent" {
 		templateName = "storageEnt"
+		templatePath = "storage/ent.go.tmpl"
 	}
+
+	data := g.globalTemplateData(templatePath)
 
 	if err := g.Templates[templateName].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute storage template: %w", err)
@@ -492,15 +549,7 @@ func (g *Generator) GenerateStorage() error {
 func (g *Generator) GenerateClientModels() error {
 	fmt.Printf("📊 Generating client models...\n")
 	var buf bytes.Buffer
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-	}
+	data := g.globalTemplateData("client/models.go.tmpl")
 
 	if err := g.Templates["clientModels"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute client models template: %w", err)
@@ -527,13 +576,7 @@ func (g *Generator) GenerateReconcilers() error {
 	for _, resource := range g.Resources {
 		// Generate the boilerplate file (always regenerated)
 		var buf bytes.Buffer
-		data := struct {
-			ResourceMetadata
-			ModulePath string
-		}{
-			ResourceMetadata: resource,
-			ModulePath:       g.ModulePath,
-		}
+		data := g.templateData(resource, "reconciliation/reconciler.go.tmpl")
 
 		if err := g.Templates["reconciler"].Execute(&buf, data); err != nil {
 			return fmt.Errorf("failed to execute reconciler template for %s: %w", resource.Name, err)
@@ -553,7 +596,8 @@ func (g *Generator) GenerateReconcilers() error {
 		stubFilename := filepath.Join(g.OutputDir, fmt.Sprintf("%s_reconciler.go", strings.ToLower(resource.Name)))
 		if _, err := os.Stat(stubFilename); os.IsNotExist(err) {
 			var stubBuf bytes.Buffer
-			if err := g.Templates["reconcilerStub"].Execute(&stubBuf, data); err != nil {
+			stubData := g.templateData(resource, "reconciliation/stub.go.tmpl")
+			if err := g.Templates["reconcilerStub"].Execute(&stubBuf, stubData); err != nil {
 				return fmt.Errorf("failed to execute reconciler stub template for %s: %w", resource.Name, err)
 			}
 
@@ -574,13 +618,7 @@ func (g *Generator) GenerateReconcilers() error {
 // GenerateReconcilerRegistration generates the reconciler registration code
 func (g *Generator) GenerateReconcilerRegistration() error {
 	var buf bytes.Buffer
-	data := struct {
-		Resources  []ResourceMetadata
-		ModulePath string
-	}{
-		Resources:  g.Resources,
-		ModulePath: g.ModulePath,
-	}
+	data := g.globalTemplateData("reconciliation/registration.go.tmpl")
 
 	if err := g.Templates["reconcilerRegistration"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute reconciler registration template: %w", err)
@@ -602,13 +640,7 @@ func (g *Generator) GenerateReconcilerRegistration() error {
 // GenerateEventHandlers generates cross-resource event handler code
 func (g *Generator) GenerateEventHandlers() error {
 	var buf bytes.Buffer
-	data := struct {
-		Resources  []ResourceMetadata
-		ModulePath string
-	}{
-		Resources:  g.Resources,
-		ModulePath: g.ModulePath,
-	}
+	data := g.globalTemplateData("reconciliation/event-handlers.go.tmpl")
 
 	if err := g.Templates["eventHandlers"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute event handlers template: %w", err)
@@ -693,15 +725,7 @@ func (g *Generator) GenerateHandlers() error {
 	fmt.Printf("🛠️  Generating handlers...\n")
 	for _, resource := range g.Resources {
 		var buf bytes.Buffer
-		data := struct {
-			ResourceMetadata
-			ModulePath string
-			Version    string
-		}{
-			ResourceMetadata: resource,
-			ModulePath:       g.ModulePath,
-			Version:          g.Version,
-		}
+		data := g.templateData(resource, "server/handlers.go.tmpl")
 
 		if err := g.Templates["handlers"].Execute(&buf, data); err != nil {
 			return fmt.Errorf("failed to execute handlers template for %s: %w", resource.Name, err)
@@ -733,25 +757,9 @@ func (g *Generator) GenerateMiddleware() error {
 		return fmt.Errorf("failed to create middleware directory: %w", err)
 	}
 
-	// Data structure with config values
-	data := struct {
-		ValidationMode    string
-		ValidationEnabled bool
-		ETagAlgorithm     string
-		VersionStrategy   string
-		EventBusType      string
-		EventsEnabled     bool
-	}{
-		ValidationMode:    g.Config.ValidationMode,
-		ValidationEnabled: g.Config.ValidationEnabled,
-		ETagAlgorithm:     g.Config.ETagAlgorithm,
-		VersionStrategy:   g.Config.VersionStrategy,
-		EventBusType:      g.Config.EventBusType,
-		EventsEnabled:     g.Config.EventsEnabled,
-	}
-
 	// Generate validation middleware if enabled
 	if g.Config.ValidationEnabled {
+		data := g.middlewareData("middleware/validation.go.tmpl")
 		if err := g.generateMiddlewareFile("middlewareValidation", "validation_middleware_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
@@ -759,6 +767,7 @@ func (g *Generator) GenerateMiddleware() error {
 
 	// Generate conditional middleware if enabled
 	if g.Config.ConditionalEnabled {
+		data := g.middlewareData("middleware/conditional.go.tmpl")
 		if err := g.generateMiddlewareFile("middlewareConditional", "conditional_middleware_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
@@ -766,6 +775,7 @@ func (g *Generator) GenerateMiddleware() error {
 
 	// Generate versioning middleware if enabled
 	if g.Config.VersioningEnabled {
+		data := g.middlewareData("middleware/versioning.go.tmpl")
 		if err := g.generateMiddlewareFile("middlewareVersioning", "versioning_middleware_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
@@ -773,6 +783,7 @@ func (g *Generator) GenerateMiddleware() error {
 
 	// Generate event bus if enabled
 	if g.Config.EventsEnabled {
+		data := g.middlewareData("middleware/event-bus.go.tmpl")
 		if err := g.generateMiddlewareFile("eventBus", "event_bus_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
@@ -811,15 +822,7 @@ func (g *Generator) GenerateClient() error {
 	if err := os.MkdirAll(g.OutputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-	}
+	data := g.globalTemplateData("client/client.go.tmpl")
 
 	if err := g.Templates["client"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute client template: %w", err)
@@ -846,17 +849,7 @@ func (g *Generator) GenerateModels() error {
 	fmt.Printf("📊 Generating models...\n")
 	var buf bytes.Buffer
 
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-		Version     string
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-		Version:     g.Version,
-	}
+	data := g.globalTemplateData("server/models.go.tmpl")
 
 	if err := g.Templates["models"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute models template: %w", err)
@@ -881,15 +874,7 @@ func (g *Generator) GenerateModels() error {
 func (g *Generator) GenerateRoutes() error {
 	fmt.Printf("🛣️  Generating routes...\n")
 	var buf bytes.Buffer
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-	}
+	data := g.globalTemplateData("server/routes.go.tmpl")
 
 	if err := g.Templates["routes"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute routes template: %w", err)
@@ -914,17 +899,8 @@ func (g *Generator) GenerateRoutes() error {
 func (g *Generator) GenerateClientCmd() error {
 	fmt.Printf("⚡ Generating CLI client...\n")
 	var buf bytes.Buffer
-	data := struct {
-		PackageName string
-		ModulePath  string
-		ProjectName string
-		Resources   []ResourceMetadata
-	}{
-		PackageName: "main", // CLI is always package main
-		ModulePath:  g.ModulePath,
-		ProjectName: g.extractProjectName(),
-		Resources:   g.Resources,
-	}
+	data := g.globalTemplateData("client/cmd.go.tmpl")
+	data["PackageName"] = "main" // CLI is always package main
 
 	if err := g.Templates["clientCmd"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute client-cmd template: %w", err)
@@ -956,15 +932,7 @@ func (g *Generator) GenerateClientCmd() error {
 func (g *Generator) GenerateOpenAPI() error {
 	fmt.Printf("📋 Generating OpenAPI specification...\n")
 	var buf bytes.Buffer
-	data := struct {
-		PackageName string
-		ModulePath  string
-		Resources   []ResourceMetadata
-	}{
-		PackageName: g.PackageName,
-		ModulePath:  g.ModulePath,
-		Resources:   g.Resources,
-	}
+	data := g.globalTemplateData("server/openapi.go.tmpl")
 
 	if err := g.Templates["openapi"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute openapi template: %w", err)
@@ -1026,13 +994,7 @@ func (g *Generator) GenerateEntAdapter() error {
 	fmt.Printf("🔗 Generating Ent adapter...\n")
 
 	var buf bytes.Buffer
-	data := struct {
-		ModulePath string
-		Resources  []ResourceMetadata
-	}{
-		ModulePath: g.ModulePath,
-		Resources:  g.Resources,
-	}
+	data := g.globalTemplateData("storage/adapter.go.tmpl")
 
 	if err := g.Templates["entAdapter"].Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute ent adapter template: %w", err)
@@ -1063,6 +1025,15 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 	tmpl, exists := g.Templates[templateName]
 	if !exists {
 		return fmt.Errorf("template %s not found", templateName)
+	}
+
+	// If no data provided, create basic version data
+	if data == nil {
+		data = map[string]interface{}{
+			"Version":     g.Version,
+			"GeneratedAt": time.Now().Format(time.RFC3339),
+			"Template":    templateName,
+		}
 	}
 
 	var buf bytes.Buffer

@@ -198,7 +198,7 @@ func (r *%s) Validate(ctx context.Context) error {
 func (r *` + resourceName + `) GetKind() string {
 	return "` + resourceName + `"
 }
-	
+
 // GetName returns the name of the resource
 func (r *` + resourceName + `) GetName() string {
 	return r.Metadata.Name

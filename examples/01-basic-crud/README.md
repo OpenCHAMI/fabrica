@@ -57,8 +57,8 @@ The generated `.fabrica.yaml` includes:
 
 The generated `main.go` includes:
 - Chi router setup
-- Storage initialization 
-- Route registration 
+- Storage initialization
+- Route registration
 
 ### Step 2: Add a Resource
 

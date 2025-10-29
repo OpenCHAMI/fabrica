@@ -49,7 +49,7 @@ repos:
     -   id: go-mod-tidy-exclude-examples
         name: go mod tidy (excluding examples)
         # Temporarily rename examples to hide it from go mod tidy, then restore it
-        entry: bash -c 'if [ -d examples ]; then mv examples .examples.tmp && go mod tidy; STATUS=$?; mv .examples.tmp examples; exit $STATUS; else go mod tidy; fi'
+        entry: bash -c 'if [ -d examples ]; then mv examples .examples.tmp && trap "rm -rf examples; mv .examples.tmp examples" EXIT; go mod tidy; else go mod tidy; fi'
         language: system
         pass_filenames: false
         types: [go]
@@ -58,7 +58,7 @@ repos:
     -   id: go-vet-mod-exclude-examples
         name: go vet (excluding examples)
         # Temporarily rename examples to hide it from go vet, then restore it
-        entry: bash -c 'if [ -d examples ]; then mv examples .examples.tmp && go vet -mod=mod ./...; STATUS=$?; mv .examples.tmp examples; exit $STATUS; else go vet -mod=mod ./...; fi'
+        entry: bash -c 'if [ -d examples ]; then mv examples .examples.tmp && trap "rm -rf examples; mv .examples.tmp examples" EXIT; go vet -mod=mod ./...; else go vet -mod=mod ./...; fi'
         language: system
         pass_filenames: false
         types: [go]
@@ -67,7 +67,7 @@ repos:
     -   id: golangci-lint-mod-exclude-examples
         name: golangci-lint (excluding examples)
         # Temporarily rename examples to hide it from golangci-lint, then restore it
-        entry: bash -c 'if [ -d examples ]; then mv examples .examples.tmp && golangci-lint run --fix=false; STATUS=$?; mv .examples.tmp examples; exit $STATUS; else golangci-lint run --fix=false; fi'
+        entry: bash -c 'if [ -d examples ]; then mv examples .examples.tmp && trap "rm -rf examples; mv .examples.tmp examples" EXIT; golangci-lint run --fix=false; else golangci-lint run --fix=false; fi'
         language: system
         pass_filenames: false
         types: [go]

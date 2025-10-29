@@ -40,3 +40,6 @@ CLAUDE/*
 
 # Goreleaser artifacts
 dist/
+
+# Pre-commit temporary directory
+.examples.tmp/

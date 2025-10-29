@@ -6,7 +6,6 @@ package main
 
 import (
 	"bufio"
-	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,11 +13,9 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/openchami/fabrica/pkg/codegen"
 	"github.com/spf13/cobra"
 )
-
-//go:embed main_cobra.go.tmpl
-var mainCobraTemplate string
 
 type initOptions struct {
 	interactive bool
@@ -62,6 +59,9 @@ type templateData struct {
 	DBDriver         string
 	EventBusType     string
 	ReconcileWorkers int
+	FabricaVersion   string
+	GeneratedAt      string
+	FeaturesText     string
 }
 
 func newInitCommand() *cobra.Command {
@@ -336,7 +336,13 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		DBDriver:         dbDriver,
 		EventBusType:     opts.eventBusType,
 		ReconcileWorkers: opts.reconcileWorkers,
+		FabricaVersion:   version,
+		GeneratedAt:      time.Now().Format(time.RFC3339),
+		FeaturesText:     "", // Will be populated later
 	}
+
+	// Generate features text
+	data.FeaturesText = generateFeaturesText(data)
 
 	// Create directories
 	dirs := []string{
@@ -353,17 +359,22 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	}
 
 	// Generate main.go from template
-	if err := generateFromTemplate("main_cobra.go.tmpl", filepath.Join(targetDir, "cmd/server/main.go"), data); err != nil {
+	if err := generateFromTemplate("init/main.go.tmpl", filepath.Join(targetDir, "cmd/server/main.go"), data); err != nil {
 		return err
 	}
 
-	// Create go.mod
-	if err := createGoMod(targetDir, opts.modulePath); err != nil {
+	// Create go.mod from template
+	if err := generateFromTemplate("init/go.mod.tmpl", filepath.Join(targetDir, "go.mod"), data); err != nil {
 		return err
 	}
 
-	// Create basic files
-	if err := createBasicFiles(targetDir, data); err != nil {
+	// Create README.md from template
+	if err := generateFromTemplate("init/readme.md.tmpl", filepath.Join(targetDir, "README.md"), data); err != nil {
+		return err
+	}
+
+	// Create .gitignore from template
+	if err := generateFromTemplate("init/gitignore.tmpl", filepath.Join(targetDir, ".gitignore"), data); err != nil {
 		return err
 	}
 
@@ -383,13 +394,10 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 }
 
 func generateFromTemplate(templateName, outputPath string, data templateData) error {
-	var tmplContent string
-
-	// Use the embedded template
-	if templateName == "main_cobra.go.tmpl" {
-		tmplContent = mainCobraTemplate
-	} else {
-		return fmt.Errorf("template %s not found", templateName)
+	// Read template content from embedded filesystem
+	tmplContent, err := codegen.GetEmbeddedTemplates().ReadFile("templates/" + templateName)
+	if err != nil {
+		return fmt.Errorf("template %s not found: %w", templateName, err)
 	}
 
 	// Template functions
@@ -398,7 +406,7 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 		"toUpper": strings.ToUpper,
 	}
 
-	tmpl, err := template.New(templateName).Funcs(funcMap).Parse(tmplContent)
+	tmpl, err := template.New(templateName).Funcs(funcMap).Parse(string(tmplContent))
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
@@ -414,105 +422,6 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 	}
 
 	return nil
-}
-
-func createGoMod(targetDir, modulePath string) error {
-	baseRequires := `	github.com/go-chi/chi/v5 v5.0.10
-	github.com/spf13/cobra v1.7.0
-	github.com/spf13/viper v1.16.0`
-
-	authRequires := ""
-
-	content := fmt.Sprintf(`module %s
-
-go 1.21
-
-require (
-%s%s
-)
-`, modulePath, baseRequires, authRequires)
-
-	return os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte(content), 0644)
-}
-
-func createBasicFiles(targetDir string, data templateData) error {
-	// README.md
-	readmeContent := fmt.Sprintf(`# %s
-
-%s
-
-## Getting Started
-
-1. Define your resources in pkg/resources/
-2. Generate code: fabrica generate
-3. Run the server: go run cmd/server/main.go
-
-## Configuration
-
-The server supports configuration via:
-- Command line flags
-- Environment variables (%s_*)
-- Configuration file (~/.%s.yaml)
-
-## Features
-
-%s
-
-## Development
-
-`+"```bash"+`
-# Install dependencies
-go mod tidy
-
-# Run the server
-go run cmd/server/main.go serve
-
-# Run with custom config
-go run cmd/server/main.go serve --config config.yaml
-`+"```"+`
-`, data.ProjectName, data.Description, strings.ToUpper(data.ProjectName), data.ProjectName, generateFeaturesText(data))
-
-	if err := os.WriteFile(filepath.Join(targetDir, "README.md"), []byte(readmeContent), 0644); err != nil {
-		return err
-	}
-
-	// .gitignore
-	gitignoreContent := `# Binaries
-bin/
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with go test -c
-*.test
-
-# Output of the go coverage tool
-*.out
-
-# Go workspace file
-go.work
-
-# Data directories
-data/
-*.db
-
-# Config files (may contain secrets)
-*.yaml
-*.yml
-!example.yaml
-!example.yml
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-`
-
-	return os.WriteFile(filepath.Join(targetDir, ".gitignore"), []byte(gitignoreContent), 0644)
 }
 
 func generateFeaturesText(data templateData) string {
