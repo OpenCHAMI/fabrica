@@ -92,25 +92,28 @@ Examples:
 
 			fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(resources, ", "))
 
-			// Check version compatibility before regenerating
-			generatedVersion := detectGeneratedVersion()
-			if generatedVersion != "" && debug {
-				fmt.Printf("🔍 Detected generated code version: %s\n", generatedVersion)
-			}
-
-			canProceed, err := checkVersionCompatibility(version, generatedVersion, force)
-			if err != nil {
-				return fmt.Errorf("version check failed: %w", err)
-			}
-			if !canProceed {
-				return fmt.Errorf("regeneration blocked due to version incompatibility (use --force to override)")
-			}
-
 			// Check if registration file exists or needs regenerating
 			regFile := "pkg/resources/register_generated.go"
 			needsRegistration := false
 			if _, err := os.Stat(regFile); os.IsNotExist(err) {
 				needsRegistration = true
+			}
+
+			// Check version compatibility before regenerating (only if generated code exists)
+			// Skip version check for fresh projects (where registration file doesn't exist)
+			if !needsRegistration {
+				generatedVersion := detectGeneratedVersion()
+				if generatedVersion != "" && debug {
+					fmt.Printf("🔍 Detected generated code version: %s\n", generatedVersion)
+				}
+
+				canProceed, err := checkVersionCompatibility(version, generatedVersion, force)
+				if err != nil {
+					return fmt.Errorf("version check failed: %w", err)
+				}
+				if !canProceed {
+					return fmt.Errorf("regeneration blocked due to version incompatibility (use --force to override)")
+				}
 			}
 
 			// Auto-generate registration file if missing
