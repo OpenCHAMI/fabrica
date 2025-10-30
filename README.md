@@ -14,6 +14,7 @@ SPDX-License-Identifier: MIT
 [![Go Reference](https://pkg.go.dev/badge/github.com/openchami/fabrica.svg)](https://pkg.go.dev/github.com/openchami/fabrica)
 [![Go Report Card](https://goreportcard.com/badge/github.com/openchami/fabrica)](https://goreportcard.com/report/github.com/openchami/fabrica)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OpenCHAMI/fabrica/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OpenCHAMI/fabrica)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11412/badge)](https://www.bestpractices.dev/projects/11412)
 
 > **🏗️ Code Generator for Go REST APIs**
 > Transform Go structs into production-ready REST APIs with OpenAPI specs, storage backends, and middleware in minutes.
