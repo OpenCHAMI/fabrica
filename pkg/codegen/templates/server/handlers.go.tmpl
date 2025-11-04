@@ -150,6 +150,18 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	// Create initial version snapshot (Spec + metadata only) and persist version into status
+	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
+		fmt.Printf("Warning: failed to create initial version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+	} else {
+		{{camelCase .Name}}.Status.Version = verID
+		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		}
+	}
+	{{- end }}{{- end }}
+
 	// Publish resource created event
 	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}); err != nil {
 		// Log the error but don't fail the request - events are non-critical
@@ -202,6 +214,18 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
+
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	// Create version snapshot after spec update and persist version into status
+	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
+		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+	} else {
+		{{camelCase .Name}}.Status.Version = verID
+		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		}
+	}
+	{{- end }}{{- end }}
 
 	// Publish resource updated event
 	updateMetadata := map[string]interface{}{
@@ -273,6 +297,18 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	// Create version snapshot after spec patch and persist version into status
+	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
+		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+	} else {
+		{{camelCase .Name}}.Status.Version = verID
+		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		}
+	}
+	{{- end }}{{- end }}
+
 	// Publish resource patched event
 	patchMetadata := map[string]interface{}{
 		"patchType": patchType,
@@ -315,7 +351,14 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Preserve spec - only update status
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	// Preserve server-managed version field in status
+	prevVersion := res.Status.Version
 	res.Status = statusUpdate
+	res.Status.Version = prevVersion
+	{{- else }}
+	res.Status = statusUpdate
+	{{- end }}{{- end }}
 	res.Touch()
 
 	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
@@ -386,6 +429,14 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	// Ensure server-managed version field is preserved after patch
+	// Reload current to get authoritative version and copy it back
+	if current, err := storage.Load{{.StorageName}}(r.Context(), uid); err == nil {
+		res.Status.Version = current.Status.Version
+	}
+	{{- end }}{{- end }}
+
 	res.Touch()
 
 	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
@@ -405,6 +456,57 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, res)
 }
+
+{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+// List{{.Name}}Versions returns version snapshots for a resource
+func List{{.Name}}Versions(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("{{.Name}} UID is required"))
+		return
+	}
+
+	versions, err := storage.List{{.Name}}Versions(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to list versions: %w", err))
+		return
+	}
+	respondJSON(w, http.StatusOK, versions)
+}
+
+// Get{{.Name}}Version returns a specific version snapshot
+func Get{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	versionID := chi.URLParam(r, "versionID")
+	if uid == "" || versionID == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("uid and versionID are required"))
+		return
+	}
+
+	version, err := storage.Get{{.Name}}Version(r.Context(), uid, versionID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, fmt.Errorf("version not found: %w", err))
+		return
+	}
+	respondJSON(w, http.StatusOK, version)
+}
+
+// Delete{{.Name}}Version deletes a specific version snapshot
+func Delete{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	versionID := chi.URLParam(r, "versionID")
+	if uid == "" || versionID == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("uid and versionID are required"))
+		return
+	}
+
+	if err := storage.Delete{{.Name}}Version(r.Context(), uid, versionID); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete version: %w", err))
+		return
+	}
+	respondJSON(w, http.StatusOK, DeleteResponse{Message: "version deleted", UID: versionID})
+}
+{{- end }}{{- end }}
 
 // Delete{{.Name}} deletes a {{.Name}} resource
 func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {

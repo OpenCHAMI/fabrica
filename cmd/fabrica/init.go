@@ -308,7 +308,7 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("  1. Define your resources in pkg/resources/")
 	fmt.Println("  2. Run 'fabrica generate' to generate code")
 	fmt.Println("  3. Run 'go mod tidy' to update dependencies")
-	fmt.Println("  4. Start development with 'go run cmd/server/main.go'")
+	fmt.Println("  4. Start development with 'go run ./cmd/server/'")
 	fmt.Println()
 
 	return nil

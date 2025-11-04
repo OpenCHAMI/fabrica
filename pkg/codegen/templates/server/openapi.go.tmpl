@@ -260,6 +260,48 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	// Add paths to spec
 	spec.Paths.Set("{{.URLPath}}", collectionPath)
 	spec.Paths.Set("{{.URLPath}}/{uid}", itemPath)
+
+	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
+	// Versions endpoints
+	versionIDParam := openapi3.NewPathParameter("versionID").WithRequired(true).WithSchema(openapi3.NewStringSchema())
+
+	listVersionsOp := openapi3.NewOperation()
+	listVersionsOp.OperationID = "list{{.Name}}Versions"
+	listVersionsOp.Summary = "List {{.Name}} versions"
+	listVersionsOp.Tags = []string{"{{.Name}}"}
+	listVersionsOp.Parameters = []*openapi3.ParameterRef{}
+	listVersionsOp.Parameters = append(listVersionsOp.Parameters, &openapi3.ParameterRef{Value: uidParam})
+	versionsArray := openapi3.NewArraySchema()
+	// Using generic schema for snapshot for now
+	versionsArray.Items = &openapi3.SchemaRef{Value: openapi3.NewObjectSchema()}
+	listVersionsOp.Responses = openapi3.NewResponses()
+	listVersionsOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("OK").WithJSONSchemaRef(&openapi3.SchemaRef{Value: versionsArray})})
+
+	getVersionOp := openapi3.NewOperation()
+	getVersionOp.OperationID = "get{{.Name}}Version"
+	getVersionOp.Summary = "Get a {{.Name}} version"
+	getVersionOp.Tags = []string{"{{.Name}}"}
+	getVersionOp.Parameters = []*openapi3.ParameterRef{}
+	getVersionOp.Parameters = append(getVersionOp.Parameters, &openapi3.ParameterRef{Value: uidParam})
+	getVersionOp.Parameters = append(getVersionOp.Parameters, &openapi3.ParameterRef{Value: versionIDParam})
+	getVersionOp.Responses = openapi3.NewResponses()
+	getVersionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("OK").WithJSONSchemaRef(&openapi3.SchemaRef{Value: openapi3.NewObjectSchema()})})
+
+	deleteVersionOp := openapi3.NewOperation()
+	deleteVersionOp.OperationID = "delete{{.Name}}Version"
+	deleteVersionOp.Summary = "Delete a {{.Name}} version"
+	deleteVersionOp.Tags = []string{"{{.Name}}"}
+	deleteVersionOp.Parameters = []*openapi3.ParameterRef{}
+	deleteVersionOp.Parameters = append(deleteVersionOp.Parameters, &openapi3.ParameterRef{Value: uidParam})
+	deleteVersionOp.Parameters = append(deleteVersionOp.Parameters, &openapi3.ParameterRef{Value: versionIDParam})
+	deleteVersionOp.Responses = openapi3.NewResponses()
+	deleteVersionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("OK").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/DeleteResponse"})})
+
+	versionsBase := &openapi3.PathItem{Get: listVersionsOp}
+	versionItem := &openapi3.PathItem{Get: getVersionOp, Delete: deleteVersionOp}
+	spec.Paths.Set("{{.URLPath}}/{uid}/versions", versionsBase)
+	spec.Paths.Set("{{.URLPath}}/{uid}/versions/{versionID}", versionItem)
+	{{- end}}{{- end}}
 }
 {{end}}
 

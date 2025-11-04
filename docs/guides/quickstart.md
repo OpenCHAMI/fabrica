@@ -101,7 +101,7 @@ Your project is ready! Next steps:
   1. fabrica add resource Product
   2. fabrica generate
   3. go mod tidy
-  4. go run cmd/server/main.go
+  4. go run ./cmd/server/
 ```
 
 ## Step 2: Add Your Resource
@@ -191,7 +191,7 @@ You'll see:
 Start the server:
 
 ```bash
-go run cmd/server/main.go
+go run ./cmd/server/
 ```
 
 You'll see:

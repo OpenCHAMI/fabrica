@@ -533,6 +533,53 @@ var {{toLower .Name}}DeleteCmd = &cobra.Command{
 	},
 }
 
+{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
+// Versions subcommands for {{.Name}}
+var {{toLower .Name}}VersionsCmd = &cobra.Command{
+	Use:   "versions",
+	Short: "Manage {{.Name}} versions",
+}
+
+var {{toLower .Name}}VersionsListCmd = &cobra.Command{
+	Use:   "list [uid]",
+	Short: "List version snapshots",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		items, err := c.List{{.Name}}Versions(ctx, args[0])
+		if err != nil { return err }
+		return printOutput(items)
+	},
+}
+
+var {{toLower .Name}}VersionsGetCmd = &cobra.Command{
+	Use:   "get [uid] [versionId]",
+	Short: "Get a version snapshot",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		item, err := c.Get{{.Name}}Version(ctx, args[0], args[1])
+		if err != nil { return err }
+		return printOutput(item)
+	},
+}
+
+var {{toLower .Name}}VersionsDeleteCmd = &cobra.Command{
+	Use:   "delete [uid] [versionId]",
+	Short: "Delete a version snapshot",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		if err := c.Delete{{.Name}}Version(ctx, args[0], args[1]); err != nil { return err }
+		fmt.Fprintln(os.Stderr, "Version deleted.")
+		return nil
+	},
+}
+{{- end}}{{- end}}
+
 func init() {
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}ListCmd)
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}GetCmd)
@@ -540,6 +587,14 @@ func init() {
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}UpdateCmd)
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}PatchCmd)
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}DeleteCmd)
+
+	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
+	// Versions subcommands
+	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}VersionsCmd)
+	{{toLower .Name}}VersionsCmd.AddCommand({{toLower .Name}}VersionsListCmd)
+	{{toLower .Name}}VersionsCmd.AddCommand({{toLower .Name}}VersionsGetCmd)
+	{{toLower .Name}}VersionsCmd.AddCommand({{toLower .Name}}VersionsDeleteCmd)
+	{{- end}}{{- end}}
 
 	// Add spec flag for create and update commands
 	{{toLower .Name}}CreateCmd.Flags().String("spec", "", "{{.Name}} specification in JSON format")

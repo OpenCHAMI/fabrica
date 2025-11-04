@@ -48,6 +48,11 @@
 //   1. Wrap http.Client with retry transport
 //   2. Use github.com/hashicorp/go-retryablehttp or similar
 //
+{{/* Determine if any resource has versioning enabled to gate time import */}}
+{{$hasVersioning := false}}
+{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}{{/* set flag */}}
+{{$hasVersioning = true}}{{end}}{{end}}{{end}}
+
 package {{.PackageName}}
 
 import (
@@ -59,6 +64,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+{{if $hasVersioning}}	"time"{{end}}
 	{{range .Resources}}"{{.Package}}"
 	{{end}}
 )
@@ -210,6 +216,19 @@ func (c *Client) doPatchRequest(ctx context.Context, endpoint string, patchData 
 }
 
 {{range .Resources}}
+{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
+// {{.Name}}VersionSnapshot is a versioned snapshot of {{.Name}} in the client
+type {{.Name}}VersionSnapshot struct {
+	VersionID   string                 `json:"versionId"`
+	CreatedAt   time.Time              `json:"createdAt"`
+	UID         string                 `json:"uid"`
+	Name        string                 `json:"name"`
+	Labels      map[string]string      `json:"labels,omitempty"`
+	Annotations map[string]string      `json:"annotations,omitempty"`
+	Spec        {{.SpecType}}          `json:"spec"`
+}
+{{- end}}{{- end}}
+
 // Get{{.Name}}s retrieves all {{.PluralName}}
 func (c *Client) Get{{.Name}}s(ctx context.Context) ([]{{.PackageAlias}}.{{.Name}}, error) {
 	var response []{{.PackageAlias}}.{{.Name}}
@@ -298,3 +317,35 @@ func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
 }
 
 {{end}}
+
+{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
+// List{{.Name}}Versions lists version snapshots for a resource
+func (c *Client) List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionSnapshot, error) {
+	var result []{{.Name}}VersionSnapshot
+	endpoint := fmt.Sprintf("{{.URLPath}}/%s/versions", uid)
+	if err := c.doRequest(ctx, "GET", endpoint, nil, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// Get{{.Name}}Version retrieves a specific version snapshot
+func (c *Client) Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}VersionSnapshot, error) {
+	var result {{.Name}}VersionSnapshot
+	endpoint := fmt.Sprintf("{{.URLPath}}/%s/versions/%s", uid, versionID)
+	if err := c.doRequest(ctx, "GET", endpoint, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Delete{{.Name}}Version deletes a specific version snapshot
+func (c *Client) Delete{{.Name}}Version(ctx context.Context, uid, versionID string) error {
+	endpoint := fmt.Sprintf("{{.URLPath}}/%s/versions/%s", uid, versionID)
+	var response DeleteResponse
+	if err := c.doRequest(ctx, "DELETE", endpoint, nil, &response); err != nil {
+		return err
+	}
+	return nil
+}
+{{end}}{{end}}{{end}}

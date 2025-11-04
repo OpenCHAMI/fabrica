@@ -17,7 +17,7 @@ Generated: {{.GeneratedAt}}
 
 1. Define your resources in pkg/resources/
 2. Generate code: fabrica generate
-3. Run the server: go run cmd/server/main.go
+3. Run the server: go run ./cmd/server/
 
 ## Configuration
 
@@ -37,8 +37,8 @@ The server supports configuration via:
 go mod tidy
 
 # Run the server
-go run cmd/server/main.go serve
+go run ./cmd/server/ serve
 
 # Run with custom config
-go run cmd/server/main.go serve --config config.yaml
+go run ./cmd/server/ serve --config config.yaml
 ```
