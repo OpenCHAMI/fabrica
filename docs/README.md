@@ -35,6 +35,7 @@ Step-by-step tutorials and how-tos for building with Fabrica:
 - **[Events](guides/events.md)** - CloudEvents integration and event-driven patterns
 - **[Reconciliation](guides/reconciliation.md)** - Controller pattern for declarative management
 - **[Versioning](guides/versioning.md)** - Multi-version API support
+- **[Spec Version History](guides/spec-versioning.md)** - Opt-in per-resource spec snapshots and history
 - **[Conditional Requests](guides/conditional-and-patch.md)** - ETags and PATCH operations
 
 ### Reference (`reference/`)

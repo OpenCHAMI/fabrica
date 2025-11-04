@@ -177,25 +177,34 @@ func (g *Generator) SetDBDriver(driver string) {
 // templateData creates a standardized data structure for template execution
 // This ensures all templates have access to version, timestamp, and template name
 func (g *Generator) templateData(resource ResourceMetadata, templateName string) map[string]interface{} {
+	// Determine per-resource versioning flag from tags
+	perResVersioning := false
+	if resource.Tags != nil {
+		if v, ok := resource.Tags["versioning"]; ok && (v == "enabled" || v == "true" || v == "1") {
+			perResVersioning = true
+		}
+	}
+
 	return map[string]interface{}{
-		"Name":            resource.Name,
-		"PluralName":      resource.PluralName,
-		"Package":         resource.Package,
-		"PackageAlias":    resource.PackageAlias,
-		"TypeName":        resource.TypeName,
-		"SpecType":        resource.SpecType,
-		"StatusType":      resource.StatusType,
-		"URLPath":         resource.URLPath,
-		"StorageName":     resource.StorageName,
-		"Tags":            resource.Tags,
-		"SpecFields":      resource.SpecFields,
-		"Versions":        resource.Versions,
-		"DefaultVersion":  resource.DefaultVersion,
-		"APIGroupVersion": resource.APIGroupVersion,
-		"ModulePath":      g.ModulePath,
-		"Version":         g.Version,
-		"GeneratedAt":     time.Now().Format(time.RFC3339),
-		"Template":        templateName,
+		"Name":                  resource.Name,
+		"PluralName":            resource.PluralName,
+		"Package":               resource.Package,
+		"PackageAlias":          resource.PackageAlias,
+		"TypeName":              resource.TypeName,
+		"SpecType":              resource.SpecType,
+		"StatusType":            resource.StatusType,
+		"URLPath":               resource.URLPath,
+		"StorageName":           resource.StorageName,
+		"Tags":                  resource.Tags,
+		"PerResourceVersioning": perResVersioning,
+		"SpecFields":            resource.SpecFields,
+		"Versions":              resource.Versions,
+		"DefaultVersion":        resource.DefaultVersion,
+		"APIGroupVersion":       resource.APIGroupVersion,
+		"ModulePath":            g.ModulePath,
+		"Version":               g.Version,
+		"GeneratedAt":           time.Now().Format(time.RFC3339),
+		"Template":              templateName,
 	}
 }
 
@@ -297,6 +306,20 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 
 	g.Resources = append(g.Resources, metadata)
 	return nil
+}
+
+// SetResourceTag sets a tag key/value on a registered resource by name.
+// If the resource isn't found, this is a no-op.
+func (g *Generator) SetResourceTag(resourceName, key, value string) {
+	for i := range g.Resources {
+		if g.Resources[i].Name == resourceName {
+			if g.Resources[i].Tags == nil {
+				g.Resources[i].Tags = make(map[string]string)
+			}
+			g.Resources[i].Tags[key] = value
+			return
+		}
+	}
 }
 
 // extractSpecFields uses reflection to extract field information from a Spec struct

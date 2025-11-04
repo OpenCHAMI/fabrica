@@ -57,6 +57,15 @@ func RegisterGeneratedRoutes(r chi.Router) {
 				r.Put("/", Update{{.Name}}Status)
 				r.Patch("/", Patch{{.Name}}Status)
 			})
+
+			{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+			// Versions subresource
+			r.Route("/versions", func(r chi.Router) {
+				r.Get("/", List{{.Name}}Versions)
+				r.Get("/{versionID}", Get{{.Name}}Version)
+				r.Delete("/{versionID}", Delete{{.Name}}Version)
+			})
+			{{- end }}{{- end }}
 		})
 	})
 {{end}}

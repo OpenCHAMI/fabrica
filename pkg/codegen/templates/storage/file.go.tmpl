@@ -20,6 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+	"sort"
 
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
@@ -190,6 +195,11 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 		return fmt.Errorf("failed to delete {{.Name}} %s: %w", uid, err)
 	}
 
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	// Best-effort: remove versions directory for this resource
+	_ = delete{{.Name}}VersionsDir(uid)
+	{{- end }}{{- end }}
+
 	return nil
 }
 
@@ -256,6 +266,188 @@ func NewStorageClient() *StorageClient {
 	ensureBackend()
 	return &StorageClient{backend: Backend}
 }
+
+// --- Version snapshot helpers (file backend only) ---
+{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
+
+// {{.Name}}VersionSnapshot represents a stored version of a {{.Name}}'s spec
+type {{.Name}}VersionSnapshot struct {
+	VersionID string                 `json:"versionId"`
+	CreatedAt time.Time              `json:"createdAt"`
+	UID       string                 `json:"uid"`
+	Name      string                 `json:"name"`
+	Labels    map[string]string      `json:"labels,omitempty"`
+	Annotations map[string]string    `json:"annotations,omitempty"`
+	Spec      {{.SpecType}}          `json:"spec"`
+}
+
+func versionsBaseDir() string {
+	// Attempt to derive file backend base dir by introspection isn't available here;
+	// Instead, infer from environment variable or default to ./data like main.go template.
+	// Generated projects typically call storage.InitFileBackend("./data").
+	// We'll construct paths relative to that default.
+	return "./data"
+}
+
+func {{toLower .Name}}VersionsDir() string {
+	return filepath.Join(versionsBaseDir(), "{{.PluralName}}", "versions")
+}
+
+func delete{{.Name}}VersionsDir(uid string) error {
+	dir := filepath.Join({{toLower .Name}}VersionsDir(), uid)
+	return os.RemoveAll(dir)
+}
+
+// Create{{.Name}}VersionSnapshot saves a new version snapshot for the given resource and returns the new VersionID
+func Create{{.Name}}VersionSnapshot(ctx context.Context, res {{.TypeName}}) (string, error) {
+	// Build snapshot (no status)
+	snap := {{.Name}}VersionSnapshot{
+		VersionID: generateULID(),
+		CreatedAt: time.Now().UTC(),
+		UID:       res.Metadata.UID,
+		Name:      res.Metadata.Name,
+		Labels:    res.Metadata.Labels,
+		Annotations: res.Metadata.Annotations,
+	}
+	if spec, ok := any(res.Spec).({{.SpecType}}); ok {
+		snap.Spec = spec
+	} else {
+		// Best-effort JSON roundtrip to map then back into spec type when possible
+		// If it fails, store empty spec rather than erroring save path
+		// Note: generated specs are concrete types, so this usually succeeds
+		var tmp {{.SpecType}}
+		b, _ := json.Marshal(res.Spec)
+		_ = json.Unmarshal(b, &tmp)
+		snap.Spec = tmp
+	}
+
+	// Serialize
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal snapshot: %w", err)
+	}
+
+	// Write to file: data/<plural>/versions/<uid>/<versionId>.json
+	dir := filepath.Join({{toLower .Name}}VersionsDir(), res.Metadata.UID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create versions dir: %w", err)
+	}
+	path := filepath.Join(dir, snap.VersionID+".json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write version file: %w", err)
+	}
+	return snap.VersionID, nil
+}
+
+// List{{.Name}}Versions lists version snapshots (metadata) for a resource
+func List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionSnapshot, error) {
+	dir := filepath.Join({{toLower .Name}}VersionsDir(), uid)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []{{.Name}}VersionSnapshot{}, nil
+		}
+		return nil, fmt.Errorf("failed to read versions dir: %w", err)
+	}
+
+	var out []{{.Name}}VersionSnapshot
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var snap {{.Name}}VersionSnapshot
+		if err := json.Unmarshal(b, &snap); err != nil {
+			continue
+		}
+		out = append(out, snap)
+	}
+	return out, nil
+}
+
+// Get{{.Name}}Version loads a specific version snapshot
+func Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}VersionSnapshot, error) {
+	path := filepath.Join({{toLower .Name}}VersionsDir(), uid, versionID+".json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("version not found")
+		}
+		return nil, fmt.Errorf("failed to read version: %w", err)
+	}
+	var snap {{.Name}}VersionSnapshot
+	if err := json.Unmarshal(b, &snap); err != nil {
+		return nil, fmt.Errorf("failed to parse version: %w", err)
+	}
+	return &snap, nil
+}
+
+// Delete{{.Name}}Version removes a specific version snapshot
+func Delete{{.Name}}Version(ctx context.Context, uid, versionID string) error {
+	path := filepath.Join({{toLower .Name}}VersionsDir(), uid, versionID+".json")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to delete version: %w", err)
+	}
+	return nil
+}
+
+// generateULID creates a lexicographically sortable unique id
+func generateULID() string {
+	// Simple ULID substitute using time + random; replace with real ULID if desired in future
+	// We avoid adding a dependency in generated projects for simplicity.
+	// Format: yyyymmddhhmmss-nanots
+	return time.Now().UTC().Format("20060102150405") + fmt.Sprintf("-%d", time.Now().UTC().UnixNano())
+}
+
+// Latest{{.Name}}VersionID returns the most recent VersionID for a resource, or empty if none
+func Latest{{.Name}}VersionID(ctx context.Context, uid string) (string, error) {
+	dir := filepath.Join({{toLower .Name}}VersionsDir(), uid)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to read versions dir: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+	sort.Strings(names)
+	latest := strings.TrimSuffix(names[len(names)-1], ".json")
+	return latest, nil
+}
+
+// Get{{.Name}}LatestVersionID returns the most recent snapshot version ID for a resource (empty if none)
+func Get{{.Name}}LatestVersionID(ctx context.Context, uid string) (string, error) {
+	versions, err := List{{.Name}}Versions(ctx, uid)
+	if err != nil {
+		return "", err
+	}
+	if len(versions) == 0 {
+		return "", nil
+	}
+	latest := versions[0].VersionID
+	for _, v := range versions[1:] {
+		if v.VersionID > latest { // lexicographically sortable IDs
+			latest = v.VersionID
+		}
+	}
+	return latest, nil
+}
+{{end}}{{end}}{{end}}
 
 // Get retrieves a resource by kind and UID.
 //

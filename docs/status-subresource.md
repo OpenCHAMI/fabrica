@@ -24,7 +24,7 @@ fabrica generate
 
 # Build and run
 go mod tidy
-go run cmd/server/main.go
+go run ./cmd/server/
 ```
 
 **Generated Endpoints:**

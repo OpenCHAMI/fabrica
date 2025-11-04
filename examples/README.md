@@ -73,6 +73,17 @@ Master declarative patterns:
 
 **What you'll build:** A data center rack inventory system that automatically provisions child resources (chassis, blades, nodes, BMCs) when a Rack is created.
 
+### 6. [Spec Version History](07-spec-versioning/) - Track Spec Changes 🕘
+**Time: 15 minutes**
+
+Keep an immutable history of spec changes:
+- Opt-in per-resource spec versioning
+- Snapshots on create/update/patch of Spec
+- `status.version` shows current spec version
+- List/get/delete version history via endpoints
+
+**What you'll build:** A small API with a versioned Sensor resource and a script to exercise version history.
+
 ## Quick Reference
 
 ### Example Comparison

@@ -16,6 +16,7 @@ import (
 type addOptions struct {
 	withValidation bool
 	withStatus     bool
+	withVersioning bool
 	packageName    string
 }
 
@@ -54,6 +55,7 @@ Example:
 
 	cmd.Flags().BoolVar(&opts.withValidation, "with-validation", true, "Include validation tags")
 	cmd.Flags().BoolVar(&opts.withStatus, "with-status", true, "Include Status struct")
+	cmd.Flags().BoolVar(&opts.withVersioning, "with-versioning", false, "Enable per-resource spec versioning (snapshots). Status is never versioned.")
 	cmd.Flags().StringVar(&opts.packageName, "package", "", "Package name (defaults to lowercase resource name)")
 
 	return cmd
@@ -166,6 +168,12 @@ type %sSpec struct {`, resourceName, resourceName, resourceName)
 }
 `
 
+	// Add a marker comment for per-resource versioning if enabled.
+	// The generator will detect this and enable versioning templates.
+	if opts.withVersioning {
+		content = "// +fabrica:resource-versioning=enabled\n" + content
+	}
+
 	if opts.withStatus {
 		content += fmt.Sprintf(`
 // %sStatus defines the observed state of %s
@@ -173,9 +181,17 @@ type %sStatus struct {
 	Phase      string `+"`json:\"phase,omitempty\"`"+`
 	Message    string `+"`json:\"message,omitempty\"`"+`
 	Ready      bool   `+"`json:\"ready\"`"+`
-	// Add your status fields here
-}
 `, resourceName, resourceName, resourceName)
+
+		if opts.withVersioning {
+			content += `	// Version is the current spec version identifier (server-managed)
+	Version   string ` + "`json:\"version,omitempty\"`" + `
+`
+		}
+
+		content += `	// Add your status fields here
+}
+`
 	}
 
 	if opts.withValidation {

@@ -157,7 +157,7 @@ This resolves all the new imports that were added by the code generator.
 ### Step 6: Run Your API
 
 ```bash
-go run cmd/server/main.go
+go run ./cmd/server/
 ```
 
 Your API is now running at `http://localhost:8080`!

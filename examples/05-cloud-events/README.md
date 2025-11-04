@@ -495,7 +495,7 @@ If you see warnings like `"Warning: Failed to publish resource created event: no
 
 ### Server Compilation Issues
 
-1. **Multiple Go Files**: Always use `go run ./cmd/server/` not `go run cmd/server/main.go`
+1. **Multiple Go Files**: Always use `go run ./cmd/server/` not `go run ./cmd/server/`
 2. **Missing Dependencies**: Run `go mod tidy` after generation
 3. **Wrong Directory**: Ensure you're in the project root directory
 
