@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 # Status Subresource Guide
 
 **Status:** Implemented ✅
-**Version:** 0.3.0+
+**Version:** 0.3.1+
 **Pattern:** Kubernetes-inspired
 
 ## Overview
@@ -663,5 +663,5 @@ paths:
 ---
 
 **Implementation Status:** ✅ Complete
-**Version:** Fabrica 0.3.0+
+**Version:** Fabrica 0.3.1+
 **Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)

@@ -12,6 +12,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.3.1] - 2025-11-04
+
+### Added
+- Opt-in Spec Versioning for resources
+  - Enable per resource with marker: `// +fabrica:resource-versioning=enabled`
+  - Creates immutable spec snapshots on POST/PUT/PATCH (status updates do not create versions)
+  - New endpoints on versioned resources:
+    - `GET /<plural>/{uid}/versions` (list snapshots)
+    - `GET /<plural>/{uid}/versions/{versionId}` (get snapshot)
+    - `DELETE /<plural>/{uid}/versions/{versionId}` (delete snapshot)
+  - File backend implementation persists snapshots under `./data/<plural>/versions/<uid>/<versionId>.json`
+  - Client library methods and generated CLI subcommands:
+    - `List<Resource>Versions`, `Get<Resource>Version`, `Delete<Resource>Version`
+    - `client <resource> versions [list|get|delete]`
+- Example 7 (Spec Version History) and a guide under `docs/guides/spec-versioning.md`
+  - Walkthrough uses the generated client instead of cURL
+  - Assumes a published fabrica CLI is installed (no local build required)
+
+### Changed
+- Current spec version is returned in the resource body as `status.version`
+  - Replaces earlier header-based approach; status-only updates preserve `status.version`
+- Client CLI templates: prevent duplicate registration of `versions` subcommands
+- Example 7 README updated to use installed `fabrica` and the generated client CLI; removed go.mod replace steps
+
+### Fixed
+- Unused import errors in generated projects without versioning enabled
+  - Storage and client templates now conditionally import `time`, `os`, `path/filepath`, `strings`, and `sort` only when versioning code is emitted
+  - Integration tests now build and run cleanly
+
+### Documentation
+- Added Spec Versioning guide with enabling steps, API/CLI usage, and implementation notes
+- Updated CloudEvents example README for accuracy and to align with generated code
+
 ## [v0.2.9] - 2025-10-27
 
 ### Fixed
@@ -211,6 +244,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Getting started guide
 
 [Unreleased]: https://github.com/openchami/fabrica/compare/v0.2.9...HEAD
+[v0.3.1]: https://github.com/openchami/fabrica/compare/v0.2.9...v0.3.1
 [v0.2.9]: https://github.com/openchami/fabrica/compare/v0.2.8...v0.2.9
 [v0.2.8]: https://github.com/openchami/fabrica/compare/v0.2.4...v0.2.8
 [v0.2.4]: https://github.com/openchami/fabrica/compare/v0.2.3...v0.2.4
