@@ -48,6 +48,11 @@
 //   1. Wrap http.Client with retry transport
 //   2. Use github.com/hashicorp/go-retryablehttp or similar
 //
+{{/* Determine if any resource has versioning enabled to gate time import */}}
+{{$hasVersioning := false}}
+{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}{{/* set flag */}}
+{{$hasVersioning = true}}{{end}}{{end}}{{end}}
+
 package {{.PackageName}}
 
 import (
@@ -59,7 +64,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"time"
+{{if $hasVersioning}}	"time"{{end}}
 	{{range .Resources}}"{{.Package}}"
 	{{end}}
 )

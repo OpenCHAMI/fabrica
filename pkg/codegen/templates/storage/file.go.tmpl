@@ -16,15 +16,20 @@
 //
 package storage
 
+{{/* Determine if any resource has versioning enabled to gate extra imports */}}
+{{$hasVersioning := false}}
+{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
+{{$hasVersioning = true}}{{end}}{{end}}{{end}}
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
-	"sort"
+{{if $hasVersioning}}	"os"{{end}}
+{{if $hasVersioning}}	"path/filepath"{{end}}
+{{if $hasVersioning}}	"strings"{{end}}
+{{if $hasVersioning}}	"time"{{end}}
+{{if $hasVersioning}}	"sort"{{end}}
 
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
