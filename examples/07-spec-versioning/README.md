@@ -6,8 +6,8 @@ SPDX-License-Identifier: MIT
 
 # Example 7: Spec Version History (Opt-in)
 
-**Time to complete:** ~15–20 minutes  
-**Difficulty:** Beginner → Intermediate  
+**Time to complete:** ~15–20 minutes
+**Difficulty:** Beginner → Intermediate
 **Prerequisites:** Go 1.23+, Fabrica CLI installed (from a published release)
 
 ## What You'll Build

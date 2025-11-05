@@ -14,6 +14,7 @@ SPDX-License-Identifier: MIT
 - **[Getting Started Guide](guides/getting-started.md)** - Full tutorial
 - **[Architecture Overview](reference/architecture.md)** - Framework design
 - **[API Reference](https://pkg.go.dev/github.com/openchami/fabrica)** - Go package docs
+- **[Blog](./blog/)** - Short, friendly posts with examples
 
 ## 📖 Documentation Structure
 
