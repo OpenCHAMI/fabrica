@@ -1,0 +1,16 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Fabrica
+Upstream-Contact: OpenCHAMI <info@openchami.org>
+Source: https://github.com/openchami/fabrica
+
+Files: docs/_posts/*
+Copyright: 2025 OpenCHAMI Contributors
+License: MIT
+
+Files: docs/blog/*
+Copyright: 2025 OpenCHAMI Contributors
+License: MIT
+
+Files: docs/guides/* docs/reference/* docs/*.md
+Copyright: 2025 OpenCHAMI Contributors
+License: MIT

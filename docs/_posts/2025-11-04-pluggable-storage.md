@@ -1,13 +1,8 @@
-<!--
-SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
-
-SPDX-License-Identifier: MIT
--->
-
 ---
 layout: post
 title: "Pluggable storage in Fabrica: files to databases"
 description: "How the storage contract lets you swap file and database backends without changing your API, with a look at the FRU example."
+author: "Alex Lovell-Troy"
 ---
 
 Fabrica generates REST services from Kubernetes‑style resources. The shape is always the same: APIVersion, Kind, Metadata, Spec, and Status. Handlers, routes, models, and the client are generated from templates. What you store those resources in is up to you. The storage layer is pluggable, so you can start with files and move to a database later without rewriting your API.

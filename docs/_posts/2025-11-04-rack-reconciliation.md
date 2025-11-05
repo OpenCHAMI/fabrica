@@ -1,13 +1,8 @@
-<!--
-SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
-
-SPDX-License-Identifier: MIT
--->
-
 ---
 layout: post
 title: "Reconciliation: Let the System Do the Work"
 description: "A gentle look at controllers that react to change and keep resources in a good state."
+author: "Alex Lovell-Troy"
 ---
 
 Some jobs are better done by the system than by users clicking through steps. Reconciliation makes this possible. You declare what you want in Spec, and a controller reads that intent and works until the resource reaches a steady state. When things drift, the controller nudges them back.

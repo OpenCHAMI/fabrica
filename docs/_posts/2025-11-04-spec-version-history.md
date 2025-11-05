@@ -1,13 +1,8 @@
-<!--
-SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
-
-SPDX-License-Identifier: MIT
--->
-
 ---
 layout: post
 title: "Regenerate to Evolve: Adding Features After Release"
 description: "How updating Fabrica and regenerating code lets you grow existing APIs without rewrites."
+author: "Alex Lovell-Troy"
 ---
 
 APIs live for a long time. They grow as your product grows. The hard part is adding features without breaking what you already shipped. Fabrica is built for this kind of steady change. You keep your resource definitions as the source of truth. The generator keeps the rest in sync.

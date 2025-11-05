@@ -1,13 +1,8 @@
-<!--
-SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
-
-SPDX-License-Identifier: MIT
--->
-
 ---
 layout: post
 title: "When Standards Live in Code"
 description: "Why encoding REST rules in generators leads to steadier, more supportable APIs."
+author: "Alex Lovell-Troy"
 ---
 
 Many API teams say they follow REST, but each team writes it a little differently. Over time, small differences pile up. One service wraps list results in an object, another returns an array. One updates status together with spec, another splits them. These choices matter to users, and they matter even more when you have to support the API for years.
