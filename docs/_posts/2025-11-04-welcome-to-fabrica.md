@@ -1,13 +1,8 @@
-<!--
-SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
-
-SPDX-License-Identifier: MIT
--->
-
 ---
 layout: post
 title: "What the Generated Server Gives You"
 description: "A tour of the server you get from Fabrica and how it helps you ship stable APIs."
+author: "Alex Lovell-Troy"
 ---
 
 ## Context

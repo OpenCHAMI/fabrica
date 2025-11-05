@@ -1,13 +1,8 @@
-<!--
-SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
-
-SPDX-License-Identifier: MIT
--->
-
 ---
 layout: post
 title: "Meet the Generated Client"
 description: "How the CLI and Go library help you use your API the same way every time."
+author: "Alex Lovell-Troy"
 ---
 
 APIs are easier to use when the client is predictable. You should not have to remember custom flags or one‑off scripts. Fabrica generates two clients that match your server: a CLI and a Go library. They share patterns and types, so your shell steps and your code read the same way.
