@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
+#
+# SPDX-License-Identifier: MIT
+
+title: Fabrica Blog
+description: Simple guides introducing Fabrica with hands-on examples.
+# Use GitHub Pages default theme
+remote_theme: pages-themes/minimal@v0.2.0
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-remote-theme
+show_excerpts: true
+# Build from /docs folder
+markdown: kramdown
+kramdown:
+  input: GFM
