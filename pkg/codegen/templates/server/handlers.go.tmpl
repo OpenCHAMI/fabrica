@@ -355,7 +355,6 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Preserve server-managed version field in status
 	prevVersion := res.Status.Version
-	res.Status = statusUpdate
 	res.Status.Version = prevVersion
 	{{- end }}{{- end }}
 	res.Touch()
