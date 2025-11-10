@@ -19,7 +19,7 @@ import (
 	"github.com/example/rack-inventory/pkg/resources/chassis"
 	"github.com/example/rack-inventory/pkg/resources/node"
 	"github.com/example/rack-inventory/pkg/resources/rack"
-	"github.comcom/example/rack-inventory/pkg/resources/racktemplate"
+	"github.com/example/rack-inventory/pkg/resources/racktemplate"
 	"github.com/openchami/fabrica/pkg/resource"
 )
 
