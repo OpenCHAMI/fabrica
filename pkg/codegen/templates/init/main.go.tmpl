@@ -302,10 +302,22 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Initialize event bridge for condition events
 	events.InitializeEventBridge()
 
-	// Initialize event bus for handlers
-	if err := InitializeEventBus(); err != nil {
-		log.Fatalf("Failed to initialize event bus: %v", err)
-	}
+    // Initialize ONE event bus for handlers AND reconcilers
+    log.Println("Initializing single event bus...")
+    {{if eq .EventBusType "memory"}}
+    eventBus := events.NewInMemoryEventBus(1000, 10)
+    {{else}}
+    // TODO: Configure {{.EventBusType}} event bus
+    eventBus := events.NewInMemoryEventBus(1000, 10) // Fallback
+    {{end}}
+    eventBus.Start()
+    defer eventBus.Close() // Defer close here, at the top level
+    
+    // Set the global instance for handlers
+    // This replaces the call to InitializeEventBus()
+    events.SetGlobalEventBus(eventBus)
+    GlobalEventBus = eventBus // Set the global var from event_bus_generated.go
+    log.Println("Global event bus started and set.")
 
 	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
 		eventConfig.LifecycleEventsEnabled, eventConfig.ConditionEventsEnabled, eventConfig.EventTypePrefix)
@@ -318,17 +330,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if config.ReconcileEnabled {
 		ctx := context.Background()
 
-		// Initialize event bus
-		{{if eq .EventBusType "memory"}}
-		eventBus := events.NewInMemoryEventBus(100, {{.ReconcileWorkers}})
-		{{else}}
-		// TODO: Configure {{.EventBusType}} event bus
-		eventBus := events.NewInMemoryEventBus(100, {{.ReconcileWorkers}})
-		{{end}}
-		eventBus.Start()
-		defer eventBus.Close()
-
-		// Create reconciliation controller
+		// Create reconciliation controller (use the single bus from above)
 		controller = reconcile.NewController(eventBus, storage.Backend)
 
 		// Create storage client for reconcilers

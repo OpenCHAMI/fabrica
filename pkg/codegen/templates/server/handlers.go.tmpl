@@ -122,6 +122,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 
 	{{camelCase .Name}}.Metadata.Initialize(req.Name, uid)
 
+    // Set timestamps
+    now := time.Now()
+    {{camelCase .Name}}.Metadata.CreatedAt = now
+    {{camelCase .Name}}.Metadata.UpdatedAt = now
+
 	// Set labels and annotations
 	for k, v := range req.Labels {
 		{{camelCase .Name}}.SetLabel(k, v)
@@ -143,6 +148,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set initial status
+    // This assumes the generator passes an 'IsReconcilable' boolean
+    // to this template, and that the resource has a .Status.Phase field.
+    {{if .IsReconcilable}}
+    {{camelCase .Name}}.Status.Phase = "Pending"
+    {{end}}
 
 	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
