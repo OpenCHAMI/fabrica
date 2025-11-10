@@ -5,17 +5,17 @@
 // This file provides the generated boilerplate for {{ .Name }} reconciler.
 //
 // The reconciler pattern enables declarative infrastructure management by:
-//    - Automatically reconciling Spec (desired state) with Status (observed state)
-//    - Reacting to resource changes via events
-//    - Integrating with the workflow engine for complex operations
+//   - Automatically reconciling Spec (desired state) with Status (observed state)
+//   - Reacting to resource changes via events
+//   - Integrating with the workflow engine for complex operations
 //
 // To customize reconciliation logic, edit {{ .Name | toLower }}_reconciler.go
 package reconcilers
 
 import (
 	"context"
-	"encoding/json" // <-- ADDED
-	"fmt"           // <-- ADDED
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/openchami/fabrica/pkg/events"
@@ -26,10 +26,10 @@ import (
 // {{ .Name }}Reconciler reconciles {{ .Name }} resources.
 //
 // This reconciler:
-//    - Observes {{ .Name }} resources and updates their Status
-//    - Emits events when significant state changes occur
-//    - Can trigger workflows for complex operations
-//    - Runs periodically and on resource changes
+//   - Observes {{ .Name }} resources and updates their Status
+//   - Emits events when significant state changes occur
+//   - Can trigger workflows for complex operations
+//   - Runs periodically and on resource changes
 //
 // The implementation of reconcile{{ .Name }}() is in {{ .Name | toLower }}_reconciler.go
 type {{ .Name }}Reconciler struct {
@@ -43,11 +43,11 @@ type {{ .Name }}Reconciler struct {
 // This is called during server startup to register the reconciler.
 //
 // Parameters:
-//    - client: Client for accessing resource storage
-//    - eventBus: Event bus for publishing events
+//   - client: Client for accessing resource storage
+//   - eventBus: Event bus for publishing events
 //
 // Returns:
-//    - *{{ .Name }}Reconciler: Initialized reconciler
+//   - *{{ .Name }}Reconciler: Initialized reconciler
 func NewDefault{{ .Name }}Reconciler(client reconcile.ClientInterface, eventBus events.EventBus) *{{ .Name }}Reconciler {
 	return &{{ .Name }}Reconciler{
 		BaseReconciler: reconcile.BaseReconciler{
@@ -66,9 +66,9 @@ func (r *{{ .Name }}Reconciler) GetResourceKind() string {
 // Reconcile brings {{ .Name }} to desired state.
 //
 // This method is called:
-//    - When a {{ .Name }} resource is created/updated/deleted
-//    - Periodically (every 5 minutes by default)
-//    - When manually triggered via API
+//   - When a {{ .Name }} resource is created/updated/deleted
+//   - Periodically (every 5 minutes by default)
+//   - When manually triggered via API
 //
 // The reconciler should:
 //   1. Read the Spec (desired state)
@@ -78,14 +78,13 @@ func (r *{{ .Name }}Reconciler) GetResourceKind() string {
 //   5. Emit events for significant changes
 //
 // Parameters:
-//    - ctx: Context for cancellation and timeouts
-//    - resource: The {{ .Name }} resource to reconcile
+//   - ctx: Context for cancellation and timeouts
+//   - resource: The {{ .Name }} resource to reconcile
 //
 // Returns:
 //    - Result: Indicates if/when to requeue
 //    - error: If reconciliation failed
 func (r *{{ .Name }}Reconciler) Reconcile(ctx context.Context, resource interface{}) (reconcile.Result, error) {
-    // --- START MODIFICATION ---
     // 1. Assert to raw message
 	raw, ok := resource.(json.RawMessage)
 	if !ok {
@@ -103,7 +102,6 @@ func (r *{{ .Name }}Reconciler) Reconcile(ctx context.Context, resource interfac
 		// Do not requeue, this is a poison pill
 		return reconcile.Result{}, nil
 	}
-    // --- END MODIFICATION ---
 
 	r.Logger.Debugf("Reconciling {{ .Name }} %s/%s", res.Kind, res.GetUID())
 
@@ -127,7 +125,6 @@ func (r *{{ .Name }}Reconciler) Reconcile(ctx context.Context, resource interfac
 		return reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}, err
 	}
 
-    // --- START MODIFICATION ---
     // Comment out event emission to prevent infinite loop
     /*
 	// Emit reconciliation event
@@ -137,7 +134,6 @@ func (r *{{ .Name }}Reconciler) Reconcile(ctx context.Context, resource interfac
 		// Don't fail reconciliation if event emission fails
 	}
     */
-    // --- END MODIFICATION ---
 
 	// Requeue after 5 minutes for periodic reconciliation
 	return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
