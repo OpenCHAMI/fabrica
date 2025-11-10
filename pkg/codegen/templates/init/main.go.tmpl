@@ -116,8 +116,8 @@ func DefaultConfig() *Config {
 		{{end}}
 		{{end}}
 		{{if .WithAuth}}
-		AuthEnabled:     true,
-		TokenSmithURL:   "http://localhost:3333",
+		AuthEnabled:    true,
+		TokenSmithURL:  "http://localhost:3333",
 		{{end}}
 		{{if .WithReconcile}}
 		ReconcileEnabled: true,
@@ -302,10 +302,25 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Initialize event bridge for condition events
 	events.InitializeEventBridge()
 
-	// Initialize event bus for handlers
-	if err := InitializeEventBus(); err != nil {
-		log.Fatalf("Failed to initialize event bus: %v", err)
-	}
+    // --- START MODIFICATION ---
+    // Initialize ONE event bus for handlers AND reconcilers
+    log.Println("Initializing single event bus...")
+    {{if eq .EventBusType "memory"}}
+    // Use 1000, 10 from our manual fix
+    eventBus := events.NewInMemoryEventBus(1000, 10)
+    {{else}}
+    // TODO: Configure {{.EventBusType}} event bus
+    eventBus := events.NewInMemoryEventBus(1000, 10) // Fallback
+    {{end}}
+    eventBus.Start()
+    defer eventBus.Close() // Defer close here, at the top level
+    
+    // Set the global instance for handlers
+    // This replaces the call to InitializeEventBus()
+    events.SetGlobalEventBus(eventBus)
+    GlobalEventBus = eventBus // Set the global var from event_bus_generated.go
+    log.Println("Global event bus started and set.")
+    // --- END MODIFICATION ---
 
 	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
 		eventConfig.LifecycleEventsEnabled, eventConfig.ConditionEventsEnabled, eventConfig.EventTypePrefix)
@@ -318,17 +333,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if config.ReconcileEnabled {
 		ctx := context.Background()
 
-		// Initialize event bus
-		{{if eq .EventBusType "memory"}}
-		eventBus := events.NewInMemoryEventBus(100, {{.ReconcileWorkers}})
-		{{else}}
-		// TODO: Configure {{.EventBusType}} event bus
-		eventBus := events.NewInMemoryEventBus(100, {{.ReconcileWorkers}})
-		{{end}}
-		eventBus.Start()
-		defer eventBus.Close()
+        // --- START MODIFICATION ---
+        // Event bus is already created and started above.
+        // We no longer create a separate one here.
+        // --- END MODIFICATION ---
 
-		// Create reconciliation controller
+		// Create reconciliation controller (use the single bus from above)
 		controller = reconcile.NewController(eventBus, storage.Backend)
 
 		// Create storage client for reconcilers
@@ -371,8 +381,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if config.AuthEnabled {
 		// TODO: Implement your custom authentication/authorization middleware here
 		// Example:
-		//   authMiddleware := myauth.NewJWTMiddleware(config.TokenSmithURL)
-		//   r.Use(authMiddleware)
+		//    authMiddleware := myauth.NewJWTMiddleware(config.TokenSmithURL)
+		//    r.Use(authMiddleware)
 		//
 		// For now, all routes are unprotected. Add your middleware implementation.
 		log.Println("Authentication enabled but no middleware configured - implement custom auth")
