@@ -35,7 +35,6 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	// Update phase to Provisioning
 	if rackResource.Status.Phase != "Provisioning" {
 		rackResource.Status.Phase = "Provisioning"
-		// --- FIX --- (was &rackResource)
 		if err := r.Client.Update(ctx, rackResource); err != nil {
 			return fmt.Errorf("failed to update rack status: %w", err)
 		}
@@ -44,10 +43,9 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	// Load the RackTemplate
 	templateUID := rackResource.Spec.TemplateUID
 	templateData, err := r.Client.Get(ctx, "RackTemplate", templateUID)
-	if err != nil { // <-- FIX: Removed the extra '.' here
+	if err != nil {
 		r.Logger.Errorf("Failed to load RackTemplate %s: %v", templateUID, err)
 		rackResource.Status.Phase = "Error"
-		// --- FIX --- (was &rackResource)
 		r.Client.Update(ctx, rackResource)
 		return fmt.Errorf("failed to load rack template: %w", err)
 	}
@@ -80,7 +78,6 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 		if err != nil {
 			r.Logger.Errorf("Failed to create chassis %d: %v", chassisNum, err)
 			rackResource.Status.Phase = "Error"
-			// --- FIX --- (was &rackResource)
 			r.Client.Update(ctx, rackResource)
 			return err
 		}
@@ -153,7 +150,6 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	rackResource.Status.TotalNodes = totalNodes
 	rackResource.Status.TotalBMCs = totalBMCs
 
-	// --- FIX --- (was &rackResource)
 	if err := r.Client.Update(ctx, rackResource); err != nil {
 		return fmt.Errorf("failed to update rack status: %w", err)
 	}
@@ -191,7 +187,6 @@ func (r *RackReconciler) createChassis(ctx context.Context, rackResource *rack.R
 	}
 	c.Metadata.Initialize(c.Metadata.Name, c.Metadata.UID)
 
-	// --- FIX --- (was &c)
 	if err := r.Client.Update(ctx, c); err != nil {
 		return "", fmt.Errorf("failed to save chassis: %w", err)
 	}
@@ -227,7 +222,6 @@ func (r *RackReconciler) createBlade(ctx context.Context, chassisUID string, bla
 	}
 	b.Metadata.Initialize(b.Metadata.Name, b.Metadata.UID)
 
-	// --- FIX --- (was &b)
 	if err := r.Client.Update(ctx, b); err != nil {
 		return "", fmt.Errorf("failed to save blade: %w", err)
 	}
@@ -262,7 +256,6 @@ func (r *RackReconciler) createBMC(ctx context.Context, bladeUID string) (string
 	}
 	b.Metadata.Initialize(b.Metadata.Name, b.Metadata.UID)
 
-	// --- FIX --- (was &b)
 	if err := r.Client.Update(ctx, b); err != nil {
 		return "", fmt.Errorf("failed to save BMC: %w", err)
 	}
@@ -300,7 +293,6 @@ func (r *RackReconciler) createNode(ctx context.Context, bladeUID, bmcUID string
 	}
 	n.Metadata.Initialize(n.Metadata.Name, n.Metadata.UID)
 
-	// --- FIX --- (was &n)
 	if err := r.Client.Update(ctx, n); err != nil {
 		return "", fmt.Errorf("failed to save node: %w", err)
 	}
