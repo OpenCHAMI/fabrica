@@ -517,9 +517,104 @@ func main() {
 `, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
 }
 
-// discoverResources scans pkg/resources for resource definitions
-// discoverResources scans pkg/resources for resource definitions and detects per-resource flags
+// discoverResources scans for resource definitions in both legacy and versioned modes
 func discoverResources() ([]string, error) {
+	// Load config to determine mode
+	config, err := readFabricaConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Check if versioning is enabled
+	if config != nil && config.Features.Versioning.Enabled && len(config.Features.Versioning.Versions) > 0 {
+		// Versioned mode: scan apis/<group>/<storage-version>/
+		return discoverVersionedResources(config)
+	}
+
+	// Legacy mode: scan pkg/resources/
+	return discoverLegacyResources()
+}
+
+// discoverVersionedResources scans apis/<group>/<storage-version>/ for resource definitions
+func discoverVersionedResources(config *FabricaConfig) ([]string, error) {
+	// Use storage version (hub) for generation
+	hubDir := filepath.Join("apis", config.Features.Versioning.Group, config.Features.Versioning.StorageVersion)
+
+	if _, err := os.Stat(hubDir); os.IsNotExist(err) {
+		// Hub directory doesn't exist yet, return resources from config
+		return config.Features.Versioning.Resources, nil
+	}
+
+	var resources []string
+
+	err := filepath.Walk(hubDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip non-Go files and non-type files
+		if info.IsDir() || !strings.HasSuffix(path, "_types.go") {
+			return nil
+		}
+
+		// Parse the file to find resource type definitions
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			return nil // Skip files that don't parse
+		}
+
+		// Look for struct types with APIVersion, Kind, Metadata fields (flattened envelope)
+		ast.Inspect(node, func(n ast.Node) bool {
+			typeSpec, ok := n.(*ast.TypeSpec)
+			if !ok {
+				return true
+			}
+
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				return true
+			}
+
+			// Check if it has flattened envelope fields
+			hasAPIVersion := false
+			hasKind := false
+			hasMetadata := false
+
+			for _, field := range structType.Fields.List {
+				if len(field.Names) > 0 {
+					fieldName := field.Names[0].Name
+					switch fieldName {
+					case "APIVersion":
+						hasAPIVersion = true
+					case "Kind":
+						hasKind = true
+					case "Metadata":
+						hasMetadata = true
+					}
+				}
+			}
+
+			// If it has all three flattened envelope fields, it's a resource
+			if hasAPIVersion && hasKind && hasMetadata {
+				resources = append(resources, typeSpec.Name.Name)
+			}
+
+			return true
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resources, nil
+}
+
+// discoverLegacyResources scans pkg/resources for resource definitions (legacy mode)
+func discoverLegacyResources() ([]string, error) {
 	resourcesDir := "pkg/resources"
 
 	if _, err := os.Stat(resourcesDir); os.IsNotExist(err) {
@@ -590,6 +685,12 @@ func generateRegistrationFile(debug bool) error {
 		fmt.Println("🔍 Discovering resources...")
 	}
 
+	// Load config to determine mode
+	config, err := readFabricaConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
 	// 1. Read go.mod to get module path
 	modulePath, err := getModulePath()
 	if err != nil {
@@ -603,7 +704,11 @@ func generateRegistrationFile(debug bool) error {
 	}
 
 	if len(resources) == 0 {
-		fmt.Println("⚠️  No resources found in pkg/resources/")
+		if config != nil && config.Features.Versioning.Enabled {
+			fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", config.Features.Versioning.Group, config.Features.Versioning.StorageVersion)
+		} else {
+			fmt.Println("⚠️  No resources found in pkg/resources/")
+		}
 		fmt.Println("   Run 'fabrica add resource <name>' to create a resource first")
 		return nil
 	}
@@ -613,7 +718,12 @@ func generateRegistrationFile(debug bool) error {
 	}
 
 	// 3. Generate registration file
-	content := generateRegistrationCode(modulePath, resources)
+	var content string
+	if config != nil && config.Features.Versioning.Enabled {
+		content = generateVersionedRegistrationCode(modulePath, config, resources)
+	} else {
+		content = generateRegistrationCode(modulePath, resources)
+	}
 
 	// 4. Ensure pkg/resources directory exists
 	resourcesDir := filepath.Join("pkg", "resources")
@@ -689,6 +799,43 @@ func RegisterAllResources(gen *codegen.Generator) error {
 		content := string(data)
 		return strings.Contains(content, "+fabrica:resource-versioning=enabled")
 	}
+`, imports.String(), registrations.String())
+}
+
+// generateVersionedRegistrationCode creates registration code for versioned (apis/) mode
+func generateVersionedRegistrationCode(modulePath string, config *FabricaConfig, resources []string) string {
+	var imports strings.Builder
+	var registrations strings.Builder
+
+	hubVersion := config.Features.Versioning.StorageVersion
+	group := config.Features.Versioning.Group
+
+	for _, resource := range resources {
+		pkg := hubVersion // Package name is the version (e.g., v1)
+		// Import path: module/apis/group/version
+		importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group, hubVersion)
+
+		imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
+		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resource))
+		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
+		registrations.WriteString("\t}\n")
+	}
+
+	return fmt.Sprintf(`// Code generated by fabrica. DO NOT EDIT.
+package resources
+
+import (
+	"fmt"
+
+	"github.com/openchami/fabrica/pkg/codegen"
+%s)
+
+// RegisterAllResources registers all discovered resources with the generator.
+// This file is auto-generated. Re-run 'fabrica generate' after adding resources.
+func RegisterAllResources(gen *codegen.Generator) error {
+%s
+	return nil
+}
 `, imports.String(), registrations.String())
 }
 

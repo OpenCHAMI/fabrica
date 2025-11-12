@@ -61,11 +61,13 @@ type ConditionalConfig struct {
 	ETagAlgorithm string `yaml:"etag_algorithm"` // sha256, md5
 }
 
-// VersioningConfig controls API versioning.
+// VersioningConfig controls API versioning (hub/spoke model).
 type VersioningConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	Strategy       string `yaml:"strategy"`        // header, url, both
-	DefaultVersion string `yaml:"default_version"` // v1, v2, etc.
+	Enabled        bool     `yaml:"enabled"`
+	Group          string   `yaml:"group"`           // e.g., "infra.example.io"
+	StorageVersion string   `yaml:"storage_version"` // Hub version (e.g., "v1")
+	Versions       []string `yaml:"versions"`        // All versions including hub (e.g., ["v1alpha1", "v1beta1", "v1"])
+	Resources      []string `yaml:"resources"`       // Resource kinds (e.g., ["Device", "Sensor"])
 }
 
 // AuthConfig controls authorization/authentication.
@@ -190,12 +192,9 @@ func ValidateConfig(config *FabricaConfig) error {
 	}
 
 	// Validate versioning strategy
-	if config.Features.Versioning.Enabled {
-		validStrategies := map[string]bool{"header": true, "url": true, "both": true}
-		if !validStrategies[config.Features.Versioning.Strategy] {
-			return fmt.Errorf("invalid versioning.strategy: %s (must be 'header', 'url', or 'both')",
-				config.Features.Versioning.Strategy)
-		}
+	// Validate versioning configuration
+	if err := ValidateVersioning(&config.Features.Versioning); err != nil {
+		return fmt.Errorf("invalid versioning configuration: %w", err)
 	}
 
 	// Validate storage type
@@ -241,9 +240,11 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 				ETagAlgorithm: "sha256",
 			},
 			Versioning: VersioningConfig{
-				Enabled:        true,
-				Strategy:       "header",
-				DefaultVersion: "v1",
+				Enabled:        false, // User must enable and configure
+				Group:          "",
+				StorageVersion: "",
+				Versions:       []string{},
+				Resources:      []string{},
 			},
 			Auth: AuthConfig{
 				Enabled: false,
@@ -267,119 +268,33 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 	}
 }
 
-// ===== API Versioning Configuration (apis.yaml) =====
-
-// APIsConfig represents the apis.yaml configuration for hub/spoke versioning.
-// This is a separate configuration file (apis.yaml) from .fabrica.yaml.
-type APIsConfig struct {
-	Groups []APIGroup `yaml:"groups"`
-}
-
-// APIGroup represents an API group with multiple versions.
-type APIGroup struct {
-	Name           string        `yaml:"name"`           // e.g., "infra.example.io"
-	StorageVersion string        `yaml:"storageVersion"` // Hub version (e.g., "v1")
-	Versions       []string      `yaml:"versions"`       // All versions (spokes)
-	Resources      []APIResource `yaml:"resources"`      // Resources in this group
-	Imports        []APIImport   `yaml:"imports"`        // External type imports
-}
-
-// APIResource represents a resource within an API group.
-type APIResource struct {
-	Kind     string                      `yaml:"kind"`     // e.g., "Device"
-	Mappings map[string]APIFieldMappings `yaml:"mappings"` // Version-specific mappings
-}
-
-// APIFieldMappings defines field transformations for a version.
-type APIFieldMappings struct {
-	Renames []APIFieldRename `yaml:"renames"` // Field renames
-}
-
-// APIFieldRename defines a field rename between versions.
-type APIFieldRename struct {
-	From string `yaml:"from"` // Old field name
-	To   string `yaml:"to"`   // New field name
-}
-
-// APIImport represents an external module/package import.
-type APIImport struct {
-	Module   string       `yaml:"module"`   // e.g., "github.com/yourorg/netmodel"
-	Tag      string       `yaml:"tag"`      // e.g., "v0.9.3"
-	Packages []APIPackage `yaml:"packages"` // Packages to import
-}
-
-// APIPackage represents a package within an imported module.
-type APIPackage struct {
-	Path   string          `yaml:"path"`   // e.g., "api/types"
-	Expose []APITypeExpose `yaml:"expose"` // Types to expose
-}
-
-// APITypeExpose defines which types to import and where from.
-type APITypeExpose struct {
-	Kind       string `yaml:"kind"`       // e.g., "Device"
-	SpecFrom   string `yaml:"specFrom"`   // e.g., "github.com/yourorg/netmodel/api/types.DeviceSpec"
-	StatusFrom string `yaml:"statusFrom"` // e.g., "github.com/yourorg/netmodel/api/types.DeviceStatus"
-}
-
-// LoadAPIsConfig reads apis.yaml from the specified directory.
-// If dir is empty, uses current directory.
-func LoadAPIsConfig(dir string) (*APIsConfig, error) {
-	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get working directory: %w", err)
-		}
+// ValidateVersioning validates the versioning configuration in .fabrica.yaml.
+func ValidateVersioning(config *VersioningConfig) error {
+	if !config.Enabled {
+		return nil // Validation only applies when enabled
 	}
 
-	configPath := filepath.Join(dir, "apis.yaml")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read apis.yaml: %w", err)
+	if config.Group == "" {
+		return fmt.Errorf("versioning.group is required when versioning is enabled")
 	}
-
-	var config APIsConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse apis.yaml: %w", err)
+	if config.StorageVersion == "" {
+		return fmt.Errorf("versioning.storage_version is required when versioning is enabled")
 	}
-
-	// Validate
-	if err := ValidateAPIsConfig(&config); err != nil {
-		return nil, fmt.Errorf("invalid apis.yaml: %w", err)
+	if len(config.Versions) == 0 {
+		return fmt.Errorf("versioning.versions must have at least one version")
 	}
+	// Resources can be empty at init time - will be populated when resources are added
 
-	return &config, nil
-}
-
-// ValidateAPIsConfig validates the apis.yaml configuration.
-func ValidateAPIsConfig(config *APIsConfig) error {
-	if len(config.Groups) == 0 {
-		return fmt.Errorf("at least one API group is required")
+	// Ensure storage_version is in versions list
+	found := false
+	for _, v := range config.Versions {
+		if v == config.StorageVersion {
+			found = true
+			break
+		}
 	}
-
-	for i, group := range config.Groups {
-		if group.Name == "" {
-			return fmt.Errorf("group[%d]: name is required", i)
-		}
-		if group.StorageVersion == "" {
-			return fmt.Errorf("group[%d] (%s): storageVersion is required", i, group.Name)
-		}
-		if len(group.Versions) == 0 {
-			return fmt.Errorf("group[%d] (%s): at least one version is required", i, group.Name)
-		}
-
-		// Ensure storageVersion is in the versions list
-		found := false
-		for _, v := range group.Versions {
-			if v == group.StorageVersion {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("group[%d] (%s): storageVersion '%s' must be in versions list",
-				i, group.Name, group.StorageVersion)
-		}
+	if !found {
+		return fmt.Errorf("versioning.storage_version '%s' must be in versions list", config.StorageVersion)
 	}
 
 	return nil

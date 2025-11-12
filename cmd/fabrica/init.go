@@ -29,10 +29,14 @@ type initOptions struct {
 	withVersion bool // Enable version command
 
 	// New feature flags for core features
-	validationMode  string // strict, warn, disabled
-	withEvents      bool   // Enable CloudEvents support
-	eventBusType    string // memory, nats, kafka
-	versionStrategy string // header, url, both
+	validationMode string // strict, warn, disabled
+	withEvents     bool   // Enable CloudEvents support
+	eventBusType   string // memory, nats, kafka
+
+	// API Versioning (hub/spoke)
+	apiGroup       string   // e.g., "infra.example.io"
+	storageVersion string   // Hub version (e.g., "v1")
+	apiVersions    []string // All versions (e.g., ["v1alpha1", "v1"])
 
 	// Reconciliation options
 	withReconcile      bool // Enable reconciliation framework
@@ -66,13 +70,13 @@ type templateData struct {
 
 func newInitCommand() *cobra.Command {
 	opts := &initOptions{
-		withStorage:     true,     // Default to enabling storage
-		withVersion:     true,     // Default to enabling version command
-		storageType:     "file",   // Default to file storage
-		dbDriver:        "sqlite", // Default database
-		validationMode:  "strict", // Default validation mode
-		eventBusType:    "memory", // Default event bus
-		versionStrategy: "header", // Default version strategy
+		withStorage:    true,       // Default to enabling storage
+		withVersion:    true,       // Default to enabling version command
+		storageType:    "file",     // Default to file storage
+		dbDriver:       "sqlite",   // Default database
+		validationMode: "strict",   // Default validation mode
+		eventBusType:   "memory",   // Default event bus
+		apiVersions:    []string{}, // No versions by default
 	}
 
 	cmd := &cobra.Command{
@@ -124,7 +128,11 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().StringVar(&opts.validationMode, "validation-mode", "strict", "Validation mode: strict, warn, or disabled")
 	cmd.Flags().BoolVar(&opts.withEvents, "events", false, "Enable CloudEvents support")
 	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory, nats, or kafka")
-	cmd.Flags().StringVar(&opts.versionStrategy, "version-strategy", "header", "API versioning strategy: header, url, or both")
+
+	// API Versioning configuration
+	cmd.Flags().StringVar(&opts.apiGroup, "group", "", "API group name (e.g., infra.example.io)")
+	cmd.Flags().StringVar(&opts.storageVersion, "storage-version", "v1", "Hub (storage) version")
+	cmd.Flags().StringSliceVar(&opts.apiVersions, "versions", []string{}, "API versions (comma-separated, e.g., v1alpha1,v1beta1,v1)")
 
 	// Reconciliation configuration
 	cmd.Flags().BoolVar(&opts.withReconcile, "reconcile", false, "Enable reconciliation framework")
@@ -305,7 +313,12 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("✅ Project initialized successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Println("  1. Define your resources in pkg/resources/")
+	if opts.apiGroup != "" && len(opts.apiVersions) > 0 {
+		fmt.Printf("  1. Add resources with 'fabrica add resource <name> --version <version>'\n")
+		fmt.Printf("  2. Define types in apis/%s/<version>/*_types.go\n", opts.apiGroup)
+	} else {
+		fmt.Println("  1. Define your resources in pkg/resources/")
+	}
 	fmt.Println("  2. Run 'fabrica generate' to generate code")
 	fmt.Println("  3. Run 'go mod tidy' to update dependencies")
 	fmt.Println("  4. Start development with 'go run ./cmd/server/'")
@@ -347,8 +360,18 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	// Create directories
 	dirs := []string{
 		"cmd/server",
-		"pkg/resources",
 		"internal/storage",
+	}
+
+	// Create versioned apis/ structure if versioning enabled
+	if len(opts.apiVersions) > 0 && opts.apiGroup != "" {
+		for _, version := range opts.apiVersions {
+			versionDir := filepath.Join("apis", opts.apiGroup, version)
+			dirs = append(dirs, versionDir)
+		}
+	} else {
+		// Legacy: create pkg/resources/ if no versioning
+		dirs = append(dirs, "pkg/resources")
 	}
 
 	for _, dir := range dirs {
@@ -488,9 +511,11 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 				ETagAlgorithm: "sha256",
 			},
 			Versioning: VersioningConfig{
-				Enabled:        true, // Core feature always enabled
-				Strategy:       opts.versionStrategy,
-				DefaultVersion: "v1",
+				Enabled:        len(opts.apiVersions) > 0, // Enable if versions specified
+				Group:          opts.apiGroup,
+				StorageVersion: opts.storageVersion,
+				Versions:       opts.apiVersions,
+				Resources:      []string{}, // Will be populated when resources added
 			},
 			Auth: AuthConfig{
 				Enabled: opts.withAuth,
