@@ -77,8 +77,11 @@ import (
     "github.com/openchami/fabrica/pkg/resource"
 )
 
+// Device represents a network device resource
+// Note: With hub/spoke versioning (introduced in v0.4), resources use
+// a flattened envelope structure for better Go autodoc support.
 type Device struct {
-    resource.Resource
+    resource.Resource // Embedded for compatibility with current version
     Spec   DeviceSpec   `json:"spec" validate:"required"`
     Status DeviceStatus `json:"status,omitempty"`
 }
@@ -104,6 +107,8 @@ func init() {
     resource.RegisterResourcePrefix("Device", "dev")
 }
 ```
+
+**Note on Versioning**: Future versions of Fabrica will generate resources with explicit `APIVersion`, `Kind`, `Metadata`, `Spec`, and `Status` fields instead of embedding `resource.Resource`. The JSON format remains identical. See [Hub/Spoke Versioning Guide](../../docs/versioning.md) for details.
 
 ### Step 3: Customize Your Resource
 

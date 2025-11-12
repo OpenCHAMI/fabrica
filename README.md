@@ -30,7 +30,8 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 - **🎯 Smart Validation** - Request validation with detailed, structured error responses
 - **⚡ Developer Experience** - CLI tools, hot-reload development, comprehensive testing
 - **📡 CloudEvents Integration** - Automatic event publishing for resource lifecycle (CRUD) and condition changes
-- **🌐 Cloud-Native Ready** - API versioning, conditional requests (ETags), event-driven patterns
+- **🌐 Cloud-Native Ready** - [Hub/spoke API versioning](docs/versioning.md), conditional requests (ETags), event-driven patterns
+- **🔄 API Versioning (Hub/Spoke)** - Kubebuilder-style versioning with automatic conversion between versions
 - **🏗️ Production Patterns** - Consistent API structure, error handling, and middleware
 
 ## 🎯 Perfect For
@@ -115,6 +116,8 @@ type DeviceStatus struct {
 ```bash
 fabrica generate
 ```
+
+This generates handlers, storage, and client code. By default, APIs expose `<group>/v1`. To add multiple versions (`v1alpha1`, `v1beta1`, etc.), create an `apis.yaml` file (see [Hub/Spoke Versioning Guide](docs/versioning.md)).
 
 **5. Update dependencies:**
 

@@ -8,6 +8,16 @@ SPDX-License-Identifier: MIT
 
 Welcome to the Fabrica examples! These examples introduce new users to Fabrica's code generation capabilities through progressively more complex scenarios.
 
+## 🆕 What's New in v0.4
+
+**Hub/Spoke API Versioning** is now available! See [Example 8: API Versioning](08-api-versioning/) to learn how to:
+- Define multiple API versions (v1alpha1, v1beta1, v1) for your resources
+- Use a single hub (storage) version with multiple spoke (external) versions
+- Automatically convert between versions
+- Safely evolve your APIs without breaking changes
+
+Generated resources now use a flattened envelope structure (`APIVersion`, `Kind`, `Metadata`, `Spec`, `Status` fields) for better Go autodoc support. The JSON wire format remains identical for backward compatibility. See the [Versioning Guide](../docs/versioning.md) for migration details.
+
 ## Learning Path
 
 Follow these examples in order to build your understanding:
@@ -83,6 +93,17 @@ Keep an immutable history of spec changes:
 - List/get/delete version history via endpoints
 
 **What you'll build:** A small API with a versioned Sensor resource and a script to exercise version history.
+
+### 7. [Hub/Spoke API Versioning](08-api-versioning/) - Multi-Version APIs 🔄
+**Time: 20 minutes**
+
+Master Kubebuilder-style API versioning:
+- Hub/spoke versioning model (one storage version, multiple external versions)
+- Automatic conversion between versions
+- Version negotiation middleware
+- Safe API evolution without breaking clients
+
+**What you'll build:** A device management API supporting v1alpha1, v1beta1, and v1 with automatic version conversion.
 
 ## Quick Reference
 
