@@ -1,0 +1,22 @@
+version = 1
+SPDX-PackageName = "Fabrica"
+SPDX-PackageSupplier = "OpenCHAMI <info@openchami.org>"
+SPDX-PackageDownloadLocation = "https://github.com/openchami/fabrica"
+
+[[annotations]]
+path = "docs/_posts/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 OpenCHAMI Contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "docs/blog/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 OpenCHAMI Contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["docs/guides/**", "docs/reference/**", "docs/**.md"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 OpenCHAMI Contributors"
+SPDX-License-Identifier = "MIT"

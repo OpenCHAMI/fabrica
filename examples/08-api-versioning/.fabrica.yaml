@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Example .fabrica.yaml for hub/spoke API versioning
+# This shows how to configure versioning in the unified config file
+
+project:
+  name: device-api-versioned
+  module: github.com/example/device-api-versioned
+  description: Device management API with versioning
+  created: 2025-11-12T12:00:00Z
+
+features:
+  validation:
+    enabled: true
+    mode: strict
+
+  events:
+    enabled: false
+    bus_type: memory
+
+  conditional:
+    enabled: true
+    etag_algorithm: sha256
+
+  versioning:
+    enabled: true
+    group: infra.example.io         # API group name
+    storage_version: v1              # Hub (storage) version
+    versions:                        # All versions (spokes)
+      - v1alpha1                     # Alpha: experimental
+      - v1beta1                      # Beta: semi-stable
+      - v1                           # Stable (hub)
+    resources:                       # Resources in this group
+      - Device
+
+  auth:
+    enabled: false
+
+  storage:
+    enabled: true
+    type: file
+
+  reconciliation:
+    enabled: false
+
+generation:
+  handlers: true
+  storage: true
+  client: true
+  openapi: true
+  events: false
+  middleware: true
