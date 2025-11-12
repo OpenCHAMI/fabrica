@@ -312,7 +312,7 @@ func runServer(cmd *cobra.Command, args []string) error {
     {{end}}
     eventBus.Start()
     defer eventBus.Close() // Defer close here, at the top level
-    
+
     // Set the global instance for handlers
     // This replaces the call to InitializeEventBus()
     events.SetGlobalEventBus(eventBus)
