@@ -311,7 +311,7 @@ func (p *TestProject) PatchResource(resourceName, id string, patch interface{}) 
 		patchJSON = string(patchBytes)
 	}
 
-	output, err := p.RunClient(resourceName, "patch", id, "--patch", patchJSON)
+	output, err := p.RunClient(resourceName, "patch", id, "--spec", patchJSON)
 	if err != nil {
 		return nil, fmt.Errorf("patch failed: %w\nOutput: %s", err, output)
 	}
@@ -349,4 +349,95 @@ func (p *TestProject) AssertResourceHasSpec(t require.TestingT, resource map[str
 		require.True(t, exists, "spec should have key: %s", key)
 		require.Equal(t, expectedValue, actualValue, "spec[%s] should match expected value", key)
 	}
+}
+
+// ModifyFile reads a file, applies a modification function, and writes it back
+func (p *TestProject) ModifyFile(relativePath string, modifier func(string) string) error {
+    path := filepath.Join(p.Dir, relativePath)
+    content, err := os.ReadFile(path)
+    if err != nil {
+        return fmt.Errorf("failed to read file %s: %w", path, err)
+    }
+
+    newContent := modifier(string(content))
+
+    if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
+        return fmt.Errorf("failed to write file %s: %w", path, err)
+    }
+    return nil
+}
+
+// Example1_CustomizeResource updates the Device spec as per Example 1
+func (p *TestProject) Example1_CustomizeResource() error {
+    // Path: pkg/resources/device/device.go
+    relPath := filepath.Join("pkg", "resources", "device", "device.go")
+    
+    return p.ModifyFile(relPath, func(content string) string {
+        // We replace the default placeholder or the simple struct definition
+        // with the full definition from the example
+        target := `type DeviceSpec struct {
+	Description string ` + "`json:\"description,omitempty\" validate:\"max=200\"`" + `
+	// Add your spec fields here
+}`
+        
+        replacement := `type DeviceSpec struct {
+	Description string ` + "`json:\"description,omitempty\" validate:\"max=200\"`" + `
+	IPAddress   string ` + "`json:\"ipAddress,omitempty\" validate:\"omitempty,ip\"`" + `
+	Location    string ` + "`json:\"location,omitempty\"`" + `
+	Rack        string ` + "`json:\"rack,omitempty\"`" + `
+}`
+        // Try specific replacement first
+        if strings.Contains(content, target) {
+            return strings.Replace(content, target, replacement, 1)
+        }
+        
+        // Fallback: If formatting is slightly different, try to inject just the fields
+        // This assumes the file contains "// Add your spec fields here"
+        fields := `IPAddress   string ` + "`json:\"ipAddress,omitempty\" validate:\"omitempty,ip\"`" + `
+	Location    string ` + "`json:\"location,omitempty\"`" + `
+	Rack        string ` + "`json:\"rack,omitempty\"`"
+	
+        return strings.Replace(content, "// Add your spec fields here", fields, 1)
+    })
+}
+
+// Example1_ConfigureServer uncomments the storage and route registration in main.go
+func (p *TestProject) Example1_ConfigureServer() error {
+    relPath := filepath.Join("cmd", "server", "main.go")
+    
+    return p.ModifyFile(relPath, func(content string) string {
+        // 1. Uncomment the storage import
+        // Expecting: // "github.com/user/device-inventory/internal/storage"
+        // We need to be careful to match the actual module name or just the suffix
+        lines := strings.Split(content, "\n")
+        var newLines []string
+        
+        for _, line := range lines {
+            trimmed := strings.TrimSpace(line)
+            
+            // Uncomment import for storage
+            if strings.HasPrefix(trimmed, "//") && strings.Contains(trimmed, "/internal/storage\"") {
+                line = strings.Replace(line, "// ", "", 1)
+                line = strings.Replace(line, "//", "", 1) // Handle case without space
+            }
+            
+            // Uncomment storage init
+            // Expecting: // storage.InitFileBackend("./data")
+            if strings.HasPrefix(trimmed, "//") && strings.Contains(trimmed, "storage.InitFileBackend") {
+                line = strings.Replace(line, "// ", "", 1)
+                line = strings.Replace(line, "//", "", 1)
+            }
+            
+            // Uncomment route registration
+            // Expecting: // RegisterGeneratedRoutes(r)
+            if strings.HasPrefix(trimmed, "//") && strings.Contains(trimmed, "RegisterGeneratedRoutes") {
+                line = strings.Replace(line, "// ", "", 1)
+                line = strings.Replace(line, "//", "", 1)
+            }
+            
+            newLines = append(newLines, line)
+        }
+        
+        return strings.Join(newLines, "\n")
+    })
 }
