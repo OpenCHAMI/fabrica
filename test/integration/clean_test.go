@@ -224,7 +224,99 @@ func (s *FabricaTestSuite) TestCreateFRUApplication() {
 
 	// For file storage, check storage file instead of Ent schema
 	project.AssertFileExists("internal/storage/storage_generated.go")
-} // Run the test suite
+} 
+
+func (s *FabricaTestSuite) TestExample1_EndToEnd() {
+	// Create project
+	project := s.createProject("example1-crud", "github.com/test/example1", "file")
+
+	// 1. Initialize project
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err, "project initialization should succeed")
+
+	// 2. Add resource
+	err = project.AddResource(s.fabricaBinary, "Device")
+	s.Require().NoError(err, "adding resource should succeed")
+
+	// 3. Customize resource (New Step)
+	err = project.Example1_CustomizeResource()
+	s.Require().NoError(err, "customizing resource should succeed")
+
+	// 4. Generate code
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err, "code generation should succeed")
+
+	// 5. Configure server (New Step)
+	err = project.Example1_ConfigureServer()
+	s.Require().NoError(err, "configuring server main.go should succeed")
+
+	// 6. Build project
+	err = project.Build()
+	s.Require().NoError(err, "project should build successfully")
+
+	// 7. Start server
+	err = project.StartServer()
+	s.Require().NoError(err, "server should start successfully")
+	// Ensure server is stopped when test finishes
+	s.T().Cleanup(func() {
+		project.StopServer()
+	})
+
+	// 8. Run Client Tests (Full CRUD)
+
+	// CREATE
+	createSpec := map[string]interface{}{
+		"description": "Core network switch",
+		"ipAddress":   "192.168.1.10",
+		"location":    "DataCenter A",
+		"rack":        "R42",
+	}
+	created, err := project.CreateResource("device", createSpec)
+	s.Require().NoError(err, "client create should succeed")
+	s.Require().NotNil(created, "created resource should not be nil")
+
+	// Verify metadata and spec
+	uid, ok := created["metadata"].(map[string]interface{})["uid"].(string)
+	s.Require().True(ok, "should get uid from metadata")
+	s.Require().NotEmpty(uid, "uid should not be empty")
+	project.AssertResourceHasSpec(s.T(), created, createSpec)
+
+	// LIST
+	listed, err := project.ListResources("device")
+	s.Require().NoError(err, "client list should succeed")
+	s.Require().Len(listed, 1, "list should return one device")
+	s.Require().Equal(uid, listed[0]["metadata"].(map[string]interface{})["uid"].(string))
+
+	// GET
+	got, err := project.GetResource("device", uid)
+	s.Require().NoError(err, "client get should succeed")
+	project.AssertResourceHasSpec(s.T(), got, createSpec)
+
+	// PATCH (Example 1 doesn't test this, but we can use the helper)
+	patchSpec := map[string]interface{}{
+		"location": "DataCenter B",
+	}
+	patched, err := project.PatchResource("device", uid, patchSpec)
+	s.Require().NoError(err, "client patch should succeed")
+
+	// Verify patch
+	s.Require().Equal("DataCenter B", patched["spec"].(map[string]interface{})["location"], "location should be updated")
+	s.Require().Equal("192.168.1.10", patched["spec"].(map[string]interface{})["ipAddress"], "ipAddress should be unchanged")
+
+	// DELETE
+	err = project.DeleteResource("device", uid)
+	s.Require().NoError(err, "client delete should succeed")
+
+	// VERIFY DELETE
+	listedAfterDelete, err := project.ListResources("device")
+	s.Require().NoError(err, "client list after delete should succeed")
+	s.Require().Len(listedAfterDelete, 0, "list should be empty after delete")
+
+	_, err = project.GetResource("device", uid)
+	s.Require().Error(err, "client get after delete should fail")
+}
+
+// Run the test suite
 func TestFabricaTestSuite(t *testing.T) {
 	suite.Run(t, new(FabricaTestSuite))
 }
