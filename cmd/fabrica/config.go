@@ -266,3 +266,121 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 		},
 	}
 }
+
+// ===== API Versioning Configuration (apis.yaml) =====
+
+// APIsConfig represents the apis.yaml configuration for hub/spoke versioning.
+// This is a separate configuration file (apis.yaml) from .fabrica.yaml.
+type APIsConfig struct {
+	Groups []APIGroup `yaml:"groups"`
+}
+
+// APIGroup represents an API group with multiple versions.
+type APIGroup struct {
+	Name           string        `yaml:"name"`           // e.g., "infra.example.io"
+	StorageVersion string        `yaml:"storageVersion"` // Hub version (e.g., "v1")
+	Versions       []string      `yaml:"versions"`       // All versions (spokes)
+	Resources      []APIResource `yaml:"resources"`      // Resources in this group
+	Imports        []APIImport   `yaml:"imports"`        // External type imports
+}
+
+// APIResource represents a resource within an API group.
+type APIResource struct {
+	Kind     string                      `yaml:"kind"`     // e.g., "Device"
+	Mappings map[string]APIFieldMappings `yaml:"mappings"` // Version-specific mappings
+}
+
+// APIFieldMappings defines field transformations for a version.
+type APIFieldMappings struct {
+	Renames []APIFieldRename `yaml:"renames"` // Field renames
+}
+
+// APIFieldRename defines a field rename between versions.
+type APIFieldRename struct {
+	From string `yaml:"from"` // Old field name
+	To   string `yaml:"to"`   // New field name
+}
+
+// APIImport represents an external module/package import.
+type APIImport struct {
+	Module   string       `yaml:"module"`   // e.g., "github.com/yourorg/netmodel"
+	Tag      string       `yaml:"tag"`      // e.g., "v0.9.3"
+	Packages []APIPackage `yaml:"packages"` // Packages to import
+}
+
+// APIPackage represents a package within an imported module.
+type APIPackage struct {
+	Path   string          `yaml:"path"`   // e.g., "api/types"
+	Expose []APITypeExpose `yaml:"expose"` // Types to expose
+}
+
+// APITypeExpose defines which types to import and where from.
+type APITypeExpose struct {
+	Kind       string `yaml:"kind"`       // e.g., "Device"
+	SpecFrom   string `yaml:"specFrom"`   // e.g., "github.com/yourorg/netmodel/api/types.DeviceSpec"
+	StatusFrom string `yaml:"statusFrom"` // e.g., "github.com/yourorg/netmodel/api/types.DeviceStatus"
+}
+
+// LoadAPIsConfig reads apis.yaml from the specified directory.
+// If dir is empty, uses current directory.
+func LoadAPIsConfig(dir string) (*APIsConfig, error) {
+	if dir == "" {
+		var err error
+		dir, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get working directory: %w", err)
+		}
+	}
+
+	configPath := filepath.Join(dir, "apis.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read apis.yaml: %w", err)
+	}
+
+	var config APIsConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse apis.yaml: %w", err)
+	}
+
+	// Validate
+	if err := ValidateAPIsConfig(&config); err != nil {
+		return nil, fmt.Errorf("invalid apis.yaml: %w", err)
+	}
+
+	return &config, nil
+}
+
+// ValidateAPIsConfig validates the apis.yaml configuration.
+func ValidateAPIsConfig(config *APIsConfig) error {
+	if len(config.Groups) == 0 {
+		return fmt.Errorf("at least one API group is required")
+	}
+
+	for i, group := range config.Groups {
+		if group.Name == "" {
+			return fmt.Errorf("group[%d]: name is required", i)
+		}
+		if group.StorageVersion == "" {
+			return fmt.Errorf("group[%d] (%s): storageVersion is required", i, group.Name)
+		}
+		if len(group.Versions) == 0 {
+			return fmt.Errorf("group[%d] (%s): at least one version is required", i, group.Name)
+		}
+
+		// Ensure storageVersion is in the versions list
+		found := false
+		for _, v := range group.Versions {
+			if v == group.StorageVersion {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("group[%d] (%s): storageVersion '%s' must be in versions list",
+				i, group.Name, group.StorageVersion)
+		}
+	}
+
+	return nil
+}
