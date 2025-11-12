@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Hub/Spoke API Versioning** - Kubebuilder-style versioning for generated APIs
+  - Single hub (storage) version per API group with multiple spoke (external) versions
+  - Automatic conversion between hub and spokes for version negotiation
+  - Version registry and middleware for request/response conversion
+  - Support for `apis.yaml` configuration to declare groups, versions, and imports
+  - Generated flattened envelope types with explicit `apiVersion`, `kind`, `metadata`, `spec`, `status` fields
+  - Documentation in `docs/versioning.md` with migration guide
+- **Import Catalog System** - `pkg/imports/catalog` for resolving external type metadata
+- **API Version Registry** - `pkg/apiversion` package for managing API groups and versions
+
+### Changed
+- **BREAKING: Flattened Resource Envelope** - Generated resource types no longer embed `resource.Resource`
+  - Old: `type Device struct { resource.Resource[DeviceSpec, DeviceStatus] }`
+  - New: Explicit fields: `APIVersion`, `Kind`, `Metadata`, `Spec`, `Status`
+  - JSON wire format remains identical; only Go struct shapes change
+  - Custom code referencing embedded `Resource` field must be updated
+  - See [Versioning Migration Guide](docs/versioning.md#migration-from-pre-flattening) for details
+
+### Documentation
+- Added comprehensive [Hub/Spoke Versioning Guide](docs/versioning.md)
+- Updated README Quick Start with versioning note
+- Updated Key Features with versioning link
+
 ## [v0.3.1] - 2025-11-04
 
 ### Added
