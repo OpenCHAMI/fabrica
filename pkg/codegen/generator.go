@@ -487,6 +487,10 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateModels(); err != nil {
 			return err
 		}
+		// Generate API versions (hub/spoke) if apis.yaml exists
+		if err := g.GenerateAPIVersions(); err != nil {
+			return err
+		}
 		if err := g.GenerateHandlers(); err != nil {
 			return err
 		}
@@ -720,6 +724,11 @@ func (g *Generator) LoadTemplates() error {
 		"reconcilerStub":         "reconciliation/stub.go.tmpl",
 		"reconcilerRegistration": "reconciliation/registration.go.tmpl",
 		"eventHandlers":          "reconciliation/event-handlers.go.tmpl",
+
+		// API Versioning templates
+		"typesHub":   "apiversion/types_hub.gotmpl",
+		"typesSpoke": "apiversion/types_spoke.gotmpl",
+		"versionReg": "apiversion/register.gotmpl",
 	}
 
 	g.Templates = make(map[string]*template.Template)
@@ -1081,6 +1090,33 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 	}
 
 	fmt.Printf("  ✓ Generated %s\n", outputPath)
+
+	return nil
+}
+
+// GenerateAPIVersions generates hub/spoke versioned types based on apis.yaml configuration
+// This is an optional feature - if apis.yaml doesn't exist, this is a no-op
+func (g *Generator) GenerateAPIVersions() error {
+	// Check if apis.yaml exists
+	if _, err := os.Stat("apis.yaml"); os.IsNotExist(err) {
+		// Optional feature - skip if not configured
+		return nil
+	}
+
+	fmt.Printf("🔄 Generating hub/spoke API versions...\n")
+
+	// For now, this is a placeholder. The full implementation requires:
+	// 1. Parse apis.yaml (will be done in config.go)
+	// 2. For each group and version, generate:
+	//    - Hub version types (v1)
+	//    - Spoke version types (v1alpha1, v1beta1, etc.)
+	//    - Conversion functions
+	//    - Version registry
+	// 3. Write to apis/<group>/<version>/ directories
+
+	// This will be fully implemented in a follow-up when config parsing is complete
+	fmt.Printf("  ⚠️  apis.yaml found but full hub/spoke generation not yet wired\n")
+	fmt.Printf("  ℹ️  This feature is under development\n")
 
 	return nil
 }
