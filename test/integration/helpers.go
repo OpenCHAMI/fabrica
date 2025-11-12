@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+	"strings"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
