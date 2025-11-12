@@ -449,17 +449,12 @@ fabrica generate
 # 6. Update dependencies
 go mod tidy
 
-# 7. Uncomment in cmd/server/main.go:
-#    - import "github.com/user/device-inventory/internal/storage"
-#    - storage.InitFileBackend("./data")
-#    - RegisterGeneratedRoutes(r)
-
-# 8. Build server and client
+# 7. Build server and client
 go build -o server ./cmd/server
 fabrica generate --client
 go build -o client ./cmd/client
 
-# 9. Run and test
+# 8. Run and test
 ./server  # In one terminal
 ./client device list  # In another terminal
 
