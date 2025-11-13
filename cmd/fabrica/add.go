@@ -180,7 +180,7 @@ func runAddResource(resourceName string, opts *addOptions) error {
 		resourceFile = filepath.Join(targetDir, opts.packageName+".go")
 	}
 
-	if err := generateResourceFile(resourceFile, resourceName, isVersioned, opts); err != nil {
+	if err := generateResourceFile(resourceFile, resourceName, isVersioned, opts, config); err != nil {
 		return err
 	}
 
@@ -220,13 +220,19 @@ func runAddResource(resourceName string, opts *addOptions) error {
 	return nil
 }
 
-func generateResourceFile(filePath, resourceName string, isVersioned bool, opts *addOptions) error {
+func generateResourceFile(filePath, resourceName string, isVersioned bool, opts *addOptions, config *FabricaConfig) error {
 	var packageName string
 	if isVersioned {
 		// Use version as package name (e.g., v1alpha1)
 		packageName = opts.version
 	} else {
 		packageName = opts.packageName
+	}
+
+	// Determine if this is the hub version (storage version)
+	isHub := false
+	if isVersioned && config != nil {
+		isHub = (opts.version == config.Features.Versioning.StorageVersion)
 	}
 
 	content := fmt.Sprintf(`// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
@@ -241,7 +247,20 @@ import (
 	if isVersioned {
 		// Versioned types use flattened envelope
 		content += `
-	"github.com/openchami/fabrica/pkg/fabrica"
+	"github.com/openchami/fabrica/pkg/fabrica"`
+
+		// Add hub package import for spoke versions (for conversions)
+		if !isHub && config != nil {
+			modulePath := config.Project.Module
+			hubVersion := config.Features.Versioning.StorageVersion
+			group := config.Features.Versioning.Group
+			hubPackage := strings.ReplaceAll(hubVersion, ".", "")
+
+			content += `
+	` + hubPackage + ` "` + modulePath + `/apis/` + group + `/` + hubVersion + `"`
+		}
+
+		content += `
 )
 
 // ` + resourceName + ` represents a ` + strings.ToLower(resourceName) + ` resource
@@ -352,6 +371,62 @@ func (r *` + resourceName + `) GetUID() string {
 	return r.Metadata.UID
 }
 `
+
+		// Add conversion stubs for non-hub versions (spokes)
+		if !isHub && config != nil {
+			hubVersion := config.Features.Versioning.StorageVersion
+			group := config.Features.Versioning.Group
+			hubPackage := strings.ReplaceAll(hubVersion, ".", "")
+
+			content += `
+// ConvertTo converts this ` + packageName + ` ` + resourceName + ` to the hub version (` + hubVersion + `)
+func (src *` + resourceName + `) ConvertTo(dstRaw interface{}) error {
+	dst := dstRaw.(*` + hubPackage + `.` + resourceName + `)
+
+	// TODO: Implement conversion logic from ` + packageName + ` to ` + hubVersion + `
+
+	// Copy common fields
+	dst.APIVersion = "` + group + `/` + hubVersion + `"
+	dst.Kind = src.Kind
+	dst.Metadata = src.Metadata
+
+	// TODO: Convert Spec fields
+	// Map fields from src.Spec to dst.Spec
+	// Handle any field additions, removals, or transformations
+
+	// TODO: Convert Status fields
+	// Map fields from src.Status to dst.Status
+	// Handle any field additions, removals, or transformations
+
+	return nil
+}
+
+// ConvertFrom converts from the hub version (` + hubVersion + `) to this ` + packageName + ` ` + resourceName + `
+func (dst *` + resourceName + `) ConvertFrom(srcRaw interface{}) error {
+	src := srcRaw.(*` + hubPackage + `.` + resourceName + `)
+
+	// TODO: Implement conversion logic from ` + hubVersion + ` to ` + packageName + `
+
+	// Copy common fields
+	dst.APIVersion = "` + group + `/` + packageName + `"
+	dst.Kind = src.Kind
+	dst.Metadata = src.Metadata
+
+	// TODO: Convert Spec fields
+	// Map fields from src.Spec to dst.Spec
+	// Handle any field additions, removals, or transformations
+	// Drop fields that don't exist in ` + packageName + `
+
+	// TODO: Convert Status fields
+	// Map fields from src.Status to dst.Status
+	// Handle any field additions, removals, or transformations
+	// Drop fields that don't exist in ` + packageName + `
+
+	return nil
+}
+`
+		}
+
 	} else {
 		// Legacy: embedded resource
 		content += `// GetKind returns the kind of the resource
