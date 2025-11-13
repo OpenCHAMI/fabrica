@@ -57,3 +57,6 @@ func (r *Device) GetName() string {
 func (r *Device) GetUID() string {
 	return r.Metadata.UID
 }
+
+// IsHub marks this as the hub/storage version
+func (r *Device) IsHub() {}

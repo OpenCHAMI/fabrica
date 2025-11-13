@@ -372,6 +372,14 @@ func (r *` + resourceName + `) GetUID() string {
 }
 `
 
+		// Add IsHub marker for hub/storage version
+		if isHub {
+			content += `
+// IsHub marks this as the hub/storage version
+func (r *` + resourceName + `) IsHub() {}
+`
+		}
+
 		// Add conversion stubs for non-hub versions (spokes)
 		if !isHub && config != nil {
 			hubVersion := config.Features.Versioning.StorageVersion
