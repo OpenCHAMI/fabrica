@@ -20,30 +20,16 @@ type Device struct {
 
 // DeviceSpec defines the desired state of Device
 type DeviceSpec struct {
-	Name        string            `json:"name" validate:"required"`
-	IPAddress   string            `json:"ipAddress" validate:"required,ip"`
-	Location    string            `json:"location,omitempty"`
-	DeviceType  string            `json:"deviceType" validate:"oneof=server switch router"`
-	Tags        map[string]string `json:"tags,omitempty"`
-	Description string            `json:"description,omitempty" validate:"max=200"`
+	Description string `json:"description,omitempty" validate:"max=200"`
+	// Add your spec fields here
 }
 
 // DeviceStatus defines the observed state of Device
 type DeviceStatus struct {
-	Phase       string      `json:"phase,omitempty"`
-	Message     string      `json:"message,omitempty"`
-	Ready       bool        `json:"ready"`
-	Health      string      `json:"health,omitempty" validate:"omitempty,oneof=healthy degraded unhealthy"`
-	LastChecked string      `json:"lastChecked,omitempty"`
-	Conditions  []Condition `json:"conditions,omitempty"`
-}
-
-// Condition represents a status condition
-type Condition struct {
-	Type    string `json:"type"`
-	Status  string `json:"status"`
-	Reason  string `json:"reason,omitempty"`
+	Phase   string `json:"phase,omitempty"`
 	Message string `json:"message,omitempty"`
+	Ready   bool   `json:"ready"`
+	// Add your status fields here
 }
 
 // Validate implements custom validation logic for Device

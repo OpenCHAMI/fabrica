@@ -6,6 +6,7 @@ package v1beta1
 
 import (
 	"context"
+	v1 "github.com/example/device-api-versioned/apis/infra.example.io/v1"
 	"github.com/openchami/fabrica/pkg/fabrica"
 )
 
@@ -20,30 +21,20 @@ type Device struct {
 
 // DeviceSpec defines the desired state of Device
 type DeviceSpec struct {
-	Name        string            `json:"name" validate:"required"`
-	IPAddress   string            `json:"ipAddress" validate:"required,ip"`
-	Location    string            `json:"location,omitempty"`
-	DeviceType  string            `json:"deviceType" validate:"oneof=server switch router"`
-	Tags        map[string]string `json:"tags,omitempty"` // NEW in v1beta1: Added tags
-	Description string            `json:"description,omitempty" validate:"max=200"`
+	Name        string `json:"name" validate:"required"`
+	IPAddress   string `json:"ipAddress" validate:"required,ip"`
+	Location    string `json:"location,omitempty"`
+	DeviceType  string `json:"deviceType" validate:"oneof=server switch router"`
+	Description string `json:"description,omitempty" validate:"max=200"`
 }
 
 // DeviceStatus defines the observed state of Device
 type DeviceStatus struct {
-	Phase       string      `json:"phase,omitempty"`
-	Message     string      `json:"message,omitempty"`
-	Ready       bool        `json:"ready"`
-	Health      string      `json:"health,omitempty" validate:"omitempty,oneof=healthy degraded unhealthy"`
-	LastChecked string      `json:"lastChecked,omitempty"`
-	Conditions  []Condition `json:"conditions,omitempty"` // NEW in v1beta1: Added conditions
-}
-
-// Condition represents a status condition
-type Condition struct {
-	Type    string `json:"type"`
-	Status  string `json:"status"`
-	Reason  string `json:"reason,omitempty"`
-	Message string `json:"message,omitempty"`
+	Phase       string `json:"phase,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Ready       bool   `json:"ready"`
+	Health      string `json:"health,omitempty" validate:"omitempty,oneof=healthy degraded unhealthy"`
+	LastChecked string `json:"lastChecked,omitempty"`
 }
 
 // Validate implements custom validation logic for Device
@@ -70,4 +61,50 @@ func (r *Device) GetName() string {
 // GetUID returns the UID of the resource
 func (r *Device) GetUID() string {
 	return r.Metadata.UID
+}
+
+// ConvertTo converts this v1alpha1 Device to the hub version (v1)
+func (src *Device) ConvertTo(dstRaw interface{}) error {
+	dst := dstRaw.(*v1.Device)
+
+	// TODO: Implement conversion logic from v1alpha1 to v1
+
+	// Copy common fields
+	dst.APIVersion = "infra.example.io/v1"
+	dst.Kind = src.Kind
+	dst.Metadata = src.Metadata
+
+	// TODO: Convert Spec fields
+	// Map fields from src.Spec to dst.Spec
+	// Handle any field additions, removals, or transformations
+
+	// TODO: Convert Status fields
+	// Map fields from src.Status to dst.Status
+	// Handle any field additions, removals, or transformations
+
+	return nil
+}
+
+// ConvertFrom converts from the hub version (v1) to this v1alpha1 Device
+func (dst *Device) ConvertFrom(srcRaw interface{}) error {
+	src := srcRaw.(*v1.Device)
+
+	// TODO: Implement conversion logic from v1 to v1alpha1
+
+	// Copy common fields
+	dst.APIVersion = "infra.example.io/v1alpha1"
+	dst.Kind = src.Kind
+	dst.Metadata = src.Metadata
+
+	// TODO: Convert Spec fields
+	// Map fields from src.Spec to dst.Spec
+	// Handle any field additions, removals, or transformations
+	// Drop fields that don't exist in v1alpha1
+
+	// TODO: Convert Status fields
+	// Map fields from src.Status to dst.Status
+	// Handle any field additions, removals, or transformations
+	// Drop fields that don't exist in v1alpha1
+
+	return nil
 }
