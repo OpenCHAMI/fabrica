@@ -111,6 +111,36 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+{{if .IsVersioned}}
+	// Versioned mode: flat fields with fabrica.Metadata
+	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
+		APIVersion: versionCtx.GroupVersion,
+		Kind:       "{{.Name}}",
+		Spec:       req.{{.Name}}Spec,
+	}
+
+	// Initialize metadata
+	{{camelCase .Name}}.Metadata.Name = req.Name
+	{{camelCase .Name}}.Metadata.UID = uid
+	now := time.Now()
+	{{camelCase .Name}}.Metadata.CreatedAt = now
+	{{camelCase .Name}}.Metadata.UpdatedAt = now
+
+	// Set labels and annotations
+	if {{camelCase .Name}}.Metadata.Labels == nil {
+		{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
+	}
+	for k, v := range req.Labels {
+		{{camelCase .Name}}.Metadata.Labels[k] = v
+	}
+	if {{camelCase .Name}}.Metadata.Annotations == nil {
+		{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
+	}
+	for k, v := range req.Annotations {
+		{{camelCase .Name}}.Metadata.Annotations[k] = v
+	}
+{{else}}
+	// Legacy mode: embedded resource.Resource
 	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
 		Resource: resource.Resource{
 			APIVersion:    versionCtx.GroupVersion,
@@ -121,11 +151,9 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	{{camelCase .Name}}.Metadata.Initialize(req.Name, uid)
-
-    // Set timestamps
-    now := time.Now()
-    {{camelCase .Name}}.Metadata.CreatedAt = now
-    {{camelCase .Name}}.Metadata.UpdatedAt = now
+	now := time.Now()
+	{{camelCase .Name}}.Metadata.CreatedAt = now
+	{{camelCase .Name}}.Metadata.UpdatedAt = now
 
 	// Set labels and annotations
 	for k, v := range req.Labels {
@@ -134,6 +162,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	for k, v := range req.Annotations {
 		{{camelCase .Name}}.SetAnnotation(k, v)
 	}
+{{end}}
 
 	// Layer 2: Fabrica struct tag validation
 	if err := validation.ValidateResource({{camelCase .Name}}); err != nil {
@@ -173,9 +202,15 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{- end }}{{- end }}
 
 	// Publish resource created event
+{{if .IsVersioned}}
+	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource created event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+{{else}}
 	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}); err != nil {
 		// Log the error but don't fail the request - events are non-critical
 		fmt.Printf("Warning: Failed to publish resource created event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+{{end}}
 	}
 
 	respondJSON(w, http.StatusCreated, {{camelCase .Name}})
@@ -203,6 +238,33 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply updates
+{{if .IsVersioned}}
+	// Versioned mode: direct field access
+	if req.Name != "" {
+		{{camelCase .Name}}.Metadata.Name = req.Name
+	}
+
+	// Update spec fields ONLY - status should use /status subresource
+	{{camelCase .Name}}.Spec = req.{{.Name}}Spec
+
+	// Update labels and annotations
+	if {{camelCase .Name}}.Metadata.Labels == nil {
+		{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
+	}
+	for k, v := range req.Labels {
+		{{camelCase .Name}}.Metadata.Labels[k] = v
+	}
+	if {{camelCase .Name}}.Metadata.Annotations == nil {
+		{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
+	}
+	for k, v := range req.Annotations {
+		{{camelCase .Name}}.Metadata.Annotations[k] = v
+	}
+
+	// Update timestamp
+	{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
+{{else}}
+	// Legacy mode: use SetLabel/SetAnnotation methods
 	if req.Name != "" {
 		{{camelCase .Name}}.SetName(req.Name)
 	}
@@ -219,6 +281,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	{{camelCase .Name}}.Touch()
+{{end}}
 
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
@@ -241,9 +304,15 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	updateMetadata := map[string]interface{}{
 		"updatedAt": {{camelCase .Name}}.Metadata.UpdatedAt,
 	}
+{{if .IsVersioned}}
+	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}, updateMetadata); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource updated event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+{{else}}
 	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, updateMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
 		fmt.Printf("Warning: Failed to publish resource updated event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+{{end}}
 	}
 
 	respondJSON(w, http.StatusOK, {{camelCase .Name}})
@@ -299,7 +368,11 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Touch to update metadata
+{{if .IsVersioned}}
+	{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
+{{else}}
 	{{camelCase .Name}}.Touch()
+{{end}}
 
 	// Save the patched resource
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
@@ -324,9 +397,15 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		"patchType": patchType,
 		"updatedAt": {{camelCase .Name}}.Metadata.UpdatedAt,
 	}
+{{if .IsVersioned}}
+	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}, patchMetadata); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource patched event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+{{else}}
 	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, patchMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
 		fmt.Printf("Warning: Failed to publish resource patched event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+{{end}}
 	}
 
 	respondJSON(w, http.StatusOK, {{camelCase .Name}})
@@ -367,7 +446,11 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	prevVersion := res.Status.Version
 	res.Status.Version = prevVersion
 	{{- end }}{{- end }}
+{{if .IsVersioned}}
+	res.Metadata.UpdatedAt = time.Now()
+{{else}}
 	res.Touch()
+{{end}}
 
 	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}} status: %w", err))
@@ -379,9 +462,15 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		"updatedAt":  res.Metadata.UpdatedAt,
 		"updateType": "status",
 	}
+{{if .IsVersioned}}
+	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, statusMetadata); err != nil {
+		// Log but don't fail - events are non-critical
+		fmt.Printf("Warning: Failed to publish status update event for {{.Name}} %s: %v\n", res.Metadata.UID, err)
+{{else}}
 	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, statusMetadata); err != nil {
 		// Log but don't fail - events are non-critical
 		fmt.Printf("Warning: Failed to publish status update event for {{.Name}} %s: %v\n", res.GetUID(), err)
+{{end}}
 	}
 
 	respondJSON(w, http.StatusOK, res)
@@ -445,7 +534,11 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	}
 	{{- end }}{{- end }}
 
+{{if .IsVersioned}}
+	res.Metadata.UpdatedAt = time.Now()
+{{else}}
 	res.Touch()
+{{end}}
 
 	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}} status: %w", err))
@@ -458,8 +551,13 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		"updatedAt":  res.Metadata.UpdatedAt,
 		"updateType": "status",
 	}
+{{if .IsVersioned}}
+	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, patchMetadata); err != nil {
+		fmt.Printf("Warning: Failed to publish status patch event for {{.Name}} %s: %v\n", res.Metadata.UID, err)
+{{else}}
 	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, patchMetadata); err != nil {
 		fmt.Printf("Warning: Failed to publish status patch event for {{.Name}} %s: %v\n", res.GetUID(), err)
+{{end}}
 	}
 
 	respondJSON(w, http.StatusOK, res)
@@ -540,9 +638,15 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	deleteMetadata := map[string]interface{}{
 		"deletedAt": time.Now(),
 	}
+{{if .IsVersioned}}
+	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, deleteMetadata); err != nil {
+		// Log the error but don't fail the request - events are non-critical
+		fmt.Printf("Warning: Failed to publish resource deleted event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+{{else}}
 	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), deleteMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
 		fmt.Printf("Warning: Failed to publish resource deleted event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+{{end}}
 	}
 
 	respondJSON(w, http.StatusOK, &DeleteResponse{

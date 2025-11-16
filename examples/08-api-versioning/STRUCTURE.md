@@ -14,38 +14,57 @@ This example demonstrates the APIs-first versioned architecture.
 08-api-versioning/
 ├── .fabrica.yaml                    # Unified configuration
 ├── README.md                         # Tutorial walkthrough
-├── apis/
-│   └── infra.example.io/
-│       ├── v1alpha1/
-│       │   └── device_types.go      # Alpha version (basic fields)
-│       ├── v1beta1/
-│       │   └── device_types.go      # Beta version (adds Tags, Conditions)
-│       └── v1/
-│           └── device_types.go      # Stable/hub version (complete schema)
+├── go.mod                            # Go module
 ├── cmd/
 │   └── server/
-│       └── main.go                  # Server template
-├── go.mod                            # Go module
-└── internal/
-    └── storage/
-        └── storage.go               # Storage stub
+│       ├── main.go                  # Server entry point
+│       ├── *_handlers_generated.go  # Generated handlers
+│       ├── routes_generated.go      # Generated routes
+│       └── models_generated.go      # Generated models
+├── apis/
+│   └── infra.example.io/
+│       ├── v1/
+│       │   └── device_types.go      # Stable/hub version (storage)
+│       ├── v2alpha1/                # Optional: v2 pre-release
+│       │   └── device_types.go      # Alpha version for v2
+│       └── v2beta1/                 # Optional: v2 beta
+│           └── device_types.go      # Beta version for v2
+├── internal/
+│   ├── middleware/
+│   │   └── *_middleware_generated.go
+│   └── storage/
+│       ├── storage.go               # Storage interface
+│       └── storage_generated.go     # Generated storage impl
+└── pkg/
+    ├── client/
+    │   └── client_generated.go      # Generated Go client
+    └── resources/
+        └── register_generated.go    # Resource registration
 ```
 
 ## API Version Evolution
 
-### v1alpha1 (Alpha)
-- Basic Device fields: Name, IPAddress, Location, DeviceType
-- Simple status: Phase, Message, Ready, Health, LastChecked
-
-### v1beta1 (Beta)
-**Added:**
-- `Spec.Tags` - map[string]string for labels
-- `Status.Conditions` - []Condition for detailed status
-
 ### v1 (Stable/Hub)
-- Same schema as v1beta1
-- This is the storage version (hub)
-- All data persisted in this format
+- Current stable API version
+- **Storage version**: All data persisted in this format
+- Complete Device schema with IPAddress, Location, DeviceType, Tags, Description
+- Status includes Phase, Message, Ready, LastChecked, Conditions
+
+### v2alpha1 (Optional - Alpha for next major)
+- Pre-release version for v2 API
+- Allows testing breaking changes before v2 stable
+- Can have experimental features not in v1
+
+### v2beta1 (Optional - Beta for next major)
+- Refined v2 API approaching stability
+- Feature-complete for v2, may have minor changes
+- Demonstrates progression: v2alpha1 → v2beta1 → v2
+
+### Version Strategy
+- **v1** is the current production API (hub/storage)
+- **v2alpha1, v2beta1** demonstrate evolution toward next major
+- Pre-releases (alpha/beta) belong to the *next* major version
+- When v2 is stable, it becomes the new hub/storage version
 
 ## Key Files
 
@@ -64,28 +83,35 @@ Shows the flattened envelope structure:
 
 ## Running the Example
 
-This is a structural example showing the directory layout and type definitions.
-To make it functional:
+This is a structural example. To create a working version:
 
 ```bash
-cd examples/08-api-versioning
+# Initialize with versioning
+fabrica init my-device-api \
+  --module github.com/user/my-device-api \
+  --group infra.example.io \
+  --storage-version v1
 
-# Generate handlers, storage, client, etc.
+cd my-device-api
+
+# Add a resource
+fabrica add resource Device
+
+# Generate code
 fabrica generate
-
-# Tidy dependencies
 go mod tidy
 
 # Run server
-go run ./cmd/server
+go run ./cmd/server/
 ```
 
 After generation, the following will be created:
-- `pkg/handlers/device/` - HTTP handlers
-- `pkg/storage/` - Storage interface
-- `pkg/client/` - Go client
+- `cmd/server/*_handlers_generated.go` - HTTP handlers
+- `internal/storage/storage_generated.go` - Storage implementation
+- `pkg/client/client_generated.go` - Go client
 - `pkg/resources/register_generated.go` - Resource registration
-- OpenAPI spec
+- `cmd/server/openapi_generated.go` - OpenAPI specification
+- `cmd/server/routes_generated.go` - Route registration
 
 ## What This Demonstrates
 

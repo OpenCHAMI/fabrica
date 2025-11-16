@@ -116,20 +116,19 @@ func runAddResource(resourceName string, opts *addOptions) error {
 	if config.Features.Versioning.Enabled && len(config.Features.Versioning.Versions) > 0 {
 		isVersioned = true
 
+		// Require group to be set for versioned projects
+		if config.Features.Versioning.Group == "" {
+			return fmt.Errorf("versioning is enabled but features.versioning.group is not set in .fabrica.yaml.\nPlease set the API group (e.g., 'infra.example.io') in your configuration")
+		}
+
 		// Version is required for versioned projects
 		if opts.version == "" {
-			// Auto-select first alpha version
-			for _, v := range config.Features.Versioning.Versions {
-				if strings.Contains(v, "alpha") {
-					opts.version = v
-					fmt.Printf("No version specified, using first alpha version: %s\n", opts.version)
-					break
-				}
-			}
-
-			// If no alpha version, require explicit version with --force
-			if opts.version == "" {
-				return fmt.Errorf("no --version specified and no alpha version found.\nPlease specify a version with --version (use --force to add to stable version)")
+			// Auto-select storage version (hub) if no version specified
+			if config.Features.Versioning.StorageVersion != "" {
+				opts.version = config.Features.Versioning.StorageVersion
+				fmt.Printf("No version specified, using storage hub version: %s\n", opts.version)
+			} else {
+				return fmt.Errorf("no --version specified and no storage_version configured.\nPlease specify a version with --version or set features.versioning.storage_version in .fabrica.yaml")
 			}
 		} else {
 			// Validate version exists in config
@@ -152,12 +151,8 @@ func runAddResource(resourceName string, opts *addOptions) error {
 
 		targetDir = filepath.Join("apis", config.Features.Versioning.Group, opts.version)
 	} else {
-		// Legacy mode: pkg/resources/
-		isVersioned = false
-		if opts.packageName == "" {
-			opts.packageName = strings.ToLower(resourceName)
-		}
-		targetDir = filepath.Join("pkg", "resources", opts.packageName)
+		// Legacy mode is deprecated
+		return fmt.Errorf("legacy mode (pkg/resources/) is deprecated.\nPlease enable versioning in .fabrica.yaml:\n\nfeatures:\n  versioning:\n    enabled: true\n    group: your.api.group\n    storage_version: v1\n    versions:\n      - v1")
 	}
 
 	fmt.Printf("📦 Adding resource %s", resourceName)

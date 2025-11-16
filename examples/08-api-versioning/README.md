@@ -23,22 +23,22 @@ This example demonstrates Fabrica's API versioning system with a clean, unified 
 
 **Version Iteration**: Easy workflow for evolving your API:
 ```bash
-# Start with alpha version
-fabrica add resource Device --version v1alpha1
+# Start with a new major (alpha)
+fabrica add resource Device --version v2alpha1
 
 # Evolve to beta
-fabrica add version v1beta1 --from v1alpha1
+fabrica add version v2beta1 --from v2alpha1
 
-# Promote to stable
-fabrica add version v1 --from v1beta1 --force
+# Promote to stable (v2)
+fabrica add version v2 --from v2beta1 --force
 ```
 
 ## Scenario: Device Management API
 
 We're building a device management API that needs to support:
-- **v1alpha1**: Early alpha version with basic fields
-- **v1beta1**: Beta version with refined schema
-- **v1**: Stable version (storage version/hub)
+- **v2alpha1**: Early alpha for the v2 API
+- **v2beta1**: Beta version with refined schema
+- **v1**: Existing stable version (current storage/hub)
 
 ## Prerequisites
 
@@ -55,13 +55,13 @@ device-api/
 │   └── server/
 │       └── main.go             # Server entry point
 └── apis/                       # All versioned types
-    └── infra.example.io/
-        ├── v1alpha1/
-        │   └── device_types.go # Alpha version types
-        ├── v1beta1/
-        │   └── device_types.go # Beta version types
-        └── v1/                 # Hub (storage version)
-            └── device_types.go # Stable version types
+  └── infra.example.io/
+    ├── v2alpha1/
+    │   └── device_types.go # Alpha version types for v2
+    ├── v2beta1/
+    │   └── device_types.go # Beta version types for v2
+    └── v1/                 # Hub (existing stable storage version)
+      └── device_types.go # Stable version types
 ```
 
 ## Step-by-Step Guide
@@ -69,160 +69,139 @@ device-api/
 ### 1. Initialize Versioned Project
 
 ```bash
-# Create project with versioning enabled from the start
+# Create project with versioning enabled
 fabrica init device-api \
+  --module github.com/user/device-api \
   --group infra.example.io \
-  --storage-version v1 \
-  --versions v1alpha1,v1beta1,v1
+  --storage-version v1
 
 cd device-api
 ```
+The generated `.fabrica.yaml` includes:
+```yaml
+features:
+  versioning:
+    enabled: true
+    group: infra.example.io
+    storage_version: v1
+    versions:
+      - v1
+    resources: []
+```
 
-This creates:
-- `.fabrica.yaml` with versioning configuration
-- `apis/infra.example.io/v1alpha1/`, `v1beta1/`, `v1/` directories
-- **No** `pkg/resources/` directory (versioned mode)
+**Optional**: Use `--versions v1,v2alpha1,v2beta1` to initialize with multiple versions from the start.
 
-### 2. Add Resource to Alpha Version
+### 2. Add Resource to Storage Version
 
 ```bash
-# Add Device resource (auto-selects v1alpha1)
+# Add Device resource (auto-selects storage hub v1)
 fabrica add resource Device
 ```
 
 Output:
 ```
-No version specified, using first alpha version: v1alpha1
-📦 Adding resource Device to infra.example.io/v1alpha1...
+No version specified, using storage hub version: v1
+📦 Adding resource Device to infra.example.io/v1...
   ✓ Added Device to .fabrica.yaml
 
 ✅ Resource added successfully!
+
+Next steps:
+  1. Edit apis/infra.example.io/v1/device_types.go to customize your resource
+  2. Add to other versions with 'fabrica add version <new-version>'
+  3. Run 'fabrica generate' to create handlers
 ```
 
-This creates `apis/infra.example.io/v1alpha1/device_types.go`:
+This creates `apis/infra.example.io/v1/device_types.go`.
 
-```go
-package v1alpha1
+### 3. Customize the Storage Version (v1)
 
-import (
-    "context"
-    "github.com/openchami/fabrica/pkg/fabrica"
-)
-
-// Device represents a device resource
-type Device struct {
-    APIVersion string           `json:"apiVersion"`
-    Kind       string           `json:"kind"`
-    Metadata   fabrica.Metadata `json:"metadata"`
-    Spec       DeviceSpec       `json:"spec" validate:"required"`
-    Status     DeviceStatus     `json:"status,omitempty"`
-}
-
-type DeviceSpec struct {
-    Description string `json:"description,omitempty" validate:"max=200"`
-    // Add your spec fields here
-}
-
-type DeviceStatus struct {
-    Phase   string `json:"phase,omitempty"`
-    Message string `json:"message,omitempty"`
-    Ready   bool   `json:"ready"`
-    // Add your status fields here
-}
-
-func (r *Device) GetKind() string {
-    return "Device"
-}
-
-func (r *Device) GetName() string {
-    return r.Metadata.Name
-}
-
-func (r *Device) GetUID() string {
-    return r.Metadata.UID
-}
-
-func (r *Device) Validate(ctx context.Context) error {
-    return nil
-}
-```
-
-### 3. Customize the Alpha Version
-
-Edit `apis/infra.example.io/v1alpha1/device_types.go` to add your fields:
+Edit `apis/infra.example.io/v1/device_types.go` to add your fields:
 
 ```go
 type DeviceSpec struct {
-    Name       string `json:"name" validate:"required"`
-    IPAddress  string `json:"ipAddress" validate:"required,ip"`
-    Location   string `json:"location,omitempty"`
-    DeviceType string `json:"deviceType" validate:"oneof=server switch router"`
-}
-
-type DeviceStatus struct {
-    Health      string `json:"health,omitempty"`
-    LastChecked string `json:"lastChecked,omitempty"`
-    Ready       bool   `json:"ready"`
-}
-```
-
-### 4. Copy to Beta Version
-
-```bash
-# Copy v1alpha1 types to v1beta1
-fabrica add version v1beta1 --from v1alpha1
-```
-
-Output:
-```
-📦 Adding version infra.example.io/v1beta1 (copying from v1alpha1)...
-  ✓ Copied device_types.go
-  ✓ Added v1beta1 to .fabrica.yaml
-
-✅ Version added successfully!
-```
-
-This creates `apis/infra.example.io/v1beta1/device_types.go` with the package updated to `package v1beta1`.
-
-### 5. Evolve the Beta Version
-
-Edit `apis/infra.example.io/v1beta1/device_types.go` to refine the schema:
-
-```go
-type DeviceSpec struct {
-    Name        string            `json:"name" validate:"required"`
     IPAddress   string            `json:"ipAddress" validate:"required,ip"`
     Location    string            `json:"location,omitempty"`
     DeviceType  string            `json:"deviceType" validate:"oneof=server switch router"`
-    Tags        map[string]string `json:"tags,omitempty"` // NEW: Added tags
+    Tags        map[string]string `json:"tags,omitempty"`
     Description string            `json:"description,omitempty"`
 }
 
 type DeviceStatus struct {
-    Health      string      `json:"health,omitempty"`
-    LastChecked string      `json:"lastChecked,omitempty"`
-    Ready       bool        `json:"ready"`
-    Conditions  []Condition `json:"conditions,omitempty"` // NEW: Added conditions
-}
-
-type Condition struct {
-    Type    string `json:"type"`
-    Status  string `json:"status"`
-    Reason  string `json:"reason,omitempty"`
-    Message string `json:"message,omitempty"`
+    Phase       string              `json:"phase,omitempty"`
+    Message     string              `json:"message,omitempty"`
+    Ready       bool                `json:"ready"`
+    LastChecked string              `json:"lastChecked,omitempty"`
+    Conditions  []fabrica.Condition `json:"conditions,omitempty"`
 }
 ```
 
-### 6. Promote to Stable Version
+### 4. (Optional) Add Pre-release Version for Next Major
+
+To demonstrate version evolution, add `v2alpha1` (pre-release for v2).
+
+**First, manually add v2alpha1** to `.fabrica.yaml`:
+
+```yaml
+features:
+  versioning:
+    versions:
+      - v1
+      - v2alpha1  # Add this
+```
+
+Then add the resource to the new version:
 
 ```bash
-# Add Device to v1 (hub/storage version)
-fabrica add resource Device --version v1 --force
+# Add Device to v2alpha1 version
+fabrica add resource Device --version v2alpha1
 ```
 
-Note: Adding to non-alpha/beta versions requires `--force` flag.
+This creates `apis/infra.example.io/v2alpha1/device_types.go`. You can then customize it with experimental v2 features.
 
-Then edit `apis/infra.example.io/v1/device_types.go` to match your stable schema (copy from v1beta1).
+> **Note**: Currently, new versions must be added to `.fabrica.yaml` manually. A future `fabrica add version` command will automate this.
+
+### 5. (Optional) Evolve to Beta
+
+Add v2beta1 to demonstrate progression from alpha → beta:
+
+```yaml
+# Update .fabrica.yaml
+features:
+  versioning:
+    versions:
+      - v1
+      - v2alpha1
+      - v2beta1  # Add this
+```
+
+```bash
+fabrica add resource Device --version v2beta1
+```
+
+Then customize `apis/infra.example.io/v2beta1/device_types.go` with refined v2 features.
+
+### 6. (Optional) Promote to Stable v2
+
+When v2 is ready for production:
+
+```yaml
+# Update .fabrica.yaml
+features:
+  versioning:
+    storage_version: v2  # Change hub to v2
+    versions:
+      - v1               # Keep for backward compatibility
+      - v2alpha1         # Can be removed once v2 is stable
+      - v2beta1          # Can be removed once v2 is stable
+      - v2               # Add stable v2
+```
+
+```bash
+fabrica add resource Device --version v2 --force
+```
+
+Note: `--force` is required when adding to non-alpha versions.
 
 ### 7. Generate Code
 
@@ -232,13 +211,14 @@ go mod tidy
 ```
 
 This generates:
-- Handlers in `pkg/handlers/device/`
-- Storage interface in `pkg/storage/`
-- Client in `pkg/client/`
-- OpenAPI spec
-- Registration code in `pkg/resources/register_generated.go`
+- Handlers in `cmd/server/*_handlers_generated.go`
+- Storage layer in `internal/storage/storage_generated.go`
+- Routes in `cmd/server/routes_generated.go`
+- Client library in `pkg/client/client_generated.go`
+- OpenAPI spec in `cmd/server/openapi_generated.go`
+- Resource registration in `pkg/resources/register_generated.go`
 
-Generated registration imports from the hub version:
+Generated registration imports from the hub (storage) version:
 
 ```go
 // Code generated by fabrica. DO NOT EDIT.
@@ -247,7 +227,7 @@ package resources
 import (
     "fmt"
     "github.com/openchami/fabrica/pkg/codegen"
-    v1 "github.com/example/device-api/apis/infra.example.io/v1"
+    v1 "github.com/user/device-api/apis/infra.example.io/v1"
 )
 
 func RegisterAllResources(gen *codegen.Generator) error {
@@ -392,15 +372,15 @@ type Device struct {
 ### Version Auto-Selection
 
 When adding resources without `--version`:
-1. Auto-selects first alpha version (e.g., `v1alpha1`)
-2. If no alpha version exists, requires explicit `--version` with `--force`
+1. Auto-selects storage_version hub (e.g., `v1`)
+2. This ensures resources are added to the canonical storage version by default
 
 ```bash
-# Auto-selects v1alpha1
+# Auto-selects storage hub (v1 in this example)
 fabrica add resource Device
 
-# Requires --force for non-alpha
-fabrica add resource Device --version v1 --force
+# Explicitly specify a pre-release version if needed
+fabrica add resource Device --version v2alpha1
 ```
 
 ### Storage Version (Hub)

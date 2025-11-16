@@ -105,6 +105,11 @@ or by providing the name of an existing directory.`,
 				opts.storageType = "ent"
 			}
 
+			// If group is specified but no versions, default to storage version
+			if opts.apiGroup != "" && len(opts.apiVersions) == 0 {
+				opts.apiVersions = []string{opts.storageVersion}
+			}
+
 			if opts.interactive {
 				return runInteractiveInit(projectName, opts)
 			}
@@ -511,7 +516,7 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 				ETagAlgorithm: "sha256",
 			},
 			Versioning: VersioningConfig{
-				Enabled:        len(opts.apiVersions) > 0, // Enable if versions specified
+				Enabled:        opts.apiGroup != "", // Enable if group specified
 				Group:          opts.apiGroup,
 				StorageVersion: opts.storageVersion,
 				Versions:       opts.apiVersions,

@@ -185,6 +185,10 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		}
 	}
 
+	// Determine if this is a versioned project (uses apis/ directory structure)
+	// vs legacy mode (uses pkg/resources/ with embedded resource.Resource)
+	isVersioned := g.Config.VersioningEnabled && strings.Contains(resource.Package, "/apis/")
+
 	return map[string]interface{}{
 		"Name":                  resource.Name,
 		"PluralName":            resource.PluralName,
@@ -197,6 +201,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"StorageName":           resource.StorageName,
 		"Tags":                  resource.Tags,
 		"PerResourceVersioning": perResVersioning,
+		"IsVersioned":           isVersioned,
 		"SpecFields":            resource.SpecFields,
 		"Versions":              resource.Versions,
 		"DefaultVersion":        resource.DefaultVersion,
