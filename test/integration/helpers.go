@@ -42,7 +42,14 @@ func NewTestProject(s *suite.Suite, tempDir, name, module, storage string) *Test
 
 // Initialize creates and initializes the fabrica project
 func (p *TestProject) Initialize(fabricaBinary string) error {
-	cmd := exec.Command(fabricaBinary, "init", p.Name, "--module", p.Module, "--storage-type", p.Storage, "--storage")
+	// Always initialize with versioning enabled as legacy mode is deprecated
+	cmd := exec.Command(fabricaBinary, "init", p.Name,
+		"--module", p.Module,
+		"--storage-type", p.Storage,
+		"--storage",
+		"--group", "example.com",
+		"--storage-version", "v1",
+	)
 	cmd.Dir = filepath.Dir(p.Dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

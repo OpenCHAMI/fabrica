@@ -26,7 +26,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
-{{range .Resources}}	"{{.Package}}"
+{{range .UniqueImports}}	"{{.Path}}"
 {{end}})
 
 // ServeOpenAPISpec returns the OpenAPI 3.0 specification

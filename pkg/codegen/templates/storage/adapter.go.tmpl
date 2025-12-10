@@ -15,9 +15,9 @@ import (
 	"{{.ModulePath}}/internal/storage/ent/label"
 	"{{.ModulePath}}/internal/storage/ent/annotation"
 	entresource "{{.ModulePath}}/internal/storage/ent/resource"
-	"github.com/openchami/fabrica/pkg/resource"
-	{{range .Resources}}
-	{{.PackageAlias}} "{{.Package}}"
+	{{if .Config.VersioningEnabled}}"github.com/openchami/fabrica/pkg/fabrica"{{else}}"github.com/openchami/fabrica/pkg/resource"{{end}}
+	{{range .UniqueImports}}
+	{{.Alias}} "{{.Path}}"
 	{{end}}
 )
 
@@ -28,7 +28,7 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 	var apiVersion, kind, name, uid string
 	var spec, status json.RawMessage
 	var labels, annotations map[string]string
-	var createdAt, updatedAt interface{}
+	var createdAt, updatedAt time.Time
 
 	switch v := fabricaResource.(type) {
 	{{range .Resources}}
@@ -65,8 +65,8 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 		SetKind(kind).
 		SetResourceType(kind).
 		SetSpec(spec).
-		SetCreatedAt(createdAt.(time.Time)).
-		SetUpdatedAt(updatedAt.(time.Time))
+		SetCreatedAt(createdAt).
+		SetUpdatedAt(updatedAt)
 
 	if len(status) > 0 && string(status) != "null" {
 		create = create.SetStatus(status)
@@ -83,6 +83,18 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 	{{range .Resources}}
 	case "{{.Name}}":
 		resource := &{{.PackageAlias}}.{{.Name}}{
+			{{if $.Config.VersioningEnabled}}
+			APIVersion: entResource.APIVersion,
+			Kind:       entResource.Kind,
+			Metadata: fabrica.Metadata{
+				Name:        entResource.Name,
+				UID:         entResource.UID,
+				CreatedAt:   entResource.CreatedAt,
+				UpdatedAt:   entResource.UpdatedAt,
+				Labels:      make(map[string]string),
+				Annotations: make(map[string]string),
+			},
+			{{else}}
 			Resource: resource.Resource{
 				APIVersion: entResource.APIVersion,
 				Kind:       entResource.Kind,
@@ -95,6 +107,7 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 					Annotations: make(map[string]string),
 				},
 			},
+			{{end}}
 		}
 
 

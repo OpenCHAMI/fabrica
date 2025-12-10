@@ -33,8 +33,8 @@ import (
 
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
-{{range .Resources}}
-	"{{.Package}}"
+{{range .UniqueImports}}
+	"{{.Path}}"
 {{- end}}
 )
 

@@ -53,7 +53,9 @@ import (
 	"github.com/openchami/fabrica/pkg/resource"
 	"github.com/openchami/fabrica/pkg/validation"
 	"github.com/openchami/fabrica/pkg/versioning"
-	"{{.Package}}"
+	{{range .UniqueImports -}}
+	{{.Alias}} "{{.Path}}"
+	{{end}}
 	"{{.ModulePath}}/internal/storage"
 )
 

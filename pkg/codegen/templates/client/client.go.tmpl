@@ -65,7 +65,7 @@ import (
 	"net/url"
 	"path"
 {{if $hasVersioning}}	"time"{{end}}
-	{{range .Resources}}"{{.Package}}"
+	{{range .UniqueImports}}"{{.Path}}"
 	{{end}}
 )
 

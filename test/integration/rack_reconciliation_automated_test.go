@@ -86,6 +86,9 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 		"--storage-type", "file",
 		"--events",
 		"--reconcile",
+		"--group", "example.com",
+		"--storage-version", "v1",
+		"--storage",
 	)
 	cmd.Dir = s.tempDir
 	output, err := cmd.CombinedOutput()

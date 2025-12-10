@@ -17,8 +17,8 @@ import (
 
 	"{{.ModulePath}}/internal/storage/ent"
 	entresource "{{.ModulePath}}/internal/storage/ent/resource"
-	{{range .Resources}}
-	{{.PackageAlias}} "{{.Package}}"
+	{{range .UniqueImports}}
+	{{.Alias}} "{{.Path}}"
 	{{end}}
 )
 

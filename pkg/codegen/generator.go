@@ -189,6 +189,20 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 	// vs legacy mode (uses pkg/resources/ with embedded resource.Resource)
 	isVersioned := g.Config.VersioningEnabled && strings.Contains(resource.Package, "/apis/")
 
+	// Build unique imports for this resource + all resources
+	imports := make(map[string]string) // path -> alias
+	for _, r := range g.Resources {
+		imports[r.Package] = r.PackageAlias
+	}
+	type Import struct {
+		Path  string
+		Alias string
+	}
+	var uniqueImports []Import
+	for path, alias := range imports {
+		uniqueImports = append(uniqueImports, Import{Path: path, Alias: alias})
+	}
+
 	return map[string]interface{}{
 		"Name":                  resource.Name,
 		"PluralName":            resource.PluralName,
@@ -206,6 +220,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"Versions":              resource.Versions,
 		"DefaultVersion":        resource.DefaultVersion,
 		"APIGroupVersion":       resource.APIGroupVersion,
+		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
 		"Version":               g.Version,
 		"GeneratedAt":           time.Now().Format(time.RFC3339),
@@ -216,17 +231,33 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 // globalTemplateData creates template data for templates that process all resources at once
 // (e.g., models, routes, registration files)
 func (g *Generator) globalTemplateData(templateName string) map[string]interface{} {
+	// Deduplicate imports
+	imports := make(map[string]string) // path -> alias
+	for _, r := range g.Resources {
+		imports[r.Package] = r.PackageAlias
+	}
+
+	type Import struct {
+		Path  string
+		Alias string
+	}
+	var uniqueImports []Import
+	for path, alias := range imports {
+		uniqueImports = append(uniqueImports, Import{Path: path, Alias: alias})
+	}
+
 	return map[string]interface{}{
-		"PackageName": g.PackageName,
-		"ModulePath":  g.ModulePath,
-		"Resources":   g.Resources,
-		"ProjectName": g.extractProjectName(),
-		"StorageType": g.StorageType,
-		"DBDriver":    g.DBDriver,
-		"Config":      g.Config,
-		"Version":     g.Version,
-		"GeneratedAt": time.Now().Format(time.RFC3339),
-		"Template":    templateName,
+		"PackageName":   g.PackageName,
+		"ModulePath":    g.ModulePath,
+		"Resources":     g.Resources,
+		"UniqueImports": uniqueImports,
+		"ProjectName":   g.extractProjectName(),
+		"StorageType":   g.StorageType,
+		"DBDriver":      g.DBDriver,
+		"Config":        g.Config,
+		"Version":       g.Version,
+		"GeneratedAt":   time.Now().Format(time.RFC3339),
+		"Template":      templateName,
 	}
 }
 

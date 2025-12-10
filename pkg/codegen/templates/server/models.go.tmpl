@@ -37,8 +37,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-{{range .Resources}}
-	"{{.Package}}"
+{{range .UniqueImports}}
+	"{{.Path}}"
 {{end}}
 )
 

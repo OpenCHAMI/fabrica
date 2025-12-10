@@ -109,7 +109,9 @@ func (s *RackReconciliationSimpleTestSuite) updateResourceDefinitions() {
 	}
 
 	for resourceName, content := range resources {
-		resourcePath := filepath.Join(s.project.Dir, "pkg", "resources", strings.ToLower(resourceName), strings.ToLower(resourceName)+".go")
+		resourceDir := filepath.Join(s.project.Dir, "apis", "example.com", "v1")
+		s.Require().NoError(os.MkdirAll(resourceDir, 0755))
+		resourcePath := filepath.Join(resourceDir, strings.ToLower(resourceName)+"_types.go")
 		err := os.WriteFile(resourcePath, []byte(content), 0644)
 		s.Require().NoError(err, "failed to write %s resource definition", resourceName)
 		s.T().Logf("Updated resource definition: %s", resourceName)

@@ -35,7 +35,7 @@
 package client
 
 import (
-{{range .Resources}}	"{{.Package}}"
+{{range .UniqueImports}}	"{{.Path}}"
 {{end}}
 )
 

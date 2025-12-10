@@ -799,12 +799,13 @@ func generateVersionedRegistrationCode(modulePath string, config *FabricaConfig,
 	hubVersion := config.Features.Versioning.StorageVersion
 	group := config.Features.Versioning.Group
 
-	for _, resource := range resources {
-		pkg := hubVersion // Package name is the version (e.g., v1)
-		// Import path: module/apis/group/version
-		importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group, hubVersion)
+	// Import the hub version package once
+	pkg := hubVersion // Package name is the version (e.g., v1)
+	// Import path: module/apis/group/version
+	importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group, hubVersion)
+	imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
 
-		imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
+	for _, resource := range resources {
 		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resource))
 		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
 		registrations.WriteString("\t}\n")
