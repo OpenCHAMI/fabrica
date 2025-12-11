@@ -4,7 +4,9 @@
 
 module github.com/openchami/fabrica/test/integration
 
-go 1.24.8
+go 1.24.0
+
+toolchain go1.24.11
 
 replace github.com/openchami/fabrica => ../..
 
@@ -23,5 +25,5 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
+	go.uber.org/zap v1.27.1 // indirect
 )
