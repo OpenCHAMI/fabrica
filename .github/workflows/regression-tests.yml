@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.23.12', '1.24.11', '1.25.5']
+        go-version: ['1.24.11', '1.25.5']
       fail-fast: false
 
     steps:
@@ -48,7 +48,7 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: test-artifacts
+        name: test-artifacts-go-${{ matrix.go-version }}
         path: |
           test/integration/testdata/
         retention-days: 7
