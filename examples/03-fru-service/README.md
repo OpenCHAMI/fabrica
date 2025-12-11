@@ -10,6 +10,8 @@ SPDX-License-Identifier: MIT
 **Difficulty:** Advanced
 **Prerequisites:** Go 1.23+, fabrica CLI installed, SQLite3
 
+> **About This Example:** This directory contains reference code that demonstrates Fabrica's Ent storage features. The `pkg/` directory includes example implementations marked with `//go:build ignore` to prevent them from being compiled as part of the Fabrica repository. When following this guide, you'll generate your own project with Fabrica, and these files serve as documentation and reference.
+
 ## What You'll Build
 
 A Field Replaceable Unit (FRU) inventory service with:

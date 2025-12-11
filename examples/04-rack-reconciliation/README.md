@@ -10,6 +10,8 @@ SPDX-License-Identifier: MIT
 **Difficulty:** Advanced
 **Prerequisites:** Go 1.23+, fabrica CLI installed, understanding of reconciliation patterns
 
+> **About This Example:** This directory contains reference code that demonstrates Fabrica's reconciliation features. The `pkg/` directory includes example implementations marked with `//go:build ignore` to prevent them from being compiled as part of the Fabrica repository. When following this guide, you'll generate your own project and can optionally copy the example implementations (removing the build constraint as shown in the instructions).
+
 ## What You'll Build
 
 A data center rack inventory system that demonstrates **event-driven reconciliation**:
@@ -257,9 +259,16 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, res *rack.Rack) erro
 **You can copy the example implementation:**
 ```bash
 # Copy the complete rack reconciler implementation
+# Note: Remove the first line (//go:build ignore) from the copied file
 cp ../examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go \
    pkg/reconcilers/rack_reconciler.go
+
+# Remove the build constraint (only needed in example repo)
+sed -i.bak '1{/^\/\/go:build ignore$/d;}' pkg/reconcilers/rack_reconciler.go
+rm pkg/reconcilers/rack_reconciler.go.bak 2>/dev/null || true
 ```
+
+> **Note:** The example file includes `//go:build ignore` at the top to prevent it from being built as part of the Fabrica repository. This line should be removed when copying to your project (the `sed` command above handles this automatically).
 
 This example file shows a complete production-ready implementation with:
 - Template-based resource provisioning

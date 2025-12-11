@@ -1,3 +1,7 @@
+//go:build ignore
+
+// The line above is necessary to prevent this file from being included in the main build of fabrica.  You may need to remove it to succeed with the example.
+//
 // Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT

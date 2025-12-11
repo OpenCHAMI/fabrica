@@ -19,6 +19,10 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.23.12', '1.24.11', '1.25.5']
+      fail-fast: false
 
     steps:
     - name: Checkout code
@@ -27,7 +31,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.24'
+        go-version: ${{ matrix.go-version }}
         check-latest: true
 
     - name: Build fabrica
