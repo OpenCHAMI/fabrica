@@ -121,30 +121,15 @@ func (s *VersioningSuite) TestAPIsYamlPlaceholder() {
 	// Create project
 	project := s.createProject("apis-yaml-test", "github.com/test/apis", "file")
 
-	// Initialize project
+	// Initialize project (this already creates apis.yaml with default group)
 	err := project.Initialize(s.fabricaBinary)
 	s.Require().NoError(err, "project initialization should succeed")
 
-	// Add resource
+	// Add resource (this will automatically add to apis/example.com/v1/)
 	err = project.AddResource(s.fabricaBinary, "Sensor")
 	s.Require().NoError(err, "adding resource should succeed")
 
-	// Create apis.yaml to trigger versioning
-	apisYaml := `groups:
-  - name: test.example.io
-    storageVersion: v1
-    versions:
-      - v1alpha1
-      - v1beta1
-      - v1
-    resources:
-      - Sensor
-`
-	apisPath := filepath.Join(project.Dir, "apis.yaml")
-	err = os.WriteFile(apisPath, []byte(apisYaml), 0644)
-	s.Require().NoError(err, "should write apis.yaml")
-
-	// Generate code - should show placeholder message
+	// Generate code - should work with the generated apis.yaml
 	err = project.Generate(s.fabricaBinary)
 	s.Require().NoError(err, "generation should succeed with apis.yaml present")
 
@@ -207,7 +192,7 @@ func (s *VersioningSuite) TestConfigValidation() {
 
 	// Test Case 1: Invalid apis.yaml (storageVersion not in versions)
 	invalidYaml := `groups:
-  - name: test.example.io
+  - name: example.com
     storageVersion: v2
     versions:
       - v1
@@ -218,14 +203,14 @@ func (s *VersioningSuite) TestConfigValidation() {
 	err = os.WriteFile(apisPath, []byte(invalidYaml), 0644)
 	s.Require().NoError(err, "should write invalid apis.yaml")
 
-	// Note: Current implementation shows placeholder, validation would happen in Phase 2
-	// For now, just ensure generation doesn't crash
+	// Validation is now implemented - expect an error for invalid config
 	err = project.Generate(s.fabricaBinary)
-	s.Require().NoError(err, "generation should not crash with apis.yaml")
+	s.Require().Error(err, "generation should fail with invalid apis.yaml")
+	s.Require().Contains(err.Error(), "storageVersion", "error should mention storageVersion validation")
 
 	// Test Case 2: Valid apis.yaml
 	validYaml := `groups:
-  - name: test.example.io
+  - name: example.com
     storageVersion: v1
     versions:
       - v1alpha1
