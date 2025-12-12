@@ -138,7 +138,7 @@ func (s *VersioningSuite) TestAPIsYamlPlaceholder() {
       - v1beta1
       - v1
     resources:
-      - kind: Sensor
+      - Sensor
 `
 	apisPath := filepath.Join(project.Dir, "apis.yaml")
 	err = os.WriteFile(apisPath, []byte(apisYaml), 0644)
@@ -212,7 +212,7 @@ func (s *VersioningSuite) TestConfigValidation() {
     versions:
       - v1
     resources:
-      - kind: Widget
+      - Widget
 `
 	apisPath := filepath.Join(project.Dir, "apis.yaml")
 	err = os.WriteFile(apisPath, []byte(invalidYaml), 0644)
@@ -231,7 +231,7 @@ func (s *VersioningSuite) TestConfigValidation() {
       - v1alpha1
       - v1
     resources:
-      - kind: Widget
+      - Widget
 `
 	err = os.WriteFile(apisPath, []byte(validYaml), 0644)
 	s.Require().NoError(err, "should write valid apis.yaml")
