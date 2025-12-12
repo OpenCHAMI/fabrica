@@ -34,6 +34,19 @@ func readFabricaConfig() (*FabricaConfig, error) {
 	return config, nil
 }
 
+// readAPIsConfig reads apis.yaml when present.
+func readAPIsConfig() (*APIsConfig, error) {
+	cfg, err := LoadAPIsConfig("")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to load apis.yaml: %w", err)
+	}
+
+	return cfg, nil
+}
+
 func newGenerateCommand() *cobra.Command {
 	var (
 		handlers bool
@@ -75,17 +88,33 @@ Examples:
 				fmt.Printf("  Module: %s\n", modulePath)
 			}
 
-			// Discover resources in pkg/resources
-			if debug {
-				fmt.Println("🔍 Discovering resources in pkg/resources/...")
+			apisConfig, err := readAPIsConfig()
+			if err != nil {
+				return err
 			}
-			resources, err := discoverResources()
+
+			if debug {
+				if apisConfig != nil {
+					fmt.Println("🔍 Discovering resources in apis/<group>/<version>/...")
+				} else {
+					fmt.Println("🔍 Discovering resources in pkg/resources/...")
+				}
+			}
+			resources, err := discoverResources(apisConfig)
 			if err != nil {
 				return fmt.Errorf("failed to discover resources: %w", err)
 			}
 
 			if len(resources) == 0 {
-				fmt.Println("⚠️  No resources found in pkg/resources/")
+				if apisConfig != nil {
+					if group, err := apisConfig.primaryGroup(); err == nil {
+						fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", group.Name, group.StorageVersion)
+					} else {
+						fmt.Println("⚠️  No resources found in apis/<group>/<version>/")
+					}
+				} else {
+					fmt.Println("⚠️  No resources found in pkg/resources/")
+				}
 				fmt.Println("   Run 'fabrica add resource <name>' to create a resource first")
 				return nil
 			}
@@ -109,12 +138,16 @@ Examples:
 				}
 			}
 
-			// Always regenerate registration file to ensure all resources are included
-			if debug {
-				fmt.Println("📝 Updating registration file...")
-			}
-			if err := generateRegistrationFile(debug); err != nil {
-				return fmt.Errorf("failed to generate registration file: %w", err)
+			// Auto-generate registration file if missing
+			if needsRegistration {
+				fmt.Println()
+				fmt.Println("📝 Registration file not found, creating it...")
+				if err := generateRegistrationFile(debug, apisConfig); err != nil {
+					return fmt.Errorf("failed to generate registration file: %w", err)
+				}
+				fmt.Println()
+			} else if debug {
+				fmt.Printf("📝 Registration file exists: %s\n", regFile)
 			}
 
 			// Note: We don't run go mod tidy here because:
@@ -420,7 +453,6 @@ type FabricaConfig struct {
 type FeaturesConfig struct {
 	Validation  ValidationConfig  `+"`yaml:\"validation\"`"+`
 	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
-	Versioning  VersioningConfig  `+"`yaml:\"versioning\"`"+`
 	Events      EventsConfig      `+"`yaml:\"events\"`"+`
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
 }
@@ -438,11 +470,6 @@ type ConditionalConfig struct {
 type EventsConfig struct {
 	Enabled bool   `+"`yaml:\"enabled\"`"+`
 	BusType string `+"`yaml:\"bus_type\"`"+`
-}
-
-type VersioningConfig struct {
-	Enabled  bool   `+"`yaml:\"enabled\"`"+`
-	Strategy string `+"`yaml:\"strategy\"`"+`
 }
 
 type StorageConfig struct {
@@ -482,8 +509,6 @@ func main() {
 		gen.Config.ValidationMode = config.Features.Validation.Mode
 		gen.Config.ConditionalEnabled = config.Features.Conditional.Enabled
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
-		gen.Config.VersioningEnabled = config.Features.Versioning.Enabled
-		gen.Config.VersionStrategy = config.Features.Versioning.Strategy
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
 
@@ -498,6 +523,10 @@ func main() {
 		}
 	}
 
+	if _, err := os.Stat("apis.yaml"); err == nil {
+		gen.Config.VersioningEnabled = true
+	}
+
 	if err := resources.RegisterAllResources(gen); err != nil {
 		log.Fatalf("Failed to register resources: %%v", err)
 	}
@@ -506,18 +535,10 @@ func main() {
 `, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
 }
 
-// discoverResources scans for resource definitions in both legacy and versioned modes
-func discoverResources() ([]string, error) {
-	// Load config to determine mode
-	config, err := readFabricaConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// Check if versioning is enabled
-	if config != nil && config.Features.Versioning.Enabled && len(config.Features.Versioning.Versions) > 0 {
-		// Versioned mode: scan apis/<group>/<storage-version>/
-		return discoverVersionedResources(config)
+// discoverResources scans for resource definitions using apis.yaml when present.
+func discoverResources(apisConfig *APIsConfig) ([]string, error) {
+	if apisConfig != nil {
+		return discoverVersionedResources(apisConfig)
 	}
 
 	// Legacy mode: scan pkg/resources/
@@ -525,13 +546,18 @@ func discoverResources() ([]string, error) {
 }
 
 // discoverVersionedResources scans apis/<group>/<storage-version>/ for resource definitions
-func discoverVersionedResources(config *FabricaConfig) ([]string, error) {
+func discoverVersionedResources(apisConfig *APIsConfig) ([]string, error) {
+	group, err := apisConfig.primaryGroup()
+	if err != nil {
+		return nil, err
+	}
+
 	// Use storage version (hub) for generation
-	hubDir := filepath.Join("apis", config.Features.Versioning.Group, config.Features.Versioning.StorageVersion)
+	hubDir := filepath.Join("apis", group.Name, group.StorageVersion)
 
 	if _, err := os.Stat(hubDir); os.IsNotExist(err) {
-		// Hub directory doesn't exist yet, return resources from config
-		return config.Features.Versioning.Resources, nil
+		// Hub directory doesn't exist yet, return resources listed in apis.yaml
+		return group.Resources, nil
 	}
 
 	var resources []string
@@ -669,15 +695,9 @@ func discoverLegacyResources() ([]string, error) {
 }
 
 // generateRegistrationFile creates pkg/resources/register_generated.go
-func generateRegistrationFile(debug bool) error {
+func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 	if !debug {
 		fmt.Println("🔍 Discovering resources...")
-	}
-
-	// Load config to determine mode
-	config, err := readFabricaConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// 1. Read go.mod to get module path
@@ -687,14 +707,16 @@ func generateRegistrationFile(debug bool) error {
 	}
 
 	// 2. Discover resources
-	resources, err := discoverResources()
+	resources, err := discoverResources(apisConfig)
 	if err != nil {
 		return fmt.Errorf("failed to discover resources: %w", err)
 	}
 
 	if len(resources) == 0 {
-		if config != nil && config.Features.Versioning.Enabled {
-			fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", config.Features.Versioning.Group, config.Features.Versioning.StorageVersion)
+		if apisConfig != nil {
+			if group, err := apisConfig.primaryGroup(); err == nil {
+				fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", group.Name, group.StorageVersion)
+			}
 		} else {
 			fmt.Println("⚠️  No resources found in pkg/resources/")
 		}
@@ -708,8 +730,8 @@ func generateRegistrationFile(debug bool) error {
 
 	// 3. Generate registration file
 	var content string
-	if config != nil && config.Features.Versioning.Enabled {
-		content = generateVersionedRegistrationCode(modulePath, config, resources)
+	if apisConfig != nil {
+		content = generateVersionedRegistrationCode(modulePath, apisConfig, resources)
 	} else {
 		content = generateRegistrationCode(modulePath, resources)
 	}
@@ -792,17 +814,17 @@ func RegisterAllResources(gen *codegen.Generator) error {
 }
 
 // generateVersionedRegistrationCode creates registration code for versioned (apis/) mode
-func generateVersionedRegistrationCode(modulePath string, config *FabricaConfig, resources []string) string {
+func generateVersionedRegistrationCode(modulePath string, apisConfig *APIsConfig, resources []string) string {
 	var imports strings.Builder
 	var registrations strings.Builder
 
-	hubVersion := config.Features.Versioning.StorageVersion
-	group := config.Features.Versioning.Group
+	group, _ := apisConfig.primaryGroup()
+	hubVersion := group.StorageVersion
 
 	// Import the hub version package once
 	pkg := hubVersion // Package name is the version (e.g., v1)
 	// Import path: module/apis/group/version
-	importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group, hubVersion)
+	importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group.Name, hubVersion)
 	imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
 
 	for _, resource := range resources {

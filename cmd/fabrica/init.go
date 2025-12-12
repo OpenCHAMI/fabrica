@@ -17,6 +17,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// initOptions holds all command-line flags and configuration for project initialization.
+// These options control which features are enabled, API versioning settings,
+// and storage backend configuration for the new Fabrica project.
 type initOptions struct {
 	interactive bool
 	modulePath  string
@@ -48,7 +51,9 @@ type initOptions struct {
 	dbDriver    string // postgres, mysql, sqlite
 }
 
-// Template data structure
+// templateData is passed to Go templates during project initialization.
+// It contains all project metadata and feature flags needed to generate
+// initial files (main.go, go.mod, README, etc.) with appropriate settings.
 type templateData struct {
 	ProjectName      string
 	ModulePath       string
@@ -68,15 +73,22 @@ type templateData struct {
 	FeaturesText     string
 }
 
+// newInitCommand creates the 'fabrica init' cobra command.
+// This command initializes a new Fabrica project with a .fabrica.yaml config,
+// apis.yaml for versioning, project scaffolding, and initial directories.
+//
+// The command supports both non-interactive (flag-based) and interactive
+// (wizard) modes. Default settings include file storage, strict validation,
+// and a single v1 API version.
 func newInitCommand() *cobra.Command {
 	opts := &initOptions{
-		withStorage:    true,       // Default to enabling storage
-		withVersion:    true,       // Default to enabling version command
-		storageType:    "file",     // Default to file storage
-		dbDriver:       "sqlite",   // Default database
-		validationMode: "strict",   // Default validation mode
-		eventBusType:   "memory",   // Default event bus
-		apiVersions:    []string{}, // No versions by default
+		withStorage:    true,           // Default to enabling storage
+		withVersion:    true,           // Default to enabling version command
+		storageType:    "file",         // Default to file storage
+		dbDriver:       "sqlite",       // Default database
+		validationMode: "strict",       // Default validation mode
+		eventBusType:   "memory",       // Default event bus
+		apiVersions:    []string{"v1"}, // Default hub version
 	}
 
 	cmd := &cobra.Command{
@@ -151,6 +163,10 @@ or by providing the name of an existing directory.`,
 	return cmd
 }
 
+// runInteractiveInit runs the interactive project initialization wizard.
+// It prompts the user for project configuration through a series of questions,
+// gathering project name, module path, feature selections, and storage preferences.
+// This provides a more user-friendly experience than remembering all CLI flags.
 func runInteractiveInit(projectName string, opts *initOptions) error {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -267,6 +283,13 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 	return runInit(projectName, opts)
 }
 
+// runInit performs the actual project initialization.
+// It creates the project directory structure, generates initial files from
+// templates, writes .fabrica.yaml and apis.yaml configs, and displays next steps.
+//
+// The function supports initializing in the current directory (projectName=".")
+// or creating a new directory. It checks for existing Fabrica projects to avoid
+// accidental overwrites.
 func runInit(projectName string, opts *initOptions) error {
 	// Determine if we're initializing in current directory
 	inCurrentDir := projectName == "."
@@ -318,25 +341,41 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("✅ Project initialized successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	if opts.apiGroup != "" && len(opts.apiVersions) > 0 {
+	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
+	if group, err := apiConfig.primaryGroup(); err == nil {
 		fmt.Printf("  1. Add resources with 'fabrica add resource <name> --version <version>'\n")
-		fmt.Printf("  2. Define types in apis/%s/<version>/*_types.go\n", opts.apiGroup)
+		fmt.Printf("  2. Define types in apis/%s/<version>/*_types.go\n", group.Name)
 	} else {
-		fmt.Println("  1. Define your resources in pkg/resources/")
+		fmt.Println("  1. Define your resources in apis/<group>/<version>/*_types.go")
 	}
-	fmt.Println("  2. Run 'fabrica generate' to generate code")
-	fmt.Println("  3. Run 'go mod tidy' to update dependencies")
-	fmt.Println("  4. Start development with 'go run ./cmd/server/'")
+	fmt.Println("  3. Run 'fabrica generate' to generate code")
+	fmt.Println("  4. Run 'go mod tidy' to update dependencies")
+	fmt.Println("  5. Start development with 'go run ./cmd/server/'")
 	fmt.Println()
 
 	return nil
 }
 
+// createProjectStructure creates the directory tree and files for a new project.
+// It generates main.go, go.mod, README.md, .gitignore, and stub storage files
+// from embedded templates, and writes both .fabrica.yaml and apis.yaml configs.
+//
+// The function creates:
+//   - cmd/server/ directory with main.go
+//   - internal/storage/ directory for storage implementations
+//   - apis/<group>/<version>/ directories for each configured version
+//   - Root config files (.fabrica.yaml, apis.yaml, go.mod, README.md, .gitignore)
 func createProjectStructure(targetDir, projectName string, opts *initOptions) error {
 	// Normalize database driver name (sqlite -> sqlite3 for Go driver compatibility)
 	dbDriver := opts.dbDriver
 	if dbDriver == "sqlite" {
 		dbDriver = "sqlite3"
+	}
+
+	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
+	group, err := apiConfig.primaryGroup()
+	if err != nil {
+		return err
 	}
 
 	// Template data
@@ -368,15 +407,9 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		"internal/storage",
 	}
 
-	// Create versioned apis/ structure if versioning enabled
-	if len(opts.apiVersions) > 0 && opts.apiGroup != "" {
-		for _, version := range opts.apiVersions {
-			versionDir := filepath.Join("apis", opts.apiGroup, version)
-			dirs = append(dirs, versionDir)
-		}
-	} else {
-		// Legacy: create pkg/resources/ if no versioning
-		dirs = append(dirs, "pkg/resources")
+	for _, version := range group.Versions {
+		versionDir := filepath.Join("apis", group.Name, version)
+		dirs = append(dirs, versionDir)
 	}
 
 	for _, dir := range dirs {
@@ -411,6 +444,12 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
+	// Create apis.yaml to declare groups and versions
+	if err := SaveAPIsConfig(targetDir, apiConfig); err != nil {
+		return fmt.Errorf("failed to write %s: %w", APIsConfigFileName, err)
+	}
+	fmt.Printf("  ├─ Created %s (group %s, storage %s)\n", APIsConfigFileName, group.Name, group.StorageVersion)
+
 	// Create stub storage files if storage is enabled
 	if opts.withStorage {
 		if err := createStubStorage(targetDir, data); err != nil {
@@ -421,6 +460,11 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	return nil
 }
 
+// generateFromTemplate executes a named template and writes the result to a file.
+// It loads templates from the embedded filesystem (pkg/codegen/templates/),
+// applies the provided data, and writes the rendered output.
+//
+// Template functions include toLower and toUpper for string manipulation.
 func generateFromTemplate(templateName, outputPath string, data templateData) error {
 	// Read template content from embedded filesystem
 	tmplContent, err := codegen.GetEmbeddedTemplates().ReadFile("templates/" + templateName)
@@ -452,6 +496,9 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 	return nil
 }
 
+// generateFeaturesText creates a human-readable list of enabled features
+// for inclusion in the generated README.md. It inspects the templateData
+// and formats a bullet list of authentication, storage, and metrics features.
 func generateFeaturesText(data templateData) string {
 	var features []string
 
@@ -476,7 +523,13 @@ func generateFeaturesText(data templateData) string {
 	return strings.Join(features, "\n")
 }
 
-// createFabricaConfig creates a .fabrica.yaml configuration file to preserve project settings
+// createFabricaConfig creates the .fabrica.yaml configuration file.
+// It builds a FabricaConfig from initOptions and writes it to the target directory.
+// The config preserves project settings for subsequent 'fabrica generate' invocations.
+//
+// Note: The Versioning field in FeaturesConfig is populated for backward
+// compatibility but is deprecated. API versioning configuration should be
+// edited in apis.yaml instead.
 func createFabricaConfig(targetDir string, opts *initOptions) error {
 	// Extract project name from module path or target directory
 	projectName := filepath.Base(targetDir)
@@ -560,7 +613,11 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 	return nil
 }
 
-// checkExistingProject checks if the directory already contains a Fabrica project
+// checkExistingProject verifies the directory doesn't already contain a Fabrica project.
+// It looks for telltale files like cmd/server/main.go and pkg/resources/ to avoid
+// accidentally overwriting an existing project.
+//
+// Returns an error if any Fabrica-specific files are found.
 func checkExistingProject(dir string) error {
 	fabricaFiles := []string{
 		"cmd/server/main.go",
@@ -577,7 +634,13 @@ func checkExistingProject(dir string) error {
 	return nil
 }
 
-// createStubStorage creates stub storage files to prevent import errors before generate
+// createStubStorage creates placeholder storage files to prevent import errors.
+// These stubs allow the generated main.go to compile before 'fabrica generate'
+// is run for the first time. The stubs are replaced by actual implementations
+// during code generation.
+//
+// For file storage, creates a simple stub.go. For Ent storage, creates additional
+// stub directories (ent/, ent/migrate/, ent/schema/) that Ent will populate.
 func createStubStorage(targetDir string, data templateData) error {
 	storageDir := filepath.Join(targetDir, "internal", "storage")
 

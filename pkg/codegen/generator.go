@@ -154,7 +154,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			ValidationMode:     "strict",
 			ConditionalEnabled: true,
 			ETagAlgorithm:      "sha256",
-			VersioningEnabled:  true,
+			VersioningEnabled:  false,
 			VersionStrategy:    "header",
 			EventsEnabled:      false,
 			EventBusType:       "memory",

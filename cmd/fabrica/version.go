@@ -58,19 +58,21 @@ func runAddVersion(newVersion string, opts *versionOptions) error {
 		return fmt.Errorf("not a fabrica project (no .fabrica.yaml found)")
 	}
 
-	// Load config
-	config, err := LoadConfig("")
+	apisConfig, err := LoadAPIsConfig("")
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("apis.yaml not found; run 'fabrica init' to create it")
+		}
+		return fmt.Errorf("failed to load apis.yaml: %w", err)
 	}
 
-	// Ensure versioning is enabled
-	if !config.Features.Versioning.Enabled {
-		return fmt.Errorf("versioning is not enabled in .fabrica.yaml")
+	group, err := apisConfig.primaryGroup()
+	if err != nil {
+		return err
 	}
 
 	// Validate new version doesn't already exist
-	for _, v := range config.Features.Versioning.Versions {
+	for _, v := range group.Versions {
 		if v == newVersion {
 			return fmt.Errorf("version %s already exists", newVersion)
 		}
@@ -84,35 +86,33 @@ func runAddVersion(newVersion string, opts *versionOptions) error {
 	// Determine source version
 	sourceVersion := opts.from
 	if sourceVersion == "" {
-		// Find latest version (last in list)
-		if len(config.Features.Versioning.Versions) == 0 {
+		if len(group.Versions) == 0 {
 			return fmt.Errorf("no existing versions found to copy from")
 		}
-		sourceVersion = config.Features.Versioning.Versions[len(config.Features.Versioning.Versions)-1]
+		sourceVersion = group.Versions[len(group.Versions)-1]
 		fmt.Printf("No --from specified, copying from latest version: %s\n", sourceVersion)
 	} else {
-		// Validate source version exists
 		found := false
-		for _, v := range config.Features.Versioning.Versions {
+		for _, v := range group.Versions {
 			if v == sourceVersion {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("source version %s not found (available: %v)", sourceVersion, config.Features.Versioning.Versions)
+			return fmt.Errorf("source version %s not found (available: %v)", sourceVersion, group.Versions)
 		}
 	}
 
-	sourceDir := filepath.Join("apis", config.Features.Versioning.Group, sourceVersion)
-	targetDir := filepath.Join("apis", config.Features.Versioning.Group, newVersion)
+	sourceDir := filepath.Join("apis", group.Name, sourceVersion)
+	targetDir := filepath.Join("apis", group.Name, newVersion)
 
 	// Check source directory exists
 	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
 		return fmt.Errorf("source version directory not found: %s", sourceDir)
 	}
 
-	fmt.Printf("📦 Adding version %s/%s (copying from %s)...\n", config.Features.Versioning.Group, newVersion, sourceVersion)
+	fmt.Printf("📦 Adding version %s/%s (copying from %s)...\n", group.Name, newVersion, sourceVersion)
 
 	// Create target directory
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -152,22 +152,22 @@ func runAddVersion(newVersion string, opts *versionOptions) error {
 	}
 
 	// Update config to add new version
-	config.Features.Versioning.Versions = append(config.Features.Versioning.Versions, newVersion)
-	if err := SaveConfig("", config); err != nil {
-		return fmt.Errorf("failed to update config: %w", err)
+	group.Versions = append(group.Versions, newVersion)
+	if err := SaveAPIsConfig("", apisConfig); err != nil {
+		return fmt.Errorf("failed to update apis.yaml: %w", err)
 	}
 
-	fmt.Printf("  ✓ Added %s to .fabrica.yaml\n", newVersion)
+	fmt.Printf("  ✓ Added %s to apis.yaml\n", newVersion)
 
 	fmt.Println()
 	fmt.Println("✅ Version added successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Printf("  1. Edit types in apis/%s/%s/ to evolve the API schema\n", config.Features.Versioning.Group, newVersion)
-	if newVersion == config.Features.Versioning.StorageVersion {
+	fmt.Printf("  1. Edit types in apis/%s/%s/ to evolve the API schema\n", group.Name, newVersion)
+	if newVersion == group.StorageVersion {
 		fmt.Println("  2. This is the storage version - it will be used as the hub")
 	} else {
-		fmt.Printf("  2. Implement conversions to/from hub (%s)\n", config.Features.Versioning.StorageVersion)
+		fmt.Printf("  2. Implement conversions to/from hub (%s)\n", group.StorageVersion)
 	}
 	fmt.Println("  3. Run 'fabrica generate' to create handlers")
 	fmt.Println()

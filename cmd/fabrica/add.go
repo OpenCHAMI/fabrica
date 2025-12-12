@@ -109,55 +109,46 @@ func runAddResource(resourceName string, opts *addOptions) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Determine target version and directory
-	var targetDir string
-	var isVersioned bool
-
-	if config.Features.Versioning.Enabled && len(config.Features.Versioning.Versions) > 0 {
-		isVersioned = true
-
-		// Require group to be set for versioned projects
-		if config.Features.Versioning.Group == "" {
-			return fmt.Errorf("versioning is enabled but features.versioning.group is not set in .fabrica.yaml.\nPlease set the API group (e.g., 'infra.example.io') in your configuration")
+	apisConfig, err := LoadAPIsConfig("")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("apis.yaml not found; run 'fabrica init' to create it")
 		}
-
-		// Version is required for versioned projects
-		if opts.version == "" {
-			// Auto-select storage version (hub) if no version specified
-			if config.Features.Versioning.StorageVersion != "" {
-				opts.version = config.Features.Versioning.StorageVersion
-				fmt.Printf("No version specified, using storage hub version: %s\n", opts.version)
-			} else {
-				return fmt.Errorf("no --version specified and no storage_version configured.\nPlease specify a version with --version or set features.versioning.storage_version in .fabrica.yaml")
-			}
-		} else {
-			// Validate version exists in config
-			found := false
-			for _, v := range config.Features.Versioning.Versions {
-				if v == opts.version {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("version %s not found in .fabrica.yaml (available: %v)", opts.version, config.Features.Versioning.Versions)
-			}
-
-			// Check if adding to non-alpha without --force
-			if !strings.Contains(opts.version, "alpha") && !opts.force {
-				return fmt.Errorf("adding resource to non-alpha version %s requires --force flag", opts.version)
-			}
-		}
-
-		targetDir = filepath.Join("apis", config.Features.Versioning.Group, opts.version)
-	} else {
-		// Legacy mode is deprecated
-		return fmt.Errorf("legacy mode (pkg/resources/) is deprecated.\nPlease enable versioning in .fabrica.yaml:\n\nfeatures:\n  versioning:\n    enabled: true\n    group: your.api.group\n    storage_version: v1\n    versions:\n      - v1")
+		return fmt.Errorf("failed to load apis.yaml: %w", err)
 	}
+
+	group, err := apisConfig.primaryGroup()
+	if err != nil {
+		return err
+	}
+
+	// Determine target version and directory
+	isVersioned := true
+	if opts.version == "" {
+		opts.version = group.StorageVersion
+		fmt.Printf("No version specified, using storage hub version: %s\n", opts.version)
+	} else {
+		found := false
+		for _, v := range group.Versions {
+			if v == opts.version {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("version %s not found in apis.yaml (available: %v)", opts.version, group.Versions)
+		}
+
+		if !strings.Contains(opts.version, "alpha") && !opts.force {
+			return fmt.Errorf("adding resource to non-alpha version %s requires --force flag", opts.version)
+		}
+	}
+
+	targetDir := filepath.Join("apis", group.Name, opts.version)
 
 	fmt.Printf("📦 Adding resource %s", resourceName)
 	if isVersioned {
-		fmt.Printf(" to %s/%s...\n", config.Features.Versioning.Group, opts.version)
+		fmt.Printf(" to %s/%s...\n", group.Name, opts.version)
 	} else {
 		fmt.Println("...")
 	}
@@ -175,27 +166,17 @@ func runAddResource(resourceName string, opts *addOptions) error {
 		resourceFile = filepath.Join(targetDir, opts.packageName+".go")
 	}
 
-	if err := generateResourceFile(resourceFile, resourceName, isVersioned, opts, config); err != nil {
+	if err := generateResourceFile(resourceFile, resourceName, isVersioned, opts, config.Project.Module, group.StorageVersion, group.Name); err != nil {
 		return err
 	}
 
-	// Update config to add resource to versioning.resources list
+	// Update apis.yaml to include the resource
 	if isVersioned {
-		// Check if resource already in list
-		found := false
-		for _, r := range config.Features.Versioning.Resources {
-			if r == resourceName {
-				found = true
-				break
-			}
+		apisConfig.addResource(resourceName)
+		if err := SaveAPIsConfig("", apisConfig); err != nil {
+			return fmt.Errorf("failed to update apis.yaml: %w", err)
 		}
-		if !found {
-			config.Features.Versioning.Resources = append(config.Features.Versioning.Resources, resourceName)
-			if err := SaveConfig("", config); err != nil {
-				return fmt.Errorf("failed to update config: %w", err)
-			}
-			fmt.Printf("  ✓ Added %s to .fabrica.yaml\n", resourceName)
-		}
+		fmt.Printf("  ✓ Added %s to apis.yaml\n", resourceName)
 	}
 
 	fmt.Println()
@@ -215,7 +196,7 @@ func runAddResource(resourceName string, opts *addOptions) error {
 	return nil
 }
 
-func generateResourceFile(filePath, resourceName string, isVersioned bool, opts *addOptions, config *FabricaConfig) error {
+func generateResourceFile(filePath, resourceName string, isVersioned bool, opts *addOptions, modulePath, hubVersion, groupName string) error {
 	var packageName string
 	if isVersioned {
 		// Use version as package name (e.g., v1alpha1)
@@ -225,10 +206,7 @@ func generateResourceFile(filePath, resourceName string, isVersioned bool, opts 
 	}
 
 	// Determine if this is the hub version (storage version)
-	isHub := false
-	if isVersioned && config != nil {
-		isHub = (opts.version == config.Features.Versioning.StorageVersion)
-	}
+	isHub := isVersioned && hubVersion != "" && opts.version == hubVersion
 
 	content := fmt.Sprintf(`// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
@@ -245,14 +223,11 @@ import (
 	"github.com/openchami/fabrica/pkg/fabrica"`
 
 		// Add hub package import for spoke versions (for conversions)
-		if !isHub && config != nil {
-			modulePath := config.Project.Module
-			hubVersion := config.Features.Versioning.StorageVersion
-			group := config.Features.Versioning.Group
+		if !isHub && hubVersion != "" && groupName != "" && modulePath != "" {
 			hubPackage := strings.ReplaceAll(hubVersion, ".", "")
 
 			content += `
-	` + hubPackage + ` "` + modulePath + `/apis/` + group + `/` + hubVersion + `"`
+	` + hubPackage + ` "` + modulePath + `/apis/` + groupName + `/` + hubVersion + `"`
 		}
 
 		content += `
@@ -376,9 +351,7 @@ func (r *` + resourceName + `) IsHub() {}
 		}
 
 		// Add conversion stubs for non-hub versions (spokes)
-		if !isHub && config != nil {
-			hubVersion := config.Features.Versioning.StorageVersion
-			group := config.Features.Versioning.Group
+		if !isHub && hubVersion != "" && groupName != "" {
 			hubPackage := strings.ReplaceAll(hubVersion, ".", "")
 
 			content += `
@@ -389,7 +362,7 @@ func (src *` + resourceName + `) ConvertTo(dstRaw interface{}) error {
 	// TODO: Implement conversion logic from ` + packageName + ` to ` + hubVersion + `
 
 	// Copy common fields
-	dst.APIVersion = "` + group + `/` + hubVersion + `"
+	dst.APIVersion = "` + groupName + `/` + hubVersion + `"
 	dst.Kind = src.Kind
 	dst.Metadata = src.Metadata
 

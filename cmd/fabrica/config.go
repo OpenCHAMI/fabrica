@@ -13,10 +13,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ConfigFileName is the name of the Fabrica project configuration file.
+// This file stores generator behavior settings, feature toggles, and metadata.
+// It is created in the project root by 'fabrica init' and should be committed
+// to version control.
 const ConfigFileName = ".fabrica.yaml"
 
 // FabricaConfig represents the complete configuration for a Fabrica project.
-// This is stored in .fabrica.yaml in the project root.
+// This is stored in .fabrica.yaml in the project root and controls generator
+// behavior, feature toggles, and code generation options.
+//
+// The configuration is split into three main sections:
+//   - Project: metadata about the project (name, module path, creation time)
+//   - Features: feature toggles for validation, events, auth, storage, etc.
+//   - Generation: controls which artifacts to generate (handlers, client, OpenAPI, etc.)
+//
+// Note: API versioning configuration has moved to apis.yaml. The Versioning
+// field in FeaturesConfig is deprecated and ignored by the generator.
 type FabricaConfig struct {
 	Project    ProjectConfig    `yaml:"project"`
 	Features   FeaturesConfig   `yaml:"features"`
@@ -24,6 +37,7 @@ type FabricaConfig struct {
 }
 
 // ProjectConfig contains project metadata.
+// This information is primarily for documentation and tooling purposes.
 type ProjectConfig struct {
 	Name        string    `yaml:"name"`
 	Module      string    `yaml:"module"`
@@ -32,11 +46,15 @@ type ProjectConfig struct {
 }
 
 // FeaturesConfig defines which features are enabled for the project.
+// Each nested config structure controls a specific aspect of code generation
+// and runtime behavior. Features can be toggled independently.
 type FeaturesConfig struct {
-	Validation     ValidationConfig     `yaml:"validation"`
-	Events         EventsConfig         `yaml:"events"`
-	Conditional    ConditionalConfig    `yaml:"conditional"`
-	Versioning     VersioningConfig     `yaml:"versioning"`
+	Validation  ValidationConfig  `yaml:"validation"`
+	Events      EventsConfig      `yaml:"events"`
+	Conditional ConditionalConfig `yaml:"conditional"`
+	// Deprecated: versioning config now lives in apis.yaml. This is preserved
+	// for backward compatibility but ignored by generators.
+	Versioning     VersioningConfig     `yaml:"versioning,omitempty"`
 	Auth           AuthConfig           `yaml:"auth"`
 	Storage        StorageConfig        `yaml:"storage"`
 	Metrics        MetricsConfig        `yaml:"metrics,omitempty"`
@@ -44,39 +62,59 @@ type FeaturesConfig struct {
 }
 
 // ValidationConfig controls validation behavior.
+// Determines whether struct field validation is enabled and how validation
+// failures are handled (strict errors, warnings, or disabled).
 type ValidationConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Mode    string `yaml:"mode"` // strict, warn, disabled
 }
 
 // EventsConfig controls CloudEvents integration.
+// When enabled, the generator emits CloudEvents for resource lifecycle
+// operations (create, update, delete) and condition changes. Supported
+// bus types include memory (in-process), nats, and kafka.
 type EventsConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	BusType string `yaml:"bus_type"` // memory, nats, kafka
 }
 
 // ConditionalConfig controls ETag and conditional request handling.
+// When enabled, generates middleware for If-Match, If-None-Match,
+// If-Modified-Since, and If-Unmodified-Since headers. Supports sha256
+// and md5 ETag algorithms.
 type ConditionalConfig struct {
 	Enabled       bool   `yaml:"enabled"`
 	ETagAlgorithm string `yaml:"etag_algorithm"` // sha256, md5
 }
 
 // VersioningConfig controls API versioning (hub/spoke model).
+//
+// Deprecated: API versioning configuration has moved to apis.yaml in the
+// project root. This structure is preserved for backward compatibility with
+// existing projects but is no longer read by code generators. New projects
+// should configure versioning in apis.yaml instead.
+//
+// See docs/apis-yaml.md for the current versioning configuration format.
 type VersioningConfig struct {
-	Enabled        bool     `yaml:"enabled"`
-	Group          string   `yaml:"group"`           // e.g., "infra.example.io"
-	StorageVersion string   `yaml:"storage_version"` // Hub version (e.g., "v1")
-	Versions       []string `yaml:"versions"`        // All versions including hub (e.g., ["v1alpha1", "v1beta1", "v1"])
-	Resources      []string `yaml:"resources"`       // Resource kinds (e.g., ["Device", "Sensor"])
+	Enabled        bool     `yaml:"enabled,omitempty"`
+	Group          string   `yaml:"group,omitempty"`
+	StorageVersion string   `yaml:"storage_version,omitempty"`
+	Versions       []string `yaml:"versions,omitempty"`
+	Resources      []string `yaml:"resources,omitempty"`
 }
 
 // AuthConfig controls authorization/authentication.
+// When enabled, generates middleware and handlers for authentication.
+// Supported providers include jwt, oauth2, and custom implementations.
 type AuthConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Provider string `yaml:"provider,omitempty"` // jwt, oauth2, custom
 }
 
-// StorageConfig controls storage backend.
+// StorageConfig controls storage backend configuration.
+// Determines the persistence layer for resources. Type can be 'file'
+// (file-based JSON storage) or 'ent' (database with Ent ORM).
+// When using 'ent', DBDriver specifies the database (postgres, mysql, sqlite).
 type StorageConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Type     string `yaml:"type"`                // file, ent
@@ -84,12 +122,17 @@ type StorageConfig struct {
 }
 
 // MetricsConfig controls metrics/observability.
+// When enabled, generates Prometheus metrics endpoints and instrumentation
+// for monitoring resource operations, request latency, and error rates.
 type MetricsConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Provider string `yaml:"provider,omitempty"` // prometheus, datadog
 }
 
 // ReconciliationConfig controls reconciliation framework.
+// When enabled, generates a Kubernetes-style controller-runtime reconciliation
+// loop for event-driven resource management. WorkerCount controls parallelism,
+// and RequeueDelay sets the default backoff for failed reconciliations.
 type ReconciliationConfig struct {
 	Enabled      bool `yaml:"enabled"`
 	WorkerCount  int  `yaml:"worker_count,omitempty"`  // Number of reconciler workers (default: 5)
@@ -97,6 +140,9 @@ type ReconciliationConfig struct {
 }
 
 // GenerationConfig controls what gets generated.
+// Each boolean field toggles generation of a specific artifact type.
+// This allows incremental regeneration (e.g., regenerate only handlers
+// without touching storage code).
 type GenerationConfig struct {
 	Handlers       bool `yaml:"handlers"`
 	Storage        bool `yaml:"storage"`
@@ -107,8 +153,11 @@ type GenerationConfig struct {
 	Reconciliation bool `yaml:"reconciliation"`
 }
 
-// LoadConfig reads .fabrica.yaml from the specified directory.
-// If dir is empty, uses current directory.
+// LoadConfig reads and parses .fabrica.yaml from the specified directory.
+// If dir is empty, the current working directory is used.
+//
+// Returns an error if the file doesn't exist or cannot be parsed.
+// Does not perform validation; use ValidateConfig separately if needed.
 func LoadConfig(dir string) (*FabricaConfig, error) {
 	if dir == "" {
 		var err error
@@ -133,6 +182,9 @@ func LoadConfig(dir string) (*FabricaConfig, error) {
 }
 
 // SaveConfig writes .fabrica.yaml to the specified directory.
+// The configuration is validated before writing to ensure consistency.
+// Returns an error if validation fails or the write operation fails.
+// The file is written with 0644 permissions.
 func SaveConfig(targetDir string, config *FabricaConfig) error {
 	// Validate before saving
 	if err := ValidateConfig(config); err != nil {
@@ -152,7 +204,17 @@ func SaveConfig(targetDir string, config *FabricaConfig) error {
 	return nil
 }
 
-// ValidateConfig validates all configuration fields.
+// ValidateConfig validates all configuration fields for correctness and consistency.
+//
+// Validation rules include:
+//   - Project name and module path are required
+//   - Validation mode must be 'strict', 'warn', or 'disabled'
+//   - Event bus type must be 'memory', 'nats', or 'kafka'
+//   - ETag algorithm must be 'sha256' or 'md5'
+//   - Storage type must be 'file' or 'ent'
+//   - DB driver (when using ent) must be 'postgres', 'mysql', 'sqlite', or 'sqlite3'
+//
+// Returns a descriptive error if any validation rule is violated.
 func ValidateConfig(config *FabricaConfig) error {
 	// Validate project fields
 	if config.Project.Name == "" {
@@ -191,11 +253,7 @@ func ValidateConfig(config *FabricaConfig) error {
 		}
 	}
 
-	// Validate versioning strategy
-	// Validate versioning configuration
-	if err := ValidateVersioning(&config.Features.Versioning); err != nil {
-		return fmt.Errorf("invalid versioning configuration: %w", err)
-	}
+	// Deprecated: versioning config is now driven by apis.yaml and ignored here.
 
 	// Validate storage type
 	if config.Features.Storage.Enabled {
@@ -218,7 +276,21 @@ func ValidateConfig(config *FabricaConfig) error {
 	return nil
 }
 
-// NewDefaultConfig creates a new config with sensible defaults.
+// NewDefaultConfig creates a new configuration with sensible defaults.
+// This is used during project initialization to create a scaffold .fabrica.yaml.
+//
+// Default settings:
+//   - Validation: enabled in strict mode
+//   - Events: disabled
+//   - Conditional requests: enabled with SHA256 ETags
+//   - Auth: disabled
+//   - Storage: file-based (no database)
+//   - Metrics: disabled
+//   - Generation: all enabled except events and reconciliation
+//
+// Parameters:
+//   - name: project name
+//   - module: Go module path (e.g., github.com/user/project)
 func NewDefaultConfig(name, module string) *FabricaConfig {
 	return &FabricaConfig{
 		Project: ProjectConfig{
@@ -269,6 +341,16 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 }
 
 // ValidateVersioning validates the versioning configuration in .fabrica.yaml.
+//
+// Deprecated: This function is preserved for backward compatibility but is no
+// longer used by the generator. API versioning validation now happens via
+// APIsConfig.Validate() when loading apis.yaml.
+//
+// Validation rules (for legacy configs):
+//   - If enabled, group name is required
+//   - If enabled, storageVersion is required
+//   - If enabled, at least one version must be listed
+//   - The storageVersion must appear in the versions list
 func ValidateVersioning(config *VersioningConfig) error {
 	if !config.Enabled {
 		return nil // Validation only applies when enabled

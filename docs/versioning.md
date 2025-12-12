@@ -66,9 +66,11 @@ Fabrica implements **Kubebuilder-style hub/spoke versioning** to provide stable 
 
 ## Quick Start
 
-By default, Fabrica generates resources with a single version (`v1`) that acts as both hub and spoke. To enable multi-version support:
+See the [apis.yaml reference](apis-yaml.md) for the full file structure and field descriptions.
 
-### 1. Create an `apis.yaml` in your generated project:
+By default, Fabrica generates resources with a single version (`v1`) that acts as both hub and spoke. To enable multi-version support, configure the root-level `apis.yaml` (created automatically by `fabrica init`):
+
+### 1. Open or update `apis.yaml` in your project root:
 
 ```yaml
 groups:

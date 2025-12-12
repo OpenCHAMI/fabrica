@@ -224,25 +224,25 @@ open http://localhost:8080/swagger/
 ## Common Workflows
 
 ### 1. Add API Versioning (Hub/Spoke Pattern)
-```bash
-# Create apis.yaml in project root
-cat > apis.yaml << 'EOF'
-groups:
-  - name: api.example
-    versions:
-      - v1       # Storage/hub version (v1)
-      - v1beta1  # Conversion to v1beta1
-      - v1alpha1 # Conversion to v1alpha1
-EOF
 
-# Regenerate
+The root-level `apis.yaml` is created by `fabrica init` and drives version management.
+
+```bash
+# Add a new version (copies types from latest version)
+fabrica add version v1beta1
+
+# Or copy from a specific version
+fabrica add version v1beta1 --from v1alpha1
+
+# apis.yaml is updated automatically; regenerate to create handlers
 fabrica generate
 ```
 
 Now your API supports:
-- `api.example/v1` - Current stable (storage version)
-- `api.example/v1beta1` - Experimental
-- `api.example/v1alpha1` - Alpha
+- `infra.example.io/v1` - Storage (hub) version
+- `infra.example.io/v1beta1` - New spoke version
+
+For details, see [docs/apis-yaml.md](docs/apis-yaml.md) and [docs/versioning.md](docs/versioning.md).
 
 ### 2. Switch from File to Database Storage
 ```bash

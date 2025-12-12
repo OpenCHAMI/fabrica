@@ -19,6 +19,15 @@ SPDX-License-Identifier: MIT
 > **🏗️ Code Generator for Go REST APIs**
 > Transform Go structs into production-ready REST APIs with OpenAPI specs, storage backends, and middleware in minutes.
 
+## 📚 Documentation & Resources
+
+| Resource | Description |
+|----------|-------------|
+| **[Full Documentation](https://openchami.github.io/fabrica/)** | Complete guides, tutorials, and best practices |
+| **[API Reference (GoDoc)](https://pkg.go.dev/github.com/openchami/fabrica)** | Comprehensive Go package documentation |
+| **[Getting Started Guide](docs/guides/getting-started.md)** | Step-by-step introduction to Fabrica |
+| **[Examples](examples/)** | Hands-on learning with real-world projects |
+
 Fabrica is a powerful code generation tool that accelerates API development by transforming simple Go struct definitions into complete, production-ready REST APIs. Define your resources once, and Fabrica generates everything you need: handlers, storage layers, clients, validation, OpenAPI documentation, and more.
 
 ## ✨ Key Features
@@ -117,7 +126,7 @@ type DeviceStatus struct {
 fabrica generate
 ```
 
-This generates handlers, storage, and client code. By default, APIs expose `<group>/v1`. To add multiple versions (`v1alpha1`, `v1beta1`, etc.), create an `apis.yaml` file (see [Hub/Spoke Versioning Guide](docs/versioning.md)).
+This generates handlers, storage, and client code. By default, APIs expose `<group>/v1`. Your project includes a root-level `apis.yaml` file defining API groups and versions (see [Hub/Spoke Versioning Guide](docs/versioning.md)). To add more versions, run `fabrica add version <new-version>`.
 
 **5. Update dependencies:**
 
@@ -304,25 +313,32 @@ type DeviceStatus struct {
 > **💡 Pro Tip:** Focus on designing your `spec` and `status` structs - Fabrica handles all the envelope complexity automatically!
 
 
-## 📖 Documentation
+## 📖 In-Depth Documentation
 
-**🚀 Getting Started:**
+**🚀 Quick Learning:**
 - [Complete Getting Started Guide](docs/guides/getting-started.md) - Step-by-step tutorial
-- [Quick Start Examples](examples/) - Hands-on learning
+- [Quickstart Examples](examples/) - Hands-on learning with working code
+- [Full Documentation Website](https://openchami.github.io/fabrica/) - All guides and tutorials
 
 **🏗️ Architecture & Design:**
 - [Architecture Overview](docs/reference/architecture.md) - Understanding Fabrica's design principles
 - [Resource Model Guide](docs/guides/resource-model.md) - How to design and define resources
+- [API Versioning Guide](docs/guides/versioning.md) - Hub/Spoke versioning patterns
+- [API Configuration Reference](docs/apis-yaml.md) - apis.yaml structure and workflows
 
 **💾 Storage & Data:**
 - [Storage Systems](docs/guides/storage.md) - File vs database backends comparison
 - [Ent Storage Integration](docs/guides/storage-ent.md) - Database setup and configuration
 
 **⚙️ Advanced Topics:**
-- [Code Generation](docs/reference/codegen.md) - How templates work and customization
+- [Code Generation Reference](docs/reference/codegen.md) - How templates work and customization
 - [Validation System](docs/guides/validation.md) - Request validation and error handling
-- [Event System](docs/guides/events.md) - CloudEvents integration
+- [Event System](docs/guides/events.md) - CloudEvents integration and event-driven patterns
 - [Reconciliation](docs/guides/reconciliation.md) - Controller pattern for resource management
+- [Conditional Requests & PATCH](docs/guides/conditional-and-patch.md) - ETag-based preconditions
+
+**📖 API Documentation:**
+- [GoDoc Package Reference](https://pkg.go.dev/github.com/openchami/fabrica) - Complete Go API documentation
 
 ## 🤝 Contributing
 
