@@ -562,7 +562,7 @@ func discoverVersionedResources(apisConfig *APIsConfig) ([]string, error) {
 
 	var resources []string
 
-	err := filepath.Walk(hubDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(hubDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

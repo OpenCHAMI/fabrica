@@ -384,10 +384,7 @@ func (dst *` + resourceName + `) ConvertFrom(srcRaw interface{}) error {
 	// TODO: Implement conversion logic from ` + hubVersion + ` to ` + packageName + `
 
 	// Copy common fields
-	dst.APIVersion = "` + group + `/` + packageName + `"
-	dst.Kind = src.Kind
-	dst.Metadata = src.Metadata
-
+		dst.APIVersion = "` + groupName + `/` + packageName + `"
 	// TODO: Convert Spec fields
 	// Map fields from src.Spec to dst.Spec
 	// Handle any field additions, removals, or transformations
