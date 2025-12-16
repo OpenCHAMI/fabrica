@@ -568,13 +568,6 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 				Enabled:       true, // Core feature always enabled
 				ETagAlgorithm: "sha256",
 			},
-			Versioning: VersioningConfig{
-				Enabled:        opts.apiGroup != "", // Enable if group specified
-				Group:          opts.apiGroup,
-				StorageVersion: opts.storageVersion,
-				Versions:       opts.apiVersions,
-				Resources:      []string{}, // Will be populated when resources added
-			},
 			Auth: AuthConfig{
 				Enabled: opts.withAuth,
 			},

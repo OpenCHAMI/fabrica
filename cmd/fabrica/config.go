@@ -49,12 +49,9 @@ type ProjectConfig struct {
 // Each nested config structure controls a specific aspect of code generation
 // and runtime behavior. Features can be toggled independently.
 type FeaturesConfig struct {
-	Validation  ValidationConfig  `yaml:"validation"`
-	Events      EventsConfig      `yaml:"events"`
-	Conditional ConditionalConfig `yaml:"conditional"`
-	// Deprecated: versioning config now lives in apis.yaml. This is preserved
-	// for backward compatibility but ignored by generators.
-	Versioning     VersioningConfig     `yaml:"versioning,omitempty"`
+	Validation     ValidationConfig     `yaml:"validation"`
+	Events         EventsConfig         `yaml:"events"`
+	Conditional    ConditionalConfig    `yaml:"conditional"`
 	Auth           AuthConfig           `yaml:"auth"`
 	Storage        StorageConfig        `yaml:"storage"`
 	Metrics        MetricsConfig        `yaml:"metrics,omitempty"`
