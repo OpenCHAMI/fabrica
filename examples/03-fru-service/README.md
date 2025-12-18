@@ -56,14 +56,17 @@ cd fru-service
 **What gets created:**
 ```
 fru-service/
-├── .fabrica.yaml                    # Configuration with ent storage + auth
+├── .fabrica.yaml                    # Configuration with ent storage
+├── apis.yaml                        # API group and version configuration
 ├── cmd/
 │   └── server/
 │       └── main.go                  # Server with Ent setup
 ├── internal/
 │   └── storage/
 │       └── ent/                     # Ent schema directory
-└── pkg/resources/                   # Empty (for FRU resource)
+└── apis/
+    └── example.fabrica.dev/
+        └── v1/                      # Resource definitions
 ```
 
 ### Step 2: Add the FRU Resource
@@ -72,15 +75,11 @@ fru-service/
 fabrica add resource FRU
 ```
 
-### Step 3: Copy the FRU Resource Definition
+### Step 3: Define the FRU Resource
 
-Copy the FRU resource from the example:
+Edit the generated resource file `apis/example.fabrica.dev/v1/fru_types.go` with this structure:
 
-```bash
-cp -r ../../fabrica/examples/03-fru-service/pkg/resources/fru pkg/resources/
-```
-
-Or create your own `pkg/resources/fru/fru.go` with this structure:
+(Or reference the example in `examples/03-fru-service/pkg/resources/fru/fru.go` for guidance)
 
 ```go
 // FRUSpec defines the desired state of FRU

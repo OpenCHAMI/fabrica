@@ -129,12 +129,21 @@ Examples:
 					fmt.Printf("🔍 Detected generated code version: %s\n", generatedVersion)
 				}
 
-				canProceed, err := checkVersionCompatibility(version, generatedVersion, force)
-				if err != nil {
-					return fmt.Errorf("version check failed: %w", err)
+				// Only perform version check if we have actual generated handler files
+				// This allows the first generation after adding resources to proceed
+				handlersExist := false
+				if _, err := os.Stat("cmd/server/routes_generated.go"); err == nil {
+					handlersExist = true
 				}
-				if !canProceed {
-					return fmt.Errorf("regeneration blocked due to version incompatibility (use --force to override)")
+
+				if handlersExist {
+					canProceed, err := checkVersionCompatibility(version, generatedVersion, force)
+					if err != nil {
+						return fmt.Errorf("version check failed: %w", err)
+					}
+					if !canProceed {
+						return fmt.Errorf("regeneration blocked due to version incompatibility (use --force to override)")
+					}
 				}
 			}
 

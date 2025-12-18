@@ -71,10 +71,10 @@ Adds:
 
 ### Custom API Group
 ```bash
-fabrica init my-api --group mycompany.io --storage-version v1
+fabrica init my-api --group mycompany.io
 ```
 
-Results in APIs like: `mycompany.io/v1/resources`
+Results in APIs like: `mycompany.io/v1/resources` (v1 is the default storage version)
 
 ### View All Options
 ```bash

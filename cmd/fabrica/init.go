@@ -343,7 +343,7 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("Next steps:")
 	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
 	if group, err := apiConfig.primaryGroup(); err == nil {
-		fmt.Printf("  1. Add resources with 'fabrica add resource <name> --version <version>'\n")
+		fmt.Printf("  1. Add resources with 'fabrica add resource <name>'\n")
 		fmt.Printf("  2. Define types in apis/%s/<version>/*_types.go\n", group.Name)
 	} else {
 		fmt.Println("  1. Define your resources in apis/<group>/<version>/*_types.go")
@@ -352,6 +352,36 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("  4. Run 'go mod tidy' to update dependencies")
 	fmt.Println("  5. Start development with 'go run ./cmd/server/'")
 	fmt.Println()
+
+	// Additional guidance for reconciliation
+	if opts.withReconcile {
+		fmt.Println("⚠️  Reconciliation Framework Enabled")
+		fmt.Println()
+		fmt.Println("To use reconciliation, you need to implement reconcilers:")
+		fmt.Println()
+		fmt.Println("  1. After running 'fabrica generate', a stub will be created in:")
+		fmt.Println("     pkg/reconcilers/reconcilers_generated.go")
+		fmt.Println()
+		fmt.Println("  2. Create your custom reconciliation logic in pkg/reconcilers/custom.go:")
+		fmt.Println()
+		fmt.Println("     func MyResourceReconciler(ctx context.Context, req *reconcile.Request) error {")
+		fmt.Println("       // Your reconciliation logic here")
+		fmt.Println("       return nil")
+		fmt.Println("     }")
+		fmt.Println()
+		fmt.Println("  3. Register it in pkg/reconcilers/reconcilers.go")
+		fmt.Println("     (See Reconciliation Guide: docs/guides/reconciliation.md)")
+		fmt.Println()
+	}
+
+	// Additional guidance for events
+	if opts.withEvents && !opts.withReconcile {
+		fmt.Println("💡 CloudEvents Enabled")
+		fmt.Println()
+		fmt.Println("Events are emitted for resource lifecycle (create, update, delete).")
+		fmt.Println("See Events Guide: docs/guides/events.md")
+		fmt.Println()
+	}
 
 	return nil
 }

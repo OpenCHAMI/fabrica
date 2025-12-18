@@ -75,17 +75,19 @@ cd device-manager
 fabrica add resource Device
 ```
 
-Edit `pkg/resources/device/device.go`:
+Edit `apis/example.fabrica.dev/v1/device_types.go`:
 
 ```go
-package device
+package v1
 
 import "github.com/openchami/fabrica/pkg/resource"
 
 type Device struct {
-    resource.Resource `json:",inline"`
-    Spec              DeviceSpec   `json:"spec"`
-    Status            DeviceStatus `json:"status,omitempty"`
+    APIVersion string            `json:"apiVersion"`
+    Kind       string            `json:"kind"`
+    Metadata   resource.Metadata `json:"metadata"`
+    Spec       DeviceSpec        `json:"spec"`
+    Status     DeviceStatus      `json:"status,omitempty"`
 }
 
 // DeviceSpec - User-defined desired state
@@ -229,7 +231,7 @@ import (
     "log"
 
     "github.com/example/device-manager/pkg/client"
-    "github.com/example/device-manager/pkg/resources/device"
+    v1 "github.com/example/device-manager/apis/example.fabrica.dev/v1"
 )
 
 func main() {
@@ -240,7 +242,7 @@ func main() {
     }
 
     // User updates device location (spec)
-    spec := device.DeviceSpec{
+    spec := v1.DeviceSpec{
         Location: "datacenter-3",
         Model:    "TempPro-2000",
     }
@@ -274,7 +276,7 @@ import (
     "time"
 
     "github.com/example/device-manager/pkg/client"
-    "github.com/example/device-manager/pkg/resources/device"
+    v1 "github.com/example/device-manager/apis/example.fabrica.dev/v1"
 )
 
 func main() {
@@ -284,7 +286,7 @@ func main() {
     }
 
     // Controller updates device status
-    status := device.DeviceStatus{
+    status := v1.DeviceStatus{
         Phase:    "Ready",
         Health:   "Healthy",
         LastSeen: time.Now().Format(time.RFC3339),
@@ -317,7 +319,7 @@ import (
     "time"
 
     "github.com/example/device-manager/pkg/client"
-    "github.com/example/device-manager/pkg/resources/device"
+    v1 "github.com/example/device-manager/apis/example.fabrica.dev/v1"
 )
 
 type DeviceController struct {

@@ -616,7 +616,8 @@ To migrate existing file-based projects to Ent:
 2. **Initialize Ent:**
    ```bash
    fabrica init new-project --storage=ent --db=postgres
-   cp -r pkg/resources new-project/pkg/
+   # Copy resource definitions if migrating from old pkg/resources/ structure
+   # Note: New projects use apis/<group>/<version>/ structure
    ```
 
 3. **Regenerate with Ent:**

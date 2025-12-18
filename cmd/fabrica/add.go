@@ -136,11 +136,11 @@ func runAddResource(resourceName string, opts *addOptions) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("version %s not found in apis.yaml (available: %v)", opts.version, group.Versions)
+			return fmt.Errorf("version %s not found in apis.yaml (available: %v)\n\nTo add a new version, run: fabrica add version %s", opts.version, group.Versions, opts.version)
 		}
 
 		if !strings.Contains(opts.version, "alpha") && !opts.force {
-			return fmt.Errorf("adding resource to non-alpha version %s requires --force flag", opts.version)
+			return fmt.Errorf("adding resource to non-alpha version %s requires --force flag\n\nStable versions should not have new resources added after release.\nUse --force if you understand the implications, or consider adding to an alpha version first.", opts.version) //nolint:all
 		}
 	}
 

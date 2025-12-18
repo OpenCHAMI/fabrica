@@ -185,17 +185,18 @@ example-name/
 Creates complete project structure:
 - Project directory with Go module
 - `cmd/server/main.go` with commented storage/routes (uncomment after generate)
-- Empty `pkg/resources/` directory
+- `apis.yaml` with API group and version configuration
+- `apis/<group>/<version>/` directories for resource definitions
 - Documentation and examples
 
 ### `fabrica add resource Device`
 
 Creates resource definition template:
-- `pkg/resources/device/device.go` with:
-  - Device struct embedding `resource.Resource`
+- `apis/<group>/<version>/device_types.go` with:
+  - Device struct using flattened envelope (APIVersion, Kind, Metadata, Spec, Status)
   - DeviceSpec and DeviceStatus structs
   - Validate() method stub
-  - Resource registration
+- Updates `apis.yaml` to include Device in resources list
 
 ### `fabrica generate`
 
@@ -209,10 +210,11 @@ Generates complete implementation:
 
 ### What You Write
 
-- **Resource definitions** - Define your Spec and Status fields
+- **Resource definitions** - Define your Spec and Status fields in `apis/<group>/<version>/`
 - **Custom validation** - Implement domain-specific validation logic
 - **Business logic** - Add custom handlers beyond CRUD
 - **Reconciliation** - Implement controllers for declarative workflows
+- **Version conversions** - Implement conversion functions between API versions (hub/spoke)
 
 ## Complete Workflow
 
@@ -225,8 +227,8 @@ cd myapi
 fabrica add resource Device
 fabrica add resource User
 
-# 3. Customize resources (edit pkg/resources/*/...)
-vim pkg/resources/device/device.go
+# 3. Customize resources (edit apis/<group>/<version>/*_types.go)
+vim apis/example.fabrica.dev/v1/device_types.go
 
 # 4. Generate everything
 fabrica generate
@@ -254,19 +256,19 @@ go run ./cmd/server
 
 ```bash
 fabrica add resource MyResource
-# Edit pkg/resources/myresource/myresource.go
+# Edit apis/<group>/<version>/myresource_types.go
 fabrica generate
 go mod tidy  # Update dependencies
-go run ./cmd/server
+go run ./cmd/server/
 ```
 
 ### Modifying an Existing Resource
 
 ```bash
-# Edit pkg/resources/device/device.go
+# Edit apis/<group>/<version>/device_types.go
 fabrica generate  # Regenerates handlers/storage
 go mod tidy  # Update dependencies
-go run ./cmd/server
+go run ./cmd/server/
 ```
 
 ### Switching Storage Backends

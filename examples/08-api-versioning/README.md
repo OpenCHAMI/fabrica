@@ -18,7 +18,7 @@ This example demonstrates Fabrica's API versioning system with a clean, unified 
 **APIs-First Architecture**: Fabrica uses a single source of truth for versioned APIs:
 - All types live in `apis/<group>/<version>/`
 - No redundancy between `pkg/resources/` and `apis/`
-- Single `.fabrica.yaml` configuration (no separate `apis.yaml`)
+- `apis.yaml` configuration for API groups and versions
 - Flattened envelope structure with explicit `APIVersion`, `Kind`, `Metadata` fields
 
 **Version Iteration**: Easy workflow for evolving your API:
@@ -49,7 +49,8 @@ We're building a device management API that needs to support:
 
 ```
 device-api/
-├── .fabrica.yaml               # Unified configuration
+├── .fabrica.yaml               # Feature flags (storage, events, etc.)
+├── apis.yaml                   # API groups and versions
 ├── go.mod
 ├── cmd/
 │   └── server/
@@ -68,21 +69,18 @@ device-api/
 
 ### 1. Initialize Versioned Project
 
-```bash
-# Create project with versioning enabled
+```bash(default)
 fabrica init device-api \
   --module github.com/user/device-api \
-  --group infra.example.io \
-  --storage-version v1
+  --group infra.example.io
 
 cd device-api
 ```
-The generated `.fabrica.yaml` includes:
+The generated `apis.yaml` includes:
 ```yaml
-features:
-  versioning:
-    enabled: true
-    group: infra.example.io
+groups:
+  - name: infra.example.io
+    storageVfra.example.io
     storage_version: v1
     versions:
       - v1
@@ -104,6 +102,8 @@ No version specified, using storage hub version: v1
 📦 Adding resource Device to infra.example.io/v1...
   ✓ Added Device to .fabrica.yaml
 
+✅ Resource added sucapis.yaml
+
 ✅ Resource added successfully!
 
 Next steps:
@@ -112,9 +112,7 @@ Next steps:
   3. Run 'fabrica generate' to create handlers
 ```
 
-This creates `apis/infra.example.io/v1/device_types.go`.
-
-### 3. Customize the Storage Version (v1)
+This creates `apis/infra.example.io/v1/device_types.go` and updates `apis.yaml
 
 Edit `apis/infra.example.io/v1/device_types.go` to add your fields:
 
@@ -142,26 +140,20 @@ To demonstrate version evolution, add `v2alpha1` (pre-release for v2).
 
 **First, manually add v2alpha1** to `.fabrica.yaml`:
 
-```yaml
-features:
-  versioning:
-    versions:
-      - v1
-      - v2alpha1  # Add this
-```
-
-Then add the resource to the new version:
+``Use the CLI to add the version**:
 
 ```bash
-# Add Device to v2alpha1 version
+# Add v2alpha1 version
+fabrica add version v2alpha1
+
+# Add Device to the new version
 fabrica add resource Device --version v2alpha1
 ```
 
-This creates `apis/infra.example.io/v2alpha1/device_types.go`. You can then customize it with experimental v2 features.
-
-> **Note**: Currently, new versions must be added to `.fabrica.yaml` manually. A future `fabrica add version` command will automate this.
-
-### 5. (Optional) Evolve to Beta
+This:
+1. Updates `apis.yaml` to include v2alpha1 in the versions list
+2. Creates `apis/infra.example.io/v2alpha1/device_types.go`
+3. You can then customize it with experimental v2 features
 
 Add v2beta1 to demonstrate progression from alpha → beta:
 
@@ -173,18 +165,11 @@ features:
       - v1
       - v2alpha1
       - v2beta1  # Add this
-```
-
 ```bash
-fabrica add resource Device --version v2beta1
-```
+# Add beta version based on alpha
+fabrica add version v2beta1 --from v2alpha1
 
-Then customize `apis/infra.example.io/v2beta1/device_types.go` with refined v2 features.
-
-### 6. (Optional) Promote to Stable v2
-
-When v2 is ready for production:
-
+# This copies types from v2alpha1 to
 ```yaml
 # Update .fabrica.yaml
 features:
@@ -200,17 +185,25 @@ features:
 ```bash
 fabrica add resource Device --version v2 --force
 ```
-
-Note: `--force` is required when adding to non-alpha versions.
-
-### 7. Generate Code
-
-```bash
-fabrica generate
-go mod tidy
+bash
+# Add stable v2 version (requires --force for stable versions)
+fabrica add version v2 --from v2beta1 --force
 ```
 
-This generates:
+Then manually update `apis.yaml` to change the storage hub:
+
+```yaml
+groups:
+  - name: infra.example.io
+    storageVersion: v2  # Change hub to v2
+    versions:
+      - v1              # Keep for backward compatibility
+      - v2alpha1        # Can be removed once v2 is stable
+      - v2beta1         # Can be removed once v2 is stable
+      - v2              # Stable v2
+```
+
+After this change:s generates:
 - Handlers in `cmd/server/*_handlers_generated.go`
 - Storage layer in `internal/storage/storage_generated.go`
 - Routes in `cmd/server/routes_generated.go`

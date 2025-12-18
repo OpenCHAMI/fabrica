@@ -68,9 +68,59 @@ Fabrica implements **Kubebuilder-style hub/spoke versioning** to provide stable 
 
 See the [apis.yaml reference](apis-yaml.md) for the full file structure and field descriptions.
 
-By default, Fabrica generates resources with a single version (`v1`) that acts as both hub and spoke. To enable multi-version support, configure the root-level `apis.yaml` (created automatically by `fabrica init`):
+By default, Fabrica generates resources with a single version (`v1`) that acts as both hub and spoke. To enable multi-version support:
 
-### 1. Open or update `apis.yaml` in your project root:
+### Adding a New API Version
+
+**Step 1: Add the version to your project**
+
+```bash
+# Add an alpha version (for experimentation)
+fabrica add version v2alpha1
+
+# Or add a stable version (requires --force)
+fabrica add version v2 --force
+```
+
+This command:
+- Updates `apis.yaml` with the new version
+- Creates the version directory (`apis/<group>/<version>/`)
+- Copies existing resource types from the latest version
+
+**Step 2: Add or modify resources in the new version**
+
+```bash
+# Add a new resource to the alpha version
+fabrica add resource Feature --version v2alpha1
+
+# Modify existing resources in the version directory
+# Edit apis/<group>/v2alpha1/device_types.go
+```
+
+**Important**: You must use `fabrica add version` before adding resources to a new version. If you try to add a resource to a non-existent version:
+
+```bash
+fabrica add resource Device --version v2
+# Error: version v2 not found in apis.yaml (available: [v1])
+#
+# To add a new version, run: fabrica add version v2
+```
+
+**Step 3: Generate handlers and conversions**
+
+```bash
+fabrica generate
+```
+
+This generates:
+- `apis/<group>/v1/types_generated.go` (hub)
+- `apis/<group>/v2alpha1/types_generated.go` (spoke)
+- Conversion functions between hub and spokes
+- Version registry and middleware
+
+### Manual Configuration (Advanced)
+
+If you need to manually configure `apis.yaml` in your project root:
 
 ```yaml
 groups:
@@ -91,21 +141,7 @@ groups:
                 statusFrom: github.com/yourorg/netmodel/api/types.DeviceStatus
 ```
 
-### 2. Run `fabrica generate`:
-
-```bash
-fabrica generate
-```
-
-This will generate:
-
-- `apis/infra.example.io/v1/types_generated.go` (hub)
-- `apis/infra.example.io/v1beta1/types_generated.go` (spoke)
-- `apis/infra.example.io/v1alpha1/types_generated.go` (spoke)
-- Conversion functions between hub and spokes
-- Version registry and middleware
-
-### 3. Resources now have explicit flattened envelopes:
+After manual edits, run `fabrica generate` to update generated code.
 
 ```go
 // OLD (pre-flattening):
@@ -121,11 +157,11 @@ type Device struct {
     Spec       DeviceSpec   `json:"spec"`
     Status     DeviceStatus `json:"status,omitempty"`
 }
-```
+After manual edits, run `fabrica generate` to update generated code.
 
-**Note**: The JSON wire format remains identical; only the Go struct shape changes.
+### Resource Structure with Versioning
 
-## Declaring API Groups and Versions
+Resources now have explicit flattened envelopes:
 
 The `apis.yaml` file defines your API groups and versions:
 
@@ -150,9 +186,22 @@ groups:
 
 ### Version Stability Levels
 
-- **`v1alpha1`, `v1alpha2`**: Alpha versions. Unstable, may change without notice.
-- **`v1beta1`, `v1beta2`**: Beta versions. Semi-stable, breaking changes announced in advance.
-- **`v1`, `v2`**: Stable versions. Changes follow semantic versioning.
+- **`v1alpha1`, `v1alpha2`**: Alpha versions. Unstable, may change without notice. Resources can be added freely.
+- **`v1beta1`, `v1beta2`**: Beta versions. Semi-stable, breaking changes announced in advance. Resources can be added freely.
+- **`v1`, `v2`**: Stable versions. Changes follow semantic versioning. Adding new resources requires `--force` flag.
+
+**Adding resources to stable versions:**
+
+```bash
+# This will fail without --force
+fabrica add resource NewFeature --version v1
+# Error: adding resource to non-alpha version v1 requires --force flag
+
+# Use --force to add to stable versions (not recommended after release)
+fabrica add resource NewFeature --version v1 --force
+```
+
+**Best practice**: Add new resources to alpha versions first, then promote them to stable versions in the next release cycle.
 
 ## Requesting a Specific Version
 

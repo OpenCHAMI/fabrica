@@ -308,13 +308,6 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 				Enabled:       true,
 				ETagAlgorithm: "sha256",
 			},
-			Versioning: VersioningConfig{
-				Enabled:        false, // User must enable and configure
-				Group:          "",
-				StorageVersion: "",
-				Versions:       []string{},
-				Resources:      []string{},
-			},
 			Auth: AuthConfig{
 				Enabled: false,
 			},

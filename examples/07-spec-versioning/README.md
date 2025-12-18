@@ -35,7 +35,7 @@ fabrica generate
 ```
 
 What `--with-versioning` does:
-- Adds a marker at the top of `pkg/resources/sensor/sensor.go`:
+- Adds a marker at the top of `apis/example.fabrica.dev/v1/sensor_types.go`:
 	`// +fabrica:resource-versioning=enabled`
 - Ensures the `SensorStatus` struct includes:
 	```go

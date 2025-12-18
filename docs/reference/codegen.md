@@ -13,8 +13,8 @@ Fabrica uses template-based code generation to create consistent, production-rea
 Fabrica uses a **two-phase code generation** approach:
 
 ### Phase 1: Resource Registration (`fabrica codegen init`)
-1. **Discovers resources** - Scans `pkg/resources/` for resource definitions using AST parsing
-2. **Generates registration file** - Creates `pkg/resources/register_generated.go` with imports
+1. **Discovers resources** - Scans `apis/<group>/<version>/` for resource definitions using AST parsing
+2. **Generates registration file** - Creates `apis/<group>/<version>/register_generated.go` with imports
 3. **Registers types** - Sets up resource metadata for the generator
 
 ### Phase 2: Code Generation (`fabrica generate`)
@@ -76,19 +76,22 @@ The code generator consists of several key parts:
 The generator automatically discovers resources using Go's AST parser:
 
 ```go
-// Scans pkg/resources/ and looks for:
+// Scans apis/<group>/<version>/ and looks for:
 type MyResource struct {
-    resource.Resource  // ← Must embed resource.Resource
-    Spec   MyResourceSpec   `json:"spec"`
-    Status MyResourceStatus `json:"status"`
+    APIVersion string           `json:"apiVersion"`
+    Kind       string           `json:"kind"`
+    Metadata   resource.Metadata `json:"metadata"`
+    Spec       MyResourceSpec    `json:"spec"`
+    Status     MyResourceStatus  `json:"status,omitempty"`
 }
 ```
 
 **Discovery process:**
-1. Walk `pkg/resources/` directory tree
-2. Parse each `.go` file into an AST
-3. Find struct types that embed `resource.Resource`
-4. Extract resource name and package information
+1. Read `apis.yaml` to get groups, versions, and resources
+2. Walk `apis/<group>/<version>/` directory tree
+3. Parse each `_types.go` file into an AST
+4. Find struct types matching the flattened envelope pattern
+5. Extract resource name and package information
 
 ## Templates
 
@@ -143,7 +146,7 @@ Templates have access to resource metadata:
 type ResourceMetadata struct {
     Name         string  // "Device"
     PluralName   string  // "devices"
-    Package      string  // "github.com/user/project/pkg/resources/device"
+    Package      string  // "github.com/user/project/apis/example.fabrica.dev/v1"
     PackageAlias string  // "device"
     TypeName     string  // "*device.Device"
     SpecType     string  // "device.DeviceSpec"
@@ -369,7 +372,7 @@ This is the recommended workflow when adding or modifying resources.
 fabrica add resource Product
 
 # 2. Customize the resource
-vim pkg/resources/product/product.go
+vim apis/example.fabrica.dev/v1/product_types.go
 
 # 3. Initialize code generation (register the new resource)
 fabrica codegen init
@@ -469,7 +472,9 @@ myproject/
 ├── pkg/client/
 │   ├── client_generated.go               # HTTP client
 │   └── models_generated.go               # Client types
-├── pkg/resources/
+├── apis/
+│   └── example.fabrica.dev/
+│       └── v1/
 │   ├── register_generated.go             # Resource registration (from codegen init)
 │   └── device/
 │       └── device.go                     # Resource definition (user-maintained)
@@ -541,7 +546,7 @@ var templateFuncs = template.FuncMap{
 
 ### Resource Not Discovered
 
-**Error:** `No resources found in pkg/resources/`
+**Error:** `No resources found in apis/<group>/<version>/`
 
 **Cause:** Resource doesn't embed `resource.Resource` or file doesn't parse
 
