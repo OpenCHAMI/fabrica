@@ -147,17 +147,13 @@ Examples:
 				}
 			}
 
-			// Auto-generate registration file if missing
-			if needsRegistration {
-				fmt.Println()
-				fmt.Println("📝 Registration file not found, creating it...")
-				if err := generateRegistrationFile(debug, apisConfig); err != nil {
-					return fmt.Errorf("failed to generate registration file: %w", err)
-				}
-				fmt.Println()
-			} else if debug {
-				fmt.Printf("📝 Registration file exists: %s\n", regFile)
+			// Auto-generate registration file
+			fmt.Println()
+			fmt.Println("📝 Registration file not found, creating it...")
+			if err := generateRegistrationFile(debug, apisConfig); err != nil {
+				return fmt.Errorf("failed to generate registration file: %w", err)
 			}
+			fmt.Println()
 
 			// Note: We don't run go mod tidy here because:
 			// 1. Generated code may introduce new imports

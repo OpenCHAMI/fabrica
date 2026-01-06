@@ -224,7 +224,7 @@ func (s *FabricaTestSuite) TestCreateFRUApplication() {
 
 	// For file storage, check storage file instead of Ent schema
 	project.AssertFileExists("internal/storage/storage_generated.go")
-} 
+}
 
 func (s *FabricaTestSuite) TestExample1_EndToEnd() {
 	// Create project
