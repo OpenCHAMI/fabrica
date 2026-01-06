@@ -376,8 +376,8 @@ func (p *TestProject) ModifyFile(relativePath string, modifier func(string) stri
 
 // Example1_CustomizeResource updates the Device spec as per Example 1
 func (p *TestProject) Example1_CustomizeResource() error {
-	// Path: pkg/resources/device/device.go
-	relPath := filepath.Join("pkg", "resources", "device", "device.go")
+	// Path: apis/example.com/v1/device_types.go (for versioned projects)
+	relPath := filepath.Join("apis", "example.com", "v1", "device_types.go")
 
 	return p.ModifyFile(relPath, func(content string) string {
 		// We replace the default placeholder or the simple struct definition
