@@ -103,8 +103,9 @@ Fabrica follows clean architecture principles and generates well-structured proj
 │   ├── 📁 server/           # 🌐 REST API server with all endpoints
 │   └── 📁 cli/              # 🖥️ Command-line client tools
 ├── 📁 pkg/
-│   ├── 📁 resources/        # 📝 Your resource definitions (you write these)
 │   └── 📁 client/           # 🔌 Generated HTTP client with proper error handling
+├── 📁 apis/                 # 📝 Your versioned resource types (you write these)
+│   └── 📁 <group>/<version>/  # e.g., example.fabrica.dev/v1/*_types.go
 ├── 📁 internal/
 │   ├── 📁 storage/          # 💾 Generated storage layer (file or database)
 │   └── 📁 middleware/       # ⚙️ Generated middleware (auth, validation, etc.)

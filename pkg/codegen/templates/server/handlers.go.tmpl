@@ -104,7 +104,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get version context from request
+	// Get version context from request (set by version negotiation middleware)
 	versionCtx := versioning.GetVersionContext(r.Context())
 
 	uid, err := resource.GenerateUIDForResource("{{.Name}}")
@@ -116,7 +116,8 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{if .IsVersioned}}
 	// Versioned mode: flat fields with fabrica.Metadata
 	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
-		APIVersion: versionCtx.GroupVersion,
+		// Use negotiated ServeVersion (from Accept header) for apiVersion
+		APIVersion: versionCtx.ServeVersion,
 		Kind:       "{{.Name}}",
 		Spec:       req.{{.Name}}Spec,
 	}

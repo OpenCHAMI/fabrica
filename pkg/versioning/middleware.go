@@ -222,7 +222,12 @@ func negotiateVersion(ctx *VersionContext, registry *VersionRegistry) string {
 	// Get available versions for this resource
 	availableVersions := registry.ListVersions(ctx.ResourceKind)
 	if len(availableVersions) == 0 {
-		// No versions registered, fallback to group version
+		// No versions registered for this kind. If the client explicitly
+		// requested a version, we cannot validate it — reject as unsupported.
+		if ctx.RequestedVersion != "" {
+			return ""
+		}
+		// No request preference: fallback to group version default.
 		return ctx.GroupVersion
 	}
 

@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/openchami/fabrica/pkg/versioning"
 
 	{{if .WithAuth}}
 	// Import your custom auth middleware package here
@@ -371,6 +372,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+
+	// Version negotiation (Accept header `version=` or URL strategy)
+	// Initialize and use global version registry when versioning is enabled.
+	// Note: VersionNegotiationMiddleware currently uses versioning.VersionRegistry
+	// Versioning support will be fully wired in a future update.
+	r.Use(versioning.VersionNegotiationMiddleware(versioning.GlobalVersionRegistry, nil))
 
 	if config.Debug {
 		r.Mount("/debug", middleware.Profiler())

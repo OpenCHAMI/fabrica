@@ -48,6 +48,7 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed templates/*
@@ -1135,24 +1136,69 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 func (g *Generator) GenerateAPIVersions() error {
 	// Check if apis.yaml exists
 	if _, err := os.Stat("apis.yaml"); os.IsNotExist(err) {
-		// Optional feature - skip if not configured
-		return nil
+		return nil // Optional feature - skip if not configured
 	}
 
-	fmt.Printf("🔄 Generating hub/spoke API versions...\n")
+	// Parse apis.yaml for groups and versions
+	data, err := os.ReadFile("apis.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to read apis.yaml: %w", err)
+	}
 
-	// For now, this is a placeholder. The full implementation requires:
-	// 1. Parse apis.yaml (will be done in config.go)
-	// 2. For each group and version, generate:
-	//    - Hub version types (v1)
-	//    - Spoke version types (v1alpha1, v1beta1, etc.)
-	//    - Conversion functions
-	//    - Version registry
-	// 3. Write to apis/<group>/<version>/ directories
+	// Minimal schema for apis.yaml used by codegen
+	type apisGroup struct {
+		Name           string   `yaml:"name"`
+		StorageVersion string   `yaml:"storageVersion"`
+		Versions       []string `yaml:"versions"`
+	}
+	type apisConfig struct {
+		Groups []apisGroup `yaml:"groups"`
+	}
 
-	// This will be fully implemented in a follow-up when config parsing is complete
-	fmt.Printf("  ⚠️  apis.yaml found but full hub/spoke generation not yet wired\n")
-	fmt.Printf("  ℹ️  This feature is under development\n")
+	var cfg apisConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("failed to parse apis.yaml: %w", err)
+	}
+
+	if len(cfg.Groups) == 0 {
+		return nil // nothing to generate
+	}
+
+	fmt.Printf("🔄 Generating API version registry...\n")
+
+	// Build template data for version registry
+	type regGroup struct {
+		Name           string
+		StorageVersion string
+		Spokes         []string
+	}
+	var groups []regGroup
+	for _, g := range cfg.Groups {
+		groups = append(groups, regGroup{
+			Name:           g.Name,
+			StorageVersion: g.StorageVersion,
+			Spokes:         g.Versions,
+		})
+	}
+
+	dataMap := map[string]interface{}{
+		"Version":     g.Version,
+		"GeneratedAt": time.Now().Format(time.RFC3339),
+		"Template":    "apiversion/register.gotmpl",
+		"Groups":      groups,
+	}
+
+	// Ensure output directory exists
+	outDir := filepath.Join("pkg", "apiversion")
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("failed to create apiversion directory: %w", err)
+	}
+
+	// Write registry initializer
+	outputPath := filepath.Join(outDir, "registry_generated.go")
+	if err := g.executeTemplate("versionReg", outputPath, dataMap); err != nil {
+		return fmt.Errorf("failed to generate version registry: %w", err)
+	}
 
 	return nil
 }

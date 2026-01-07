@@ -36,9 +36,9 @@ cd device-inventory
 **What `fabrica init` creates:**
 ```
 device-inventory/
-├── .fabrica.yaml           # Configuration file (NEW!)
+├── .fabrica.yaml           # Project configuration
+├── apis.yaml               # API groups and versions (NEW!)
 ├── cmd/server/main.go      # Server with commented storage/routes
-├── pkg/resources/          # Empty (for your resources)
 ├── go.mod
 └── docs/
 ```
@@ -68,22 +68,23 @@ fabrica add resource Device
 
 **What `fabrica add resource` creates:**
 
-`pkg/resources/device/device.go`:
+`apis/example.fabrica.dev/v1/device_types.go` (group and version come from `apis.yaml`):
 ```go
-package device
+package v1
 
 import (
-    "context"
-    "github.com/openchami/fabrica/pkg/resource"
+  "context"
+  "github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Device represents a network device resource
-// Note: With hub/spoke versioning (introduced in v0.4), resources use
-// a flattened envelope structure for better Go autodoc support.
+// Device represents a network device resource (flattened envelope)
+// Explicit fields improve Go autodoc and versioned conversions.
 type Device struct {
-    resource.Resource // Embedded for compatibility with current version
-    Spec   DeviceSpec   `json:"spec" validate:"required"`
-    Status DeviceStatus `json:"status,omitempty"`
+  APIVersion string           `json:"apiVersion"`
+  Kind       string           `json:"kind"`
+  Metadata   fabrica.Metadata `json:"metadata"`
+  Spec       DeviceSpec       `json:"spec" validate:"required"`
+  Status     DeviceStatus     `json:"status,omitempty"`
 }
 
 type DeviceSpec struct {
@@ -103,16 +104,14 @@ func (r *Device) Validate(ctx context.Context) error {
     return nil
 }
 
-func init() {
-    resource.RegisterResourcePrefix("Device", "dev")
-}
+// Version conversion helpers and registration are generated.
 ```
 
 **Note on Versioning**: Future versions of Fabrica will generate resources with explicit `APIVersion`, `Kind`, `Metadata`, `Spec`, and `Status` fields instead of embedding `resource.Resource`. The JSON format remains identical. See [Hub/Spoke Versioning Guide](../../docs/versioning.md) for details.
 
 ### Step 3: Customize Your Resource
 
-Edit `pkg/resources/device/device.go` to add domain-specific fields.
+Edit `apis/example.fabrica.dev/v1/device_types.go` to add domain-specific fields.
 
 ```go
 type DeviceSpec struct {
@@ -156,9 +155,8 @@ device-inventory/
 │   │   └── versioning_middleware_generated.go    # API versioning
 │   └── storage/
 │       └── storage_generated.go        # File-based storage
-└── pkg/resources/
-    ├── device/device.go (your resource)
-    └── register_generated.go            # Resource registry
+└── apis/example.fabrica.dev/v1/
+  └── device_types.go (your resource types)
 ```
 
 The generator reads `.fabrica.yaml` and generates middleware based on your configuration:
@@ -444,7 +442,7 @@ vim .fabrica.yaml  # Edit validation mode, versioning strategy, etc.
 # 3. Add resource
 fabrica add resource Device
 
-# 4. Customize resource (edit pkg/resources/device/device.go)
+# 4. Customize resource (edit apis/example.fabrica.dev/v1/device_types.go)
 #    - Remove Name from DeviceSpec
 #    - Add your domain fields
 

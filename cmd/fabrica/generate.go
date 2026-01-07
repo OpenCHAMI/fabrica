@@ -372,6 +372,15 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 		generationCalls.WriteString("\tif err := gen.GenerateModels(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
+
+		// Generate API version registry if apis.yaml exists
+		generationCalls.WriteString("\n")
+		generationCalls.WriteString("\t// Generate API version registry if versioning enabled\n")
+		generationCalls.WriteString("\tif gen.Config.VersioningEnabled {\n")
+		generationCalls.WriteString("\t\tif err := gen.GenerateAPIVersions(); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate API versions: %v\", err)\n")
+		generationCalls.WriteString("\t\t}\n")
+		generationCalls.WriteString("\t}\n")
 	} else if client {
 		// Client-side generation
 		if debug {
