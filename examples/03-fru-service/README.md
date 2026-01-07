@@ -520,9 +520,18 @@ sqlite3 fru.db ".restore fru-backup.db"
 ### Issue: "sqlite: foreign_keys pragma is off: missing '_fk=1' in the connection string"
 
 **Cause:** SQLite foreign keys are not enabled in the database connection
-**Fix:** Use the correct database URL format with foreign keys enabled:
+
+**Note:** This issue is fixed in Fabrica v0.3.2+. The generated default configuration now includes `_fk=1` automatically.
+
+**Fix for older projects:** Update the database URL to include foreign keys:
 ```bash
 ./fru-server serve --database-url "file:data/fru.db?_fk=1"
+```
+
+Or update your `.fabrica.yaml` or environment variable:
+```yaml
+# In DefaultConfig() in cmd/server/main.go
+DatabaseURL: "file:./data.db?cache=shared&_fk=1"
 ```
 
 ### Issue: "failed to open database: unable to open database file"

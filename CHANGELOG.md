@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Import Catalog System** - `pkg/imports/catalog` for resolving external type metadata
 - **API Version Registry** - `pkg/apiversion` package for managing API groups and versions
 
+### Fixed
+- **SQLite Foreign Keys Issue (#28)** - Fixed missing `_fk=1` parameter in default SQLite connection string
+  - Template now correctly checks for both `"sqlite"` and `"sqlite3"` driver names
+  - Generated projects now include `?cache=shared&_fk=1` in the default DatabaseURL
+  - Prevents "sqlite: foreign_keys pragma is off" error on server startup with Ent storage
+
 ### Changed
 - **BREAKING: Flattened Resource Envelope** - Generated resource types no longer embed `resource.Resource`
   - Old: `type Device struct { resource.Resource[DeviceSpec, DeviceStatus] }`

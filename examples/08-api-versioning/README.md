@@ -80,7 +80,6 @@ The generated `apis.yaml` includes:
 ```yaml
 groups:
   - name: infra.example.io
-    storageVfra.example.io
     storage_version: v1
     versions:
       - v1
@@ -140,7 +139,7 @@ To demonstrate version evolution, add `v2alpha1` (pre-release for v2).
 
 **First, manually add v2alpha1** to `.fabrica.yaml`:
 
-``Use the CLI to add the version**:
+**Use the CLI to add the version**:
 
 ```bash
 # Add v2alpha1 version
@@ -165,6 +164,8 @@ features:
       - v1
       - v2alpha1
       - v2beta1  # Add this
+```
+
 ```bash
 # Add beta version based on alpha
 fabrica add version v2beta1 --from v2alpha1

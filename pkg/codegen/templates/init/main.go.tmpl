@@ -113,7 +113,7 @@ func DefaultConfig() *Config {
 		{{if eq .StorageType "file"}}
 		DataDir:      "./data",
 		{{else if eq .StorageType "ent"}}
-		DatabaseURL:  "{{if eq .DBDriver "sqlite"}}file:./data.db?cache=shared&_fk=1{{else if eq .DBDriver "postgres"}}postgres://localhost/{{.ProjectName}}?sslmode=disable{{else if eq .DBDriver "mysql"}}root:@tcp(localhost:3306)/{{.ProjectName}}?parseTime=true{{end}}",
+		DatabaseURL:  "{{if or (eq .DBDriver "sqlite") (eq .DBDriver "sqlite3")}}file:./data.db?cache=shared&_fk=1{{else if eq .DBDriver "postgres"}}postgres://localhost/{{.ProjectName}}?sslmode=disable{{else if eq .DBDriver "mysql"}}root:@tcp(localhost:3306)/{{.ProjectName}}?parseTime=true{{end}}",
 		{{end}}
 		{{end}}
 		{{if .WithAuth}}
