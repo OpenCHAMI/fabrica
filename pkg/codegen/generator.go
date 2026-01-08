@@ -519,6 +519,9 @@ func (g *Generator) GenerateAll() error {
 			if err := g.GenerateEntAdapter(); err != nil {
 				return err
 			}
+			if err := g.GenerateEntHelpers(); err != nil {
+				return err
+			}
 		}
 
 		if err := g.GenerateModels(); err != nil {
@@ -535,6 +538,12 @@ func (g *Generator) GenerateAll() error {
 			return err
 		}
 		if err := g.GenerateRoutes(); err != nil {
+			return err
+		}
+		if err := g.GenerateExportCommand(); err != nil {
+			return err
+		}
+		if err := g.GenerateImportCommand(); err != nil {
 			return err
 		}
 		if err := g.GenerateStorage(); err != nil {
@@ -733,6 +742,8 @@ func (g *Generator) LoadTemplates() error {
 		"routes":   "server/routes.go.tmpl",
 		"models":   "server/models.go.tmpl",
 		"openapi":  "server/openapi.go.tmpl",
+		"export":   "server/export.go.tmpl",
+		"import":   "server/import.go.tmpl",
 
 		// Client templates
 		"client":       "client/client.go.tmpl",
@@ -740,10 +751,12 @@ func (g *Generator) LoadTemplates() error {
 		"clientCmd":    "client/cmd.go.tmpl",
 
 		// Storage templates
-		"storage":    "storage/file.go.tmpl",
-		"storageEnt": "storage/ent.go.tmpl",
-		"entAdapter": "storage/adapter.go.tmpl",
-		"generate":   "storage/generate.go.tmpl",
+		"storage":         "storage/file.go.tmpl",
+		"storageEnt":      "storage/ent.go.tmpl",
+		"entAdapter":      "storage/adapter.go.tmpl",
+		"generate":        "storage/generate.go.tmpl",
+		"entQueries":      "storage/ent_queries.go.tmpl",
+		"entTransactions": "storage/ent_transactions.go.tmpl",
 
 		// Ent schema templates
 		"entSchemaResource":   "ent/schema/resource.go.tmpl",
@@ -1086,6 +1099,63 @@ func (g *Generator) GenerateEntAdapter() error {
 		return fmt.Errorf("failed to generate generate.go: %w", err)
 	}
 
+	return nil
+}
+
+// GenerateEntHelpers generates additional Ent-based helper code (queries, transactions)
+func (g *Generator) GenerateEntHelpers() error {
+	if g.StorageType != "ent" {
+		return nil
+	}
+
+	fmt.Printf("🧰 Generating Ent helpers (queries, transactions)...\n")
+
+	// internal/storage directory
+	storageDir := filepath.Join("internal", "storage")
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		return fmt.Errorf("failed to create storage directory: %w", err)
+	}
+
+	// ent_queries_generated.go
+	if err := g.executeTemplate("entQueries", filepath.Join(storageDir, "ent_queries_generated.go"), g.globalTemplateData("storage/ent_queries.go.tmpl")); err != nil {
+		return fmt.Errorf("failed to generate ent queries: %w", err)
+	}
+
+	// ent_transactions_generated.go
+	if err := g.executeTemplate("entTransactions", filepath.Join(storageDir, "ent_transactions_generated.go"), g.globalTemplateData("storage/ent_transactions.go.tmpl")); err != nil {
+		return fmt.Errorf("failed to generate ent transactions: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateExportCommand generates the server export subcommand
+func (g *Generator) GenerateExportCommand() error {
+	fmt.Printf("📤 Generating export command...\n")
+
+	outputPath := filepath.Join(g.OutputDir, "export.go")
+	data := g.globalTemplateData("server/export.go.tmpl")
+
+	if err := g.executeTemplate("export", outputPath, data); err != nil {
+		return fmt.Errorf("failed to generate export command: %w", err)
+	}
+
+	fmt.Printf("  ✓ Generated %s\n", outputPath)
+	return nil
+}
+
+// GenerateImportCommand generates the server import subcommand
+func (g *Generator) GenerateImportCommand() error {
+	fmt.Printf("📥 Generating import command...\n")
+
+	outputPath := filepath.Join(g.OutputDir, "import.go")
+	data := g.globalTemplateData("server/import.go.tmpl")
+
+	if err := g.executeTemplate("import", outputPath, data); err != nil {
+		return fmt.Errorf("failed to generate import command: %w", err)
+	}
+
+	fmt.Printf("  ✓ Generated %s\n", outputPath)
 	return nil
 }
 

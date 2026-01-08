@@ -1,0 +1,95 @@
+{{/*
+SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+*/}}
+
+package storage
+
+import (
+    "context"
+    "fmt"
+
+    "{{.ModulePath}}/internal/storage/ent"
+    entresource "{{.ModulePath}}/internal/storage/ent/resource"
+    "{{.ModulePath}}/internal/storage/ent/label"
+    {{range .UniqueImports}}
+    {{.Alias}} "{{.Path}}"
+    {{- end}}
+)
+
+// ensureEntClient verifies the ent client has been initialized
+func ensureEntClient() {
+    if entClient == nil {
+        panic("ent client not initialized: call SetEntClient in main.go before using storage")
+    }
+}
+
+// QueryResources returns a generic query builder for a given kind
+func QueryResources(ctx context.Context, kind string) *ent.ResourceQuery {
+    ensureEntClient()
+    return entClient.Resource.Query().
+        Where(entresource.KindEQ(kind))
+}
+
+// QueryResourcesByLabels queries resources by kind and exact-match labels
+func QueryResourcesByLabels(ctx context.Context, kind string, labels map[string]string) (*ent.ResourceQuery, error) {
+    ensureEntClient()
+    q := entClient.Resource.Query().Where(entresource.KindEQ(kind))
+    for k, v := range labels {
+        q = q.Where(entresource.HasLabelsWith(
+            label.KeyEQ(k),
+            label.ValueEQ(v),
+        ))
+    }
+    return q, nil
+}
+
+{{range .Resources}}
+// Query{{.PluralName}} returns a query builder for {{.PluralName}}
+func Query{{.PluralName}}(ctx context.Context) *ent.ResourceQuery {
+    return QueryResources(ctx, "{{.Name}}")
+}
+
+// Get{{.Name}}ByUID loads a single {{.Name}} by UID
+func Get{{.Name}}ByUID(ctx context.Context, uid string) ({{.TypeName}}, error) {
+    ensureEntClient()
+    r, err := entClient.Resource.Query().
+        Where(entresource.UIDEQ(uid), entresource.KindEQ("{{.Name}}")).
+        WithLabels().
+        WithAnnotations().
+        Only(ctx)
+    if err != nil {
+        if ent.IsNotFound(err) {
+            return nil, ErrNotFound
+        }
+        return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
+    }
+    v, err := FromEntResource(ctx, r)
+    if err != nil {
+        return nil, err
+    }
+    return v.(*{{.PackageAlias}}.{{.Name}}), nil
+}
+
+// List{{.PluralName}}ByLabels returns {{.PluralName}} matching all provided labels
+func List{{.PluralName}}ByLabels(ctx context.Context, labels map[string]string) ([]{{.TypeName}}, error) {
+    q, err := QueryResourcesByLabels(ctx, "{{.Name}}", labels)
+    if err != nil {
+        return nil, err
+    }
+    rs, err := q.WithLabels().WithAnnotations().All(ctx)
+    if err != nil {
+        return nil, err
+    }
+    out := make([]{{.TypeName}}, 0, len(rs))
+    for _, r := range rs {
+        v, err := FromEntResource(ctx, r)
+        if err != nil {
+            continue
+        }
+        out = append(out, v.(*{{.PackageAlias}}.{{.Name}}))
+    }
+    return out, nil
+}
+{{end}}

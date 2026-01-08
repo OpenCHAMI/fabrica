@@ -353,6 +353,9 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 			generationCalls.WriteString("\tif err := gen.GenerateEntAdapter(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate Ent adapter: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
+			generationCalls.WriteString("\tif err := gen.GenerateEntHelpers(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate Ent helpers: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
 			generationCalls.WriteString("\tif err := gen.GenerateStorage(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate storage: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
@@ -371,6 +374,15 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 
 		generationCalls.WriteString("\tif err := gen.GenerateModels(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+
+		// Generate export/import commands (v0.4.0+)
+		generationCalls.WriteString("\tif err := gen.GenerateExportCommand(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate export command: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+
+		generationCalls.WriteString("\tif err := gen.GenerateImportCommand(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate import command: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 
 		// Generate API version registry if apis.yaml exists

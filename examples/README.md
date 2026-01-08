@@ -105,24 +105,67 @@ Master Kubebuilder-style API versioning:
 
 **What you'll build:** A device management API supporting v1alpha1, v1beta1, and v1 with automatic version conversion.
 
+### 8. [Advanced Ent Storage Features](09-ent-advanced/) - Production Storage 🚀
+**Time: 30-45 minutes**
+
+Unlock powerful Ent storage capabilities:
+- **Query builders** - Type-safe database queries with label filtering
+- **Atomic transactions** - Consistent multi-resource operations
+- **Export/import** - Backup, migration, and disaster recovery
+- Building complex queries with Ent's fluent API
+- Real-world patterns for microservice storage
+
+**Prerequisites:** Understand Ent storage basics from Example 3
+
+**What you'll build:** A system management API with advanced querying, transactions, and data portability. Includes:
+- `QueryServers()`, `ListServersByLabels()`, `GetServerByUID()` patterns
+- Atomic multi-resource operations with `WithTx()`
+- CLI commands for export and import
+- Practical handler integration patterns
+- Quick-start demo script
+
+**Key Features:**
+- Query builder code generation
+- Transaction wrapper generation
+- Export/import CLI framework
+- Real-world patterns (filter, pagination, migration)
+- Troubleshooting guide and FAQ
+
+### 9. [Export / Import (Ent)](10-export-import/) - Backup & Migration 📦
+**Time:** 10-15 minutes
+
+Ship-ready backup workflows using generated server commands:
+- Generated `export` / `import` subcommands (no API server needed)
+- Offline backups with JSON/YAML output and per-type organization
+- Import modes: upsert / replace / skip with transactional safety
+- Works with any Ent-backed project; reuse Example 09 demo server
+
+**Prerequisites:** Ent storage basics
+
+**What you'll build:** A repeatable backup/restore flow with generated CLI commands and JSON/YAML artifacts.
+
 ## Quick Reference
 
 ### Example Comparison
 
-| Feature | Basic CRUD | Storage & Auth | FRU Service | CloudEvents | Rack Reconciliation |
-|---------|------------|----------------|-------------|-------------|---------------------|
-| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ |
-| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Storage Backends | File | File/DB | DB | File | File |
-| Authentication | ❌ | ✅ JWT | ✅ JWT | ❌ | ❌ |
-| Authorization | ❌ | ✅ RBAC | ✅ RBAC | ❌ | ❌ |
-| Validation | Basic | ✅ Custom | ✅ Custom | Basic | ✅ Custom |
-| Reconciliation | ❌ | ❌ | ❌ | ❌ | ✅ |
-| CloudEvents | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Event Monitoring | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Hierarchical Resources | ❌ | ❌ | ❌ | ❌ | ✅ |
-| State Machines | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Feature | Basic CRUD | Storage & Auth | FRU Service | CloudEvents | Rack Reconciliation | Ent Advanced | Export/Import |
+|---------|------------|----------------|-------------|-------------|---------------------|--------------|---------------|
+| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Storage Backends | File | File/DB | DB | File | File | Ent (DB) | Ent (DB) |
+| Authentication | ❌ | ✅ JWT | ✅ JWT | ❌ | ❌ | ❌ | ❌ |
+| Authorization | ❌ | ✅ RBAC | ✅ RBAC | ❌ | ❌ | ❌ | ❌ |
+| Validation | Basic | ✅ Custom | ✅ Custom | Basic | ✅ Custom | ✅ Custom | ✅ Custom |
+| Reconciliation | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| CloudEvents | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Event Monitoring | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Hierarchical Resources | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| State Machines | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Query Builders | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Type-safe queries | ✅ via storage |
+| Transactions | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Atomic ops | ✅ atomic imports |
+| Export/Import | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ server commands | ✅ server commands |
+| Label Filtering | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Production queries | ✅ via storage |
 
 ### Running Examples
 

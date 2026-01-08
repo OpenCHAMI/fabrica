@@ -35,6 +35,7 @@ Use these repo-specific guidelines when proposing changes, generating code, or r
 - Regeneration command in user projects: `fabrica generate` (idempotent). Never hand-edit `*_generated.go`.
 - List endpoints return a flat JSON array (not a Kubernetes-style `{items: [...]}` object).
 - Status subresource pattern is supported (see `docs/status-subresource.md`) — spec and status updates are distinct.
+- Export/import are server subcommands (e.g., `./myapi export`, `./myapi import`), NOT Fabrica CLI commands. They use storage abstraction directly.
 
 ## Events and reconciliation
 - Event bus: use `events.NewInMemoryEventBus(buffer, workers)` for local dev. `Subscribe(eventType, handler)` returns `(SubscriptionID, error)`. `Close()` has no context arg.
@@ -42,7 +43,17 @@ Use these repo-specific guidelines when proposing changes, generating code, or r
 - Use `resource.Condition` for status condition changes. Condition change events are emitted when enabled.
 
 ## Storage
-- File backend lives in `pkg/storage/file_backend.go`. Ent integration is documented in `docs/storage-ent.md`. Some examples require SQLite foreign keys (`?_fk=1`) and ensuring `data/` exists.
+- File backend lives in `pkg/storage/file_backend.go`. Ent integration is documented in `docs/guides/storage-ent.md`.
+- Some examples require SQLite foreign keys (`?_fk=1`) and ensuring `data/` exists.
+- **Ent storage architecture (v0.4.0+):**
+  - Generic Resource table with Label/Annotation edges
+  - Schemas generated in `internal/storage/ent/schema/{resource,label,annotation}.go`
+  - Adapter in `internal/storage/ent_adapter.go` converts between Ent and API types
+  - Query builders generated in `internal/storage/ent_queries_generated.go` (per-resource functions: `QueryServers()`, `ListServersByLabels()`, `GetServerByUID()`)
+  - Transaction wrapper in `internal/storage/ent_transactions_generated.go` (`WithTx()` for atomic operations)
+  - Templates: `pkg/codegen/templates/storage/{ent_queries,ent_transactions,ent_adapter,ent}.go.tmpl`
+  - Generator method: `GenerateEntHelpers()` in `pkg/codegen/generator.go` (lines ~1099-1132)
+- **Export/import:** Generated into each project as server subcommands (`cmd/server/export.go`, `cmd/server/import.go`). These work offline with direct storage access—no running API server needed. Use `storage.Query{Resource}(ctx).All(ctx)` for export, `storage.GetBackend().Save()` for import. Templates: `pkg/codegen/templates/server/{export,import}.go.tmpl`.
 
 ## Versioning, validation, conditional
 - Versioning: use helpers from `pkg/versioning/` middleware; avoid non-existent APIs like `WithVersion`/`GetVersion`.
@@ -52,6 +63,7 @@ Use these repo-specific guidelines when proposing changes, generating code, or r
 ## Patterns and conventions
 - Templates are organized by feature: `templates/{server,client,storage,middleware,reconciliation,authorization}/`.
 - Generated routes live in `cmd/server/routes_generated.go`; handlers in `cmd/server/*_handlers_generated.go`; models in `cmd/server/models_generated.go`; OpenAPI in `cmd/server/openapi_generated.go`.
+- Server subcommands: `cmd/server/export.go`, `cmd/server/import.go` for offline backup/restore.
 - Examples default to `/resource-plural` endpoints (e.g., `/sensors`).
 
 ## Common pitfalls (watch for these)

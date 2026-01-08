@@ -643,9 +643,226 @@ To migrate existing file-based projects to Ent:
 - [Storage Guide](storage.md) - Storage abstraction overview
 - [Architecture](architecture.md) - System design
 
+## Advanced Features (v0.4.0+)
+
+### Query Builders
+
+Fabrica now generates query builder functions that expose Ent's powerful query capabilities:
+
+```go
+// Query all devices
+devices := storage.QueryDevices(ctx).
+    Order(ent.Asc(resource.FieldCreatedAt)).
+    All(ctx)
+
+// Query with label filtering
+prodDevices := storage.ListDevicesByLabels(ctx, map[string]string{
+    "env": "prod",
+    "team": "ops",
+})
+
+// Get single device by UID
+device, err := storage.GetDeviceByUID(ctx, "dev-abc123")
+```
+
+**Generated query functions per resource:**
+- `Query<PluralName>(ctx)` - Returns Ent query builder
+- `Get<Name>ByUID(ctx, uid)` - Loads single resource
+- `List<PluralName>ByLabels(ctx, labels)` - Filters by exact label match
+
+**Generic query functions:**
+- `QueryResources(ctx, kind)` - Query builder for any kind
+- `QueryResourcesByLabels(ctx, kind, labels)` - Label-based filtering
+
+### Transactions
+
+Use `WithTx` wrapper for atomic multi-resource operations:
+
+```go
+import "your-project/internal/storage"
+
+err := storage.WithTx(ctx, func(tx *ent.Tx) error {
+    // Create device
+    device := &Device{...}
+    if err := tx.Resource.Create().
+        SetUID(device.UID).
+        SetKind("Device").
+        // ... other fields
+        Exec(ctx); err != nil {
+        return err
+    }
+
+    // Create related rack (both succeed or both fail)
+    rack := &Rack{...}
+    if err := tx.Resource.Create().
+        SetUID(rack.UID).
+        SetKind("Rack").
+        // ... other fields
+        Exec(ctx); err != nil {
+        return err
+    }
+
+    return nil  // Commit
+})
+```
+
+If any operation fails, the entire transaction rolls back automatically.
+
+### Export/Import Commands
+
+Generated server binaries include export and import subcommands for backup and migration:
+
+**Export resources:**
+```bash
+# Export all resources to YAML
+./myapi export --format yaml --output ./backup
+
+# Export specific types
+./myapi export --kinds Device,Rack --output ./partial
+
+# Export to JSON
+./myapi export --format json --output ./backup-json
+
+# Organize by type in subdirectories
+./myapi export --format yaml --output ./backup --per-type
+```
+
+**Import resources:**
+```bash
+# Import from backup
+./myapi import --input ./backup
+
+# Dry run to preview changes
+./myapi import --input ./backup --dry-run
+
+# Replace mode (delete all first)
+./myapi import --input ./backup --mode replace
+
+# Skip existing resources
+./myapi import --input ./backup --skip-existing
+```
+
+**Export directory structure:**
+```
+backup/
+├── devices/
+│   ├── device-001.yaml
+│   └── device-002.yaml
+└── racks/
+    └── rack-001.yaml
+```
+
+**Import modes:**
+- `upsert` (default) - Create new or update existing resources
+- `replace` - Delete all resources first, then import
+- `skip` - Only create new resources, skip existing
+
+**Architecture:**
+- Commands generated into `cmd/server/export.go` and `cmd/server/import.go`
+- Use `storage.Query{Resource}(ctx).All(ctx)` for direct storage access
+- Support JSON and YAML formats
+- Atomic operations via `storage.WithTx()` for transactional imports
+- Works offline without running HTTP server
+
+**Use cases:**
+- Regular backups for disaster recovery
+- Migrating data between dev/staging/prod environments
+- Version controlling resource definitions in Git
+- Seeding test data or initial configurations
+- Inspecting resource state offline
+
+See [Example 10 - Export/Import](../../examples/10-export-import/) for complete workflows.
+
+**Fallback for older versions:** For Fabrica versions before v0.4.0, use the manual REST-based scripts in Example 10 that interact with the running API.
+
+## Quick Reference
+
+### Common Patterns
+
+**Filter by labels:**
+```go
+// Find all production servers
+servers, err := storage.ListServersByLabels(ctx, map[string]string{
+    "env": "prod",
+})
+```
+
+**Get single resource:**
+```go
+server, err := storage.GetServerByUID(ctx, "srv-12345")
+```
+
+**Atomic multi-resource operation:**
+```go
+err := storage.WithTx(ctx, func(tx *ent.Tx) error {
+    // Create server
+    // Create config
+    // Both succeed or both fail
+    return nil
+})
+```
+
+### Frequently Asked Questions
+
+**Q: How do I query with multiple conditions?**
+A: Use the generated query builders:
+```go
+servers, err := storage.QueryServers(ctx).
+    Where(predicate...).
+    Order(...).
+    All(ctx)
+```
+
+**Q: How do I ensure atomicity?**
+A: Wrap operations in `WithTx()`:
+```go
+storage.WithTx(ctx, func(tx *ent.Tx) error {
+    // Multiple operations
+    return nil  // Commits if no error
+})
+```
+
+**Q: Can I export and re-import data?**
+A: Yes, use the generated export/import commands (v0.4.0+):
+```bash
+# Export all data
+./myapi export --format yaml --output ./backup
+
+# Import with various modes
+./myapi import --input ./backup --mode upsert      # Default: create or update
+./myapi import --input ./backup --mode replace     # Delete all first
+./myapi import --input ./backup --dry-run          # Preview changes
+```
+Commands are generated into `cmd/server/export.go` and `cmd/server/import.go`. They use storage abstraction directly for efficient, atomic operations. See [Example 10 - Export/Import](../../examples/10-export-import/) for complete workflows.
+
+**Q: What about pagination?**
+A: Use Limit/Offset on query builders:
+```go
+servers, err := storage.QueryServers(ctx).
+    Offset(pageSize * pageNum).
+    Limit(pageSize).
+    All(ctx)
+```
+
+**Q: How do migrations work?**
+A: Ent automatically generates migrations when you modify `pkg/resources/*/schema.go`. Run:
+```bash
+cd internal/storage && go generate ./...
+```
+
+### For Production Deployments
+
+- Use PostgreSQL or MySQL (not SQLite)
+- Enable connection pooling in your database
+- Set `?charset=utf8mb4` for MySQL
+- Monitor query performance with EXPLAIN
+- Use index hints for label-based queries
+- Consider materialized views for complex filters
+
 ## References
 
 - [Ent Documentation](https://entgo.io/docs/getting-started)
 - [Ent Schema Guide](https://entgo.io/docs/schema-def)
 - [Ent Migrations](https://entgo.io/docs/migrate)
 - [PostgreSQL JSONB](https://www.postgresql.org/docs/current/datatype-json.html)
+- [Example 09: Advanced Patterns](../../examples/09-ent-advanced/README.md) - Comprehensive patterns and recipes
