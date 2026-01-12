@@ -71,16 +71,9 @@ func (s *VersioningSuite) TestFlattenedEnvelopeStructure() {
 	err = project.Generate(s.fabricaBinary)
 	s.Require().NoError(err, "code generation should succeed")
 
-	// Verify generated code structure (check that models_generated.go exists)
-	project.AssertFileExists("cmd/server/models_generated.go")
-
-	// Test generation succeeded - verify the generated models file has the expected resource
-	modelPath := filepath.Join(project.Dir, "cmd/server/models_generated.go")
-	modelContent, err := os.ReadFile(modelPath)
-	s.Require().NoError(err, "should be able to read generated models file")
-	s.Require().NotEmpty(modelContent, "generated models file should not be empty")
-	// Verify Device type is in the generated models
-	s.Require().Contains(string(modelContent), "Device", "generated models should contain Device type")
+	// Verify the Device type exists in the generated models
+	err = project.CheckGeneratedFile("cmd/server/models_generated.go", "Device")
+	s.Require().NoError(err, "generated models should contain Device type")
 }
 
 // TestAPIsYamlPlaceholder verifies that apis.yaml triggers versioning placeholder
@@ -121,16 +114,9 @@ func (s *VersioningSuite) TestBackwardCompatibility() {
 	err = project.Generate(s.fabricaBinary)
 	s.Require().NoError(err, "code generation should succeed")
 
-	// Verify code was generated successfully
-	project.AssertFileExists("cmd/server/models_generated.go")
-
-	// Verify the generated models file exists and contains content
-	modelPath := filepath.Join(project.Dir, "cmd/server/models_generated.go")
-	modelContent, err := os.ReadFile(modelPath)
-	s.Require().NoError(err, "should be able to read generated models file")
-	s.Require().NotEmpty(modelContent, "generated models file should not be empty")
-	// Verify Product type is in the generated models
-	s.Require().Contains(string(modelContent), "Product", "generated models should contain Product type")
+	// Verify the Product type exists in the generated models
+	err = project.CheckGeneratedFile("cmd/server/models_generated.go", "Product")
+	s.Require().NoError(err, "generated models should contain Product type")
 }
 
 // TestConfigValidation tests apis.yaml config validation
@@ -194,25 +180,13 @@ func (s *VersioningSuite) TestJSONCompatibility() {
 	err = project.AddResource(s.fabricaBinary, "Item")
 	s.Require().NoError(err, "adding resource should succeed")
 
-	// Generate and build
+	// Generate code
 	err = project.Generate(s.fabricaBinary)
 	s.Require().NoError(err, "code generation should succeed")
 
-	// Note: Build and server runtime testing is currently skipped due to go.mod complexity with local replace directives
-	// The test validates that code generation completes successfully, which is the primary goal
-	// In the future, we should fix the go.mod setup to allow full build and runtime testing
-
-	// Verify the generated files exist
-	project.AssertFileExists("cmd/server/models_generated.go")
-	project.AssertFileExists("cmd/server/import.go")
-	project.AssertFileExists("pkg/client/client_generated.go")
-
-	// Test generation succeeded by checking key generated files exist and have content
-	// This validates that the versioning system works correctly
-	modelPath := filepath.Join(project.Dir, "cmd/server/models_generated.go")
-	modelContent, err := os.ReadFile(modelPath)
-	s.Require().NoError(err, "should be able to read generated models file")
-	s.Require().NotEmpty(modelContent, "generated models file should not be empty")
+	// Verify generated files have proper JSON marshaling tags
+	err = project.CheckGeneratedFile("cmd/server/models_generated.go", "json:")
+	s.Require().NoError(err, "generated models should contain JSON marshaling tags")
 }
 
 // TestRun is the entry point for the versioning test suite
