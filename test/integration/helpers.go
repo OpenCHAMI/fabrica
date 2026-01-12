@@ -40,6 +40,11 @@ func NewTestProject(s *suite.Suite, tempDir, name, module, storage string) *Test
 	}
 }
 
+// setGoEnv adds common Go environment variables to an exec.Cmd
+func (p *TestProject) setGoEnv(cmd *exec.Cmd) {
+	// Git repository initialization is sufficient - normal GOPROXY behavior works fine
+}
+
 // Initialize creates and initializes the fabrica project
 func (p *TestProject) Initialize(fabricaBinary string) error {
 	// Always initialize with versioning enabled as legacy mode is deprecated
@@ -54,6 +59,26 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("fabrica init failed: %w\nOutput: %s", err, output)
+	}
+
+	// Initialize git repository so Go doesn't try to fetch the module from the internet
+	gitInitCmd := exec.Command("git", "init")
+	gitInitCmd.Dir = p.Dir
+	if _, err := gitInitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to initialize git repository: %w", err)
+	}
+
+	// Configure git user for the local repository
+	gitUserCmd := exec.Command("git", "config", "user.email", "test@example.com")
+	gitUserCmd.Dir = p.Dir
+	if _, err := gitUserCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to configure git user email: %w", err)
+	}
+
+	gitNameCmd := exec.Command("git", "config", "user.name", "Test User")
+	gitNameCmd.Dir = p.Dir
+	if _, err := gitNameCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to configure git user name: %w", err)
 	}
 
 	// Add replace directive for local development with absolute path
@@ -78,6 +103,14 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 	err = os.WriteFile(goModPath, []byte(newContent), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to update go.mod: %w", err)
+	}
+
+	// Force a go get with the replace directive to ensure fabrica's transitive dependencies are resolved
+	forceGetCmd := exec.Command("go", "get", "-u", "github.com/openchami/fabrica")
+	forceGetCmd.Dir = p.Dir
+	if output, err := forceGetCmd.CombinedOutput(); err != nil {
+		fmt.Printf("⚠️  Force go get for fabrica had issues: %s\n", output)
+		// Continue anyway, tidy might help
 	}
 
 	// Add the fabrica module as a requirement after adding replace directive
@@ -114,6 +147,39 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 
 // AddResource adds a resource to the project
 func (p *TestProject) AddResource(fabricaBinary, resourceName string) error {
+	// Before running fabrica commands that might trigger code generation,
+	// ensure the replace directive for local fabrica is set up
+	goModPath := filepath.Join(p.Dir, "go.mod")
+	content, err := os.ReadFile(goModPath)
+	if err != nil {
+		return fmt.Errorf("failed to read go.mod: %w", err)
+	}
+
+	modContent := string(content)
+	// Add replace directive if not already present
+	if !strings.Contains(modContent, "replace github.com/openchami/fabrica =>") {
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %w", err)
+		}
+		fabricaRoot := filepath.Join(wd, "..", "..")
+		fabricaRootAbs, err := filepath.Abs(fabricaRoot)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path to fabrica root: %w", err)
+		}
+
+		modContent = modContent + fmt.Sprintf("\nreplace github.com/openchami/fabrica => %s\n", fabricaRootAbs)
+		err = os.WriteFile(goModPath, []byte(modContent), 0644)
+		if err != nil {
+			return fmt.Errorf("failed to update go.mod with replace directive: %w", err)
+		}
+
+		// Get dependencies after adding replace directive
+		forceGetCmd := exec.Command("go", "get", "-u", "github.com/openchami/fabrica")
+		forceGetCmd.Dir = p.Dir
+		forceGetCmd.CombinedOutput() // Ignore errors, continue anyway
+	}
+
 	cmd := exec.Command(fabricaBinary, "add", "resource", resourceName)
 	cmd.Dir = p.Dir // Set working directory instead of using -C flag
 	output, err := cmd.CombinedOutput()
@@ -132,6 +198,41 @@ func (p *TestProject) Generate(fabricaBinary string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("fabrica generate failed: %w\nOutput: %s", err, output)
+	}
+
+	// After generation, add replace directives for local packages so go mod doesn't try to fetch them
+	goModPath := filepath.Join(p.Dir, "go.mod")
+	content, err := os.ReadFile(goModPath)
+	if err != nil {
+		return fmt.Errorf("failed to read go.mod after generation: %w", err)
+	}
+
+	// Add replace directives for the generated local packages
+	modContent := string(content)
+	if !strings.Contains(modContent, "replace "+p.Module+" =>") {
+		modContent = modContent + fmt.Sprintf("replace %s => ./\n", p.Module)
+		modContent = modContent + fmt.Sprintf("replace %s/pkg/resources => ./pkg/resources\n", p.Module)
+
+		err = os.WriteFile(goModPath, []byte(modContent), 0644)
+		if err != nil {
+			return fmt.Errorf("failed to update go.mod with replace directives: %w", err)
+		}
+	}
+
+	// Try go get to pull in all dependencies after adding replace directives
+	// This is especially important for getting fabrica's transitive dependencies
+	getCmd := exec.Command("go", "get", "github.com/openchami/fabrica", "github.com/getkin/kin-openapi/openapi3", "github.com/cloudevents/sdk-go/v2", "github.com/evanphx/json-patch/v5", "github.com/go-playground/validator/v10")
+	getCmd.Dir = p.Dir
+	if _, err := getCmd.CombinedOutput(); err != nil {
+		// Log but don't fail - we'll try download next
+		fmt.Printf("⚠️  go get dependencies had issues (continuing anyway)\n")
+	}
+
+	// Download all modules to populate go.sum
+	downloadCmd := exec.Command("go", "mod", "download", "all")
+	downloadCmd.Dir = p.Dir
+	if _, err := downloadCmd.CombinedOutput(); err != nil {
+		fmt.Printf("⚠️  go mod download all had issues (continuing anyway)\n")
 	}
 
 	// Run go mod tidy after generation as recommended in the success message

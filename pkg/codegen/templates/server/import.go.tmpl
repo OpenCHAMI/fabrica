@@ -18,7 +18,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"{{.ModulePath}}/internal/storage"
-	"{{.ModulePath}}/pkg/resource"
 	{{- range .Resources}}
 	"{{$.ModulePath}}/pkg/resources/{{.Name | toLower}}"
 	{{- end}}
