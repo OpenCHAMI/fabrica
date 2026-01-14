@@ -33,8 +33,8 @@ SPDX-License-Identifier: MIT
 // Version Support: Available (see version context in handlers)
 //
 // To enable full version conversion for this resource:
-//   1. Create v2beta1 package: pkg/resources/{{toLower .Name}}/v2beta1/
-//   2. Implement converter: v2beta1/converter.go
+//   1. Add new version: fabrica add version <group> <version>
+//   2. Implement converter: apis/<group>/<version>/converter.go
 //   3. Add version-aware storage: storage.Load{{.StorageName}}WithVersion()
 //   4. Register versions in cmd/server/main.go
 //

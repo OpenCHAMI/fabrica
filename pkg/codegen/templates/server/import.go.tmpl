@@ -18,8 +18,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"{{.ModulePath}}/internal/storage"
-	{{- range .Resources}}
-	"{{$.ModulePath}}/pkg/resources/{{.Name | toLower}}"
+	{{- range .UniqueImports}}
+	{{.Alias}} "{{.Path}}"
 	{{- end}}
 )
 
@@ -172,7 +172,7 @@ func importFile(ctx context.Context, path string, mode string, dryRun bool) (imp
 	switch genericResource.Kind {
 	{{- range .Resources}}
 	case "{{.Name}}":
-		var res {{.Name | toLower}}.{{.Name}}
+		var res {{.TypeName}}
 		if ext == ".json" {
 			if err := json.Unmarshal(data, &res); err != nil {
 				return 0, 0, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
