@@ -11,4 +11,3 @@ SPDX-License-Identifier: MIT
 This file is deprecated. All versioning documentation has been consolidated into a single, comprehensive guide located at `docs/guides/versioning.md`.
 
 **[→ Go to API Versioning Guide](guides/versioning.md)**
-

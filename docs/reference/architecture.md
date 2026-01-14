@@ -347,13 +347,13 @@ func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 // cmd/server/main.go
 func main() {
     router := chi.NewRouter()
-    
+
     // Add your auth middleware
     router.Use(AuthMiddleware(jwtSecret))
-    
+
     // Register generated routes
     RegisterRoutes(router, storage, eventBus)
-    
+
     http.ListenAndServe(":8080", router)
 }
 ```
@@ -487,9 +487,9 @@ func MultiTenantMiddleware(next http.Handler) http.Handler {
 // Filter resources by tenant
 func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
     tenantID := r.Context().Value(middleware.TenantContextKey).(string)
-    
+
     devices, _ := h.Storage.LoadAll(r.Context(), "Device")
-    
+
     // Filter by tenant label
     filtered := []Device{}
     for _, device := range devices {
@@ -497,7 +497,7 @@ func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
             filtered = append(filtered, device)
         }
     }
-    
+
     json.NewEncoder(w).Encode(filtered)
 }
 ```

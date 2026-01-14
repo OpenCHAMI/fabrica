@@ -196,7 +196,7 @@ Wrap specific routes in `cmd/server/routes_generated.go` (but be aware this file
 // cmd/server/main.go
 func main() {
     router := chi.NewRouter()
-    
+
     // Global middleware
     router.Use(LoggingMiddleware)
 
@@ -495,7 +495,7 @@ Apply middleware only to specific resource types:
 // cmd/server/main.go
 func main() {
     router := chi.NewRouter()
-    
+
     // Global middleware
     router.Use(LoggingMiddleware)
     router.Use(AuthenticationMiddleware(jwtSecret))
@@ -601,7 +601,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 // Allow configuration
 func RateLimitMiddleware(requestsPerSecond float64, burst int) func(http.Handler) http.Handler {
     limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burst)
-    
+
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             if !limiter.Allow() {
@@ -634,7 +634,7 @@ func TestAuthMiddleware(t *testing.T) {
     req := httptest.NewRequest("GET", "/test", nil)
     w := httptest.NewRecorder()
     handler.ServeHTTP(w, req)
-    
+
     if w.Code != http.StatusUnauthorized {
         t.Errorf("Expected 401, got %d", w.Code)
     }
@@ -643,7 +643,7 @@ func TestAuthMiddleware(t *testing.T) {
     req.Header.Set("Authorization", "Bearer " + validToken)
     w = httptest.NewRecorder()
     handler.ServeHTTP(w, req)
-    
+
     if w.Code != http.StatusOK {
         t.Errorf("Expected 200, got %d", w.Code)
     }

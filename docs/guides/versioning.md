@@ -433,7 +433,7 @@ func VersionNegotiation(next http.Handler) http.Handler {
         if version == "" {
             version = "v1" // default
         }
-        
+
         // Store in context
         ctx := context.WithValue(r.Context(), "version", version)
         next.ServeHTTP(w, r.WithContext(ctx))
