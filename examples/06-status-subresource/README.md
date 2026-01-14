@@ -80,14 +80,14 @@ Edit `apis/example.fabrica.dev/v1/device_types.go`:
 ```go
 package v1
 
-import "github.com/openchami/fabrica/pkg/resource"
+import "github.com/openchami/fabrica/pkg/fabrica"
 
 type Device struct {
-    APIVersion string            `json:"apiVersion"`
-    Kind       string            `json:"kind"`
-    Metadata   resource.Metadata `json:"metadata"`
-    Spec       DeviceSpec        `json:"spec"`
-    Status     DeviceStatus      `json:"status,omitempty"`
+    APIVersion string           `json:"apiVersion"`
+    Kind       string           `json:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata"`
+    Spec       DeviceSpec       `json:"spec"`
+    Status     DeviceStatus     `json:"status,omitempty"`
 }
 
 // DeviceSpec - User-defined desired state
@@ -102,12 +102,11 @@ type DeviceStatus struct {
     Health     string `json:"health,omitempty"`      // Healthy, Degraded, Unhealthy
     LastSeen   string `json:"lastSeen,omitempty"`    // RFC3339 timestamp
     Message    string `json:"message,omitempty"`     // Human-readable
-    Conditions []resource.Condition `json:"conditions,omitempty"`
+    Conditions []fabrica.Condition `json:"conditions,omitempty"`
 }
 
-func init() {
-    resource.RegisterResourcePrefix("Device", "dev")
-}
+// Note: Resource registration is now handled automatically by Fabrica CLI
+// during code generation based on your apis.yaml configuration
 ```
 
 ### Step 3: Generate Code

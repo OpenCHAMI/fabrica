@@ -48,22 +48,24 @@ fabrica add resource Sensor
 
 This creates a basic Sensor resource. Now customize it to match our monitoring needs:
 
-**Edit `pkg/resources/sensor/sensor.go`:**
+**Edit `apis/example.fabrica.dev/v1/sensor_types.go`:**
 ```go
-// pkg/resources/sensor/sensor.go
-package sensor
+// apis/example.fabrica.dev/v1/sensor_types.go
+package v1
 
 import (
     "context"
     "time"
-    "github.com/openchami/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/fabrica"
 )
 
 // Sensor represents a monitoring sensor resource
 type Sensor struct {
-    resource.Resource
-    Spec   SensorSpec   `json:"spec" validate:"required"`
-    Status SensorStatus `json:"status,omitempty"`
+    APIVersion string           `json:"apiVersion"`
+    Kind       string           `json:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata"`
+    Spec       SensorSpec       `json:"spec" validate:"required"`
+    Status     SensorStatus     `json:"status,omitempty"`
 }
 
 // SensorSpec defines the desired state of Sensor
@@ -81,7 +83,7 @@ type SensorStatus struct {
     Ready       bool        `json:"ready"`
     Value       float64     `json:"value,omitempty"`
     LastReading time.Time   `json:"lastReading,omitempty"`
-    Conditions  []resource.Condition `json:"conditions,omitempty"`
+    Conditions  []fabrica.Condition `json:"conditions,omitempty"`
 }
 
 // Validate implements custom validation logic for Sensor
@@ -90,10 +92,8 @@ func (r *Sensor) Validate(ctx context.Context) error {
     return nil
 }
 
-func init() {
-    // Register resource type prefix for storage
-    resource.RegisterResourcePrefix("Sensor", "sen")
-}
+// Note: Resource registration is now handled automatically by Fabrica CLI
+// during code generation based on your apis.yaml configuration
 ```
 
 ### Step 3: Generate the Complete API

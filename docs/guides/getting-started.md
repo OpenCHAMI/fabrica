@@ -42,10 +42,12 @@ This creates:
 ```
 bookstore/
 ├── .fabrica.yaml        # Project configuration
+├── apis.yaml            # API groups/versions/resources
+├── apis/                # Versioned API definitions
+│   └── example.fabrica.dev/
+│       └── v1/          # Hub version (default)
 ├── cmd/
 │   └── server/          # API server (main.go with stubs)
-├── pkg/
-│   └── resources/       # Your resource definitions (empty initially)
 ├── internal/            # Generated code will go here
 ├── go.mod
 ├── go.sum
@@ -58,20 +60,24 @@ bookstore/
 fabrica add resource Book
 ```
 
-This creates `pkg/resources/book/book.go`:
+This creates `apis/example.fabrica.dev/v1/book_types.go`:
 
 ```go
-package book
+package v1
 
 import (
-    "github.com/openchami/fabrica/pkg/resource"
+  "context"
+
+  "github.com/openchami/fabrica/pkg/fabrica"
 )
 
 // Book represents a Book resource
 type Book struct {
-    resource.Resource `json:",inline"`
-    Spec              BookSpec   `json:"spec"`
-    Status            BookStatus `json:"status"`
+  APIVersion string           `json:"apiVersion"`
+  Kind       string           `json:"kind"`
+  Metadata   fabrica.Metadata `json:"metadata"`
+  Spec       BookSpec   `json:"spec"`
+  Status     BookStatus `json:"status"`
 }
 
 // BookSpec defines the desired state of Book
@@ -92,14 +98,15 @@ type BookStatus struct {
 }
 ```
 
-func init() {
-    resource.RegisterResourcePrefix("Book", "boo")
+func (r *Book) Validate(ctx context.Context) error {
+  // Add custom validation logic here
+  return nil
 }
 ```
 
 ### Step 3: Customize Your Resource
 
-Edit `pkg/resources/book/book.go` and modify the `BookSpec` fields as needed:
+Edit `apis/example.fabrica.dev/v1/book_types.go` and modify the `BookSpec` fields as needed:
 
 ```go
 type BookSpec struct {
@@ -240,13 +247,15 @@ curl -X DELETE http://localhost:8080/books/boo-abc123def456
 
 ## Understanding the Resource Model
 
-Fabrica uses a Kubernetes-style resource model with an envelope pattern:
+Fabrica uses a Kubernetes-style resource model with a flattened envelope pattern:
 
 ```go
 type Book struct {
-    resource.Resource `json:",inline"`  // Embeds apiVersion, kind, metadata
-    Spec              BookSpec         `json:"spec"`      // Your desired state
-    Status            BookStatus       `json:"status"`    // Observed state
+    APIVersion string       `json:"apiVersion"`
+    Kind       string       `json:"kind"`
+    Metadata   Metadata     `json:"metadata"`
+    Spec       BookSpec     `json:"spec"`
+    Status     BookStatus   `json:"status,omitempty"`
 }
 ```
 
@@ -254,7 +263,7 @@ type Book struct {
 - **Spec** - What you want (your data model)
 - **Status** - What the system observes (runtime state, health info)
 - **Metadata** - Standard fields (name, UID, timestamps, labels)
-- **Resource** - Embedded base with apiVersion, kind, metadata
+- **APIVersion** and **Kind** - Kubernetes-style resource identification
 
 ## Validation
 
@@ -314,7 +323,7 @@ Now that you have a working API:
 
 ```bash
 fabrica add resource Author
-# Edit pkg/resources/author/author.go
+# Edit apis/example.fabrica.dev/v1/author_types.go
 fabrica generate
 ```
 
@@ -346,11 +355,13 @@ go test ./...
 
 ### Error: "no resources found"
 
-**Fix:** Make sure your resource embeds `resource.Resource`:
+**Fix:** Make sure your resource has the flattened envelope structure:
 ```go
 type MyResource struct {
-    resource.Resource  // ← Must embed this
-    Spec MyResourceSpec
+    APIVersion string       `json:"apiVersion"`
+    Kind       string       `json:"kind"`
+    Metadata   Metadata     `json:"metadata"`
+    Spec       MyResourceSpec `json:"spec"`
 }
 ```
 

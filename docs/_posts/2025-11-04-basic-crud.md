@@ -15,7 +15,7 @@ The Go client library comes from `pkg/codegen/templates/client/client.go.tmpl`. 
 
 ## Under the hood
 
-The CLI creates a typed client with `client.NewClient` and calls methods that mirror your resources. The methods issue HTTP requests to the server’s generated routes (`pkg/codegen/templates/server/routes.go.tmpl`) and unmarshal responses into your types from `pkg/resources/...`. Status operations go to `/status` endpoints to avoid spec conflicts.
+The CLI creates a typed client with `client.NewClient` and calls methods that mirror your resources. The methods issue HTTP requests to the server’s generated routes (`pkg/codegen/templates/server/routes.go.tmpl`) and unmarshal responses into your types from `apis/<group>/<version>/...`. Status operations go to `/status` endpoints to avoid spec conflicts.
 
 When you enable spec versioning on a resource, the generator adds version helpers and subcommands. The Go client gets `List<Resource>Versions`, `Get<Resource>Version`, and `Delete<Resource>Version`, and the CLI nests them under `<resource> versions ...`. These come from the same templates, so you do not maintain them by hand.
 

@@ -31,16 +31,19 @@ Proper validation:
 ### 1. Define Your Resource with Validation Tags
 
 ```go
-package main
+package v1
 
 import (
-    "github.com/openchami/fabrica/pkg/resource"
+    "github.com/openchami/fabrica/pkg/fabrica"
     "github.com/openchami/fabrica/pkg/validation"
 )
 
 type Device struct {
-    resource.Resource
-    Spec DeviceSpec `json:"spec" validate:"required"`
+    APIVersion string           `json:"apiVersion"`
+    Kind       string           `json:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata"`
+    Spec       DeviceSpec       `json:"spec" validate:"required"`
+    Status     DeviceStatus     `json:"status,omitempty"`
 }
 
 type DeviceSpec struct {
@@ -51,6 +54,8 @@ type DeviceSpec struct {
     Labels     map[string]string `json:"labels" validate:"dive,keys,labelkey,endkeys,labelvalue"`
 }
 ```
+
+> **Note:** Resources use explicit `APIVersion`, `Kind`, and `Metadata fabrica.Metadata` fields rather than embedding.
 
 ### 2. Validate in Your Handlers
 
@@ -205,8 +210,10 @@ For complex validation that can't be expressed with tags, implement the `CustomV
 
 ```go
 type Device struct {
-    resource.Resource
-    Spec DeviceSpec `json:"spec" validate:"required"`
+    APIVersion string     `json:"apiVersion"`
+    Kind       string     `json:"kind"`
+    Metadata   Metadata   `json:"metadata"`
+    Spec       DeviceSpec `json:"spec" validate:"required"`
 }
 
 func (d *Device) Validate(ctx context.Context) error {
@@ -421,8 +428,10 @@ type Device struct {
 
 ```go
 type Device struct {
-    resource.Resource
-    Spec DeviceSpec `json:"spec" validate:"required"`
+    APIVersion string     `json:"apiVersion"`
+    Kind       string     `json:"kind"`
+    Metadata   Metadata   `json:"metadata"`
+    Spec       DeviceSpec `json:"spec" validate:"required"`
 }
 
 func (d *Device) Validate(ctx context.Context) error {

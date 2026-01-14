@@ -20,23 +20,31 @@ SPDX-License-Identifier: MIT
 
 ## Overview
 
-Fabrica follows the Kubernetes resource pattern. All resources embed a common `Resource` struct:
+Fabrica follows the Kubernetes resource pattern with a **flattened envelope structure**. All resources explicitly define standard fields:
 
 ```go
+import "github.com/openchami/fabrica/pkg/fabrica"
+
 type Device struct {
-    resource.Resource `json:",inline"`
-    Spec              DeviceSpec   `json:"spec"`
-    Status            DeviceStatus `json:"status"`
+    APIVersion string           `json:"apiVersion"`    // "v1" or "example.fabrica.dev/v1"
+    Kind       string           `json:"kind"`          // "Device", "User", "Product"
+    Metadata   fabrica.Metadata `json:"metadata"`      // Name, UID, labels, annotations, timestamps
+    Spec       DeviceSpec       `json:"spec"`          // Desired state (you define)
+    Status     DeviceStatus     `json:"status"`        // Observed state (you define)
 }
 
-// The embedded Resource struct provides:
-type Resource struct {
-    APIVersion    string    `json:"apiVersion"`    // "v1"
-    Kind          string    `json:"kind"`          // "Device", "User", "Product"
-    SchemaVersion string    `json:"schemaVersion"` // Schema migration support
-    Metadata      Metadata  `json:"metadata"`      // Name, UID, labels, annotations, timestamps
+// The Metadata struct provides:
+type Metadata struct {
+    Name        string            `json:"name"`
+    UID         string            `json:"uid"`
+    Labels      map[string]string `json:"labels,omitempty"`
+    Annotations map[string]string `json:"annotations,omitempty"`
+    CreatedAt   time.Time         `json:"createdAt"`
+    UpdatedAt   time.Time         `json:"updatedAt"`
 }
 ```
+
+> **Migration Note:** If you're familiar with older Fabrica versions that used `resource.Resource` embedding, the current pattern uses explicit fields with `fabrica.Metadata` for better clarity and flexibility.
 
 ## Resource Structure
 
@@ -320,10 +328,9 @@ device.RemoveAnnotation("old-field")
 ```go
 // Create resource
 device := &Device{
-    Resource: resource.Resource{
-        APIVersion: "v1",
-        Kind: "Device",
-    },
+    APIVersion: "infra.example.io/v1",
+    Kind:       "Device",
+    Metadata:   Metadata{},
     Spec: DeviceSpec{
         Name: "Temperature Sensor",
         Location: "Warehouse A",
@@ -405,20 +412,18 @@ err := storage.Delete(ctx, "dev-1a2b3c4d")
 
 **DO:**
 ```go
-✅ Embed resource.Resource
+✅ Use flattened envelope structure
 ✅ Use json tags
 ✅ Separate Spec and Status
-✅ Register UID prefix in init()
+✅ Include APIVersion and Kind fields
 ✅ Add validation methods
 
 type Device struct {
-    resource.Resource
-    Spec   DeviceSpec   `json:"spec"`
-    Status DeviceStatus `json:"status,omitempty"`
-}
-
-func init() {
-    resource.RegisterResourcePrefix("Device", "dev")
+    APIVersion string       `json:"apiVersion"`
+    Kind       string       `json:"kind"`
+    Metadata   Metadata     `json:"metadata"`
+    Spec       DeviceSpec   `json:"spec"`
+    Status     DeviceStatus `json:"status,omitempty"`
 }
 
 func (d *Device) Validate() error {

@@ -16,7 +16,7 @@ Welcome to the Fabrica examples! These examples introduce new users to Fabrica's
 - Automatically convert between versions
 - Safely evolve your APIs without breaking changes
 
-Generated resources now use a flattened envelope structure (`APIVersion`, `Kind`, `Metadata`, `Spec`, `Status` fields) for better Go autodoc support. The JSON wire format remains identical for backward compatibility. See the [Versioning Guide](../docs/versioning.md) for migration details.
+Generated resources now use a flattened envelope structure (`APIVersion`, `Kind`, `Metadata`, `Spec`, `Status` fields) for better Go autodoc support. The JSON wire format remains identical for backward compatibility. See the [API Versioning Guide](../docs/guides/versioning.md) for migration details.
 
 ## Learning Path
 

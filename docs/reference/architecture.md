@@ -220,9 +220,11 @@ Start simple, add features as needed:
 **Example:**
 ```go
 type Device struct {
-    resource.Resource
-    Spec   DeviceSpec   `json:"spec"`
-    Status DeviceStatus `json:"status,omitempty"`
+    APIVersion string       `json:"apiVersion"`
+    Kind       string       `json:"kind"`
+    Metadata   Metadata     `json:"metadata"`
+    Spec       DeviceSpec   `json:"spec"`
+    Status     DeviceStatus `json:"status,omitempty"`
 }
 ```
 
@@ -291,26 +293,74 @@ Converter (v2 → v1)
 Response (v1)
 ```
 
-### 5. Authorization (`pkg/policy`)
+### 5. Authentication & Authorization (User-Implemented)
 
-**Purpose**: Flexible access control.
+**Purpose**: Flexible access control through custom middleware.
 
-**Key Components:**
-- `ResourcePolicy` interface - Authorization decisions
-- `AuthContext` - JWT claims and user info
-- `PolicyRegistry` - Register policies per resource
-- Helper functions - HasRole, GetClaim, etc.
+**Key Points:**
+- Authentication and authorization are **not generated** by Fabrica
+- You implement them as custom middleware (see [Middleware Guide](../guides/middleware.md))
+- Common patterns: JWT validation, RBAC, ABAC, TokenSmith integration
+- Middleware order matters: auth before resource handlers
 
-**Example:**
+**Example Authentication Middleware:**
 ```go
-func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
-    req *http.Request, uid string) policy.PolicyDecision {
-    if policy.HasRole(auth, "admin") {
-        return policy.Allow()
+// internal/middleware/auth.go
+package middleware
+
+import (
+    "context"
+    "net/http"
+    "strings"
+    "github.com/golang-jwt/jwt/v5"
+)
+
+func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            authHeader := r.Header.Get("Authorization")
+            if authHeader == "" {
+                http.Error(w, "Unauthorized", http.StatusUnauthorized)
+                return
+            }
+
+            tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+            token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+                return jwtSecret, nil
+            })
+
+            if err != nil || !token.Valid {
+                http.Error(w, "Invalid token", http.StatusUnauthorized)
+                return
+            }
+
+            // Add claims to context for downstream handlers
+            ctx := context.WithValue(r.Context(), "user", token.Claims)
+            next.ServeHTTP(w, r.WithContext(ctx))
+        })
     }
-    return policy.Deny("admin role required")
 }
 ```
+
+**Integration:**
+```go
+// cmd/server/main.go
+func main() {
+    router := chi.NewRouter()
+    
+    // Add your auth middleware
+    router.Use(AuthMiddleware(jwtSecret))
+    
+    // Register generated routes
+    RegisterRoutes(router, storage, eventBus)
+    
+    http.ListenAndServe(":8080", router)
+}
+```
+
+**See Also:**
+- [Middleware Customization Guide](../guides/middleware.md) - How to add custom middleware
+- Examples: JWT validation, TokenSmith, role-based access control
 
 ## Data Flow
 
@@ -319,17 +369,21 @@ func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
 ```
 1. HTTP POST /devices
     ↓
-2. Generated Handler: CreateDevice()
+2. Auth Middleware (if configured)
     ↓
-3. Policy Check: CanCreate()
+3. Generated Handler: CreateDevice()
     ↓
-4. Generate UID: dev-1a2b3c4d
+4. Validation Middleware
     ↓
-5. Set Timestamps: CreatedAt, UpdatedAt
+5. Generate UID: dev-1a2b3c4d
     ↓
-6. Storage: backend.Save()
+6. Set Timestamps: CreatedAt, UpdatedAt
     ↓
-7. Response: 201 Created with resource
+7. Storage: backend.Save()
+    ↓
+8. Event Publishing (if enabled)
+    ↓
+9. Response: 201 Created with resource
 ```
 
 ### Get Resource Flow
@@ -337,9 +391,9 @@ func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
 ```
 1. HTTP GET /devices/dev-123
     ↓
-2. Generated Handler: GetDevice()
+2. Auth Middleware (if configured)
     ↓
-3. Policy Check: CanGet()
+3. Generated Handler: GetDevice()
     ↓
 4. Version Negotiation: Check Accept header
     ↓
@@ -347,7 +401,9 @@ func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
     ↓
 6. Version Conversion: v2 → v1 (if needed)
     ↓
-7. Response: 200 OK with resource
+7. Conditional Middleware: Check ETags
+    ↓
+8. Response: 200 OK with resource
 ```
 
 ### List Resources Flow
@@ -355,9 +411,9 @@ func (p *DevicePolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
 ```
 1. HTTP GET /devices
     ↓
-2. Generated Handler: ListDevices()
+2. Auth Middleware (if configured)
     ↓
-3. Policy Check: CanList()
+3. Generated Handler: ListDevices()
     ↓
 4. Storage: backend.LoadAll()
     ↓
@@ -391,25 +447,62 @@ func (b *PostgresBackend) Load(ctx context.Context, resourceType, uid string) (j
 // Implement other methods...
 ```
 
-### 2. Custom Authorization Policy
+### 2. Custom Middleware
 
-Implement `ResourcePolicy` interface:
+Add authentication or authorization as middleware:
 
 ```go
-type MultiTenantPolicy struct{}
+// internal/middleware/tenant.go
+package middleware
 
-func (p *MultiTenantPolicy) CanGet(ctx context.Context, auth *policy.AuthContext,
-    req *http.Request, resourceUID string) policy.PolicyDecision {
+import (
+    "context"
+    "net/http"
+)
 
-    tenantID, _ := policy.GetStringClaim(auth, "tenant_id")
-    resource := loadResource(resourceUID)
+type TenantKey string
 
-    if resource.Metadata.Labels["tenant"] == tenantID {
-        return policy.Allow()
-    }
-    return policy.Deny("resource not in your tenant")
+const TenantContextKey = TenantKey("tenant")
+
+func MultiTenantMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Extract tenant from JWT claims (assumed set by auth middleware)
+        user, _ := r.Context().Value("user").(map[string]interface{})
+        tenantID, _ := user["tenant_id"].(string)
+
+        if tenantID == "" {
+            http.Error(w, "Missing tenant information", http.StatusBadRequest)
+            return
+        }
+
+        // Add tenant to context for handlers
+        ctx := context.WithValue(r.Context(), TenantContextKey, tenantID)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
 }
 ```
+
+**Usage in handlers:**
+```go
+// Filter resources by tenant
+func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
+    tenantID := r.Context().Value(middleware.TenantContextKey).(string)
+    
+    devices, _ := h.Storage.LoadAll(r.Context(), "Device")
+    
+    // Filter by tenant label
+    filtered := []Device{}
+    for _, device := range devices {
+        if device.Metadata.Labels["tenant"] == tenantID {
+            filtered = append(filtered, device)
+        }
+    }
+    
+    json.NewEncoder(w).Encode(filtered)
+}
+```
+
+**See:** [Middleware Customization Guide](../guides/middleware.md)
 
 ### 3. Custom Template Functions
 
@@ -454,8 +547,10 @@ Add validation to resource:
 
 ```go
 type Device struct {
-    resource.Resource
-    Spec DeviceSpec `json:"spec"`
+    APIVersion string     `json:"apiVersion"`
+    Kind       string     `json:"kind"`
+    Metadata   Metadata   `json:"metadata"`
+    Spec       DeviceSpec `json:"spec"`
 }
 
 func (d *Device) Validate() error {
@@ -569,11 +664,11 @@ Fabrica provides:
 
 **Next Steps:**
 
-- Learn the [Resource Model](resource-model.md)
+- Learn the [Resource Model](../guides/resource-model.md)
 - Understand [Code Generation](codegen.md)
-- Explore [Storage Options](storage.md)
-- Implement [Authorization](policy.md)
+- Explore [Storage Options](../guides/storage.md)
+- Implement [Custom Middleware](../guides/middleware.md) for authentication/authorization
 
 ---
 
-**Questions?** [Open an Issue](https://github.com/openchami/fabrica/issues) | **Want to contribute?** [Contributing Guide](../CONTRIBUTING.md)
+**Questions?** [Open an Issue](https://github.com/openchami/fabrica/issues) | **Want to contribute?** [Contributing Guide](../../CONTRIBUTING.md)

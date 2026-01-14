@@ -79,8 +79,6 @@ fabrica add resource FRU
 
 Edit the generated resource file `apis/example.fabrica.dev/v1/fru_types.go` with this structure:
 
-(Or reference the example in `examples/03-fru-service/pkg/resources/fru/fru.go` for guidance)
-
 ```go
 // FRUSpec defines the desired state of FRU
 type FRUSpec struct {
@@ -127,11 +125,16 @@ type FRUStatus struct {
     Temperature float64              `json:"temperature,omitempty"`
     Power       float64              `json:"power,omitempty"`
     Metrics     map[string]float64   `json:"metrics,omitempty"`
-    Conditions  []resource.Condition `json:"conditions,omitempty"`
+    Conditions  []fabrica.Condition `json:"conditions,omitempty"`
 }
 ```
 
 The FRU resource tracks hardware inventory with detailed location and status information.
+
+> **Note:** The `fabrica.Condition` type is imported from `github.com/openchami/fabrica/pkg/fabrica`. Add this import at the top of your file:
+> ```go
+> import "github.com/openchami/fabrica/pkg/fabrica"
+> ```
 
 
 ### Step 4: Generate All Code

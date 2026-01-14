@@ -301,10 +301,9 @@ if err := validation.ValidateWithContext(r.Context(), &device); err != nil {
 
 ```go
 device := &device.Device{
-    Resource: resource.Resource{
-        APIVersion: "v1",
-        Kind:       "Device",
-    },
+    APIVersion: "infra.example.io/v1",
+    Kind:       "Device",
+    Metadata:   Metadata{},
     Spec: device.DeviceSpec{
         Name:     "sensor-001",
         Location: "Building A",
@@ -614,11 +613,11 @@ To migrate existing file-based projects to Ent:
    ```
 
 2. **Initialize Ent:**
-   ```bash
-   fabrica init new-project --storage=ent --db=postgres
-   # Copy resource definitions if migrating from old pkg/resources/ structure
-   # Note: New projects use apis/<group>/<version>/ structure
-   ```
+    ```bash
+    fabrica init new-project --storage=ent --db=postgres
+    # Copy resource definitions from apis/<group>/<version>/ in your old project
+    # (Legacy projects: move from pkg/resources/* into apis/<group>/<version>/)
+    ```
 
 3. **Regenerate with Ent:**
    ```bash
@@ -845,7 +844,7 @@ servers, err := storage.QueryServers(ctx).
 ```
 
 **Q: How do migrations work?**
-A: Ent automatically generates migrations when you modify `pkg/resources/*/schema.go`. Run:
+A: Ent automatically generates migrations from `internal/storage/ent/schema/*.go`. Run:
 ```bash
 cd internal/storage && go generate ./...
 ```

@@ -107,7 +107,7 @@ func (r *Device) Validate(ctx context.Context) error {
 // Version conversion helpers and registration are generated.
 ```
 
-**Note on Versioning**: Future versions of Fabrica will generate resources with explicit `APIVersion`, `Kind`, `Metadata`, `Spec`, and `Status` fields instead of embedding `resource.Resource`. The JSON format remains identical. See [Hub/Spoke Versioning Guide](../../docs/versioning.md) for details.
+**Note on Versioning**: Future versions of Fabrica will generate resources with explicit `APIVersion`, `Kind`, `Metadata`, `Spec`, and `Status` fields instead of embedding `resource.Resource`. The JSON format remains identical. See [API Versioning Guide](../../docs/guides/versioning.md) for details.
 
 ### Step 3: Customize Your Resource
 

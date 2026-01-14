@@ -41,7 +41,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 - **🎯 Smart Validation** - Request validation with detailed, structured error responses
 - **⚡ Developer Experience** - CLI tools, hot-reload development, comprehensive testing
 - **📡 CloudEvents Integration** - Automatic event publishing for resource lifecycle (CRUD) and condition changes
-- **🌐 Cloud-Native Ready** - [Hub/spoke API versioning](docs/versioning.md), conditional requests (ETags), event-driven patterns
+- **🌐 Cloud-Native Ready** - [Hub/spoke API versioning](docs/guides/versioning.md), conditional requests (ETags), event-driven patterns
 - **🔄 API Versioning (Hub/Spoke)** - Kubebuilder-style versioning with automatic conversion between versions
 - **🏗️ Production Patterns** - Consistent API structure, error handling, and middleware
 
@@ -86,8 +86,10 @@ Explore hands-on examples in the [`examples/`](examples/) directory:
 
 - **[Basic CRUD](examples/01-basic-crud/)** ⚡ - Start here! Complete CRUD API in 5 minutes
 - **[FRU Service](examples/03-fru-service/)** 🔐 - Production patterns with database integration
-- **[CloudEvents Integration](examples/05-cloud-events/)** 📡 - Automatic event publishing for lifecycle and condition changes
 - **[Rack Reconciliation](examples/04-rack-reconciliation/)** 🔄 - Event-driven resource management
+- **[CloudEvents Integration](examples/05-cloud-events/)** 📡 - Automatic event publishing for lifecycle and condition changes
+- **[Status Subresource](examples/06-status-subresource/)** 🛡️ - Separate spec and status updates
+- **[Export/Import](examples/10-export-import/)** 💾 - Offline backup and restore operations
 
 ---
 
@@ -246,6 +248,8 @@ type DeviceStatus struct {
 
 **⚙️ Advanced Topics:**
 - [Code Generation Reference](docs/reference/codegen.md) - How templates work and customization
+- [CLI Command Reference](docs/reference/cli.md) - Complete CLI documentation with flags and workflows
+- [Middleware Customization](docs/guides/middleware.md) - Adding custom middleware for authentication, logging, etc.
 - [Validation System](docs/guides/validation.md) - Request validation and error handling
 - [Event System](docs/guides/events.md) - CloudEvents integration and event-driven patterns
 - [Reconciliation](docs/guides/reconciliation.md) - Controller pattern for resource management

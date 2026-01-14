@@ -126,14 +126,14 @@ Copy the resource definitions from this example directory to your project:
 
 ```bash
 # From the fabrica repository
-cp -r ../examples/04-rack-reconciliation/pkg/resources/* pkg/resources/
+cp -r ../examples/04-rack-reconciliation/apis/example.fabrica.dev/v1/* apis/example.fabrica.dev/v1/
 ```
 
 Or create each resource file manually following the structures below.
 
 #### RackTemplate Resource
 
-[pkg/resources/racktemplate/racktemplate.go](pkg/resources/racktemplate/racktemplate.go)
+`apis/example.fabrica.dev/v1/racktemplate_types.go`
 
 Defines the configuration template for a rack:
 - `ChassisCount` - Number of chassis in the rack
@@ -143,7 +143,7 @@ Defines the configuration template for a rack:
 
 #### Rack Resource
 
-[pkg/resources/rack/rack.go](pkg/resources/rack/rack.go)
+`apis/example.fabrica.dev/v1/rack_types.go`
 
 Represents a physical rack that references a RackTemplate:
 - `Spec.TemplateUID` - References which template to use
@@ -154,10 +154,10 @@ Represents a physical rack that references a RackTemplate:
 
 #### Child Resources
 
-- **Chassis** [pkg/resources/chassis/chassis.go](pkg/resources/chassis/chassis.go) - Contains blades
-- **Blade** [pkg/resources/blade/blade.go](pkg/resources/blade/blade.go) - Contains nodes and BMCs
-- **BMC** [pkg/resources/bmc/bmc.go](pkg/resources/bmc/bmc.go) - Management controller
-- **Node** [pkg/resources/node/node.go](pkg/resources/node/node.go) - Compute node
+- **Chassis** `apis/example.fabrica.dev/v1/chassis_types.go` - Contains blades
+- **Blade** `apis/example.fabrica.dev/v1/blade_types.go` - Contains nodes and BMCs
+- **BMC** `apis/example.fabrica.dev/v1/bmc_types.go` - Management controller
+- **Node** `apis/example.fabrica.dev/v1/node_types.go` - Compute node
 
 ### Step 4: Generate All Code (Including Reconcilers!)
 

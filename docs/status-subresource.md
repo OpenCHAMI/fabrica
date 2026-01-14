@@ -155,9 +155,9 @@ curl -X PATCH http://localhost:8080/devices/dev-123/status \
 
 ```go
 import (
-    "context"
-    "github.com/example/my-api/pkg/client"
-    "github.com/example/my-api/pkg/resources/device"
+  "context"
+  "github.com/example/my-api/pkg/client"
+  "github.com/example/my-api/apis/example.fabrica.dev/v1/device"
 )
 
 func updateDeviceLocation(c *client.Client, uid string) error {
@@ -237,11 +237,11 @@ Reconcilers automatically use status-only updates through the `BaseReconciler.Up
 package reconcilers
 
 import (
-    "context"
-    "time"
+  "context"
+  "time"
 
-    "github.com/openchami/fabrica/pkg/reconcile"
-    "github.com/example/my-api/pkg/resources/device"
+  "github.com/openchami/fabrica/pkg/reconcile"
+  "github.com/example/my-api/apis/example.fabrica.dev/v1/device"
 )
 
 type DeviceReconciler struct {
@@ -308,18 +308,20 @@ func (r *BaseReconciler) UpdateStatus(ctx context.Context, resource interface{})
 
 ## Resource Definition
 
-Define resources with separate Spec and Status:
+Define resources with separate Spec and Status using a flattened envelope:
 
 ```go
-package device
+package v1
 
 import "github.com/openchami/fabrica/pkg/resource"
 
 // Device represents a monitored device
 type Device struct {
-    resource.Resource `json:",inline"`
-    Spec              DeviceSpec   `json:"spec"`
-    Status            DeviceStatus `json:"status,omitempty"`
+    APIVersion string       `json:"apiVersion"` // "infra.example.io/v1"
+    Kind       string       `json:"kind"`       // "Device"
+    Metadata   Metadata     `json:"metadata"`
+    Spec       DeviceSpec   `json:"spec"`
+    Status     DeviceStatus `json:"status,omitempty"`
 }
 
 // DeviceSpec defines desired state (user-managed)

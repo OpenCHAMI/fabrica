@@ -99,9 +99,7 @@ Output:
 ```
 No version specified, using storage hub version: v1
 📦 Adding resource Device to infra.example.io/v1...
-  ✓ Added Device to .fabrica.yaml
-
-✅ Resource added sucapis.yaml
+  ✓ Added Device to apis.yaml
 
 ✅ Resource added successfully!
 
@@ -131,6 +129,8 @@ type DeviceStatus struct {
     LastChecked string              `json:"lastChecked,omitempty"`
     Conditions  []fabrica.Condition `json:"conditions,omitempty"`
 }
+
+// Note: Import fabrica.Condition from github.com/openchami/fabrica/pkg/fabrica
 ```
 
 ### 4. (Optional) Add Pre-release Version for Next Major
