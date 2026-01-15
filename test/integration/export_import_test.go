@@ -56,8 +56,8 @@ func (s *ExportImportTestSuite) createProject(name, module, storage string) *Tes
 
 // TestExportImportGeneration tests that export.go and import.go are generated correctly
 func (s *ExportImportTestSuite) TestExportImportGeneration() {
-	// Create project with new structure (apis/)
-	project := s.createProject("export-import-test", "github.com/test/export", "file")
+	// Create project with Ent storage (export/import only work with Ent)
+	project := s.createProject("export-import-test", "github.com/test/export", "ent")
 
 	// Initialize project (creates apis/ structure)
 	err := project.Initialize(s.fabricaBinary)
@@ -120,7 +120,7 @@ func (s *ExportImportTestSuite) TestExportImportGeneration() {
 
 // TestExportImportUseCorrectTypes verifies that export/import use proper type references
 func (s *ExportImportTestSuite) TestExportImportUseCorrectTypes() {
-	project := s.createProject("type-test", "github.com/test/types", "file")
+	project := s.createProject("type-test", "github.com/test/types", "ent")
 
 	err := project.Initialize(s.fabricaBinary)
 	s.Require().NoError(err)
@@ -165,18 +165,16 @@ func (s *ExportImportTestSuite) TestExportImportFileBackend() {
 	err = project.Generate(s.fabricaBinary)
 	s.Require().NoError(err)
 
-	// Verify both files compile correctly with file backend
+	// Verify export/import files are NOT generated for file backend
+	// (they only work with Ent storage which has query methods)
 	importFile := filepath.Join(project.Dir, "cmd", "server", "import.go")
 	exportFile := filepath.Join(project.Dir, "cmd", "server", "export.go")
 
-	s.Require().FileExists(importFile)
-	s.Require().FileExists(exportFile)
+	_, importErr := os.Stat(importFile)
+	_, exportErr := os.Stat(exportFile)
 
-	// Check for proper storage backend usage
-	importContent, err := os.ReadFile(importFile)
-	s.Require().NoError(err)
-	s.Assert().Contains(string(importContent), "storage.GetBackend()",
-		"import.go should use storage.GetBackend()")
+	s.Assert().True(os.IsNotExist(importErr), "import.go should NOT be generated for file storage")
+	s.Assert().True(os.IsNotExist(exportErr), "export.go should NOT be generated for file storage")
 }
 
 // TestExportImportEntBackend tests export/import with Ent storage backend
@@ -218,7 +216,7 @@ func (s *ExportImportTestSuite) TestExportImportEntBackend() {
 
 // TestExportImportMultipleResources verifies export/import work with multiple resources
 func (s *ExportImportTestSuite) TestExportImportMultipleResources() {
-	project := s.createProject("multi-export", "github.com/test/multiexport", "file")
+	project := s.createProject("multi-export", "github.com/test/multiexport", "ent")
 
 	err := project.Initialize(s.fabricaBinary)
 	s.Require().NoError(err)
@@ -274,7 +272,7 @@ func (s *ExportImportTestSuite) TestExportImportMultipleResources() {
 
 // TestExportImportCommandFlags verifies command structure and flags
 func (s *ExportImportTestSuite) TestExportImportCommandFlags() {
-	project := s.createProject("flags-test", "github.com/test/flags", "file")
+	project := s.createProject("flags-test", "github.com/test/flags", "ent")
 
 	err := project.Initialize(s.fabricaBinary)
 	s.Require().NoError(err)

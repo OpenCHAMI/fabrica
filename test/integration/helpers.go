@@ -5,12 +5,17 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -18,23 +23,27 @@ import (
 
 // TestProject represents a fabrica test project
 type TestProject struct {
-	Name      string
-	Dir       string
-	Module    string
-	Storage   string
-	Resources []string
-	serverCmd *exec.Cmd
-	suite     *suite.Suite
+	Name       string
+	Dir        string
+	Module     string
+	Storage    string
+	Resources  []string
+	serverCmd  *exec.Cmd
+	suite      *suite.Suite
+	ServerPort int
+	ServerURL  string
 }
 
 // NewTestProject creates a new test project instance
 func NewTestProject(s *suite.Suite, tempDir, name, module, storage string) *TestProject {
 	return &TestProject{
-		Name:    name,
-		Dir:     filepath.Join(tempDir, name),
-		Module:  module,
-		Storage: storage,
-		suite:   s,
+		Name:       name,
+		Dir:        filepath.Join(tempDir, name),
+		Module:     module,
+		Storage:    storage,
+		suite:      s,
+		ServerPort: 0, // Will be assigned when server starts
+		ServerURL:  "",
 	}
 }
 
@@ -127,6 +136,15 @@ func (p *TestProject) Generate(fabricaBinary string) error {
 	if err != nil {
 		return fmt.Errorf("fabrica generate failed: %w\nOutput: %s", err, output)
 	}
+
+	// Run go mod tidy after generation to download all dependencies
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = p.Dir
+	tidyOutput, err := tidyCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("go mod tidy failed: %w\nOutput: %s", err, tidyOutput)
+	}
+
 	return nil
 }
 
@@ -159,6 +177,131 @@ func (p *TestProject) GenerateEnt(fabricaBinary string) error {
 	return nil
 }
 
+// findAvailablePort finds an available port by listening on port 0
+func findAvailablePort() (int, error) {
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+// StartServerRuntime builds and starts the generated API server for runtime testing.
+// It resolves an available port, starts the server in the background, waits for health check,
+// and allows the test to make HTTP requests against running server.
+func (p *TestProject) StartServerRuntime() error {
+	if p.serverCmd != nil {
+		return fmt.Errorf("server already running")
+	}
+
+	// Find available port
+	port, err := findAvailablePort()
+	if err != nil {
+		return fmt.Errorf("failed to find available port: %w", err)
+	}
+	p.ServerPort = port
+	p.ServerURL = fmt.Sprintf("http://localhost:%d", port)
+
+	// Build the server binary
+	serverMainPath := filepath.Join(p.Dir, "cmd", "server", "main.go")
+	if _, err := os.Stat(serverMainPath); err != nil {
+		return fmt.Errorf("server main.go not found: %w", err)
+	}
+
+	// Compile the server
+	outputPath := filepath.Join(p.Dir, "server-binary")
+	buildCmd := exec.Command("go", "build", "-o", outputPath, "./cmd/server")
+	buildCmd.Dir = p.Dir
+	buildCmd.Env = os.Environ()
+	output, err := buildCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to build server: %w\nOutput: %s", err, output)
+	}
+
+	// Start the server with the serve subcommand and port flag
+	p.serverCmd = exec.Command(outputPath, "serve", "--port", fmt.Sprintf("%d", port))
+	p.serverCmd.Dir = p.Dir
+	p.serverCmd.Stdout = os.Stdout
+	p.serverCmd.Stderr = os.Stderr
+
+	if err := p.serverCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
+	// Wait for health check endpoint
+	if err := p.WaitForHealth(30 * time.Second); err != nil {
+		p.serverCmd.Process.Kill() //nolint:errcheck
+		p.serverCmd = nil
+		return fmt.Errorf("server health check failed: %w", err)
+	}
+
+	return nil
+}
+
+// WaitForHealth polls the /health endpoint until server is ready or timeout expires
+func (p *TestProject) WaitForHealth(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(fmt.Sprintf("%s/health", p.ServerURL))
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return nil
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("health check timeout after %s", timeout)
+}
+
+// HTTPCall makes a generic HTTP call to the server
+func (p *TestProject) HTTPCall(method, endpoint string, body interface{}, headers map[string]string) (*http.Response, []byte, error) {
+	if p.ServerURL == "" {
+		return nil, nil, fmt.Errorf("server not started - call StartServerRuntime() first")
+	}
+
+	var reqBody []byte
+	var err error
+
+	if body != nil {
+		if s, ok := body.(string); ok {
+			reqBody = []byte(s)
+		} else {
+			reqBody, err = json.Marshal(body)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
+			}
+		}
+	}
+
+	url := fmt.Sprintf("%s%s", p.ServerURL, endpoint)
+	req, err := http.NewRequest(method, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp, nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return resp, respBody, nil
+}
+
 // Build is now a no-op stub for backward compatibility
 // Tests should validate code generation, not build capability.
 // Building has been removed because it requires resolving go.mod dependencies,
@@ -169,12 +312,10 @@ func (p *TestProject) Build() error {
 	return nil
 }
 
-// StartServer is now a no-op stub for backward compatibility
-// Since Build() is skipped, there are no binaries to run.
-// Tests should validate code generation, not runtime behavior.
+// StartServer is now StartServerRuntime for runtime testing.
+// For backward compatibility, this calls StartServerRuntime if called.
 func (p *TestProject) StartServer() error {
-	fmt.Printf("ℹ️  StartServer skipped (test validates generation, not runtime)\n")
-	return nil
+	return p.StartServerRuntime()
 }
 
 // StopServer stops the running server
@@ -192,101 +333,76 @@ func (p *TestProject) StopServer() error {
 	return nil
 }
 
-// RunClient is now a no-op stub for backward compatibility
-// Since Build() is skipped, there are no binaries to run.
-func (p *TestProject) RunClient(args ...string) ([]byte, error) {
-	return []byte(""), fmt.Errorf("RunClient is disabled - tests validate generation, not runtime")
+// BuildClientBinary compiles the generated client CLI binary and verifies it runs
+// This is Phase 3 of testing: verify client binary compiles and basic commands work
+func (p *TestProject) BuildClientBinary() (string, error) {
+	if p.ServerURL == "" {
+		return "", fmt.Errorf("server not running - call StartServerRuntime() first")
+	}
+
+	clientMainPath := filepath.Join(p.Dir, "cmd", "client", "main.go")
+	if _, err := os.Stat(clientMainPath); err != nil {
+		return "", fmt.Errorf("client main.go not found: %w", err)
+	}
+
+	// Compile the client binary
+	outputPath := filepath.Join(p.Dir, "client-binary")
+	buildCmd := exec.Command("go", "build", "-o", outputPath, "./cmd/client")
+	buildCmd.Dir = p.Dir
+	buildCmd.Env = os.Environ()
+	output, err := buildCmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to build client: %w\nOutput: %s", err, output)
+	}
+
+	return outputPath, nil
 }
 
-// CreateResource creates a resource using the client
+// RunClientBinary executes the client CLI binary with given arguments
+func (p *TestProject) RunClientBinary(clientBinary string, args ...string) ([]byte, error) {
+	// Prepend --server flag with dynamic port if server is running
+	if p.ServerURL != "" {
+		args = append([]string{"--server", p.ServerURL}, args...)
+	}
+	cmd := exec.Command(clientBinary, args...)
+	cmd.Dir = p.Dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("client binary failed: %w\nOutput: %s", err, output)
+	}
+	return output, nil
+}
+
+// RunClient is deprecated - use generated client library or RunClientBinary for CLI smoke tests
+
+// CreateResource creates a resource using the client.
+// DEPRECATED: Use HTTPCall() with POST instead for direct server testing.
 func (p *TestProject) CreateResource(resourceName string, spec interface{}) (map[string]interface{}, error) {
-	var specJSON string
-	if s, ok := spec.(string); ok {
-		specJSON = s
-	} else {
-		specBytes, err := json.Marshal(spec)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal spec: %w", err)
-		}
-		specJSON = string(specBytes)
-	}
-
-	output, err := p.RunClient(resourceName, "create", "--spec", specJSON)
-	if err != nil {
-		return nil, fmt.Errorf("create failed: %w\nOutput: %s", err, output)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse create response: %w\nOutput: %s", err, output)
-	}
-
-	return result, nil
+	return nil, fmt.Errorf("CreateResource is deprecated - use HTTPCall() for direct HTTP testing or use RunClientBinary() for CLI testing")
 }
 
-// GetResource retrieves a resource by ID
+// GetResource retrieves a resource by ID.
+// DEPRECATED: Use HTTPCall() with GET instead for direct server testing.
 func (p *TestProject) GetResource(resourceName, id string) (map[string]interface{}, error) {
-	output, err := p.RunClient(resourceName, "get", id, "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("get failed: %w\nOutput: %s", err, output)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse get response: %w\nOutput: %s", err, output)
-	}
-
-	return result, nil
+	return nil, fmt.Errorf("GetResource is deprecated - use HTTPCall() for direct HTTP testing")
 }
 
-// ListResources lists all resources of a given type
+// ListResources lists all resources of a given type.
+// DEPRECATED: Use HTTPCall() with GET instead for direct server testing.
 func (p *TestProject) ListResources(resourceName string) ([]map[string]interface{}, error) {
-	output, err := p.RunClient(resourceName, "list", "--output", "json")
-	if err != nil {
-		return nil, fmt.Errorf("list failed: %w\nOutput: %s", err, output)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse list response: %w\nOutput: %s", err, output)
-	}
-
-	return result, nil
+	return nil, fmt.Errorf("ListResources is deprecated - use HTTPCall() for direct HTTP testing")
 }
 
-// PatchResource patches a resource with given patch data
+// PatchResource patches a resource with given patch data.
+// DEPRECATED: Use HTTPCall() with PATCH instead for direct server testing.
 func (p *TestProject) PatchResource(resourceName, id string, patch interface{}) (map[string]interface{}, error) {
-	var patchJSON string
-	if s, ok := patch.(string); ok {
-		patchJSON = s
-	} else {
-		patchBytes, err := json.Marshal(patch)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal patch: %w", err)
-		}
-		patchJSON = string(patchBytes)
-	}
-
-	output, err := p.RunClient(resourceName, "patch", id, "--spec", patchJSON)
-	if err != nil {
-		return nil, fmt.Errorf("patch failed: %w\nOutput: %s", err, output)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse patch response: %w\nOutput: %s", err, output)
-	}
-
-	return result, nil
+	return nil, fmt.Errorf("PatchResource is deprecated - use HTTPCall() for direct HTTP testing")
 }
 
-// DeleteResource deletes a resource by ID
+// DeleteResource deletes a resource by ID.
+// DEPRECATED: Use HTTPCall() with DELETE instead for direct server testing.
 func (p *TestProject) DeleteResource(resourceName, id string) error {
-	output, err := p.RunClient(resourceName, "delete", id)
-	if err != nil {
-		return fmt.Errorf("delete failed: %w\nOutput: %s", err, output)
-	}
-	return nil
+	return fmt.Errorf("DeleteResource is deprecated - use HTTPCall() for direct HTTP testing")
 }
 
 // AssertFileExists verifies that a file exists in the project

@@ -43,3 +43,7 @@ dist/
 
 # Pre-commit temporary directory
 .examples.tmp/
+
+# Integration test temporary directories
+test/integration/tmp-debug/
+test/integration/projects/

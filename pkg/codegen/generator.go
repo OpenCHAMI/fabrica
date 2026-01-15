@@ -540,11 +540,14 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateRoutes(); err != nil {
 			return err
 		}
-		if err := g.GenerateExportCommand(); err != nil {
-			return err
-		}
-		if err := g.GenerateImportCommand(); err != nil {
-			return err
+		// Export/import commands only work with Ent storage (they use Ent-specific query methods)
+		if g.StorageType == "ent" {
+			if err := g.GenerateExportCommand(); err != nil {
+				return err
+			}
+			if err := g.GenerateImportCommand(); err != nil {
+				return err
+			}
 		}
 		if err := g.GenerateStorage(); err != nil {
 			return err
