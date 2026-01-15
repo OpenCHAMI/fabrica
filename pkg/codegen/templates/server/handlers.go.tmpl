@@ -104,6 +104,12 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Layer 1: Request validation (validates inline spec fields and metadata)
+	if err := validation.ValidateResource(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+
 	// Get version context from request (set by version negotiation middleware)
 	versionCtx := versioning.GetVersionContext(r.Context())
 
@@ -119,7 +125,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		// Use negotiated ServeVersion (from Accept header) for apiVersion
 		APIVersion: versionCtx.ServeVersion,
 		Kind:       "{{.Name}}",
-		Spec:       req.{{.Name}}Spec,
+		Spec:       req.AsSpec(),
 	}
 
 	// Initialize metadata
@@ -150,7 +156,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 			Kind:          "{{.Name}}",
 			SchemaVersion: versionCtx.ServeVersion,
 		},
-		Spec: req.{{.Name}}Spec,
+		Spec: req.AsSpec(),
 	}
 
 	{{camelCase .Name}}.Metadata.Initialize(req.Name, uid)
@@ -167,13 +173,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 {{end}}
 
-	// Layer 2: Fabrica struct tag validation
-	if err := validation.ValidateResource({{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
-
-	// Layer 3: Custom business logic validation
+	// Layer 2: Custom business logic validation
 	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
@@ -248,7 +248,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update spec fields ONLY - status should use /status subresource
-	{{camelCase .Name}}.Spec = req.{{.Name}}Spec
+	{{camelCase .Name}}.Spec = req.AsSpec()
 
 	// Update labels and annotations
 	if {{camelCase .Name}}.Metadata.Labels == nil {
@@ -273,7 +273,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update spec fields ONLY - status should use /status subresource
-	{{camelCase .Name}}.Spec = req.{{.Name}}Spec
+	{{camelCase .Name}}.Spec = req.AsSpec()
 
 	// Update labels and annotations
 	for k, v := range req.Labels {

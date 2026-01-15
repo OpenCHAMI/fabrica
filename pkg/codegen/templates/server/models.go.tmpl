@@ -54,12 +54,26 @@ type Create{{.Name}}Request struct {
 	Annotations   map[string]string `json:"annotations,omitempty"`
 }
 
+// AsSpec converts the request fields to a spec object.
+// Since spec fields are inlined with json:",inline", they unmarshal to the request level
+// and are accessible via field promotion, but the embedded struct itself remains empty.
+// This method constructs a new Spec from those promoted fields.
+func (r *Create{{.Name}}Request) AsSpec() {{.SpecType}} {
+	// Return the embedded spec - field promotion makes this contain the unmarshaled values
+	return r.{{.Name}}Spec
+}
+
 // Update{{.Name}}Request represents a request to update a {{.Name}}
 type Update{{.Name}}Request struct {
 	{{.SpecType}} `json:",inline,omitempty"`
 	Name          string            `json:"name,omitempty"`
 	Labels        map[string]string `json:"labels,omitempty"`
 	Annotations   map[string]string `json:"annotations,omitempty"`
+}
+
+// AsSpec converts the request fields to a spec object
+func (r *Update{{.Name}}Request) AsSpec() {{.SpecType}} {
+	return r.{{.Name}}Spec
 }
 
 {{end}}

@@ -407,6 +407,148 @@ func (s *RuntimeTestSuite) TestOpenAPIGeneration() {
 	s.Require().Contains(string(content), "/apis", "OpenAPI should define API paths")
 }
 
+// TestValidationWithInlinedSpecFields verifies that validation tags on inlined spec fields
+// work correctly in versioned APIs. This tests the integration between:
+// - Request unmarshaling with json:",inline" on spec types
+// - Validation running on request objects before resource construction
+// - Proper error reporting for validation failures
+func (s *RuntimeTestSuite) TestValidationWithInlinedSpecFields() {
+	project := s.createProject("validation-test", "github.com/test/validation", "file")
+
+	// Setup
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.AddResource(s.fabricaBinary, "Device")
+	s.Require().NoError(err)
+
+	// Update Device spec with validation tags
+	// The generated Device type has fields inlined in CreateDeviceRequest via json:",inline"
+	// Note: 'name' is handled by the request's Name field, not included in spec
+	deviceTypePath := filepath.Join(project.Dir, "apis", "example.com", "v1", "device_types.go")
+	deviceCode := `package v1
+
+import (
+	"context"
+	"github.com/openchami/fabrica/pkg/fabrica"
+)
+
+// Device represents a device resource
+type Device struct {
+	APIVersion string           ` + "`json:\"apiVersion\"`" + `
+	Kind       string           ` + "`json:\"kind\"`" + `
+	Metadata   fabrica.Metadata ` + "`json:\"metadata\"`" + `
+	Spec       DeviceSpec       ` + "`json:\"spec\" validate:\"required\"`" + `
+	Status     DeviceStatus     ` + "`json:\"status,omitempty\"`" + `
+}
+
+// DeviceSpec defines the desired state of Device
+type DeviceSpec struct {
+	IPAddress  string ` + "`json:\"ipAddress\" validate:\"required,ip\"`" + `
+	DeviceType string ` + "`json:\"deviceType\" validate:\"oneof=server switch router\"`" + `
+	Location   string ` + "`json:\"location,omitempty\"`" + `
+}
+
+// DeviceStatus defines the observed state of Device
+type DeviceStatus struct {
+	Ready bool ` + "`json:\"ready\"`" + `
+}
+
+// Validate implements custom validation logic for Device
+func (r *Device) Validate(ctx context.Context) error {
+	return nil
+}
+
+// GetKind returns the kind of the resource
+func (r *Device) GetKind() string {
+	return "Device"
+}
+
+// GetName returns the name of the resource
+func (r *Device) GetName() string {
+	return r.Metadata.Name
+}
+
+// GetUID returns the UID of the resource
+func (r *Device) GetUID() string {
+	return r.Metadata.UID
+}
+
+// IsHub marks this as the hub/storage version
+func (r *Device) IsHub() {}
+`
+
+	err = os.WriteFile(deviceTypePath, []byte(deviceCode), 0644)
+	s.Require().NoError(err)
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	// Test Case 1: Valid request - should succeed
+	validPayload := map[string]interface{}{
+		"name":       "server-1",
+		"ipAddress":  "192.168.1.100",
+		"deviceType": "server",
+	}
+	resp, body, err := project.HTTPCall("POST", "/devices", validPayload, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode,
+		fmt.Sprintf("Valid request should succeed: %s", string(body)))
+
+	// Test Case 2: Missing required field (ipAddress) - should fail
+	missingIPPayload := map[string]interface{}{
+		"name":       "server-2",
+		"deviceType": "server",
+	}
+	resp, body, err = project.HTTPCall("POST", "/devices", missingIPPayload, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode,
+		fmt.Sprintf("Missing ipAddress should fail: %s", string(body)))
+	s.Require().Contains(string(body), "ipAddress", "Error should mention ipAddress")
+	s.Require().Contains(string(body), "required", "Error should indicate it's a required field")
+
+	// Test Case 4: Invalid IP address format - should fail
+	invalidIPPayload := map[string]interface{}{
+		"name":       "server-3",
+		"ipAddress":  "not-an-ip",
+		"deviceType": "server",
+	}
+	resp, body, err = project.HTTPCall("POST", "/devices", invalidIPPayload, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode,
+		fmt.Sprintf("Invalid IP should fail: %s", string(body)))
+	s.Require().Contains(string(body), "ipAddress", "Error should mention ipAddress")
+	s.Require().Contains(string(body), "IP", "Error should indicate IP validation")
+
+	// Test Case 5: Invalid enum value for deviceType - should fail
+	invalidTypePayload := map[string]interface{}{
+		"name":       "server-4",
+		"ipAddress":  "192.168.1.101",
+		"deviceType": "helicopter",
+	}
+	resp, body, err = project.HTTPCall("POST", "/devices", invalidTypePayload, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode,
+		fmt.Sprintf("Invalid enum should fail: %s", string(body)))
+	s.Require().Contains(string(body), "deviceType", "Error should mention deviceType")
+	s.Require().Contains(string(body), "one of", "Error should indicate oneof validation")
+
+	// Test Case 6: Valid with optional field - should succeed
+	validWithOptionalPayload := map[string]interface{}{
+		"name":       "server-5",
+		"ipAddress":  "192.168.1.102",
+		"deviceType": "switch",
+		"location":   "DataCenter A",
+	}
+	resp, body, err = project.HTTPCall("POST", "/devices", validWithOptionalPayload, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode,
+		fmt.Sprintf("Valid request with optional fields should succeed: %s", string(body)))
+}
+
 // Run the test suite
 func TestRuntimeSuite(t *testing.T) {
 	suite.Run(t, new(RuntimeTestSuite))

@@ -43,8 +43,8 @@ echo ""
 
 # Step 2: Add resources
 echo "Step 2: Adding resources..."
-fabrica add resource Server --version v1 --force
-fabrica add resource ServerConfig --version v1 --force
+fabrica add resource Server
+fabrica add resource Node
 
 echo "✓ Resources added"
 echo ""
@@ -60,21 +60,12 @@ echo ""
 echo "Step 4: Inspecting generated storage functions..."
 echo ""
 
-if [ -f "internal/storage/ent_queries_generated.go" ]; then
-    echo "Generated query functions:"
-    grep -E "^func (Query|List|Get)[A-Z]" internal/storage/ent_queries_generated.go | head -10 || true
-    echo ""
-else
-    echo "Note: Query functions will be generated with fabrica generate"
-fi
+echo "Generated Ent storage files:"
+ls -1 internal/storage/ent*.go 2>/dev/null | sed 's/^/  /' || echo "  No Ent files found"
+echo ""
 
-if [ -f "internal/storage/ent_transactions_generated.go" ]; then
-    echo "Generated transaction support:"
-    grep -E "^func WithTx" internal/storage/ent_transactions_generated.go || true
-    echo ""
-else
-    echo "Note: Transaction support will be generated with fabrica generate"
-fi
+echo "Note: With v0.4.0+, Ent uses a unified adapter pattern."
+echo "Query builders and transactions are in the generated storage layer."
 
 # Step 5: Show build info
 echo "Step 5: Build information..."

@@ -122,9 +122,10 @@ test_list() {
     echo ""
 
     # Pretty print the list (if jq is available)
+    # Note: Fabrica returns flat array, not {items: [...]}
     if command -v jq &> /dev/null; then
         echo "Devices:"
-        echo "$RESPONSE" | jq -r '.items[] | "  - \(.metadata.name): \(.spec.hostname) (\(.spec.ipaddr))"'
+        echo "$RESPONSE" | jq -r '.[] | "  - \(.metadata.name): \(.spec.hostname) (\(.spec.ipaddr))"'
         echo ""
     fi
 }

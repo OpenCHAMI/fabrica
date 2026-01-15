@@ -36,6 +36,7 @@ This directory contains a multi-layered integration test strategy that validates
 - `TestFileStorage` - File storage backend creates/maintains files
 - `TestErrorHandling` - Appropriate error responses for invalid operations
 - `TestOpenAPIGeneration` - OpenAPI spec is generated
+- `TestValidationWithInlinedSpecFields` - Validation tags on spec fields work correctly in versioned APIs (tests that validation runs on flattened request envelopes before resource construction)
 
 **Coverage:**
 - HTTP request/response handling
@@ -173,3 +174,5 @@ This consolidates common patterns and reduces duplication across examples.
 4. **E2E examples:** Automated example walkthroughs from example READMEs
 5. **Parallel execution:** Optimize timeout settings for parallel test runs
 6. **CI integration:** GitHub Actions workflow consuming these tests
+7. **Middleware validation tests:** More comprehensive tests for ETag, conditional requests, and versioning middleware
+8. **Update/Patch validation:** Test that validation also works correctly for PUT and PATCH operations with inlined spec fields

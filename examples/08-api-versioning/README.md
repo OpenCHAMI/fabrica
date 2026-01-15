@@ -109,7 +109,9 @@ Next steps:
   3. Run 'fabrica generate' to create handlers
 ```
 
-This creates `apis/infra.example.io/v1/device_types.go` and updates `apis.yaml
+This creates `apis/infra.example.io/v1/device_types.go` and updates `apis.yaml`.
+
+### 3. Customize the Resource Spec
 
 Edit `apis/infra.example.io/v1/device_types.go` to add your fields:
 
@@ -133,7 +135,22 @@ type DeviceStatus struct {
 // Note: Import fabrica.Condition from github.com/openchami/fabrica/pkg/fabrica
 ```
 
-### 4. (Optional) Add Pre-release Version for Next Major
+### 4. Generate the Server Code
+
+Run `fabrica generate` to create the server implementation:
+
+```bash
+fabrica generate
+```
+
+This generates:
+- Handlers in `cmd/server/*_handlers_generated.go`
+- Routes in `cmd/server/routes_generated.go`
+- Storage layer in `internal/storage/`
+- Client library in `pkg/client/`
+- OpenAPI specification in `cmd/server/openapi_generated.go`
+
+### 5. (Optional) Add Pre-release Version for Next Major
 
 To demonstrate version evolution, add `v2alpha1` (pre-release for v2).
 
@@ -232,7 +249,7 @@ func RegisterAllResources(gen *codegen.Generator) error {
 }
 ```
 
-### 8. Run the Server
+### 6. Run the Server
 
 ```bash
 go run ./cmd/server
@@ -240,7 +257,7 @@ go run ./cmd/server
 
 The server starts on `http://localhost:8080`.
 
-### 9. Test the API
+### 7. Test the API
 
 #### Create a Device
 

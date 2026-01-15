@@ -116,11 +116,14 @@ Edit `apis/example.fabrica.dev/v1/device_types.go` to add domain-specific fields
 ```go
 type DeviceSpec struct {
     Description string `json:"description,omitempty" validate:"max=200"`
-    IPAddress   string `json:"ipAddress,omitempty" validate:"omitempty,ip"`
+    Hostname    string `json:"hostname,omitempty"`
+    IPAddr      string `json:"ipaddr,omitempty" validate:"omitempty,ip"`
     Location    string `json:"location,omitempty"`
     Rack        string `json:"rack,omitempty"`
 }
 ```
+
+**Note:** Field names use `ipaddr` (lowercase) to match common network device conventions and the test script.
 
 ### Step 4: Generate Code
 
