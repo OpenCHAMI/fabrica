@@ -119,10 +119,14 @@ Edit `apis/infra.example.io/v1/device_types.go` to add your fields:
 type DeviceSpec struct {
     IPAddress   string            `json:"ipAddress" validate:"required,ip"`
     Location    string            `json:"location,omitempty"`
-    DeviceType  string            `json:"deviceType" validate:"oneof=server switch router"`
+    DeviceType  string            `json:"deviceType" validate:"required,oneof=server switch router"`
     Tags        map[string]string `json:"tags,omitempty"`
     Description string            `json:"description,omitempty"`
 }
+
+// Note: In validation tags, 'ip' is the validator function (validates IP addresses),
+// NOT the field name. Common validators: ip, email, uuid, required, oneof.
+// The JSON field name is 'ipAddress' (from the json tag).
 
 type DeviceStatus struct {
     Phase       string              `json:"phase,omitempty"`
@@ -269,7 +273,6 @@ curl -X POST http://localhost:8080/devices \
     "kind": "Device",
     "metadata": {"name": "device-1"},
     "spec": {
-      "name": "device-1",
       "ipAddress": "192.168.1.100",
       "location": "DataCenter A",
       "deviceType": "server",
@@ -300,7 +303,6 @@ curl -X PUT http://localhost:8080/devices/device-1 \
     "kind": "Device",
     "metadata": {"name": "device-1"},
     "spec": {
-      "name": "device-1",
       "ipAddress": "192.168.1.101",
       "location": "DataCenter B",
       "deviceType": "switch",
@@ -476,6 +478,37 @@ features:
 ```bash
 fabrica add resource Device --version v1 --force
 ```
+
+### Validation Error: "Undefined validation function 'X'"
+
+**Cause**: Confusion between JSON field names and validator function names in struct tags.
+
+**Understanding validation tags**:
+- The `validate` tag specifies **validator function names** (e.g., `ip`, `email`, `uuid`)
+- The `json` tag specifies the **field name** in JSON requests
+
+**Example**:
+```go
+type DeviceSpec struct {
+    IPAddress  string `json:"ipAddress" validate:"required,ip"`
+    //                       ^^^^^^^^^^^ (JSON name)    ^^ (validator function)
+    Email      string `json:"email" validate:"required,email"`
+    DeviceType string `json:"deviceType" validate:"oneof=server switch router"`
+}
+```
+
+**Common validators**: `ip`, `email`, `uuid`, `required`, `oneof=a b c`, `min`, `max`
+
+**In JSON requests**, use the `json` tag value:
+```json
+{
+  "ipAddress": "192.168.1.100",
+  "email": "admin@example.com",
+  "deviceType": "server"
+}
+```
+
+See the [Validation Guide](../../docs/guides/validation.md) for all available validators.
 
 ### Error: "No resources found"
 

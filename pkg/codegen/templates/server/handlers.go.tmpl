@@ -128,8 +128,8 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		Spec:       req.AsSpec(),
 	}
 
-	// Initialize metadata
-	{{camelCase .Name}}.Metadata.Name = req.Name
+	// Initialize metadata from request
+	{{camelCase .Name}}.Metadata = req.Metadata
 	{{camelCase .Name}}.Metadata.UID = uid
 	now := time.Now()
 	{{camelCase .Name}}.Metadata.CreatedAt = now
@@ -159,7 +159,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		Spec: req.AsSpec(),
 	}
 
-	{{camelCase .Name}}.Metadata.Initialize(req.Name, uid)
+	// Initialize metadata from request
+	if req.Metadata.Name != "" {
+		{{camelCase .Name}}.Metadata.Initialize(req.Metadata.Name, uid)
+	} else {
+		{{camelCase .Name}}.Metadata.Initialize("", uid)
 	now := time.Now()
 	{{camelCase .Name}}.Metadata.CreatedAt = now
 	{{camelCase .Name}}.Metadata.UpdatedAt = now
@@ -243,8 +247,8 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Apply updates
 {{if .IsVersioned}}
 	// Versioned mode: direct field access
-	if req.Name != "" {
-		{{camelCase .Name}}.Metadata.Name = req.Name
+	if req.Metadata.Name != "" {
+		{{camelCase .Name}}.Metadata.Name = req.Metadata.Name
 	}
 
 	// Update spec fields ONLY - status should use /status subresource
@@ -268,8 +272,8 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
 {{else}}
 	// Legacy mode: use SetLabel/SetAnnotation methods
-	if req.Name != "" {
-		{{camelCase .Name}}.SetName(req.Name)
+	if req.Metadata.Name != "" {
+		{{camelCase .Name}}.SetName(req.Metadata.Name)
 	}
 
 	// Update spec fields ONLY - status should use /status subresource

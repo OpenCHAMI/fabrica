@@ -103,11 +103,14 @@ func (s *RuntimeTestSuite) TestCRUDViaHTTP() {
 	err = project.StartServerRuntime()
 	s.Require().NoError(err)
 
-	// Create a resource
-	// Note: API expects name at top level, not nested in metadata
+	// Create a resource (flattened envelope: metadata + spec)
 	createPayload := map[string]interface{}{
-		"name":        "test-device",
-		"description": "A test device",
+		"metadata": map[string]interface{}{
+			"name": "test-device",
+		},
+		"spec": map[string]interface{}{
+			"description": "A test device",
+		},
 	}
 
 	resp, body, err := project.HTTPCall("POST", "/devices", createPayload, nil)
@@ -148,10 +151,13 @@ func (s *RuntimeTestSuite) TestCRUDViaHTTP() {
 	s.Require().Equal("test-device", retrievedMetadata["name"])
 
 	// Update resource
-	// Note: API expects name and spec fields at top level
 	updatePayload := map[string]interface{}{
-		"name":        "test-device",
-		"description": "Updated description",
+		"metadata": map[string]interface{}{
+			"name": "test-device",
+		},
+		"spec": map[string]interface{}{
+			"description": "Updated description",
+		},
 	}
 
 	resp, body, err = project.HTTPCall("PUT", fmt.Sprintf("/devices/%s", uid), updatePayload, nil)
@@ -407,11 +413,9 @@ func (s *RuntimeTestSuite) TestOpenAPIGeneration() {
 	s.Require().Contains(string(content), "/apis", "OpenAPI should define API paths")
 }
 
-// TestValidationWithInlinedSpecFields verifies that validation tags on inlined spec fields
-// work correctly in versioned APIs. This tests the integration between:
-// - Request unmarshaling with json:",inline" on spec types
-// - Validation running on request objects before resource construction
-// - Proper error reporting for validation failures
+// TestValidationWithInlinedSpecFields verifies validation on the flattened envelope pattern
+// (APIVersion/Kind/Metadata/Spec) used by versioned APIs. This ensures validation runs on
+// request objects before resource construction and returns useful errors.
 func (s *RuntimeTestSuite) TestValidationWithInlinedSpecFields() {
 	project := s.createProject("validation-test", "github.com/test/validation", "file")
 
@@ -422,9 +426,8 @@ func (s *RuntimeTestSuite) TestValidationWithInlinedSpecFields() {
 	err = project.AddResource(s.fabricaBinary, "Device")
 	s.Require().NoError(err)
 
-	// Update Device spec with validation tags
-	// The generated Device type has fields inlined in CreateDeviceRequest via json:",inline"
-	// Note: 'name' is handled by the request's Name field, not included in spec
+	// Update Device spec with validation tags. The request model keeps APIVersion/Kind/Metadata
+	// at the top level with Spec as a nested object (flattened envelope, not json:",inline").
 	deviceTypePath := filepath.Join(project.Dir, "apis", "example.com", "v1", "device_types.go")
 	deviceCode := `package v1
 
@@ -489,9 +492,11 @@ func (r *Device) IsHub() {}
 
 	// Test Case 1: Valid request - should succeed
 	validPayload := map[string]interface{}{
-		"name":       "server-1",
-		"ipAddress":  "192.168.1.100",
-		"deviceType": "server",
+		"metadata": map[string]interface{}{"name": "server-1"},
+		"spec": map[string]interface{}{
+			"ipAddress":  "192.168.1.100",
+			"deviceType": "server",
+		},
 	}
 	resp, body, err := project.HTTPCall("POST", "/devices", validPayload, nil)
 	s.Require().NoError(err)
@@ -500,8 +505,10 @@ func (r *Device) IsHub() {}
 
 	// Test Case 2: Missing required field (ipAddress) - should fail
 	missingIPPayload := map[string]interface{}{
-		"name":       "server-2",
-		"deviceType": "server",
+		"metadata": map[string]interface{}{"name": "server-2"},
+		"spec": map[string]interface{}{
+			"deviceType": "server",
+		},
 	}
 	resp, body, err = project.HTTPCall("POST", "/devices", missingIPPayload, nil)
 	s.Require().NoError(err)
@@ -512,9 +519,11 @@ func (r *Device) IsHub() {}
 
 	// Test Case 4: Invalid IP address format - should fail
 	invalidIPPayload := map[string]interface{}{
-		"name":       "server-3",
-		"ipAddress":  "not-an-ip",
-		"deviceType": "server",
+		"metadata": map[string]interface{}{"name": "server-3"},
+		"spec": map[string]interface{}{
+			"ipAddress":  "not-an-ip",
+			"deviceType": "server",
+		},
 	}
 	resp, body, err = project.HTTPCall("POST", "/devices", invalidIPPayload, nil)
 	s.Require().NoError(err)
@@ -525,9 +534,11 @@ func (r *Device) IsHub() {}
 
 	// Test Case 5: Invalid enum value for deviceType - should fail
 	invalidTypePayload := map[string]interface{}{
-		"name":       "server-4",
-		"ipAddress":  "192.168.1.101",
-		"deviceType": "helicopter",
+		"metadata": map[string]interface{}{"name": "server-4"},
+		"spec": map[string]interface{}{
+			"ipAddress":  "192.168.1.101",
+			"deviceType": "helicopter",
+		},
 	}
 	resp, body, err = project.HTTPCall("POST", "/devices", invalidTypePayload, nil)
 	s.Require().NoError(err)
@@ -538,10 +549,12 @@ func (r *Device) IsHub() {}
 
 	// Test Case 6: Valid with optional field - should succeed
 	validWithOptionalPayload := map[string]interface{}{
-		"name":       "server-5",
-		"ipAddress":  "192.168.1.102",
-		"deviceType": "switch",
-		"location":   "DataCenter A",
+		"metadata": map[string]interface{}{"name": "server-5"},
+		"spec": map[string]interface{}{
+			"ipAddress":  "192.168.1.102",
+			"deviceType": "switch",
+			"location":   "DataCenter A",
+		},
 	}
 	resp, body, err = project.HTTPCall("POST", "/devices", validWithOptionalPayload, nil)
 	s.Require().NoError(err)

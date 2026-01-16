@@ -37,6 +37,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/openchami/fabrica/pkg/fabrica"
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{end}}
@@ -48,32 +50,28 @@ type {{.Name}}Response = {{.PackageAlias}}.{{.Name}}
 
 // Create{{.Name}}Request represents a request to create a {{.Name}}
 type Create{{.Name}}Request struct {
-	{{.SpecType}} `json:",inline"`
-	Name          string            `json:"name" validate:"required"`
-	Labels        map[string]string `json:"labels,omitempty"`
-	Annotations   map[string]string `json:"annotations,omitempty"`
+	Metadata    fabrica.Metadata  `json:"metadata" validate:"required"`
+	Spec        {{.SpecType}}     `json:"spec" validate:"required"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// AsSpec converts the request fields to a spec object.
-// Since spec fields are inlined with json:",inline", they unmarshal to the request level
-// and are accessible via field promotion, but the embedded struct itself remains empty.
-// This method constructs a new Spec from those promoted fields.
+// AsSpec converts the request fields to a spec object
 func (r *Create{{.Name}}Request) AsSpec() {{.SpecType}} {
-	// Return the embedded spec - field promotion makes this contain the unmarshaled values
-	return r.{{.Name}}Spec
+	return r.Spec
 }
 
 // Update{{.Name}}Request represents a request to update a {{.Name}}
 type Update{{.Name}}Request struct {
-	{{.SpecType}} `json:",inline,omitempty"`
-	Name          string            `json:"name,omitempty"`
-	Labels        map[string]string `json:"labels,omitempty"`
-	Annotations   map[string]string `json:"annotations,omitempty"`
+	Metadata    fabrica.Metadata  `json:"metadata,omitempty"`
+	Spec        {{.SpecType}}     `json:"spec,omitempty" validate:"omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // AsSpec converts the request fields to a spec object
 func (r *Update{{.Name}}Request) AsSpec() {{.SpecType}} {
-	return r.{{.Name}}Spec
+	return r.Spec
 }
 
 {{end}}

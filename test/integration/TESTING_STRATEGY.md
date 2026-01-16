@@ -31,7 +31,7 @@ This directory contains a multi-layered integration test strategy that validates
 **Key tests:**
 - `TestServerStartupAndHealth` - Server starts and health endpoint works
 - `TestCRUDViaHTTP` - Full CRUD cycle via HTTP: Create, Read, List, Update, Delete, Patch
-- `TestMultiResourceProject` - Multiple resources work independently  
+- `TestMultiResourceProject` - Multiple resources work independently
 - `TestPatchOperations` - PATCH functionality
 - `TestFileStorage` - File storage backend creates/maintains files
 - `TestErrorHandling` - Appropriate error responses for invalid operations

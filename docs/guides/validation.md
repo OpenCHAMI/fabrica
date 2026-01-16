@@ -113,6 +113,12 @@ if resp.StatusCode == http.StatusBadRequest {
 
 ## Validation Tags Reference
 
+> **Important:** In validation tags, you specify **validator function names** (like `ip`, `email`, `uuid`), NOT field names. The JSON field name comes from the `json` tag.
+>
+> Example: `IPAddress string \`json:"ipAddress" validate:"required,ip"\``
+> - `ipAddress` is the JSON field name (used in API requests)
+> - `ip` is the validator function (checks if value is a valid IP address)
+
 ### Required and Optional Fields
 
 ```go

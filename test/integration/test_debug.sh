@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
 set -e
 
 # Create test project
