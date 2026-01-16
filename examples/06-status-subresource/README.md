@@ -141,9 +141,11 @@ go build -o device-server ./cmd/server
 curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "sensor-01",
-    "location": "datacenter-1",
-    "model": "TempPro-2000"
+        "metadata": {"name": "sensor-01"},
+        "spec": {
+            "location": "datacenter-1",
+            "model": "TempPro-2000"
+        }
   }'
 ```
 
@@ -156,9 +158,11 @@ Save the UID from the response (e.g., `dev-abc123`).
 curl -X PUT http://localhost:8080/devices/dev-abc123 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Temperature Sensor",
-    "location": "datacenter-2",
-    "model": "TempPro-2000"
+        "metadata": {"name": "Temperature Sensor"},
+        "spec": {
+            "location": "datacenter-2",
+            "model": "TempPro-2000"
+        }
   }'
 
 # Response shows updated spec, status unchanged

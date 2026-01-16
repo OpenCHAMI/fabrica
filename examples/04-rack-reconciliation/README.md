@@ -325,15 +325,16 @@ Expected output:
 curl -X POST http://localhost:8080/racktemplates \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "standard-rack",
-    "chassisCount": 2,
-    "chassisConfig": {
-    "bladeCount": 4,
-    "bladeConfig": {
-      "nodeCount": 2,
-      "bmcMode": "shared"
-      }
-    },
+    "metadata": {"name": "standard-rack"},
+    "spec": {
+      "chassisCount": 2,
+      "chassisConfig": {
+        "bladeCount": 4,
+        "bladeConfig": {
+          "nodeCount": 2,
+          "bmcMode": "shared"
+        }
+      },
       "description": "Standard 2-chassis rack with 4 blades per chassis"
     }
   }'
@@ -348,12 +349,13 @@ Save the UID from the response (e.g., `rktmpl-abc123`).
 curl -X POST http://localhost:8080/racks \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "rack-01",
-    "templateUID": "rktmpl-abc123",
-    "location": "datacenter-1",
-    "datacenter": "DC1",
-    "row": "A",
-    "position": "01"
+    "metadata": {"name": "rack-01"},
+    "spec": {
+      "templateUID": "rktmpl-abc123",
+      "location": "datacenter-1",
+      "datacenter": "DC1",
+      "row": "A",
+      "position": "01"
     }
   }'
 ```

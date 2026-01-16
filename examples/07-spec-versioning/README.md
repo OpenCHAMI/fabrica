@@ -51,13 +51,19 @@ go run ./cmd/server/
 
 Important: keep the trailing slash in `./cmd/server/`—there are multiple files to compile.
 
-### Step 3: Use the Generated Client (no cURL required)
+### Step 3: Use the Generated Client (metadata + spec) or cURL
 
-Run these from your app directory in a separate terminal while the server runs:
+Run these from your app directory in a separate terminal while the server runs. Payloads must use the flattened envelope (metadata + spec):
 
 ```bash
-# Create a sensor (print as JSON to capture values easily)
-go run ./cmd/client/ sensor create --spec '{"name":"s1","description":"first"}' -o json
+# Create a sensor (metadata + spec)
+cat > sensor-create.json <<'EOF'
+{
+	"metadata": {"name": "s1"},
+	"spec": {"description": "first"}
+}
+EOF
+go run ./cmd/client/ sensor create --file sensor-create.json -o json
 
 # Save the UID for reuse
 UID=$(go run ./cmd/client/ sensor list -o json | jq -r '.[0].metadata.uid')

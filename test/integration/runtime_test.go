@@ -272,10 +272,13 @@ func (s *RuntimeTestSuite) TestPatchOperations() {
 	s.Require().NoError(err)
 
 	// Create a config
-	// Note: API expects name and spec fields at top level
 	createPayload := map[string]interface{}{
-		"name":        "my-config",
-		"description": "Initial description",
+		"metadata": map[string]interface{}{
+			"name": "my-config",
+		},
+		"spec": map[string]interface{}{
+			"description": "Initial description",
+		},
 	}
 
 	resp, body, err := project.HTTPCall("POST", "/configs", createPayload, nil)

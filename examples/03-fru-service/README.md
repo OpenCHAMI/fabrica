@@ -222,19 +222,21 @@ go build -o fru-cli ./cmd/client
 ```bash
 # Create an FRU using the generated CLI client with --spec flag
 ./fru-cli fru create --spec '{
-  "name": "cpu-001",
-  "fruType": "CPU",
-  "serialNumber": "CPU12345",
-  "partNumber": "XEON-5678",
-  "manufacturer": "Intel",
-  "model": "Xeon Gold 6248R",
-  "location": {
-    "rack": "R42",
-    "chassis": "C1",
-    "slot": "U10",
-    "socket": "CPU0"
-  },
-  "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
+  "metadata": {"name": "cpu-001"},
+  "spec": {
+    "fruType": "CPU",
+    "serialNumber": "CPU12345",
+    "partNumber": "XEON-5678",
+    "manufacturer": "Intel",
+    "model": "Xeon Gold 6248R",
+    "location": {
+      "rack": "R42",
+      "chassis": "C1",
+      "slot": "U10",
+      "socket": "CPU0"
+    },
+    "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
+  }
 }'
 ```
 
@@ -244,19 +246,21 @@ Alternatively, create from a JSON file:
 # Create fru-cpu.json file
 cat > fru-cpu.json <<EOF
 {
-  "name": "cpu-001",
-  "fruType": "CPU",
-  "serialNumber": "CPU12345",
-  "partNumber": "XEON-5678",
-  "manufacturer": "Intel",
-  "model": "Xeon Gold 6248R",
-  "location": {
-    "rack": "R42",
-    "chassis": "C1",
-    "slot": "U10",
-    "socket": "CPU0"
-  },
-  "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
+  "metadata": {"name": "cpu-001"},
+  "spec": {
+    "fruType": "CPU",
+    "serialNumber": "CPU12345",
+    "partNumber": "XEON-5678",
+    "manufacturer": "Intel",
+    "model": "Xeon Gold 6248R",
+    "location": {
+      "rack": "R42",
+      "chassis": "C1",
+      "slot": "U10",
+      "socket": "CPU0"
+    },
+    "redfishPath": "/redfish/v1/Systems/node-001/Processors/CPU0"
+  }
 }
 EOF
 

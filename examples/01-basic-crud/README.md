@@ -283,15 +283,17 @@ DEVID=$(./client device list | jq -r '.[0].metadata.uid')
 If you prefer curl commands:
 
 ```bash
-# Create a device
+# Create a device (flattened envelope: metadata + spec)
 curl -X POST http://localhost:8080/devices \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "switch-01",
-    "description": "Core network switch",
-    "ipAddress": "192.168.1.10",
-    "location": "DataCenter A",
-    "rack": "R42"
+    "metadata": {"name": "switch-01"},
+    "spec": {
+      "description": "Core network switch",
+      "ipAddress": "192.168.1.10",
+      "location": "DataCenter A",
+      "rack": "R42"
+    }
   }'
 
 # List devices

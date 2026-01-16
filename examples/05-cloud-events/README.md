@@ -173,15 +173,17 @@ FABRICA_EVENT_SOURCE=production-sensors \
 Let's create some sensors and observe the events. **Note**: The API endpoints are at `/sensors` (not `/api/v1/sensors`) and use Fabrica's flat resource structure:
 
 ```bash
-# Create a temperature sensor - triggers 'created' event
+# Create a temperature sensor - triggers 'created' event (metadata + spec)
 curl -X POST http://localhost:8080/sensors \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "temp-sensor-01",
-    "description": "Office temperature sensor for CloudEvents demo",
-    "sensorType": "temperature",
-    "location": "Building A, Floor 2, Room 201",
-    "threshold": 75.0
+    "metadata": {"name": "temp-sensor-01"},
+    "spec": {
+      "description": "Office temperature sensor for CloudEvents demo",
+      "sensorType": "temperature",
+      "location": "Building A, Floor 2, Room 201",
+      "threshold": 75.0
+    }
   }'
 
 # Expected response:
@@ -207,15 +209,17 @@ curl -X POST http://localhost:8080/sensors \
 curl -X PUT http://localhost:8080/sensors/sen-abc123 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "temp-sensor-01",
-    "description": "Updated office temperature sensor with higher threshold",
-    "sensorType": "temperature",
-    "location": "Building A, Floor 2, Room 201",
-    "threshold": 80.0
+    "metadata": {"name": "temp-sensor-01"},
+    "spec": {
+      "description": "Updated office temperature sensor with higher threshold",
+      "sensorType": "temperature",
+      "location": "Building A, Floor 2, Room 201",
+      "threshold": 80.0
+    }
   }'
 
 # Patch the sensor status - triggers 'patched' event
-curl -X PATCH http://localhost:8080/sensors/sen-abc123 \
+curl -X PATCH http://localhost:8080/sensors/sen-abc123/status \
   -H "Content-Type: application/json" \
   -d '{
     "status": {
