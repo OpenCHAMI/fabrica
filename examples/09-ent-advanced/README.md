@@ -112,11 +112,11 @@ curl -X POST http://localhost:8080/api/v1/servers \
     }
   }'
 
-# Export resources
-./../../bin/fabrica export --format yaml --output ./backup
+# Export resources (offline, no running API required)
+go run ./cmd/server export --format yaml --output ./backup
 
 # Import resources
-./../../bin/fabrica import --source ./backup --mode upsert
+go run ./cmd/server import --input ./backup --mode upsert
 ```
 
 ## Architecture & Patterns
@@ -204,13 +204,13 @@ Save resources to human-readable files for backup, version control, or migration
 
 ```bash
 # Export all resources
-fabrica export --format yaml --output ./backup/
+go run ./cmd/server export --format yaml --output ./backup/
 
 # Export specific resource types
-fabrica export --kinds Server,ServerConfig --output ./prod-resources/
+go run ./cmd/server export --kinds Server,ServerConfig --output ./prod-resources/
 
 # Export with label filtering (future: k8s-style selectors)
-fabrica export --label-selector env=prod --output ./prod-backup/
+go run ./cmd/server export --label-selector env=prod --output ./prod-backup/
 ```
 
 **Output structure:**
@@ -228,16 +228,16 @@ backup/
 **Import with modes:**
 ```bash
 # Upsert mode (create new, update existing)
-fabrica import --source ./backup/
+go run ./cmd/server import --input ./backup/
 
 # Replace mode (delete all, then import)
-fabrica import --source ./backup/ --mode replace
+go run ./cmd/server import --input ./backup/ --mode replace
 
 # Skip existing (only create new)
-fabrica import --source ./backup/ --mode skip-existing
+go run ./cmd/server import --input ./backup/ --mode skip
 
 # Preview without applying
-fabrica import --source ./backup/ --dry-run
+go run ./cmd/server import --input ./backup/ --dry-run
 ```
 
 ## Code Organization
@@ -251,10 +251,8 @@ fabrica import --source ./backup/ --dry-run
 │   └── infra.example.com/
 │       └── v1/
 │           ├── server_types.go          # Server resource definition
-│           └── serverconfig_types.go    # ServerConfig resource definition
-├── pkg/
-│   └── resources/
-│       └── register_generated.go        # Generated resource registration
+│           ├── serverconfig_types.go    # ServerConfig resource definition
+│           └── register_generated.go    # Generated resource registration
 ├── internal/
 │   └── storage/
 │       ├── ent_queries_generated.go     # Generated query builders
@@ -349,19 +347,19 @@ Generated servers include export/import commands for backup and migration:
 
 ```bash
 # Export all resources to YAML
-./cmd/server/server export --format yaml --output ./backup
+go run ./cmd/server export --format yaml --output ./backup
 
 # Export specific resource types
-./cmd/server/server export --kinds Server --output ./server-backup
+go run ./cmd/server export --kinds Server --output ./server-backup
 
 # Import from backup
-./cmd/server/server import --input ./backup
+go run ./cmd/server import --input ./backup
 
 # Dry run to preview changes
-./cmd/server/server import --input ./backup --dry-run
+go run ./cmd/server import --input ./backup --dry-run
 
 # Replace mode (delete all resources first)
-./cmd/server/server import --input ./backup --mode replace
+go run ./cmd/server import --input ./backup --mode replace
 ```
 
 **Use cases:**
@@ -416,7 +414,7 @@ export DATABASE_URL="postgres://user:pass@pg.example.com/api"
 sleep 5
 
 # Import into new system
-fabrica import --source ./migration.yaml --mode replace
+go run ./cmd/server import --input ./migration.yaml --mode replace
 
 echo "Migration complete!"
 ```

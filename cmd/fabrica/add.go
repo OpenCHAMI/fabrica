@@ -302,9 +302,17 @@ type %sStatus struct {
 	Phase      string `+"`json:\"phase,omitempty\"`"+`
 	Message    string `+"`json:\"message,omitempty\"`"+`
 	Ready      bool   `+"`json:\"ready\"`"+`
-	// Add your status fields here
+	`, resourceName, resourceName, resourceName)
+
+		if opts.withVersioning {
+			content += `	// Version is the current spec version identifier (server-managed)
+	Version   string ` + "`json:\"version,omitempty\"`" + `
+`
+		}
+
+		content += `	// Add your status fields here
 }
-`, resourceName, resourceName, resourceName)
+`
 	}
 
 	// Validation method
@@ -380,6 +388,7 @@ func (src *` + resourceName + `) ConvertTo(dstRaw interface{}) error {
 // ConvertFrom converts from the hub version (` + hubVersion + `) to this ` + packageName + ` ` + resourceName + `
 func (dst *` + resourceName + `) ConvertFrom(srcRaw interface{}) error {
 	src := srcRaw.(*` + hubPackage + `.` + resourceName + `)
+	_ = src
 
 	// TODO: Implement conversion logic from ` + hubVersion + ` to ` + packageName + `
 
@@ -422,6 +431,12 @@ func init() {
 	resource.RegisterResourcePrefix("` + resourceName + `", "` + strings.ToLower(resourceName)[:3] + `")
 }
 `
+	}
+
+	// Add a marker comment for per-resource versioning if enabled.
+	// The generator will detect this and enable versioning templates.
+	if opts.withVersioning {
+		content = "// +fabrica:resource-versioning=enabled\n" + content
 	}
 
 	return os.WriteFile(filePath, []byte(content), 0644)

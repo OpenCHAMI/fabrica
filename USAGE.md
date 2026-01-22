@@ -361,13 +361,18 @@ fabrica init my-api --group myapi.io --storage-version v1
 go mod tidy
 ```
 
-If still failing, check `.fabrica.yaml`:
+If still failing, check `apis.yaml` and `.fabrica.yaml`:
+```yaml
+groups:
+  - name: api.example  # Should match your API group
+    storageVersion: v1
+```
+
 ```yaml
 features:
   versioning:
     enabled: true
-    group: api.example  # Should match your API group
-    storage_version: v1
+    strategy: header
 ```
 
 ### "database connection refused"

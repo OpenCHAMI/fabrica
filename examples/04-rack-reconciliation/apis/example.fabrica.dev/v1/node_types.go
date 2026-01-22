@@ -1,21 +1,25 @@
+//go:build ignore
+
 // Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
-package node
+package v1
 
 import (
-	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Node represents a compute node
+// Node represents a compute node.
 type Node struct {
-	resource.Resource `json:",inline"`
-	Spec              NodeSpec   `json:"spec"`
-	Status            NodeStatus `json:"status"`
+	APIVersion string           `json:"apiVersion"`
+	Kind       string           `json:"kind"`
+	Metadata   fabrica.Metadata `json:"metadata"`
+	Spec       NodeSpec         `json:"spec"`
+	Status     NodeStatus       `json:"status,omitempty"`
 }
 
-// NodeSpec defines the desired state of Node
+// NodeSpec defines the desired state of Node.
 type NodeSpec struct {
 	// Parent blade UID
 	BladeUID string `json:"bladeUID" validate:"required"`
@@ -32,7 +36,7 @@ type NodeSpec struct {
 	MemoryGB int    `json:"memoryGB,omitempty"`
 }
 
-// NodeStatus represents the observed state of Node
+// NodeStatus represents the observed state of Node.
 type NodeStatus struct {
 	// Power state
 	PowerState string `json:"powerState,omitempty"` // On, Off, Unknown
@@ -44,24 +48,23 @@ type NodeStatus struct {
 	Health string `json:"health,omitempty"` // OK, Warning, Critical, Unknown
 
 	// Conditions
-	Conditions []resource.Condition `json:"conditions,omitempty"`
+	Conditions []fabrica.Condition `json:"conditions,omitempty"`
 }
 
-// GetKind returns the kind of the resource
+// GetKind returns the kind of the resource.
 func (n *Node) GetKind() string {
 	return "Node"
 }
 
-// GetName returns the name of the resource
+// GetName returns the name of the resource.
 func (n *Node) GetName() string {
 	return n.Metadata.Name
 }
 
-// GetUID returns the UID of the resource
+// GetUID returns the UID of the resource.
 func (n *Node) GetUID() string {
 	return n.Metadata.UID
 }
 
-func init() {
-	resource.RegisterResourcePrefix("Node", "node")
-}
+// IsHub marks this as the hub/storage version.
+func (n *Node) IsHub() {}

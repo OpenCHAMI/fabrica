@@ -1,21 +1,25 @@
+//go:build ignore
+
 // Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
-package rack
+package v1
 
 import (
-	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Rack represents a physical rack in a data center
+// Rack represents a physical rack in a data center.
 type Rack struct {
-	resource.Resource `json:",inline"`
-	Spec              RackSpec   `json:"spec"`
-	Status            RackStatus `json:"status"`
+	APIVersion string           `json:"apiVersion"`
+	Kind       string           `json:"kind"`
+	Metadata   fabrica.Metadata `json:"metadata"`
+	Spec       RackSpec         `json:"spec"`
+	Status     RackStatus       `json:"status,omitempty"`
 }
 
-// RackSpec defines the desired state of Rack
+// RackSpec defines the desired state of Rack.
 type RackSpec struct {
 	// Reference to RackTemplate
 	TemplateUID string `json:"templateUID" validate:"required"`
@@ -31,7 +35,7 @@ type RackSpec struct {
 	Position string `json:"position,omitempty"`
 }
 
-// RackStatus represents the observed state of Rack
+// RackStatus represents the observed state of Rack.
 type RackStatus struct {
 	// Phase of rack provisioning
 	Phase string `json:"phase"` // Pending, Provisioning, Ready, Error
@@ -46,24 +50,23 @@ type RackStatus struct {
 	TotalBMCs    int `json:"totalBMCs"`
 
 	// Conditions
-	Conditions []resource.Condition `json:"conditions,omitempty"`
+	Conditions []fabrica.Condition `json:"conditions,omitempty"`
 }
 
-// GetKind returns the kind of the resource
+// GetKind returns the kind of the resource.
 func (r *Rack) GetKind() string {
 	return "Rack"
 }
 
-// GetName returns the name of the resource
+// GetName returns the name of the resource.
 func (r *Rack) GetName() string {
 	return r.Metadata.Name
 }
 
-// GetUID returns the UID of the resource
+// GetUID returns the UID of the resource.
 func (r *Rack) GetUID() string {
 	return r.Metadata.UID
 }
 
-func init() {
-	resource.RegisterResourcePrefix("Rack", "rack")
-}
+// IsHub marks this as the hub/storage version.
+func (r *Rack) IsHub() {}

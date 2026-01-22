@@ -16,18 +16,16 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/example/rack-inventory/pkg/resources/blade"
-	"github.com/example/rack-inventory/pkg/resources/bmc"
-	"github.com/example/rack-inventory/pkg/resources/chassis"
-	"github.com/example/rack-inventory/pkg/resources/node"
-	"github.com/example/rack-inventory/pkg/resources/rack"
-	"github.com/example/rack-inventory/pkg/resources/racktemplate"
+	rackv1 "github.com/example/rack-inventory/apis/example.fabrica.dev/v1"
+	"github.com/openchami/fabrica/pkg/fabrica"
 	"github.com/openchami/fabrica/pkg/resource"
 )
 
+const apiVersion = "example.fabrica.dev/v1"
+
 // reconcileRack implements the custom business logic for Rack reconciliation.
 // This is where you implement the actual reconciliation logic.
-func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.Rack) error {
+func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rackv1.Rack) error {
 	// Check if already provisioned (idempotency)
 	if rackResource.Status.Phase == "Ready" {
 		r.Logger.Debugf("Rack %s already in Ready phase", rackResource.GetUID())
@@ -53,7 +51,7 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 	}
 
 	// Unmarshal template
-	var template racktemplate.RackTemplate
+	var template rackv1.RackTemplate
 	templateBytes, err := json.Marshal(templateData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal template data: %w", err)
@@ -163,26 +161,24 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, rackResource *rack.R
 }
 
 // createChassis creates a new Chassis resource
-func (r *RackReconciler) createChassis(ctx context.Context, rackResource *rack.Rack, chassisNum int) (string, error) {
+func (r *RackReconciler) createChassis(ctx context.Context, rackResource *rackv1.Rack, chassisNum int) (string, error) {
 	chassisUID, err := resource.GenerateUIDForResource("Chassis")
 	if err != nil {
 		return "", err
 	}
 
-	c := &chassis.Chassis{
-		Resource: resource.Resource{
-			APIVersion: "v1",
-			Kind:       "Chassis",
-			Metadata: resource.Metadata{
-				Name: fmt.Sprintf("%s-chassis-%d", rackResource.GetName(), chassisNum),
-				UID:  chassisUID,
-			},
+	c := &rackv1.Chassis{
+		APIVersion: apiVersion,
+		Kind:       "Chassis",
+		Metadata: fabrica.Metadata{
+			Name: fmt.Sprintf("%s-chassis-%d", rackResource.GetName(), chassisNum),
+			UID:  chassisUID,
 		},
-		Spec: chassis.ChassisSpec{
+		Spec: rackv1.ChassisSpec{
 			RackUID:       rackResource.GetUID(),
 			ChassisNumber: chassisNum,
 		},
-		Status: chassis.ChassisStatus{
+		Status: rackv1.ChassisStatus{
 			PowerState: "Unknown",
 			Health:     "Unknown",
 		},
@@ -204,20 +200,18 @@ func (r *RackReconciler) createBlade(ctx context.Context, chassisUID string, bla
 		return "", err
 	}
 
-	b := &blade.Blade{
-		Resource: resource.Resource{
-			APIVersion: "v1",
-			Kind:       "Blade",
-			Metadata: resource.Metadata{
-				Name: fmt.Sprintf("chassis-%s-blade-%d", chassisUID, bladeNum),
-				UID:  bladeUID,
-			},
+	b := &rackv1.Blade{
+		APIVersion: apiVersion,
+		Kind:       "Blade",
+		Metadata: fabrica.Metadata{
+			Name: fmt.Sprintf("chassis-%s-blade-%d", chassisUID, bladeNum),
+			UID:  bladeUID,
 		},
-		Spec: blade.BladeSpec{
+		Spec: rackv1.BladeSpec{
 			ChassisUID:  chassisUID,
 			BladeNumber: bladeNum,
 		},
-		Status: blade.BladeStatus{
+		Status: rackv1.BladeStatus{
 			PowerState: "Unknown",
 			Health:     "Unknown",
 		},
@@ -239,19 +233,17 @@ func (r *RackReconciler) createBMC(ctx context.Context, bladeUID string) (string
 		return "", err
 	}
 
-	b := &bmc.BMC{
-		Resource: resource.Resource{
-			APIVersion: "v1",
-			Kind:       "BMC",
-			Metadata: resource.Metadata{
-				Name: fmt.Sprintf("bmc-%s", bmcUID),
-				UID:  bmcUID,
-			},
+	b := &rackv1.BMC{
+		APIVersion: apiVersion,
+		Kind:       "BMC",
+		Metadata: fabrica.Metadata{
+			Name: fmt.Sprintf("bmc-%s", bmcUID),
+			UID:  bmcUID,
 		},
-		Spec: bmc.BMCSpec{
+		Spec: rackv1.BMCSpec{
 			BladeUID: bladeUID,
 		},
-		Status: bmc.BMCStatus{
+		Status: rackv1.BMCStatus{
 			Reachable: false,
 			Health:    "Unknown",
 		},
@@ -273,21 +265,19 @@ func (r *RackReconciler) createNode(ctx context.Context, bladeUID, bmcUID string
 		return "", err
 	}
 
-	n := &node.Node{
-		Resource: resource.Resource{
-			APIVersion: "v1",
-			Kind:       "Node",
-			Metadata: resource.Metadata{
-				Name: fmt.Sprintf("node-%s-%d", bladeUID, nodeNum),
-				UID:  nodeUID,
-			},
+	n := &rackv1.Node{
+		APIVersion: apiVersion,
+		Kind:       "Node",
+		Metadata: fabrica.Metadata{
+			Name: fmt.Sprintf("node-%s-%d", bladeUID, nodeNum),
+			UID:  nodeUID,
 		},
-		Spec: node.NodeSpec{
+		Spec: rackv1.NodeSpec{
 			BladeUID:   bladeUID,
 			BMCUID:     bmcUID,
 			NodeNumber: nodeNum,
 		},
-		Status: node.NodeStatus{
+		Status: rackv1.NodeStatus{
 			PowerState: "Unknown",
 			BootState:  "Unknown",
 			Health:     "Unknown",
@@ -315,7 +305,7 @@ func (r *RackReconciler) updateChassisStatus(ctx context.Context, chassisUID str
 		return err
 	}
 
-	var c chassis.Chassis
+	var c rackv1.Chassis
 	if err := json.Unmarshal(dataBytes, &c); err != nil {
 		return err
 	}
@@ -336,7 +326,7 @@ func (r *RackReconciler) updateBladeStatus(ctx context.Context, bladeUID string,
 		return err
 	}
 
-	var b blade.Blade
+	var b rackv1.Blade
 	if err := json.Unmarshal(dataBytes, &b); err != nil {
 		return err
 	}

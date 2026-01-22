@@ -56,13 +56,17 @@ test_create() {
     RESPONSE=$(curl -s -X POST "$API_URL/devices" \
         -H "Content-Type: application/json" \
         -d '{
-            "name": "test-switch-01",
-            "hostname": "test-switch-01.example.com",
-            "ipaddr": "192.168.1.100",
-            "description": "Test network switch",
-            "labels": {
-                "environment": "test",
-                "location": "datacenter-1"
+            "metadata": {
+                "name": "test-switch-01",
+                "labels": {
+                    "environment": "test",
+                    "location": "datacenter-1"
+                }
+            },
+            "spec": {
+                "hostname": "test-switch-01.example.com",
+                "ipaddr": "192.168.1.100",
+                "description": "Test network switch"
             }
         }')
 
@@ -87,13 +91,17 @@ test_create_more() {
     curl -s -X POST "$API_URL/devices" \
         -H "Content-Type: application/json" \
         -d '{
-            "name": "test-router-01",
-            "hostname": "router-01.example.com",
-            "ipaddr": "192.168.1.1",
-            "description": "Main router",
-            "labels": {
-                "environment": "test",
-                "type": "router"
+            "metadata": {
+                "name": "test-router-01",
+                "labels": {
+                    "environment": "test",
+                    "type": "router"
+                }
+            },
+            "spec": {
+                "hostname": "router-01.example.com",
+                "ipaddr": "192.168.1.1",
+                "description": "Main router"
             }
         }' > /dev/null
 
@@ -101,10 +109,14 @@ test_create_more() {
     curl -s -X POST "$API_URL/devices" \
         -H "Content-Type: application/json" \
         -d '{
-            "name": "test-firewall-01",
-            "hostname": "firewall-01.example.com",
-            "ipaddr": "192.168.1.2",
-            "description": "Edge firewall"
+            "metadata": {
+                "name": "test-firewall-01"
+            },
+            "spec": {
+                "hostname": "firewall-01.example.com",
+                "ipaddr": "192.168.1.2",
+                "description": "Edge firewall"
+            }
         }' > /dev/null
 
     print_success "Created additional devices"
@@ -201,8 +213,12 @@ test_validation() {
     RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL/devices" \
         -H "Content-Type: application/json" \
         -d '{
-            "name": "invalid-device",
-            "hostname": "test.example.com"
+            "metadata": {
+                "name": "invalid-device"
+            },
+            "spec": {
+                "hostname": "test.example.com"
+            }
         }')
 
     STATUS=$(echo "$RESPONSE" | tail -1)

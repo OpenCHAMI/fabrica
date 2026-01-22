@@ -338,7 +338,7 @@ Generated Files:
 
 1. **Registration Phase:**
    - AST-parse `apis/<group>/<version>/*_types.go`
-   - Generate `pkg/resources/register_generated.go`
+   - Generate `apis/<group>/<version>/register_generated.go`
    - Import resource types
 
 2. **Reflection Phase:**

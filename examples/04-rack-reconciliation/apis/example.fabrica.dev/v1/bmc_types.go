@@ -1,21 +1,25 @@
+//go:build ignore
+
 // Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
-package bmc
+package v1
 
 import (
-	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// BMC represents a Baseboard Management Controller
+// BMC represents a Baseboard Management Controller.
 type BMC struct {
-	resource.Resource `json:",inline"`
-	Spec              BMCSpec   `json:"spec"`
-	Status            BMCStatus `json:"status"`
+	APIVersion string           `json:"apiVersion"`
+	Kind       string           `json:"kind"`
+	Metadata   fabrica.Metadata `json:"metadata"`
+	Spec       BMCSpec          `json:"spec"`
+	Status     BMCStatus        `json:"status,omitempty"`
 }
 
-// BMCSpec defines the desired state of BMC
+// BMCSpec defines the desired state of BMC.
 type BMCSpec struct {
 	// Parent blade UID
 	BladeUID string `json:"bladeUID" validate:"required"`
@@ -30,7 +34,7 @@ type BMCSpec struct {
 	FirmwareVersion string `json:"firmwareVersion,omitempty"`
 }
 
-// BMCStatus represents the observed state of BMC
+// BMCStatus represents the observed state of BMC.
 type BMCStatus struct {
 	// Managed node UIDs
 	ManagedNodeUIDs []string `json:"managedNodeUIDs,omitempty"`
@@ -42,24 +46,23 @@ type BMCStatus struct {
 	Health string `json:"health,omitempty"` // OK, Warning, Critical, Unknown
 
 	// Conditions
-	Conditions []resource.Condition `json:"conditions,omitempty"`
+	Conditions []fabrica.Condition `json:"conditions,omitempty"`
 }
 
-// GetKind returns the kind of the resource
+// GetKind returns the kind of the resource.
 func (b *BMC) GetKind() string {
 	return "BMC"
 }
 
-// GetName returns the name of the resource
+// GetName returns the name of the resource.
 func (b *BMC) GetName() string {
 	return b.Metadata.Name
 }
 
-// GetUID returns the UID of the resource
+// GetUID returns the UID of the resource.
 func (b *BMC) GetUID() string {
 	return b.Metadata.UID
 }
 
-func init() {
-	resource.RegisterResourcePrefix("BMC", "bmc")
-}
+// IsHub marks this as the hub/storage version.
+func (b *BMC) IsHub() {}

@@ -79,11 +79,13 @@ cd rack-inventory
 ```
 rack-inventory/
 ├── .fabrica.yaml                    # Configuration with reconciliation enabled
+├── apis.yaml                        # API group/version configuration
 ├── cmd/
 │   └── server/
 │       └── main.go                  # Server with controller setup (commented)
-├── pkg/
-│   └── resources/                   # Empty (for resources)
+├── apis/
+│   └── example.fabrica.dev/
+│       └── v1/                      # Resource definitions
 └── internal/
     └── storage/
 ```

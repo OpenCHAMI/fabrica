@@ -215,17 +215,17 @@ func ExampleComplexQuery(ctx context.Context) error {
 // Pattern: Export resources, then import into another system
 func ExampleMigrationPattern() {
 	// Step 1: In old system, export resources
-	// fabrica export --format yaml --output ./migration-data/
+	// ./myapi export --format yaml --output ./migration-data/
 
 	// Step 2: Transfer files to new system (scp, git, S3, etc.)
 
 	// Step 3: In new system, import resources
-	// fabrica import --source ./migration-data/ --mode replace
+	// ./myapi import --input ./migration-data/ --mode replace
 
 	fmt.Println("Migration pattern:")
-	fmt.Println("1. Export from old system: fabrica export --output ./backup/")
+	fmt.Println("1. Export from old system: ./myapi export --output ./backup/")
 	fmt.Println("2. Transfer files to new system")
-	fmt.Println("3. Import in new system: fabrica import --source ./backup/")
+	fmt.Println("3. Import in new system: ./myapi import --input ./backup/")
 	fmt.Println("\nFor production, use replace mode to ensure consistency.")
 }
 

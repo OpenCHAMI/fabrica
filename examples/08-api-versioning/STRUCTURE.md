@@ -12,7 +12,8 @@ This example demonstrates the APIs-first versioned architecture.
 
 ```
 08-api-versioning/
-├── .fabrica.yaml                    # Unified configuration
+├── .fabrica.yaml                    # Feature flags
+├── apis.yaml                        # API group/version registry
 ├── README.md                         # Tutorial walkthrough
 ├── go.mod                            # Go module
 ├── cmd/
@@ -24,7 +25,8 @@ This example demonstrates the APIs-first versioned architecture.
 ├── apis/
 │   └── infra.example.io/
 │       ├── v1/
-│       │   └── device_types.go      # Stable/hub version (storage)
+│       │   ├── device_types.go      # Stable/hub version (storage)
+│       │   └── register_generated.go # Resource registration
 │       ├── v2alpha1/                # Optional: v2 pre-release
 │       │   └── device_types.go      # Alpha version for v2
 │       └── v2beta1/                 # Optional: v2 beta
@@ -36,10 +38,8 @@ This example demonstrates the APIs-first versioned architecture.
 │       ├── storage.go               # Storage interface
 │       └── storage_generated.go     # Generated storage impl
 └── pkg/
-    ├── client/
-    │   └── client_generated.go      # Generated Go client
-    └── resources/
-        └── register_generated.go    # Resource registration
+    └── client/
+        └── client_generated.go      # Generated Go client
 ```
 
 ## API Version Evolution
@@ -68,11 +68,14 @@ This example demonstrates the APIs-first versioned architecture.
 
 ## Key Files
 
+### apis.yaml
+Shows the versioning registry with:
+- API group name
+- `storageVersion` for the hub
+- Versions list and resource inventory
+
 ### .fabrica.yaml
-Shows the unified configuration with:
-- Single config file (no separate apis.yaml)
-- Versioning configuration with group, storage_version, versions, resources
-- All feature flags in one place
+Shows feature flags and generator settings (validation, storage, middleware)
 
 ### apis/infra.example.io/*/device_types.go
 Shows the flattened envelope structure:
@@ -109,14 +112,14 @@ After generation, the following will be created:
 - `cmd/server/*_handlers_generated.go` - HTTP handlers
 - `internal/storage/storage_generated.go` - Storage implementation
 - `pkg/client/client_generated.go` - Go client
-- `pkg/resources/register_generated.go` - Resource registration
+- `apis/infra.example.io/v1/register_generated.go` - Resource registration
 - `cmd/server/openapi_generated.go` - OpenAPI specification
 - `cmd/server/routes_generated.go` - Route registration
 
 ## What This Demonstrates
 
-1. **No Redundancy**: Types defined once per version, not in both pkg/resources/ and apis/
+1. **No Redundancy**: Types defined once per version, not duplicated across folders
 2. **Clean Imports**: Uses `fabrica.Metadata` instead of `resource.Metadata`
 3. **Version Evolution**: Shows how to evolve API schema from alpha → beta → stable
-4. **Unified Config**: Single .fabrica.yaml instead of multiple config files
+4. **Split Config**: `apis.yaml` for versions, `.fabrica.yaml` for feature flags
 5. **Flattened Envelope**: Explicit fields instead of embedding

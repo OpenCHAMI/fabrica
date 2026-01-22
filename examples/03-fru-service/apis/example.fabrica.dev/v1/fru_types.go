@@ -1,31 +1,33 @@
 //go:build ignore
 
-// The line above is necessary to prevent this file from being included in the main build of fabrica.  You may need to remove it to succeed with the example.
+// The line above is necessary to prevent this file from being included in the main build of fabrica. You may need to remove it to succeed with the example.
 //
 // Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
-// Package fru provides resource definitions for Field Replaceable Units (FRUs).
+// Package v1 provides resource definitions for Field Replaceable Units (FRUs).
 //
 // This package defines the FRU resource type for managing hardware components
 // that can be replaced in a system, such as CPUs, memory modules, storage devices,
 // power supplies, and network cards. FRUs track hardware inventory, location,
 // status, and lifecycle information for data center equipment management.
-package fru
+package v1
 
 import (
-	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// FRU represents a Field Replaceable Unit
+// FRU represents a Field Replaceable Unit.
 type FRU struct { //nolint:revive
-	resource.Resource `json:",inline"`
-	Spec              FRUSpec   `json:"spec"`
-	Status            FRUStatus `json:"status"`
+	APIVersion string           `json:"apiVersion"`
+	Kind       string           `json:"kind"`
+	Metadata   fabrica.Metadata `json:"metadata"`
+	Spec       FRUSpec          `json:"spec"`
+	Status     FRUStatus        `json:"status,omitempty"`
 }
 
-// FRUSpec defines the desired state of FRU
+// FRUSpec defines the desired state of FRU.
 type FRUSpec struct { //nolint:revive
 	// FRU identification
 	FRUType      string `json:"fruType"` // e.g., "CPU", "Memory", "Storage"
@@ -48,7 +50,7 @@ type FRUSpec struct { //nolint:revive
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-// FRULocation defines where the FRU is located
+// FRULocation defines where the FRU is located.
 type FRULocation struct { //nolint:revive
 	BMCUID   string `json:"bmcUID,omitempty"`  // BMC managing this FRU
 	NodeUID  string `json:"nodeUID,omitempty"` // Node containing this FRU
@@ -62,7 +64,7 @@ type FRULocation struct { //nolint:revive
 	Port     string `json:"port,omitempty"`
 }
 
-// FRUStatus defines the observed state of FRU
+// FRUStatus defines the observed state of FRU.
 type FRUStatus struct { //nolint:revive
 	// Health and operational status
 	Health     string `json:"health"`     // "OK", "Warning", "Critical", "Unknown"
@@ -77,28 +79,26 @@ type FRUStatus struct { //nolint:revive
 	Errors []string `json:"errors,omitempty"`
 
 	// Additional status information
-	Temperature float64              `json:"temperature,omitempty"`
-	Power       float64              `json:"power,omitempty"`
-	Metrics     map[string]float64   `json:"metrics,omitempty"`
-	Conditions  []resource.Condition `json:"conditions,omitempty"`
+	Temperature float64             `json:"temperature,omitempty"`
+	Power       float64             `json:"power,omitempty"`
+	Metrics     map[string]float64  `json:"metrics,omitempty"`
+	Conditions  []fabrica.Condition `json:"conditions,omitempty"`
 }
 
-// GetKind returns the kind of the resource
+// GetKind returns the kind of the resource.
 func (f *FRU) GetKind() string {
 	return "FRU"
 }
 
-// GetName returns the name of the resource
+// GetName returns the name of the resource.
 func (f *FRU) GetName() string {
 	return f.Metadata.Name
 }
 
-// GetUID returns the UID of the resource
+// GetUID returns the UID of the resource.
 func (f *FRU) GetUID() string {
 	return f.Metadata.UID
 }
 
-func init() {
-	// Register resource type prefix for storage
-	resource.RegisterResourcePrefix("FRU", "fru")
-}
+// IsHub marks this as the hub/storage version.
+func (f *FRU) IsHub() {}

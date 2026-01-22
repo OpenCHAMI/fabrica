@@ -176,7 +176,7 @@ Each example demonstrates the complete workflow from initialization to running s
 cd examples/03-fru-service
 fabrica init . --events --reconcile
 fabrica add resource FRU
-# Edit pkg/resources/fru/fru.go
+# Edit apis/example.fabrica.dev/v1/fru_types.go
 fabrica generate
 go mod tidy  # Update dependencies
 # Uncomment lines in cmd/server/main.go

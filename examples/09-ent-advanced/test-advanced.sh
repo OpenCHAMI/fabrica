@@ -78,13 +78,13 @@ echo ""
 # Test 4: Export functionality (demonstrates export/import)
 echo "=== Test 4: Export/Import Operations ==="
 echo "Export commands (when data exists):"
-echo "  fabrica export --format yaml --output ./export-yaml/"
-echo "  fabrica export --format json --output ./export-json/"
-echo "  fabrica export --format yaml --output ./export-prod/ --label-selector env=prod"
+echo "  go run ./cmd/server export --format yaml --output ./export-yaml/"
+echo "  go run ./cmd/server export --format json --output ./export-json/"
+echo "  go run ./cmd/server export --format yaml --output ./export-prod/ --label-selector env=prod"
 echo ""
 echo "Import commands:"
-echo "  fabrica import --source ./export-yaml/ --mode upsert"
-echo "  fabrica import --source ./export-json/ --mode replace"
+echo "  go run ./cmd/server import --input ./export-yaml/ --mode upsert"
+echo "  go run ./cmd/server import --input ./export-json/ --mode replace"
 echo ""
 
 # Test 5: Verify data consistency

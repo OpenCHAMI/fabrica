@@ -472,7 +472,7 @@ If you see warnings like `"Warning: Failed to publish resource created event: no
 1. **Duplicate Name Field**:
    ```bash
    # Remove conflicting name field from SensorSpec
-   sed -i '' '/Name.*string.*json:"name"/d' pkg/resources/sensor/sensor.go
+sed -i '' '/Name.*string.*json:"name"/d' apis/example.fabrica.dev/v1/sensor_types.go
    fabrica generate  # Regenerate after changes
    ```
 
