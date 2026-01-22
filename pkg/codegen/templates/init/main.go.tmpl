@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	_ "{{.ModulePath}}/pkg/apiversion"
 	"github.com/openchami/fabrica/pkg/versioning"
 
 	{{if .WithAuth}}

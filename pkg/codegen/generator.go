@@ -1223,6 +1223,7 @@ func (g *Generator) GenerateAPIVersions() error {
 		Name           string   `yaml:"name"`
 		StorageVersion string   `yaml:"storageVersion"`
 		Versions       []string `yaml:"versions"`
+		Resources      []string `yaml:"resources"`
 	}
 	type apisConfig struct {
 		Groups []apisGroup `yaml:"groups"`
@@ -1244,6 +1245,7 @@ func (g *Generator) GenerateAPIVersions() error {
 		Name           string
 		StorageVersion string
 		Spokes         []string
+		Resources      []string
 	}
 	var groups []regGroup
 	for _, g := range cfg.Groups {
@@ -1251,6 +1253,7 @@ func (g *Generator) GenerateAPIVersions() error {
 			Name:           g.Name,
 			StorageVersion: g.StorageVersion,
 			Spokes:         g.Versions,
+			Resources:      g.Resources,
 		})
 	}
 

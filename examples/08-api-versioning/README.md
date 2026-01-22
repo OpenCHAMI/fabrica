@@ -233,6 +233,14 @@ The server starts on `http://localhost:8080`.
 
 ### 7. Test the API
 
+Version requests follow this precedence:
+1. `apiVersion` in the request body
+2. Explicit URL version (e.g., `/apis/<group>/<version>/...`)
+3. `Accept` header
+4. Default storage version
+
+If a version is not listed in `apis.yaml`, the server responds with `406 Not Acceptable`.
+
 #### Create a Device
 
 ```bash

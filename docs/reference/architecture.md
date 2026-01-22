@@ -395,7 +395,7 @@ func main() {
     ↓
 3. Generated Handler: GetDevice()
     ↓
-4. Version Negotiation: Check Accept header
+4. Version Negotiation: Body `apiVersion`, URL version, or Accept header
     ↓
 5. Storage: backend.Load()
     ↓

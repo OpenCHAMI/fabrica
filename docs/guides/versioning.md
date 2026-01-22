@@ -365,7 +365,13 @@ No manual registration is needed; the generator wires converters automatically:
 
 ## HTTP Negotiation
 
-Clients can request a specific version using the `apiVersion` field in the request body or the `Accept` header:
+Clients can request a specific version using the `apiVersion` field in the request body, an explicit versioned URL, or the `Accept` header.
+
+**Precedence (highest to lowest):**
+1. `apiVersion` in request body (POST/PUT/PATCH)
+2. Explicit version in URL (e.g., `/apis/<group>/<version>/...`)
+3. `Accept` header (`application/json;version=v1beta1`)
+4. Default/storage version
 
 ### Via API Version Field (Recommended)
 
@@ -387,7 +393,7 @@ curl -X GET http://localhost:8080/devices/device-01 \
   -H "Accept: application/json; api-version=infra.example.io/v1beta1"
 ```
 
-If no version is specified, the server returns the **preferred version** (typically the storage version).
+If no version is specified, the server returns the **preferred version** (typically the storage version). If a requested version is not registered in `apis.yaml`, the server responds with `406 Not Acceptable`.
 
 ### Conversion Flow
 

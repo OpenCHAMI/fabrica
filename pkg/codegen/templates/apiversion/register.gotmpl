@@ -10,6 +10,7 @@ package apiversion
 
 import (
 	"github.com/openchami/fabrica/pkg/apiversion"
+	"github.com/openchami/fabrica/pkg/versioning"
 )
 
 // Registry is the global API version registry
@@ -18,12 +19,26 @@ var Registry *apiversion.Registry
 func init() {
 	Registry = apiversion.NewRegistry()
 
-{{- range .Groups}}
+{{- range $group := .Groups}}
 	Registry.RegisterGroup(apiversion.Group{
-		Name:           "{{.Name}}",
-		StorageVersion: "{{.StorageVersion}}",
-		Spokes:         []string{ {{range .Spokes}}"{{.}}", {{end}} },
+		Name:           "{{$group.Name}}",
+		StorageVersion: "{{$group.StorageVersion}}",
+		Spokes:         []string{ {{range $group.Spokes}}"{{.}}", {{end}} },
 	})
+
+	{{- $storageVersion := $group.StorageVersion}}
+	{{- range $resource := $group.Resources}}
+		{{- range $version := $group.Spokes}}
+	if err := versioning.GlobalVersionRegistry.RegisterVersion("{{$resource}}", "{{$version}}", versioning.ResourceTypeInfo{
+		Metadata: versioning.SchemaVersion{
+			Version:   "{{$version}}",
+			IsDefault: {{if eq $version $storageVersion}}true{{else}}false{{end}},
+		},
+	}); err != nil {
+		panic(err)
+	}
+		{{- end}}
+	{{- end}}
 {{- end}}
 }
 

@@ -91,7 +91,7 @@ Negotiates API versions and performs conversions between hub and spoke versions.
 // Generated versioning middleware
 func VersioningMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Parse Accept header or query param for version
+        // Parse apiVersion from body (POST/PUT/PATCH), URL version, or Accept header
         // Set requested version in context
         // Handlers will convert from hub version if needed
         next.ServeHTTP(w, r)
