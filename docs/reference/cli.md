@@ -360,6 +360,7 @@ Generated Files:
 - Files ending in `_generated.go` are completely overwritten
 - Your resource definitions (`*_types.go`) are never modified
 - Run from project root directory
+- Versioned APIs require `pkg/apiversion/registry_generated.go` for apiVersion validation
 
 ---
 

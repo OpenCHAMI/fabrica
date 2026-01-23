@@ -64,6 +64,10 @@ func newGenerateCommand() *cobra.Command {
 		Long: `Generate server handlers, storage adapters, client code, and OpenAPI specs
 from your resource definitions.
 
+For versioned APIs (apis.yaml), this also generates
+pkg/apiversion/registry_generated.go, which is required for apiVersion
+validation in the server middleware.
+
 Examples:
   fabrica generate                    # Generate all
   fabrica generate --handlers         # Just handlers

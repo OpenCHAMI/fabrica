@@ -5,6 +5,7 @@
 package integration
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -187,6 +188,31 @@ func (s *VersioningSuite) TestJSONCompatibility() {
 	// Verify generated files have proper JSON marshaling tags
 	err = project.CheckGeneratedFile("cmd/server/models_generated.go", "json:")
 	s.Require().NoError(err, "generated models should contain JSON marshaling tags")
+}
+
+// TestUnsupportedAPIVersionRejected verifies invalid apiVersion returns 406 when registry is present
+func (s *VersioningSuite) TestUnsupportedAPIVersionRejected() {
+	project := s.createProject("apiversion-unsupported", "github.com/test/unsupported", "file")
+
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err, "project initialization should succeed")
+
+	err = project.AddResource(s.fabricaBinary, "Device")
+	s.Require().NoError(err, "adding resource should succeed")
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err, "code generation should succeed")
+
+	project.AssertFileExists("pkg/apiversion/registry_generated.go")
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err, "server should start")
+
+	body := `{"apiVersion":"example.com/v2asdasda","kind":"Device","metadata":{"name":"device-100"},"spec":{}}`
+	resp, respBody, err := project.HTTPCall(http.MethodPost, "/devices", body, nil)
+	s.Require().NoError(err, "request should succeed")
+	s.Require().Equal(http.StatusNotAcceptable, resp.StatusCode)
+	s.Require().Contains(string(respBody), "Unsupported version")
 }
 
 // TestRun is the entry point for the versioning test suite

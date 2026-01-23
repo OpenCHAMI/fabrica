@@ -641,9 +641,12 @@ See [Migration Guide](https://docs.example.io/migration) for step-by-step instru
 
 ### Error: "apiVersion not supported"
 
-**Cause**: Client requested a version not in the `apis.yaml` versions list.
+**Cause**: Client requested a version not in the `apis.yaml` versions list, or
+the version registry was not generated/imported in the server.
 
 **Solution**: Add the version to `apis.yaml` or update the client to use a supported version.
+If the registry is missing, run `fabrica generate` and ensure
+`_ "<module>/pkg/apiversion"` is imported in `cmd/server/main.go`.
 
 ```yaml
 # apis.yaml
