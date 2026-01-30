@@ -53,7 +53,7 @@ test/integration/projects/
 bin/
 
 
-# Generated example projects
+# Generated example projects (keep instruction-only examples tracked)
 examples/demo-export/
 examples/device-api/
 examples/device-inventory/
