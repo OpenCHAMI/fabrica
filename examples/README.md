@@ -144,6 +144,17 @@ Ship-ready backup workflows using generated server commands:
 
 **What you'll build:** A repeatable backup/restore flow with generated CLI commands and JSON/YAML artifacts.
 
+### 10. [Node Service Shim](11-node-service/) - Profiles & NodeSets 🧭
+**Time:** 30-40 minutes
+
+Introduce profile-aware node composition:
+- Node/NodeSet/ProfileBinding resources
+- Reconciliation-based NodeSet resolution
+- Profile binding materialization (effective profile/boot/config)
+- Ent/SQLite storage with generated CLI
+
+**What you'll build:** A node-service shim that composes inventory + boot + metadata intent and demonstrates profile bindings without relying on SMD groups for config intent.
+
 ## Quick Reference
 
 ### Example Comparison

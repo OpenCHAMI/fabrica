@@ -325,11 +325,20 @@ func (c *StorageClient) Get(ctx context.Context, kind, uid string) (interface{},
 	if err != nil {
 		return nil, err
 	}
-	var obj map[string]interface{}
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return nil, err
+
+	// Unmarshal based on kind
+	switch kind {
+	{{- range .Resources}}
+	case "{{.Name}}":
+		var resource {{.PackageAlias}}.{{.Name}}
+		if err := json.Unmarshal(raw, &resource); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+		}
+		return &resource, nil
+	{{- end}}
+	default:
+		return nil, fmt.Errorf("unknown resource kind: %s", kind)
 	}
-	return obj, nil
 }
 
 func (c *StorageClient) List(ctx context.Context, kind string) ([]interface{}, error) {
@@ -337,27 +346,41 @@ func (c *StorageClient) List(ctx context.Context, kind string) ([]interface{}, e
 	if err != nil {
 		return nil, err
 	}
-	var result []interface{}
-	for _, item := range items {
-		var obj map[string]interface{}
-		if err := json.Unmarshal(item, &obj); err != nil {
-			return nil, err
+
+	// Unmarshal based on kind
+	switch kind {
+	{{- range .Resources}}
+	case "{{.Name}}":
+		result := make([]interface{}, 0, len(items))
+		for _, item := range items {
+			var resource {{.PackageAlias}}.{{.Name}}
+			if err := json.Unmarshal(item, &resource); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+			}
+			result = append(result, &resource)
 		}
-		result = append(result, obj)
+		return result, nil
+	{{- end}}
+	default:
+		return nil, fmt.Errorf("unknown resource kind: %s", kind)
 	}
-	return result, nil
 }
 
 func (c *StorageClient) Update(ctx context.Context, resource interface{}) error {
-	kind, uid, err := resourceMetadata(resource)
-	if err != nil {
-		return err
-	}
 	data, err := json.Marshal(resource)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal resource: %w", err)
 	}
-	return c.backend.Save(ctx, kind, uid, data)
+
+	// Extract kind and UID based on type
+	switch res := resource.(type) {
+	{{- range .Resources}}
+	case *{{.PackageAlias}}.{{.Name}}:
+		return c.backend.Save(ctx, "{{.Name}}", res.Metadata.UID, data)
+	{{- end}}
+	default:
+		return fmt.Errorf("unsupported resource type: %T", resource)
+	}
 }
 
 func (c *StorageClient) Create(ctx context.Context, resource interface{}) error {
@@ -398,16 +421,4 @@ func extractUID(raw json.RawMessage) (string, error) {
 		return "", err
 	}
 	return wrapper.Metadata.UID, nil
-}
-
-func resourceMetadata(resource interface{}) (string, string, error) {
-	type metadata interface {
-		GetKind() string
-		GetUID() string
-	}
-	res, ok := resource.(metadata)
-	if !ok {
-		return "", "", fmt.Errorf("resource does not implement metadata interface")
-	}
-	return res.GetKind(), res.GetUID(), nil
 }
