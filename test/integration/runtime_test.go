@@ -416,6 +416,96 @@ func (s *RuntimeTestSuite) TestOpenAPIGeneration() {
 	s.Require().Contains(string(content), "/apis", "OpenAPI should define API paths")
 }
 
+// TestEntSQLiteReconciliationClientFlow ensures an Ent (SQLite) project with reconciliation
+// can be generated, run, and driven entirely via the generated client CLI.
+func (s *RuntimeTestSuite) TestEntSQLiteReconciliationClientFlow() {
+	project := s.createProject("ent-reconcile-client", "github.com/test/ent-reconcile-client", "ent")
+
+	err := project.InitializeWithFlags(s.fabricaBinary,
+		"--events",
+		"--events-bus", "memory",
+		"--reconcile",
+		"--db", "sqlite",
+	)
+	s.Require().NoError(err)
+
+	for _, resource := range []string{"Node", "NodeSet"} {
+		err := project.AddResource(s.fabricaBinary, resource)
+		s.Require().NoError(err)
+	}
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	clientBinary, err := project.BuildClientBinary()
+	s.Require().NoError(err)
+
+	nodeCreatePayload := `{"metadata":{"name":"node-alpha"},"spec":{"description":"initial node"}}`
+	nodeCreateOut, err := project.RunClientBinary(clientBinary, "node", "create", "--spec", nodeCreatePayload, "--output", "json")
+	s.Require().NoError(err)
+
+	var createdNode map[string]interface{}
+	s.Require().NoError(json.Unmarshal(nodeCreateOut, &createdNode))
+	metadata, ok := createdNode["metadata"].(map[string]interface{})
+	s.Require().True(ok, "created node should include metadata")
+	nodeUID, ok := metadata["uid"].(string)
+	s.Require().True(ok && nodeUID != "", "created node should have uid")
+
+	updatePayload := `{"metadata":{"name":"node-alpha"},"spec":{"description":"updated node"}}`
+	updateOut, err := project.RunClientBinary(clientBinary, "node", "update", nodeUID, "--spec", updatePayload, "--output", "json")
+	s.Require().NoError(err)
+
+	var updatedNode map[string]interface{}
+	s.Require().NoError(json.Unmarshal(updateOut, &updatedNode))
+	spec, ok := updatedNode["spec"].(map[string]interface{})
+	s.Require().True(ok, "updated node should include spec")
+	s.Require().Equal("updated node", spec["description"], "node spec should reflect update")
+
+	listOut, err := project.RunClientBinary(clientBinary, "node", "list", "--output", "json")
+	s.Require().NoError(err)
+	var nodes []map[string]interface{}
+	s.Require().NoError(json.Unmarshal(listOut, &nodes))
+	s.Require().Len(nodes, 1, "should have one node after creation")
+
+	nodeSetPayload := `{"metadata":{"name":"edge-nodes"},"spec":{"description":"edge set"}}`
+	nodeSetOut, err := project.RunClientBinary(clientBinary, "nodeset", "create", "--spec", nodeSetPayload, "--output", "json")
+	s.Require().NoError(err)
+
+	var createdNodeSet map[string]interface{}
+	s.Require().NoError(json.Unmarshal(nodeSetOut, &createdNodeSet))
+	nodeSetMeta, ok := createdNodeSet["metadata"].(map[string]interface{})
+	s.Require().True(ok, "created nodeset should include metadata")
+	nodeSetUID, ok := nodeSetMeta["uid"].(string)
+	s.Require().True(ok && nodeSetUID != "", "created nodeset should have uid")
+
+	nodeSetListOut, err := project.RunClientBinary(clientBinary, "nodeset", "list", "--output", "json")
+	s.Require().NoError(err)
+	var nodeSets []map[string]interface{}
+	s.Require().NoError(json.Unmarshal(nodeSetListOut, &nodeSets))
+	s.Require().Len(nodeSets, 1, "should have one nodeset after creation")
+
+	_, err = project.RunClientBinary(clientBinary, "nodeset", "delete", nodeSetUID)
+	s.Require().NoError(err)
+
+	nodeSetListAfter, err := project.RunClientBinary(clientBinary, "nodeset", "list", "--output", "json")
+	s.Require().NoError(err)
+	var nodeSetsAfter []map[string]interface{}
+	s.Require().NoError(json.Unmarshal(nodeSetListAfter, &nodeSetsAfter))
+	s.Require().Len(nodeSetsAfter, 0, "nodeset list should be empty after deletion")
+
+	_, err = project.RunClientBinary(clientBinary, "node", "delete", nodeUID)
+	s.Require().NoError(err)
+
+	nodeListAfter, err := project.RunClientBinary(clientBinary, "node", "list", "--output", "json")
+	s.Require().NoError(err)
+	var nodesAfter []map[string]interface{}
+	s.Require().NoError(json.Unmarshal(nodeListAfter, &nodesAfter))
+	s.Require().Len(nodesAfter, 0, "node list should be empty after deletion")
+}
+
 // TestValidationWithInlinedSpecFields verifies validation on the flattened envelope pattern
 // (APIVersion/Kind/Metadata/Spec) used by versioned APIs. This ensures validation runs on
 // request objects before resource construction and returns useful errors.

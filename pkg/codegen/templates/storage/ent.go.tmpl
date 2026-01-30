@@ -15,6 +15,9 @@ import (
 	"fmt"
 	"time"
 
+	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
+	"github.com/openchami/fabrica/pkg/reconcile"
+
 	"{{.ModulePath}}/internal/storage/ent"
 	entresource "{{.ModulePath}}/internal/storage/ent/resource"
 	{{range .UniqueImports}}
@@ -179,3 +182,232 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 }
 
 {{end}}
+
+var Backend fabricaStorage.StorageBackend = &entStorageBackend{}
+
+var _ fabricaStorage.StorageBackend = (*entStorageBackend)(nil)
+
+type entStorageBackend struct{}
+
+func ensureBackendReady() error {
+	if entClient == nil {
+		return fmt.Errorf("ent client not initialized")
+	}
+	return nil
+}
+
+func (b *entStorageBackend) LoadAll(ctx context.Context, resourceType string) ([]json.RawMessage, error) {
+	if err := ensureBackendReady(); err != nil {
+		return nil, err
+	}
+	switch resourceType {
+	{{range .Resources}}case "{{.Name}}":
+		resources, err := LoadAll{{.StorageName}}s(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return marshalTypedList(resources)
+	{{end}}default:
+		return nil, fmt.Errorf("storage: unsupported resource type %s", resourceType)
+	}
+}
+
+func (b *entStorageBackend) Load(ctx context.Context, resourceType, uid string) (json.RawMessage, error) {
+	if err := ensureBackendReady(); err != nil {
+		return nil, err
+	}
+	switch resourceType {
+	{{range .Resources}}case "{{.Name}}":
+		resource, err := Load{{.StorageName}}(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		return marshalResource(resource)
+	{{end}}default:
+		return nil, fmt.Errorf("storage: unsupported resource type %s", resourceType)
+	}
+}
+
+func (b *entStorageBackend) Save(ctx context.Context, resourceType, uid string, data json.RawMessage) error {
+	if err := ensureBackendReady(); err != nil {
+		return err
+	}
+	switch resourceType {
+	{{range .Resources}}case "{{.Name}}":
+		var res {{.PackageAlias}}.{{.Name}}
+		if err := json.Unmarshal(data, &res); err != nil {
+			return fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+		}
+		res.Metadata.UID = uid
+		return Save{{.StorageName}}(ctx, &res)
+	{{end}}default:
+		return fmt.Errorf("storage: unsupported resource type %s", resourceType)
+	}
+}
+
+func (b *entStorageBackend) Delete(ctx context.Context, resourceType, uid string) error {
+	if err := ensureBackendReady(); err != nil {
+		return err
+	}
+	switch resourceType {
+	{{range .Resources}}case "{{.Name}}":
+		return Delete{{.StorageName}}(ctx, uid)
+	{{end}}default:
+		return fmt.Errorf("storage: unsupported resource type %s", resourceType)
+	}
+}
+
+func (b *entStorageBackend) Exists(ctx context.Context, resourceType, uid string) (bool, error) {
+	_, err := b.Load(ctx, resourceType, uid)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (b *entStorageBackend) List(ctx context.Context, resourceType string) ([]string, error) {
+	items, err := b.LoadAll(ctx, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, item := range items {
+		uid, err := extractUID(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	return out, nil
+}
+
+func (b *entStorageBackend) LoadWithVersion(ctx context.Context, resourceType, uid, version string) (json.RawMessage, string, error) {
+	data, err := b.Load(ctx, resourceType, uid)
+	if err != nil {
+		return nil, "", err
+	}
+	if version == "" {
+		version = ""
+	}
+	return data, version, nil
+}
+
+func (b *entStorageBackend) LoadAllWithVersion(ctx context.Context, resourceType, version string) ([]json.RawMessage, error) {
+	return b.LoadAll(ctx, resourceType)
+}
+
+func (b *entStorageBackend) SaveWithVersion(ctx context.Context, resourceType, uid string, data json.RawMessage, version string) error {
+	return b.Save(ctx, resourceType, uid, data)
+}
+
+func (b *entStorageBackend) Close() error {
+	return nil
+}
+
+type StorageClient struct {
+	backend fabricaStorage.StorageBackend
+}
+
+var _ reconcile.ClientInterface = (*StorageClient)(nil)
+
+func NewStorageClient() *StorageClient {
+	if err := ensureBackendReady(); err != nil {
+		panic(err)
+	}
+	return &StorageClient{backend: Backend}
+}
+
+func (c *StorageClient) Get(ctx context.Context, kind, uid string) (interface{}, error) {
+	raw, err := c.backend.Load(ctx, kind, uid)
+	if err != nil {
+		return nil, err
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+func (c *StorageClient) List(ctx context.Context, kind string) ([]interface{}, error) {
+	items, err := c.backend.LoadAll(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+	var result []interface{}
+	for _, item := range items {
+		var obj map[string]interface{}
+		if err := json.Unmarshal(item, &obj); err != nil {
+			return nil, err
+		}
+		result = append(result, obj)
+	}
+	return result, nil
+}
+
+func (c *StorageClient) Update(ctx context.Context, resource interface{}) error {
+	kind, uid, err := resourceMetadata(resource)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(resource)
+	if err != nil {
+		return err
+	}
+	return c.backend.Save(ctx, kind, uid, data)
+}
+
+func (c *StorageClient) Create(ctx context.Context, resource interface{}) error {
+	return c.Update(ctx, resource)
+}
+
+func (c *StorageClient) Delete(ctx context.Context, kind, uid string) error {
+	return c.backend.Delete(ctx, kind, uid)
+}
+
+func marshalTypedList[T any](items []*T) ([]json.RawMessage, error) {
+	var out []json.RawMessage
+	for _, item := range items {
+		data, err := json.Marshal(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, json.RawMessage(data))
+	}
+	return out, nil
+}
+
+func marshalResource(resource interface{}) (json.RawMessage, error) {
+	data, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+func extractUID(raw json.RawMessage) (string, error) {
+	var wrapper struct {
+		Metadata struct {
+			UID string `json:"uid"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err != nil {
+		return "", err
+	}
+	return wrapper.Metadata.UID, nil
+}
+
+func resourceMetadata(resource interface{}) (string, string, error) {
+	type metadata interface {
+		GetKind() string
+		GetUID() string
+	}
+	res, ok := resource.(metadata)
+	if !ok {
+		return "", "", fmt.Errorf("resource does not implement metadata interface")
+	}
+	return res.GetKind(), res.GetUID(), nil
+}

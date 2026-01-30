@@ -113,8 +113,11 @@ func VersionNegotiationMiddleware(registry *VersionRegistry, mapper ResourceMapp
 				ctx.RequestedVersion = ctx.GroupVersion
 			}
 
-			// Get default version for this resource kind
+			// Resolve resource kind from registry (handles casing/singularization)
 			if ctx.ResourceKind != "" {
+				if resolvedKind, ok := registry.ResolveKind(ctx.ResourceKind); ok {
+					ctx.ResourceKind = resolvedKind
+				}
 				ctx.DefaultVersion = registry.GetDefaultVersion(ctx.ResourceKind)
 			}
 

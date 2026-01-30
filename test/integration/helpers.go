@@ -54,14 +54,29 @@ func (p *TestProject) setGoEnv(cmd *exec.Cmd) {
 
 // Initialize creates and initializes the fabrica project
 func (p *TestProject) Initialize(fabricaBinary string) error {
-	// Always initialize with versioning enabled as legacy mode is deprecated
-	cmd := exec.Command(fabricaBinary, "init", p.Name,
+	return p.InitializeWithFlags(fabricaBinary)
+}
+
+// InitializeWithFlags initializes a Fabrica project with additional CLI flags.
+func (p *TestProject) InitializeWithFlags(fabricaBinary string, extraFlags ...string) error {
+	baseArgs := []string{
+		"init", p.Name,
 		"--module", p.Module,
 		"--storage-type", p.Storage,
 		"--storage",
 		"--group", "example.com",
 		"--storage-version", "v1",
-	)
+	}
+	baseArgs = append(baseArgs, extraFlags...)
+	if err := p.runInitCommand(fabricaBinary, baseArgs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *TestProject) runInitCommand(fabricaBinary string, args []string) error {
+	cmd := exec.Command(fabricaBinary, args...)
 	cmd.Dir = filepath.Dir(p.Dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -69,13 +84,25 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 	}
 
 	// Initialize git repository so Go doesn't try to fetch the module from the internet
+	if err := p.setupGit(); err != nil {
+		return err
+	}
+
+	// Add replace directive for local development with absolute path
+	if err := p.addReplace(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *TestProject) setupGit() error {
 	gitInitCmd := exec.Command("git", "init")
 	gitInitCmd.Dir = p.Dir
 	if _, err := gitInitCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to initialize git repository: %w", err)
 	}
 
-	// Configure git user for the local repository
 	gitUserCmd := exec.Command("git", "config", "user.email", "test@example.com")
 	gitUserCmd.Dir = p.Dir
 	if _, err := gitUserCmd.CombinedOutput(); err != nil {
@@ -88,14 +115,16 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 		return fmt.Errorf("failed to configure git user name: %w", err)
 	}
 
-	// Add replace directive for local development with absolute path
+	return nil
+}
+
+func (p *TestProject) addReplace() error {
 	goModPath := filepath.Join(p.Dir, "go.mod")
 	content, err := os.ReadFile(goModPath)
 	if err != nil {
 		return fmt.Errorf("failed to read go.mod: %w", err)
 	}
 
-	// Get absolute path to fabrica project root
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
@@ -107,8 +136,7 @@ func (p *TestProject) Initialize(fabricaBinary string) error {
 	}
 
 	newContent := string(content) + fmt.Sprintf("\nreplace github.com/openchami/fabrica => %s\n", fabricaRootAbs)
-	err = os.WriteFile(goModPath, []byte(newContent), 0644)
-	if err != nil {
+	if err := os.WriteFile(goModPath, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to update go.mod: %w", err)
 	}
 
@@ -220,7 +248,11 @@ func (p *TestProject) StartServerRuntime() error {
 	}
 
 	// Start the server with the serve subcommand and port flag
-	p.serverCmd = exec.Command(outputPath, "serve", "--port", fmt.Sprintf("%d", port))
+	args := []string{"serve", "--port", fmt.Sprintf("%d", port)}
+	if p.Storage == "ent" {
+		args = append(args, "--database-url", "file:./data.db?cache=shared&_fk=1")
+	}
+	p.serverCmd = exec.Command(outputPath, args...)
 	p.serverCmd.Dir = p.Dir
 	p.serverCmd.Stdout = os.Stdout
 	p.serverCmd.Stderr = os.Stderr

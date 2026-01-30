@@ -176,6 +176,37 @@ func (vr *VersionRegistry) ListKinds() []string {
 	return kinds
 }
 
+// ResolveKind returns the canonical registered kind that matches the provided name.
+// It performs case-insensitive comparison and attempts to match singular forms when the
+// provided name is plural (e.g., "nodesets" -> "NodeSet").
+func (vr *VersionRegistry) ResolveKind(name string) (string, bool) {
+	vr.mu.RLock()
+	defer vr.mu.RUnlock()
+
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if _, exists := vr.resources[trimmed]; exists {
+		return trimmed, true
+	}
+
+	lowerTarget := strings.ToLower(trimmed)
+	singular := strings.TrimSuffix(lowerTarget, "s")
+
+	for kind := range vr.resources {
+		if strings.EqualFold(kind, trimmed) {
+			return kind, true
+		}
+		if singular != lowerTarget && strings.EqualFold(kind, singular) {
+			return kind, true
+		}
+	}
+
+	return "", false
+}
+
 // GetVersionInfo returns detailed information about all versions of a kind
 func (vr *VersionRegistry) GetVersionInfo(kind string) map[string]SchemaVersion {
 	vr.mu.RLock()
