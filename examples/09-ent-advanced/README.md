@@ -325,7 +325,7 @@ done
 Create a server handler that uses transactions for consistency:
 
 ```go
-// See examples/09-ent-advanced/handlers_example.go for full implementation
+// See PATTERNS.md for a full implementation
 func (h *Handler) CreateServerWithDefaults(w http.ResponseWriter, r *http.Request) {
     // Parse request...
 

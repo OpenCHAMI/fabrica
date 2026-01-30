@@ -128,7 +128,8 @@ Copy the resource definitions from this example directory to your project:
 
 ```bash
 # From the fabrica repository
-cp -r ../examples/04-rack-reconciliation/apis/example.fabrica.dev/v1/* apis/example.fabrica.dev/v1/
+FABRICA_REPO=/path/to/fabrica
+cp -r "$FABRICA_REPO/examples/04-rack-reconciliation/apis/example.fabrica.dev/v1/." apis/example.fabrica.dev/v1/
 ```
 
 Or create each resource file manually following the structures below.
@@ -262,7 +263,8 @@ func (r *RackReconciler) reconcileRack(ctx context.Context, res *rack.Rack) erro
 ```bash
 # Copy the complete rack reconciler implementation
 # Note: Remove the first line (//go:build ignore) from the copied file
-cp ../examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go \
+FABRICA_REPO=/path/to/fabrica
+cp "$FABRICA_REPO/examples/04-rack-reconciliation/pkg/reconcilers/rack_reconciler.go" \
    pkg/reconcilers/rack_reconciler.go
 
 # Remove the build constraint (only needed in example repo)
