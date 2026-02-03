@@ -268,13 +268,16 @@ curl http://localhost:8080/devices
 #### Get a Device
 
 ```bash
-curl http://localhost:8080/devices/device-1
+curl http://localhost:8080/devices/${device_uid}
 ```
+
+> [!TIP]
+> To get a device, you will need the `device-id` from the list returned using the `curl` above. Replace that value for the `device_uid` variable below.
 
 #### Update a Device
 
 ```bash
-curl -X PUT http://localhost:8080/devices/device-1 \
+curl -X PUT http://localhost:8080/devices/${device_uid} \
   -H "Content-Type: application/json" \
   -d '{
     "apiVersion": "infra.example.io/v1",
@@ -292,7 +295,7 @@ curl -X PUT http://localhost:8080/devices/device-1 \
 #### Delete a Device
 
 ```bash
-curl -X DELETE http://localhost:8080/devices/device-1
+curl -X DELETE http://localhost:8080/devices/${device_uid}
 ```
 
 ## Configuration Reference
