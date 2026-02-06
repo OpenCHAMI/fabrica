@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 )
