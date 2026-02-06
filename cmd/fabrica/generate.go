@@ -791,12 +791,21 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 	return nil
 }
 
+func toPascal(s string) string {
+    if s == "" {
+        return ""
+    }
+    r, n := utf8.DecodeRuneInString(s)
+    return string(unicode.ToUpper(r)) + s[n:]
+}
 // generateRegistrationCode creates the content of the registration file
 func generateRegistrationCode(modulePath string, resources []string) string {
 	var imports strings.Builder
 	var registrations strings.Builder
 
 	for _, resource := range resources {
+		resourceStruct := toPascal(resource)
+
 		pkg := strings.ToLower(resource)
 		imports.WriteString(fmt.Sprintf("\t\"%s/pkg/resources/%s\"\n", modulePath, pkg))
 		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resource))
