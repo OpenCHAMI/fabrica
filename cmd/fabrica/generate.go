@@ -810,7 +810,7 @@ func generateRegistrationCode(modulePath string, resources []string) string {
 
 		pkg := strings.ToLower(resource)
 		imports.WriteString(fmt.Sprintf("\t\"%s/pkg/resources/%s\"\n", modulePath, pkg))
-		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resource))
+		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
 		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
 		registrations.WriteString("\t}\n")
 
@@ -871,7 +871,9 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *APIsConfig
 	imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
 
 	for _, resource := range resources {
-		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resource))
+		resourceStruct := toPascal(resource)
+		
+		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
 		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
 		registrations.WriteString("\t}\n")
 	}
