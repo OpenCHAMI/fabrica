@@ -130,6 +130,9 @@ Copy the resource definitions from this example directory to your project:
 # From the fabrica repository
 FABRICA_REPO=/path/to/fabrica
 cp -r "$FABRICA_REPO/examples/04-rack-reconciliation/apis/example.fabrica.dev/v1/." apis/example.fabrica.dev/v1/
+
+# Remove build constraints from copied API files (only needed in example repo)
+sed -i '/\/\/go:build ignore/d' apis/example.fabrica.dev/v1/*.go
 ```
 
 Or create each resource file manually following the structures below.
