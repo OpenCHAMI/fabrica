@@ -419,7 +419,9 @@ curl http://localhost:8080/racks/rack-abc123
 
 ```bash
 # List all chassis
-curl http://localhost:8080/chassis
+# Note: The generator defaults to appending 's', resulting in 'chassiss'
+# This can be manually changed, if desired
+curl http://localhost:8080/chassiss
 # Returns 2 chassis
 
 # List all blades
@@ -435,7 +437,7 @@ curl http://localhost:8080/bmcs
 # Returns 8 BMCs (shared mode)
 
 # Get specific chassis to see its blades
-curl http://localhost:8080/chassis/chas-xyz1
+curl http://localhost:8080/chassiss/chas-xyz1
 # Shows bladeUIDs: [...] in status
 ```
 
