@@ -489,6 +489,7 @@ type FeaturesConfig struct {
 	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
 	Events      EventsConfig      `+"`yaml:\"events\"`"+`
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
+	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
 }
 
 type ValidationConfig struct {
@@ -509,6 +510,14 @@ type EventsConfig struct {
 type StorageConfig struct {
 	Type     string `+"`yaml:\"type\"`"+`
 	DBDriver string `+"`yaml:\"db_driver\"`"+`
+}
+
+type SecurityConfig struct {
+	AuthN AuthNConfig `+"`yaml:\"authn\"`"+`
+}
+
+type AuthNConfig struct {
+	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
 func loadConfig() (*FabricaConfig, error) {
@@ -554,6 +563,12 @@ func main() {
 		if config.Features.Storage.DBDriver != "" {
 			gen.SetDBDriver(config.Features.Storage.DBDriver)
 			gen.Config.DBDriver = config.Features.Storage.DBDriver
+		}
+
+		// Wire TokenSmith-first security features into generator config.
+		if config.Features.Security.AuthN.Enabled {
+			gen.Config.WithAuth = true
+			gen.Config.SecurityAuthNEnabled = true
 		}
 	}
 
@@ -794,12 +809,13 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 }
 
 func toPascal(s string) string {
-    if s == "" {
-        return ""
-    }
-    r, n := utf8.DecodeRuneInString(s)
-    return string(unicode.ToUpper(r)) + s[n:]
+	if s == "" {
+		return ""
+	}
+	r, n := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[n:]
 }
+
 // generateRegistrationCode creates the content of the registration file
 func generateRegistrationCode(modulePath string, resources []string) string {
 	var imports strings.Builder
@@ -872,7 +888,7 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *APIsConfig
 
 	for _, resource := range resources {
 		resourceStruct := toPascal(resource)
-		
+
 		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
 		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
 		registrations.WriteString("\t}\n")

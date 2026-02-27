@@ -124,6 +124,14 @@ type GeneratorConfig struct {
 	// Storage configuration
 	StorageType string // file, ent
 	DBDriver    string // postgres, mysql, sqlite
+
+	// TokenSmith-first Security generation toggles.
+	//
+	// NOTE: WithAuth is the legacy template toggle for generating auth-related
+	// scaffolding (go.mod + init/main stubs). We map Security.AuthN onto it.
+	WithAuth bool
+
+	SecurityAuthNEnabled bool
 }
 
 // Generator handles code generation for resources
@@ -161,6 +169,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			EventBusType:       "memory",
 			StorageType:        "file",
 			DBDriver:           "sqlite",
+			WithAuth:           false,
 		},
 	}
 }
@@ -256,6 +265,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"StorageType":   g.StorageType,
 		"DBDriver":      g.DBDriver,
 		"Config":        g.Config,
+		"WithAuth":      g.Config.WithAuth,
 		"Version":       g.Version,
 		"GeneratedAt":   time.Now().Format(time.RFC3339),
 		"Template":      templateName,
