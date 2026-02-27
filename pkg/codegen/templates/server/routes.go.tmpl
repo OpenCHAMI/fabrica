@@ -51,9 +51,18 @@ func registerResourcePrefixes() error {
 // RegisterGeneratedRoutes registers all generated routes
 // Note: Middleware should be applied in main.go before calling this function
 func RegisterGeneratedRoutes(r chi.Router) {
+	// Public endpoints (bypass AuthN/AuthZ)
+	r.Group(func(public chi.Router) {
+		// OpenAPI documentation routes
+		public.Get("/openapi.json", ServeOpenAPISpec)
+		public.Get("/docs", ServeSwaggerUI)
+	})
+
+	// Protected endpoints (resource APIs)
+	r.Group(func(protected chi.Router) {
 {{range .Resources}}
-	// {{.Name}} routes
-	r.Route("{{.URLPath}}", func(r chi.Router) {
+		// {{.Name}} routes
+		protected.Route("{{.URLPath}}", func(r chi.Router) {
 		r.Get("/", Get{{.Name}}s)
 		r.Post("/", Create{{.Name}})
 		r.Route("/{uid}", func(r chi.Router) {
@@ -79,8 +88,5 @@ func RegisterGeneratedRoutes(r chi.Router) {
 		})
 	})
 {{end}}
-
-	// OpenAPI documentation routes
-	r.Get("/openapi.json", ServeOpenAPISpec)
-	r.Get("/docs", ServeSwaggerUI)
+	})
 }
