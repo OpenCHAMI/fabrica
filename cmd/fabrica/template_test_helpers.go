@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
+	"text/template"
 
 	"github.com/openchami/fabrica/pkg/codegen"
 )
@@ -10,6 +13,14 @@ import (
 func mustReadFile(t *testing.T, filename string) string {
 	t.Helper()
 	b, err := os.ReadFile(filename)
+	if err != nil {
+		// Tests in cmd/fabrica can run with different working directories depending on
+		// invocation; fall back to resolving relative to repo root.
+		if b2, err2 := os.ReadFile(filepath.Join("..", "..", filename)); err2 == nil {
+			b = b2
+			err = nil
+		}
+	}
 	if err != nil {
 		t.Fatalf("ReadFile(%s): %v", filename, err)
 	}
@@ -49,4 +60,19 @@ func mustReadTemplate(t *testing.T, name string) string {
 	}
 
 	return tmpl.Tree.Root.String()
+}
+
+func mustRenderInitTemplate(t *testing.T, templateText string, data templateData) string {
+	t.Helper()
+
+	tmpl, err := template.New("init").Parse(templateText)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	return buf.String()
 }

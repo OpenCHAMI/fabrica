@@ -13,6 +13,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/openchami/fabrica/internal/constants"
 	"github.com/openchami/fabrica/pkg/codegen"
 	"github.com/spf13/cobra"
 )
@@ -55,22 +56,23 @@ type initOptions struct {
 // It contains all project metadata and feature flags needed to generate
 // initial files (main.go, go.mod, README, etc.) with appropriate settings.
 type templateData struct {
-	ProjectName      string
-	ModulePath       string
-	Description      string
-	WithAuth         bool
-	WithStorage      bool
-	WithMetrics      bool
-	WithVersion      bool
-	WithReconcile    bool
-	WithEvents       bool
-	StorageType      string
-	DBDriver         string
-	EventBusType     string
-	ReconcileWorkers int
-	FabricaVersion   string
-	GeneratedAt      string
-	FeaturesText     string
+	ProjectName       string
+	ModulePath        string
+	Description       string
+	WithAuth          bool
+	WithStorage       bool
+	WithMetrics       bool
+	WithVersion       bool
+	WithReconcile     bool
+	WithEvents        bool
+	StorageType       string
+	DBDriver          string
+	EventBusType      string
+	ReconcileWorkers  int
+	FabricaVersion    string
+	TokenSmithVersion string
+	GeneratedAt       string
+	FeaturesText      string
 }
 
 // newInitCommand creates the 'fabrica init' cobra command.
@@ -410,22 +412,23 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 
 	// Template data
 	data := templateData{
-		ProjectName:      projectName,
-		ModulePath:       opts.modulePath,
-		Description:      opts.description,
-		WithAuth:         opts.withAuth,
-		WithStorage:      opts.withStorage,
-		WithMetrics:      opts.withMetrics,
-		WithVersion:      opts.withVersion,
-		WithReconcile:    opts.withReconcile,
-		WithEvents:       opts.withEvents,
-		StorageType:      opts.storageType,
-		DBDriver:         dbDriver,
-		EventBusType:     opts.eventBusType,
-		ReconcileWorkers: opts.reconcileWorkers,
-		FabricaVersion:   version,
-		GeneratedAt:      time.Now().Format(time.RFC3339),
-		FeaturesText:     "", // Will be populated later
+		ProjectName:       projectName,
+		ModulePath:        opts.modulePath,
+		Description:       opts.description,
+		WithAuth:          opts.withAuth,
+		WithStorage:       opts.withStorage,
+		WithMetrics:       opts.withMetrics,
+		WithVersion:       opts.withVersion,
+		WithReconcile:     opts.withReconcile,
+		WithEvents:        opts.withEvents,
+		StorageType:       opts.storageType,
+		DBDriver:          dbDriver,
+		EventBusType:      opts.eventBusType,
+		ReconcileWorkers:  opts.reconcileWorkers,
+		FabricaVersion:    version,
+		TokenSmithVersion: constants.TokenSmithVersion,
+		GeneratedAt:       time.Now().Format(time.RFC3339),
+		FeaturesText:      "", // Will be populated later
 	}
 
 	// Generate features text
