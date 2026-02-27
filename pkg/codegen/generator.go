@@ -741,12 +741,14 @@ func (g *Generator) LoadTemplates() error {
 	// Organized by feature for better maintainability
 	templateFiles := map[string]string{
 		// Server templates
-		"handlers": "server/handlers.go.tmpl",
-		"routes":   "server/routes.go.tmpl",
-		"models":   "server/models.go.tmpl",
-		"openapi":  "server/openapi.go.tmpl",
-		"export":   "server/export.go.tmpl",
-		"import":   "server/import.go.tmpl",
+		"handlers":                  "server/handlers.go.tmpl",
+		"routes":                    "server/routes.go.tmpl",
+		"models":                    "server/models.go.tmpl",
+		"openapi":                   "server/openapi.go.tmpl",
+		"export":                    "server/export.go.tmpl",
+		"import":                    "server/import.go.tmpl",
+		"authzClassifier":           "server/authz_classifier.go.tmpl",
+		"authzClassifierCreateOnce": "server/authz_classifier_create_once.go.tmpl",
 
 		// Client templates
 		"client":       "client/client.go.tmpl",

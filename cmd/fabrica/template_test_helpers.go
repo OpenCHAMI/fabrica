@@ -41,6 +41,9 @@ func mustReadTemplate(t *testing.T, name string) string {
 	if name == "server/routes.go.tmpl" {
 		key = "routes"
 	}
+	if name == "server/authz_classifier.go.tmpl" {
+		key = "authzClassifier"
+	}
 
 	tmpl, ok := gen.Templates[key]
 	if !ok {
