@@ -56,6 +56,9 @@ type FeaturesConfig struct {
 	Storage        StorageConfig        `yaml:"storage"`
 	Metrics        MetricsConfig        `yaml:"metrics,omitempty"`
 	Reconciliation ReconciliationConfig `yaml:"reconciliation,omitempty"`
+
+	// Security controls TokenSmith-first AuthN/AuthZ generation.
+	Security SecurityConfig `yaml:"security,omitempty"`
 }
 
 // ValidationConfig controls validation behavior.
@@ -213,6 +216,9 @@ func SaveConfig(targetDir string, config *FabricaConfig) error {
 //
 // Returns a descriptive error if any validation rule is violated.
 func ValidateConfig(config *FabricaConfig) error {
+	// Normalize security settings first (may emit warnings).
+	config.Features.Security.AuthZ.Mode = normalizeSecurityMode(config.Features.Security.AuthZ.Mode, os.Stderr)
+
 	// Validate project fields
 	if config.Project.Name == "" {
 		return fmt.Errorf("project.name is required")
@@ -251,6 +257,12 @@ func ValidateConfig(config *FabricaConfig) error {
 	}
 
 	// Deprecated: versioning config is now driven by apis.yaml and ignored here.
+
+	// Security semantics:
+	// 1) AuthZ requires AuthN.
+	if config.Features.Security.AuthZ.Enabled && !config.Features.Security.AuthN.Enabled {
+		return fmt.Errorf("features.security.authz.enabled requires features.security.authn.enabled")
+	}
 
 	// Validate storage type
 	if config.Features.Storage.Enabled {
@@ -310,6 +322,10 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 			},
 			Auth: AuthConfig{
 				Enabled: false,
+			},
+			Security: SecurityConfig{
+				AuthN: AuthNConfig{Enabled: false},
+				AuthZ: AuthZConfig{Enabled: false, Mode: SecurityModeEnforce},
 			},
 			Storage: StorageConfig{
 				Enabled: true,
