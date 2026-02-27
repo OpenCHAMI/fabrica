@@ -30,6 +30,58 @@ The server supports configuration via:
 
 {{.FeaturesText}}
 
+## Security (TokenSmith)
+
+This service can be generated with TokenSmith-based authentication (AuthN) and authorization (AuthZ).
+
+### Public endpoints (bypass AuthN/AuthZ)
+
+The following endpoints are structurally public by default:
+- `GET /health`
+{{- if .WithMetrics }}
+- `GET /metrics` (metrics server)
+{{- end }}
+
+If OpenAPI/docs are enabled in your generated service, those endpoints are also public.
+
+### Authentication (AuthN)
+
+When AuthN is enabled, the server validates JWTs using TokenSmith.
+
+Required environment variables:
+- `TOKENSMITH_JWKS_URL` (required): URL to a JWKS endpoint used to validate incoming JWTs.
+
+Notes:
+- `OPTIONS` preflight requests are not blocked by AuthN middleware.
+
+### Authorization (AuthZ)
+
+When AuthZ is enabled, requests are classified into a `(subject, object, action)` tuple and enforced using TokenSmith/Casbin integration.
+
+AuthZ mode:
+- `enforce`: deny requests that fail policy evaluation (HTTP 403).
+- `shadow`: allow requests that fail policy evaluation, but emit a structured decision log/event.
+
+AuthZ configuration (environment variables):
+- `TOKENSMITH_AUTHZ_MODE`: `enforce` (default) or `shadow`
+- `TOKENSMITH_CASBIN_MODEL`: Casbin model definition (typically a file path like `./authz/model.conf`)
+- `TOKENSMITH_CASBIN_POLICY`: Casbin policy source (typically a file path like `./authz/policy.csv`)
+
+Policy tuple examples (defaults)
+
+The default classifier uses:
+- `object`: the chi route pattern (preferred), e.g. `/bmcs`, `/bmcs/{uid}`, `/bmcs/{uid}/status`
+- `action`: the HTTP method, e.g. `GET`, `POST`, `PATCH`, `DELETE`
+- `subject`: derived from the authenticated identity (JWT claims) by the TokenSmith integration
+
+Example policy tuples you will typically write policies against:
+- `alice, /bmcs, GET`
+- `alice, /bmcs/{uid}, PATCH`
+- `service-account:my-controller, /bmcs/{uid}/status, PUT`
+
+Where to customize classification:
+- Edit `cmd/server/authz_classifier.go` (create-once, regeneration-safe). This lets you mark routes as public/protected and adjust tuple derivation.
+
 ## Development
 
 ```bash

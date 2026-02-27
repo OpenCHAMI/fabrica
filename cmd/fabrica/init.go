@@ -467,6 +467,11 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
+	// Create .env template from template
+	if err := generateFromTemplate("init/env.tmpl", filepath.Join(targetDir, ".env.template"), data); err != nil {
+		return err
+	}
+
 	// Create .gitignore from template
 	if err := generateFromTemplate("init/gitignore.tmpl", filepath.Join(targetDir, ".gitignore"), data); err != nil {
 		return err
