@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
@@ -62,7 +66,7 @@ func mustReadTemplate(t *testing.T, name string) string {
 		}
 	}
 
-	return tmpl.Tree.Root.String()
+	return tmpl.Root.String()
 }
 
 func mustRenderInitTemplate(t *testing.T, templateText string, data templateData) string {

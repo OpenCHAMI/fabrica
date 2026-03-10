@@ -53,7 +53,7 @@ func normalizeSecurityMode(mode SecurityMode, warnOut io.Writer) SecurityMode {
 		return mode
 	}
 	if warnOut != nil {
-		fmt.Fprintf(warnOut, "warning: invalid security.authz.mode %q; defaulting to %q\n", mode, SecurityModeEnforce)
+		fmt.Fprintf(warnOut, "warning: invalid security.authz.mode %q; defaulting to %q\n", mode, SecurityModeEnforce) //nolint:errcheck
 	}
 	return SecurityModeEnforce
 }

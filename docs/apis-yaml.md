@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+
+SPDX-License-Identifier: MIT
+-->
+
 # apis.yaml reference
 
 The `apis.yaml` file is the single source of truth for API groups, hub/spoke versions, and imported types. It lives in the **project root**, next to `.fabrica.yaml`, and is created by `fabrica init`.

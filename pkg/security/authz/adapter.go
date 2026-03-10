@@ -17,13 +17,15 @@ import (
 
 // Mode controls how authorization decisions affect request handling.
 //
-//   - Enforce: deny requests when policy says deny, or when the request cannot
+//   - enforce: deny requests when policy says deny, or when the request cannot
 //     be classified (ok=false) or an internal error occurs.
-//   - Shadow: never deny; emit a structured decision log/event instead.
+//   - shadow: never deny; emit a structured decision log/event instead.
 //
 // Generated code will treat the mode as case-insensitive.
 type Mode string
 
+// ModeEnforce means authorization decisions are enforced, and requests may be denied.
+// ModeShadow means authorization decisions are logged but not enforced; all requests are allowed.
 const (
 	ModeEnforce Mode = "enforce"
 	ModeShadow  Mode = "shadow"

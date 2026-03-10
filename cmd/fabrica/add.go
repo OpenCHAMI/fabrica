@@ -199,11 +199,11 @@ func runAddResource(resourceName string, opts *addOptions) error {
 
 func generateResourceFile(filePath, resourceName string, isVersioned bool, opts *addOptions, modulePath, hubVersion, groupName string) error {
 	if len(resourceName) > 0 {
-        r := []rune(resourceName)
-        r[0] = unicode.ToUpper(r[0])
-        resourceName = string(r)
-    }
-	
+		r := []rune(resourceName)
+		r[0] = unicode.ToUpper(r[0])
+		resourceName = string(r)
+	}
+
 	var packageName string
 	if isVersioned {
 		// Use version as package name (e.g., v1alpha1)

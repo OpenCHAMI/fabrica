@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package constants contains constant values for tokensmith code generation.
 package constants
 
 // TokenSmithModulePath is the Go module path for TokenSmith.
