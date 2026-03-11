@@ -105,6 +105,30 @@ func (s *FabricaTestSuite) TestBasicFileStorageGeneration() {
 	s.Require().NoError(err, "project should build successfully")
 }
 
+func (s *FabricaTestSuite) TestAuthEnabledFileStorageGeneration() {
+	project := s.createProject("auth-file-test", "github.com/test/auth-file", "file")
+
+	err := project.InitializeWithFlags(s.fabricaBinary, "--auth")
+	s.Require().NoError(err, "project initialization with auth should succeed")
+
+	err = project.PinTokenSmithBranch("feature/ursa-policy-loader-v2") // This is only necessary until we can pin a release in tokensmith.go. FIXME
+	s.Require().NoError(err, "pinning TokenSmith feature branch should succeed")
+
+	err = project.AddResource(s.fabricaBinary, "Item")
+	s.Require().NoError(err, "adding resource should succeed")
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err, "code generation should succeed with auth enabled")
+
+	project.AssertFileExists("cmd/server/main.go")
+	project.AssertFileExists("cmd/client/main.go")
+	project.AssertFileExists("cmd/server/item_handlers_generated.go")
+	project.AssertFileExists("internal/storage/storage_generated.go")
+
+	err = project.Build()
+	s.Require().NoError(err, "auth-enabled project should build successfully")
+}
+
 func (s *FabricaTestSuite) TestEntStorageGeneration() {
 	project := s.createProject("ent-test", "github.com/test/ent", "ent")
 

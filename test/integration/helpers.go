@@ -143,6 +143,40 @@ func (p *TestProject) addReplace() error {
 	return nil
 }
 
+// PinTokenSmithBranch pins TokenSmith dependency to a specific branch for this test project.
+func (p *TestProject) PinTokenSmithBranch(branch string) error {
+	if strings.TrimSpace(branch) == "" {
+		return fmt.Errorf("tokensmith branch cannot be empty")
+	}
+
+	// Resolve branch to commit SHA since go module queries disallow slash-containing branch names.
+	shaCmd := exec.Command("git", "ls-remote", "https://github.com/OpenCHAMI/tokensmith.git", "refs/heads/"+branch)
+	shaOutput, err := shaCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to resolve TokenSmith branch %q: %w\nOutput: %s", branch, err, shaOutput)
+	}
+	shaFields := strings.Fields(string(shaOutput))
+	if len(shaFields) < 1 || strings.TrimSpace(shaFields[0]) == "" {
+		return fmt.Errorf("failed to parse commit SHA for TokenSmith branch %q from output: %s", branch, shaOutput)
+	}
+	commitSHA := strings.TrimSpace(shaFields[0])
+
+	// Remove placeholder requirement first, then pin lowercase module at commit.
+	dropCmd := exec.Command("go", "mod", "edit", "-droprequire", "github.com/openchami/tokensmith")
+	dropCmd.Dir = p.Dir
+	if output, err := dropCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to drop placeholder TokenSmith requirement: %w\nOutput: %s", err, output)
+	}
+
+	getCmd := exec.Command("go", "get", fmt.Sprintf("github.com/openchami/tokensmith@%s", commitSHA))
+	getCmd.Dir = p.Dir
+	if output, err := getCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to pin lowercase TokenSmith module for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, output)
+	}
+
+	return nil
+}
+
 // AddResource adds a resource to the project
 func (p *TestProject) AddResource(fabricaBinary, resourceName string) error {
 	cmd := exec.Command(fabricaBinary, "add", "resource", resourceName)

@@ -166,6 +166,13 @@ Examples:
 			// 2. The user should run it after generation completes
 			// This avoids circular dependency issues with code generators like Ent
 
+			// Preflight: Check module compatibility before code generation
+			if !force {
+				if err := checkModuleCompatibility(version, debug); err != nil {
+					return err // Error message already formatted with actionable guidance
+				}
+			}
+
 			// Generate server code (handlers, storage, openapi)
 			if all || handlers || storage || openapi {
 				if debug {
@@ -227,6 +234,94 @@ Examples:
 	cmd.Flags().BoolVar(&force, "force", false, "Force regeneration even with version warnings")
 
 	return cmd
+}
+
+// checkModuleCompatibility validates that the project's fabrica module version
+// is compatible with the current CLI binary version. This prevents cryptic compile
+// errors in generated code when version skew occurs (e.g., older module API vs newer binary).
+func checkModuleCompatibility(cliVersion string, debug bool) error {
+	// Get the effective fabrica module version in the project
+	cmd := exec.Command("go", "list", "-m", "github.com/openchami/fabrica")
+	cmd.Dir = "." // Run in project root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// If we can't determine the module version, warn but allow continuation
+		if debug {
+			fmt.Printf("⚠️  Warning: Could not determine fabrica module version: %v\n", err)
+		}
+		return nil
+	}
+
+	moduleInfo := strings.TrimSpace(string(output))
+
+	// Projects under local development commonly use replace directives
+	// (e.g. "=> /path/to/fabrica"). In that case, skip strict version checks.
+	if strings.Contains(moduleInfo, "=>") {
+		if debug {
+			fmt.Printf("ℹ️  Skipping module version check due to replace directive: %s\n", moduleInfo)
+		}
+		return nil
+	}
+
+	projectVersion := strings.Fields(moduleInfo)
+	if len(projectVersion) < 2 {
+		if debug {
+			fmt.Printf("⚠️  Warning: Unexpected module info format: %s\n", moduleInfo)
+		}
+		return nil
+	}
+
+	projectMod := projectVersion[0]
+	projectVer := projectVersion[1]
+	normalizedCLI := normalizeVersionForCompatibilityCheck(cliVersion)
+	normalizedProject := normalizeVersionForCompatibilityCheck(projectVer)
+
+	if debug {
+		fmt.Printf("ℹ️  Project module: %s %s\n", projectMod, projectVer)
+		fmt.Printf("ℹ️  CLI version: %s\n", cliVersion)
+		fmt.Printf("ℹ️  Normalized versions: cli=%s project=%s\n", normalizedCLI, normalizedProject)
+	}
+
+	// Simple version comparison: if CLI is "dev" or versions are exactly equal, allow
+	// Otherwise, if they differ and neither is "dev", warn the user
+	if normalizedCLI != "dev" && normalizedProject != normalizedCLI && normalizedProject != "" {
+		return fmt.Errorf(`
+❌ Module version mismatch detected:
+
+   Fabrica CLI version: %s
+   Project module version: %s
+   Project module: %s
+
+This mismatch can cause code generation to fail with cryptic errors.
+
+To fix, choose one of the following:
+
+  1. Rebuild the Fabrica CLI from the current repository:
+     cd <fabrica-repo> && make build
+
+  2. Point your project to a local Fabrica checkout:
+     cd <project> && go mod edit -replace 'github.com/openchami/fabrica=<path-to-fabrica-repo>'
+     go mod tidy
+
+  3. Update your project to the same Fabrica version as the CLI:
+	 cd <project> && go get 'github.com/openchami/fabrica@%s'
+     go mod tidy
+
+Or use --force to skip this check and proceed at your own risk.
+`, cliVersion, projectVer, projectMod, cliVersion)
+	}
+
+	return nil
+}
+
+func normalizeVersionForCompatibilityCheck(version string) string {
+	if version == "" {
+		return version
+	}
+	if dash := strings.Index(version, "-"); dash > 0 {
+		return version[:dash]
+	}
+	return version
 }
 
 // getModulePath reads the module path from go.mod
@@ -566,10 +661,7 @@ func main() {
 		}
 
 		// Wire TokenSmith-first security features into generator config.
-		if config.Features.Security.AuthN.Enabled {
-			gen.Config.WithAuth = true
-			gen.Config.SecurityAuthNEnabled = true
-		}
+		gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled)
 	}
 
 	if _, err := os.Stat("apis.yaml"); err == nil {

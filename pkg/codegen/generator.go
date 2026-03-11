@@ -159,17 +159,18 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 		StorageType: "file", // Default to file storage
 		DBDriver:    "sqlite",
 		Config: &GeneratorConfig{
-			ValidationEnabled:  true,
-			ValidationMode:     "strict",
-			ConditionalEnabled: true,
-			ETagAlgorithm:      "sha256",
-			VersioningEnabled:  false,
-			VersionStrategy:    "header",
-			EventsEnabled:      false,
-			EventBusType:       "memory",
-			StorageType:        "file",
-			DBDriver:           "sqlite",
-			WithAuth:           false,
+			ValidationEnabled:    true,
+			ValidationMode:       "strict",
+			ConditionalEnabled:   true,
+			ETagAlgorithm:        "sha256",
+			VersioningEnabled:    false,
+			VersionStrategy:      "header",
+			EventsEnabled:        false,
+			EventBusType:         "memory",
+			StorageType:          "file",
+			DBDriver:             "sqlite",
+			WithAuth:             false,
+			SecurityAuthNEnabled: false,
 		},
 	}
 }
@@ -182,6 +183,15 @@ func (g *Generator) SetStorageType(storageType string) {
 // SetDBDriver sets the database driver for Ent ("postgres", "mysql", "sqlite")
 func (g *Generator) SetDBDriver(driver string) {
 	g.DBDriver = driver
+}
+
+// SetAuthEnabled sets authentication-related generation toggles.
+//
+// WithAuth is the legacy template toggle; SecurityAuthNEnabled is the
+// TokenSmith-first flag used by newer config plumbing. Keep them in sync.
+func (g *Generator) SetAuthEnabled(enabled bool) {
+	g.Config.WithAuth = enabled
+	g.Config.SecurityAuthNEnabled = enabled
 }
 
 // templateData creates a standardized data structure for template execution
