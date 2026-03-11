@@ -72,6 +72,7 @@ type templateData struct {
 	FabricaVersion    string
 	TokenSmithVersion string
 	GeneratedAt       string
+	CopyrightYear     int
 	FeaturesText      string
 }
 
@@ -428,6 +429,7 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		FabricaVersion:    version,
 		TokenSmithVersion: constants.TokenSmithVersion,
 		GeneratedAt:       time.Now().Format(time.RFC3339),
+		CopyrightYear:     time.Now().Year(),
 		FeaturesText:      "", // Will be populated later
 	}
 

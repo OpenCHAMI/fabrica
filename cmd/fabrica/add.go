@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/spf13/cobra"
@@ -215,14 +216,14 @@ func generateResourceFile(filePath, resourceName string, isVersioned bool, opts 
 	// Determine if this is the hub version (storage version)
 	isHub := isVersioned && hubVersion != "" && opts.version == hubVersion
 
-	content := fmt.Sprintf(`// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+	content := fmt.Sprintf(`// Copyright © %d OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
 package %s
 
 import (
-	"context"`, packageName)
+	"context"`, time.Now().Year(), packageName)
 
 	if isVersioned {
 		// Versioned types use flattened envelope
