@@ -284,6 +284,7 @@ func checkModuleCompatibility(cliVersion string, debug bool) error {
 
 	// Simple version comparison: if CLI is "dev" or versions are exactly equal, allow
 	// Otherwise, if they differ and neither is "dev", warn the user
+	// nolint:revive,staticcheck
 	if normalizedCLI != "dev" && normalizedProject != normalizedCLI && normalizedProject != "" {
 		return fmt.Errorf(`
 ❌ Module version mismatch detected:

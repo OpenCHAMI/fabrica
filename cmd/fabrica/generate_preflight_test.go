@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestCheckModuleCompatibility_ExactVersionMatch(t *testing.T) {
+func TestCheckModuleCompatibility_ExactVersionMatch(t *testing.T) { //nolint:revive
 	// Same versions should not error (but we can't easily unit test the full
 	// function without mocking exec.Command, so this test documents the behavior)
 	// The real test is in integration tests where we verify the actual go list call
