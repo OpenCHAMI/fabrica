@@ -21,6 +21,21 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const (
+	tokenSmithBranchEnvVar  = "FABRICA_TEST_TOKENSMITH_BRANCH"
+	defaultTokenSmithBranch = "feature/ursa-policy-loader-v2"
+)
+
+// TokenSmithBranchForTests returns the TokenSmith branch to pin in integration tests.
+// Override with FABRICA_TEST_TOKENSMITH_BRANCH when validating against an unmerged branch.
+func TokenSmithBranchForTests() string {
+	branch := strings.TrimSpace(os.Getenv(tokenSmithBranchEnvVar))
+	if branch != "" {
+		return branch
+	}
+	return defaultTokenSmithBranch
+}
+
 // TestProject represents a fabrica test project
 type TestProject struct {
 	Name       string
@@ -161,17 +176,67 @@ func (p *TestProject) PinTokenSmithBranch(branch string) error {
 	}
 	commitSHA := strings.TrimSpace(shaFields[0])
 
-	// Remove placeholder requirement first, then pin lowercase module at commit.
-	dropCmd := exec.Command("go", "mod", "edit", "-droprequire", "github.com/openchami/tokensmith")
-	dropCmd.Dir = p.Dir
-	if output, err := dropCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to drop placeholder TokenSmith requirement: %w\nOutput: %s", err, output)
+	rootVersionCmd := exec.Command("go", "list", "-m", "-f", "{{.Version}}", fmt.Sprintf("github.com/openchami/tokensmith@%s", commitSHA))
+	rootVersionCmd.Dir = p.Dir
+	rootVersionOutput, err := rootVersionCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to resolve TokenSmith root pseudo-version for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, rootVersionOutput)
+	}
+	rootVersion := strings.TrimSpace(string(rootVersionOutput))
+	if rootVersion == "" {
+		return fmt.Errorf("resolved empty TokenSmith root pseudo-version for branch %q (commit %s)", branch, commitSHA)
 	}
 
-	getCmd := exec.Command("go", "get", fmt.Sprintf("github.com/openchami/tokensmith@%s", commitSHA))
+	// Remove placeholder requirements first, then pin middleware module at commit.
+	for _, modulePath := range []string{"github.com/openchami/tokensmith", "github.com/openchami/tokensmith/middleware"} {
+		dropCmd := exec.Command("go", "mod", "edit", "-droprequire", modulePath)
+		dropCmd.Dir = p.Dir
+		_, _ = dropCmd.CombinedOutput()
+	}
+
+	replaceRootCmd := exec.Command(
+		"go",
+		"mod",
+		"edit",
+		"-replace",
+		fmt.Sprintf("github.com/openchami/tokensmith@v0.0.0=github.com/openchami/tokensmith@%s", rootVersion),
+	)
+	replaceRootCmd.Dir = p.Dir
+	if output, err := replaceRootCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add replace for TokenSmith root v0.0.0 on branch %q (commit %s, version %s): %w\nOutput: %s", branch, commitSHA, rootVersion, err, output)
+	}
+
+	getRootCmd := exec.Command("go", "get", fmt.Sprintf("github.com/openchami/tokensmith@%s", commitSHA))
+	getRootCmd.Dir = p.Dir
+	if output, err := getRootCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to pin TokenSmith root module for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, output)
+	}
+
+	getCmd := exec.Command("go", "get", fmt.Sprintf("github.com/openchami/tokensmith/middleware@%s", commitSHA))
 	getCmd.Dir = p.Dir
 	if output, err := getCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to pin lowercase TokenSmith module for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, output)
+		return fmt.Errorf("failed to pin TokenSmith middleware module for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, output)
+	}
+
+	return nil
+}
+
+// SetFabricaModuleVersion sets a specific version of the fabrica module in go.mod for testing
+// version mismatch scenarios (e.g., for PR-38 regression tests).
+func (p *TestProject) SetFabricaModuleVersion(version string) error {
+	// Use go mod edit to set the fabrica module version
+	cmd := exec.Command("go", "mod", "edit", "-require", fmt.Sprintf("github.com/openchami/fabrica@%s", version))
+	cmd.Dir = p.Dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set fabrica version to %s: %w\nOutput: %s", version, err, output)
+	}
+
+	// Remove the replace directive so the version mismatch is visible to the CLI
+	cmd = exec.Command("go", "mod", "edit", "-dropreplace", "github.com/openchami/fabrica")
+	cmd.Dir = p.Dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// This may fail if replace doesn't exist, which is fine
+		_ = output
 	}
 
 	return nil

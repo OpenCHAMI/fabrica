@@ -31,7 +31,7 @@ import (
 	"github.com/openchami/fabrica/pkg/versioning"
 
 	{{if .WithAuth}}
-	"github.com/openchami/tokensmith"
+	tsmiddleware "github.com/openchami/tokensmith/middleware"
 	{{end}}
 
 	{{if .WithStorage}}
@@ -389,6 +389,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	{{if .WithAuth}}
+	var authn func(http.Handler) http.Handler
 	// Setup TokenSmith JWT authentication for protected routes.
 	if config.AuthEnabled {
 		jwksURL := os.Getenv("TOKENSMITH_JWKS_URL")
@@ -396,16 +397,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("TOKENSMITH_JWKS_URL is required when security.authn.enabled is true")
 		}
 
-		// Secure defaults; can be extended later via env/config if needed.
-		//
+		opts := tsmiddleware.DefaultMiddlewareOptions()
+		opts.JWKSURL = jwksURL
+
 		// NOTE: We keep authn out of the public group (health/docs/openapi) by wiring it
 		// on the protected router group below.
-		authn, err := tokensmith.NewJWTAuthMiddleware(tokensmith.JWTAuthConfig{
-			JWKSURL: jwksURL,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to initialize TokenSmith JWT middleware: %w", err)
-		}
+		authn = tsmiddleware.JWTMiddleware(nil, opts)
 		log.Println("Authentication enabled (TokenSmith JWT)")
 	} else {
 		log.Println("Authentication disabled")
@@ -422,10 +419,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Group(func(protected chi.Router) {
 		{{if .WithAuth}}
 		if config.AuthEnabled {
-			// Allow preflight without auth.
-			protected.Method("OPTIONS", "/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusNoContent)
-			}))
 			protected.Use(authn)
 		}
 		{{end}}
