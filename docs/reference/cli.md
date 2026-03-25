@@ -92,6 +92,7 @@ fabrica init [project-name] [flags]
 | `--auth` | bool | false | Enable authentication scaffolding |
 | `--storage` | bool | true | Enable storage backend |
 | `--metrics` | bool | false | Enable Prometheus metrics scaffolding (`/metrics`, middleware instrumentation) |
+| `--otel` | bool | false | Enable OpenTelemetry tracing scaffolding (OTLP exporter + tracing middleware) |
 | `--events` | bool | false | Enable CloudEvents integration |
 | `--reconcile` | bool | false | Enable reconciliation framework |
 
@@ -99,6 +100,12 @@ When `--metrics` is enabled at init-time, generated services expose runtime cont
 - `--enable-metrics` (default `true`) to enable/disable metrics publishing.
 - `--metrics-port` (default `9090`) to choose the scrape port for `GET /metrics`.
 - `--metrics-auth-required` (default `false`) to require auth middleware for `GET /metrics`.
+
+When `--otel` is enabled at init-time, generated services expose runtime controls:
+- `--enable-tracing` (default `true`) to enable/disable tracing middleware and exporter.
+- `--otlp-endpoint` (default `localhost:4317`) to configure OTLP/gRPC endpoint.
+- `--otlp-insecure` (default `true`) to use insecure OTLP transport.
+- `--trace-sample-ratio` (default `0.10`) to configure head-based sampling.
 
 #### Storage Options
 | Flag | Type | Default | Description |

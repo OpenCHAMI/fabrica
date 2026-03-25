@@ -488,6 +488,7 @@ type FeaturesConfig struct {
 	Validation  ValidationConfig  `+"`yaml:\"validation\"`"+`
 	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
 	Events      EventsConfig      `+"`yaml:\"events\"`"+`
+	Tracing     TracingConfig     `+"`yaml:\"tracing\"`"+`
 	Metrics     MetricsConfig     `+"`yaml:\"metrics\"`"+`
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
 	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
@@ -506,6 +507,11 @@ type ConditionalConfig struct {
 type EventsConfig struct {
 	Enabled bool   `+"`yaml:\"enabled\"`"+`
 	BusType string `+"`yaml:\"bus_type\"`"+`
+}
+
+type TracingConfig struct {
+	Enabled bool   `+"`yaml:\"enabled\"`"+`
+	Provider string `+"`yaml:\"provider\"`"+`
 }
 
 type MetricsConfig struct {
@@ -560,6 +566,7 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
+		gen.Config.OTelEnabled = config.Features.Tracing.Enabled
 		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
 
 		// Override storage config from .fabrica.yaml if present

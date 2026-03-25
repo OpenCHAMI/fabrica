@@ -51,6 +51,7 @@ type ProjectConfig struct {
 type FeaturesConfig struct {
 	Validation     ValidationConfig     `yaml:"validation"`
 	Events         EventsConfig         `yaml:"events"`
+	Tracing        TracingConfig        `yaml:"tracing,omitempty"`
 	Conditional    ConditionalConfig    `yaml:"conditional"`
 	Auth           AuthConfig           `yaml:"auth"`
 	Storage        StorageConfig        `yaml:"storage"`
@@ -76,6 +77,13 @@ type ValidationConfig struct {
 type EventsConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	BusType string `yaml:"bus_type"` // memory, nats, kafka
+}
+
+// TracingConfig controls OpenTelemetry tracing.
+// When enabled, generated services emit distributed traces via OTLP exporters.
+type TracingConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Provider string `yaml:"provider,omitempty"` // otlp
 }
 
 // ConditionalConfig controls ETag and conditional request handling.
@@ -247,6 +255,12 @@ func ValidateConfig(config *FabricaConfig) error {
 		}
 	}
 
+	if config.Features.Tracing.Enabled {
+		if config.Features.Tracing.Provider != "" && config.Features.Tracing.Provider != "otlp" {
+			return fmt.Errorf("invalid tracing.provider: %s (must be 'otlp')", config.Features.Tracing.Provider)
+		}
+	}
+
 	// Validate ETag algorithm
 	if config.Features.Conditional.Enabled {
 		validAlgos := map[string]bool{"sha256": true, "md5": true}
@@ -315,6 +329,9 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 			Events: EventsConfig{
 				Enabled: false,
 				BusType: "memory",
+			},
+			Tracing: TracingConfig{
+				Enabled: false,
 			},
 			Conditional: ConditionalConfig{
 				Enabled:       true,

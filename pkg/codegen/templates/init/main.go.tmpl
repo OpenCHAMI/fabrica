@@ -59,7 +59,7 @@ import (
 	{{if .WithEvents}}
 	"github.com/openchami/fabrica/pkg/events"
 	{{end}}
-	{{if or .WithEvents .WithMetrics}}
+	{{if or .WithEvents .WithMetrics .WithOTel}}
 	. "{{.ModulePath}}/internal/middleware"
 	{{end}}
 
@@ -100,6 +100,12 @@ type Config struct {
 	{{end}}
 
 	// Feature Flags
+	{{if .WithOTel}}
+	EnableTracing bool `mapstructure:"enable_tracing"`
+	OTLPEndpoint string `mapstructure:"otlp_endpoint"`
+	OTLPInsecure bool `mapstructure:"otlp_insecure"`
+	TraceSampleRatio float64 `mapstructure:"trace_sample_ratio"`
+	{{end}}
 	{{if .WithMetrics}}
 	EnableMetrics bool   `mapstructure:"enable_metrics"`
 	MetricsPort   int    `mapstructure:"metrics_port"`
@@ -130,6 +136,12 @@ func DefaultConfig() *Config {
 		{{if .WithReconcile}}
 		ReconcileEnabled: true,
 		ReconcileWorkers: {{.ReconcileWorkers}},
+		{{end}}
+		{{if .WithOTel}}
+		EnableTracing: true,
+		OTLPEndpoint: "localhost:4317",
+		OTLPInsecure: true,
+		TraceSampleRatio: 0.10,
 		{{end}}
 		{{if .WithMetrics}}
 		EnableMetrics: true,
@@ -195,6 +207,13 @@ func init() {
 	serveCmd.Flags().String("jwks-url", "", "JWKS URL for dynamic key validation")
 	serveCmd.Flags().String("jwt-issuer", "", "Expected JWT issuer")
 	serveCmd.Flags().String("jwt-audience", "", "Expected JWT audience")
+	{{end}}
+
+	{{if .WithOTel}}
+	serveCmd.Flags().Bool("enable-tracing", true, "Enable OpenTelemetry tracing")
+	serveCmd.Flags().String("otlp-endpoint", "localhost:4317", "OTLP exporter endpoint (host:port)")
+	serveCmd.Flags().Bool("otlp-insecure", true, "Use insecure OTLP gRPC transport")
+	serveCmd.Flags().Float64("trace-sample-ratio", 0.10, "Trace sampling ratio (0.0-1.0)")
 	{{end}}
 
 	{{if .WithMetrics}}
@@ -382,6 +401,22 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r := chi.NewRouter()
 
 	// Add middleware
+	{{if .WithOTel}}
+	if config.EnableTracing {
+		tracingShutdown, err := InitializeTracing(context.Background(), "{{.ProjectName}}", config.OTLPEndpoint, config.OTLPInsecure, config.TraceSampleRatio)
+		if err != nil {
+			return fmt.Errorf("failed to initialize tracing: %w", err)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tracingShutdown(shutdownCtx); err != nil {
+				log.Printf("Tracing shutdown error: %v", err)
+			}
+		}()
+		r.Use(TracingMiddleware("{{.ProjectName}}"))
+	}
+	{{end}}
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)

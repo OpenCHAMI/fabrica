@@ -121,6 +121,9 @@ type GeneratorConfig struct {
 	EventsEnabled bool
 	EventBusType  string // memory, nats, kafka
 
+	// OpenTelemetry tracing configuration
+	OTelEnabled bool
+
 	// Metrics configuration
 	MetricsEnabled bool
 
@@ -170,6 +173,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			VersionStrategy:    "header",
 			EventsEnabled:      false,
 			EventBusType:       "memory",
+			OTelEnabled:        false,
 			MetricsEnabled:     false,
 			StorageType:        "file",
 			DBDriver:           "sqlite",
@@ -285,6 +289,7 @@ func (g *Generator) middlewareData(templateName string) map[string]interface{} {
 		"VersionStrategy":   g.Config.VersionStrategy,
 		"EventBusType":      g.Config.EventBusType,
 		"EventsEnabled":     g.Config.EventsEnabled,
+		"OTelEnabled":       g.Config.OTelEnabled,
 		"MetricsEnabled":    g.Config.MetricsEnabled,
 		"Version":           g.Version,
 		"GeneratedAt":       time.Now().Format(time.RFC3339),
@@ -787,6 +792,7 @@ func (g *Generator) LoadTemplates() error {
 		"middlewareValidation":  "middleware/validation.go.tmpl",
 		"middlewareConditional": "middleware/conditional.go.tmpl",
 		"middlewareVersioning":  "middleware/versioning.go.tmpl",
+		"middlewareTracing":     "middleware/tracing.go.tmpl",
 		"eventBus":              "middleware/event-bus.go.tmpl",
 		"middlewareMetrics":     "middleware/metrics.go.tmpl",
 
@@ -880,6 +886,14 @@ func (g *Generator) GenerateMiddleware() error {
 	if g.Config.VersioningEnabled {
 		data := g.middlewareData("middleware/versioning.go.tmpl")
 		if err := g.generateMiddlewareFile("middlewareVersioning", "versioning_middleware_generated.go", middlewareDir, data); err != nil {
+			return err
+		}
+	}
+
+	// Generate OpenTelemetry tracing middleware if enabled
+	if g.Config.OTelEnabled {
+		data := g.middlewareData("middleware/tracing.go.tmpl")
+		if err := g.generateMiddlewareFile("middlewareTracing", "tracing_middleware_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
 	}

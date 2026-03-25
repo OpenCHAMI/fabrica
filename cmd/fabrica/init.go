@@ -35,6 +35,7 @@ type initOptions struct {
 	// New feature flags for core features
 	validationMode string // strict, warn, disabled
 	withEvents     bool   // Enable CloudEvents support
+	withOTel       bool   // Enable OpenTelemetry tracing support
 	eventBusType   string // memory, nats, kafka
 
 	// API Versioning (hub/spoke)
@@ -62,6 +63,7 @@ type templateData struct {
 	WithAuth          bool
 	WithStorage       bool
 	WithMetrics       bool
+	WithOTel          bool
 	WithVersion       bool
 	WithReconcile     bool
 	WithEvents        bool
@@ -103,6 +105,7 @@ Instead of complex modes, use feature flags to customize your project:
   --auth          Enable authentication with TokenSmith
   --storage       Enable persistent storage (file or database)
   --metrics       Enable Prometheus metrics
+	--otel          Enable OpenTelemetry tracing
 
 The interactive flag launches a guided wizard to help you choose.
 
@@ -142,6 +145,7 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable authentication with TokenSmith")
 	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage")
 	cmd.Flags().BoolVar(&opts.withMetrics, "metrics", false, "Enable Prometheus metrics")
+	cmd.Flags().BoolVar(&opts.withOTel, "otel", false, "Enable OpenTelemetry tracing")
 	cmd.Flags().BoolVar(&opts.withVersion, "version", true, "Enable version command")
 
 	// Core feature configuration
@@ -255,6 +259,11 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 	input, _ = reader.ReadString('\n')
 	opts.withMetrics = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
 
+	// OpenTelemetry
+	fmt.Print("Enable OpenTelemetry tracing? [y/N]: ")
+	input, _ = reader.ReadString('\n')
+	opts.withOTel = strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y")
+
 	// Summary
 	fmt.Println()
 	fmt.Println("📋 Summary:")
@@ -275,6 +284,7 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 		fmt.Printf("    Storage: disabled\n")
 	}
 	fmt.Printf("    Metrics: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withMetrics])
+	fmt.Printf("    OpenTelemetry: %s\n", map[bool]string{true: "enabled", false: "disabled"}[opts.withOTel])
 
 	fmt.Print("\nProceed? [Y/n]: ")
 	input, _ = reader.ReadString('\n')
@@ -419,6 +429,7 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		WithAuth:          opts.withAuth,
 		WithStorage:       opts.withStorage,
 		WithMetrics:       opts.withMetrics,
+		WithOTel:          opts.withOTel,
 		WithVersion:       opts.withVersion,
 		WithReconcile:     opts.withReconcile,
 		WithEvents:        opts.withEvents,
@@ -555,6 +566,9 @@ func generateFeaturesText(data templateData) string {
 	if data.WithMetrics {
 		features = append(features, "- 📊 Prometheus metrics")
 	}
+	if data.WithOTel {
+		features = append(features, "- 🔭 OpenTelemetry tracing")
+	}
 
 	if len(features) == 0 {
 		return "- Basic REST API server"
@@ -603,6 +617,10 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 			Events: EventsConfig{
 				Enabled: opts.withEvents,
 				BusType: opts.eventBusType,
+			},
+			Tracing: TracingConfig{
+				Enabled:  opts.withOTel,
+				Provider: "otlp",
 			},
 			Conditional: ConditionalConfig{
 				Enabled:       true, // Core feature always enabled

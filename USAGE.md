@@ -79,6 +79,17 @@ Runtime flags in the generated server:
 - `--metrics-port=<port>` (default: `9090`)
 - `--metrics-auth-required=true|false` (default: `false`)
 
+### Project with OpenTelemetry Tracing
+```bash
+fabrica init my-api --otel
+```
+
+Runtime flags in the generated server:
+- `--enable-tracing=true|false` (default: `true`)
+- `--otlp-endpoint=<host:port>` (default: `localhost:4317`)
+- `--otlp-insecure=true|false` (default: `true`)
+- `--trace-sample-ratio=<0.0-1.0>` (default: `0.10`)
+
 ### Custom API Group
 ```bash
 fabrica init my-api --group mycompany.io

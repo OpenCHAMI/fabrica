@@ -57,6 +57,20 @@ Notes:
 - If `--metrics-auth-required=true`, auth middleware is required to serve `GET /metrics`.
 {{- end }}
 
+{{- if .WithOTel }}
+### Tracing runtime flags
+
+When OpenTelemetry tracing is enabled, the generated server supports:
+- `--enable-tracing=true|false` (default: `true`)
+- `--otlp-endpoint=<host:port>` (default: `localhost:4317`)
+- `--otlp-insecure=true|false` (default: `true`)
+- `--trace-sample-ratio=<0.0-1.0>` (default: `0.10`)
+
+Notes:
+- Tracing uses OTLP/gRPC exporter configuration.
+- CloudEvents include `traceparent`/`tracestate` extensions when a span context is present.
+{{- end }}
+
 ### Authentication (AuthN)
 
 When AuthN is enabled, the server validates JWTs using TokenSmith.

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // EventConfig controls event publishing behavior and prefixes
@@ -331,6 +332,7 @@ func PublishResourceEvent(ctx context.Context, action, resourceKind, resourceUID
 	if err != nil {
 		return fmt.Errorf("failed to create resource event: %w", err)
 	}
+	addTraceContextExtensions(ctx, event)
 
 	return bus.Publish(ctx, *event)
 }
@@ -369,8 +371,31 @@ func PublishConditionEvent(ctx context.Context, conditionType, status, resourceK
 	if err != nil {
 		return fmt.Errorf("failed to create condition event: %w", err)
 	}
+	addTraceContextExtensions(ctx, event)
 
 	return bus.Publish(ctx, *event)
+}
+
+func addTraceContextExtensions(ctx context.Context, event *Event) {
+	if event == nil {
+		return
+	}
+
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if !spanCtx.IsValid() {
+		return
+	}
+
+	traceFlags := "00"
+	if spanCtx.TraceFlags().IsSampled() {
+		traceFlags = "01"
+	}
+
+	event.SetExtension("traceparent", fmt.Sprintf("00-%s-%s-%s", spanCtx.TraceID().String(), spanCtx.SpanID().String(), traceFlags))
+
+	if traceState := spanCtx.TraceState().String(); traceState != "" {
+		event.SetExtension("tracestate", traceState)
+	}
 }
 
 // ConditionChangeData represents the payload for condition change events
