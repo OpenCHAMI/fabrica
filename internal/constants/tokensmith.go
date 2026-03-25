@@ -11,4 +11,5 @@ const TokenSmithModulePath = "github.com/OpenCHAMI/tokensmith"
 // TokenSmithVersion pins the TokenSmith version used by generated services.
 //
 // Keep this deterministic to ensure stable regeneration results.
-const TokenSmithVersion = "v0.0.0" // TODO: set to a real released version
+// Until a stable release is available, this tracks the current pseudo-version from main.
+const TokenSmithVersion = "v0.0.0-20260324140532-0985357a5e2b"
