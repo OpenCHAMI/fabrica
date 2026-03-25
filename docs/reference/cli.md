@@ -91,9 +91,14 @@ fabrica init [project-name] [flags]
 |------|------|---------|-------------|
 | `--auth` | bool | false | Enable authentication scaffolding |
 | `--storage` | bool | true | Enable storage backend |
-| `--metrics` | bool | false | Enable metrics/monitoring |
+| `--metrics` | bool | false | Enable Prometheus metrics scaffolding (`/metrics`, middleware instrumentation) |
 | `--events` | bool | false | Enable CloudEvents integration |
 | `--reconcile` | bool | false | Enable reconciliation framework |
+
+When `--metrics` is enabled at init-time, generated services expose runtime controls:
+- `--enable-metrics` (default `true`) to enable/disable metrics publishing.
+- `--metrics-port` (default `9090`) to choose the scrape port for `GET /metrics`.
+- `--metrics-auth-required` (default `false`) to require auth middleware for `GET /metrics`.
 
 #### Storage Options
 | Flag | Type | Default | Description |

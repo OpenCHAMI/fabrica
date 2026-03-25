@@ -44,6 +44,19 @@ The following endpoints are structurally public by default:
 
 If OpenAPI/docs are enabled in your generated service, those endpoints are also public.
 
+{{- if .WithMetrics }}
+### Metrics runtime flags
+
+When metrics support is enabled, the generated server supports:
+- `--enable-metrics=true|false` (default: `true`)
+- `--metrics-port=<port>` (default: `9090`)
+- `--metrics-auth-required=true|false` (default: `false`)
+
+Notes:
+- `GET /metrics` is exposed on the dedicated metrics server port.
+- If `--metrics-auth-required=true`, auth middleware is required to serve `GET /metrics`.
+{{- end }}
+
 ### Authentication (AuthN)
 
 When AuthN is enabled, the server validates JWTs using TokenSmith.

@@ -69,6 +69,16 @@ Adds:
 - 🔄 Reconciliation controller framework
 - 🗃️ Database storage for durability
 
+### Project with Prometheus Metrics
+```bash
+fabrica init my-api --metrics
+```
+
+Runtime flags in the generated server:
+- `--enable-metrics=true|false` (default: `true`)
+- `--metrics-port=<port>` (default: `9090`)
+- `--metrics-auth-required=true|false` (default: `false`)
+
 ### Custom API Group
 ```bash
 fabrica init my-api --group mycompany.io

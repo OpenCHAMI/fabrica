@@ -121,6 +121,9 @@ type GeneratorConfig struct {
 	EventsEnabled bool
 	EventBusType  string // memory, nats, kafka
 
+	// Metrics configuration
+	MetricsEnabled bool
+
 	// Storage configuration
 	StorageType string // file, ent
 	DBDriver    string // postgres, mysql, sqlite
@@ -167,6 +170,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			VersionStrategy:    "header",
 			EventsEnabled:      false,
 			EventBusType:       "memory",
+			MetricsEnabled:     false,
 			StorageType:        "file",
 			DBDriver:           "sqlite",
 			WithAuth:           false,
@@ -281,6 +285,7 @@ func (g *Generator) middlewareData(templateName string) map[string]interface{} {
 		"VersionStrategy":   g.Config.VersionStrategy,
 		"EventBusType":      g.Config.EventBusType,
 		"EventsEnabled":     g.Config.EventsEnabled,
+		"MetricsEnabled":    g.Config.MetricsEnabled,
 		"Version":           g.Version,
 		"GeneratedAt":       time.Now().Format(time.RFC3339),
 		"Template":          templateName,
@@ -783,6 +788,7 @@ func (g *Generator) LoadTemplates() error {
 		"middlewareConditional": "middleware/conditional.go.tmpl",
 		"middlewareVersioning":  "middleware/versioning.go.tmpl",
 		"eventBus":              "middleware/event-bus.go.tmpl",
+		"middlewareMetrics":     "middleware/metrics.go.tmpl",
 
 		// Reconciliation templates
 		"reconciler":             "reconciliation/reconciler.go.tmpl",
@@ -882,6 +888,14 @@ func (g *Generator) GenerateMiddleware() error {
 	if g.Config.EventsEnabled {
 		data := g.middlewareData("middleware/event-bus.go.tmpl")
 		if err := g.generateMiddlewareFile("eventBus", "event_bus_generated.go", middlewareDir, data); err != nil {
+			return err
+		}
+	}
+
+	// Generate metrics middleware if enabled
+	if g.Config.MetricsEnabled {
+		data := g.middlewareData("middleware/metrics.go.tmpl")
+		if err := g.generateMiddlewareFile("middlewareMetrics", "metrics_middleware_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
 	}

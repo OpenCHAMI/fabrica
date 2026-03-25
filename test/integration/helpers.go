@@ -219,6 +219,11 @@ func findAvailablePort() (int, error) {
 // It resolves an available port, starts the server in the background, waits for health check,
 // and allows the test to make HTTP requests against running server.
 func (p *TestProject) StartServerRuntime() error {
+	return p.StartServerRuntimeWithArgs()
+}
+
+// StartServerRuntimeWithArgs starts the generated API server with optional extra CLI args.
+func (p *TestProject) StartServerRuntimeWithArgs(extraArgs ...string) error {
 	if p.serverCmd != nil {
 		return fmt.Errorf("server already running")
 	}
@@ -252,6 +257,7 @@ func (p *TestProject) StartServerRuntime() error {
 	if p.Storage == "ent" {
 		args = append(args, "--database-url", "file:./data.db?cache=shared&_fk=1")
 	}
+	args = append(args, extraArgs...)
 	p.serverCmd = exec.Command(outputPath, args...)
 	p.serverCmd.Dir = p.Dir
 	p.serverCmd.Stdout = os.Stdout
