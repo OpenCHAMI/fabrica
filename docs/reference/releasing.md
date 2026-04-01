@@ -240,7 +240,7 @@ Before publishing the GitHub release, manually verify release artifacts:
   ```bash
   docker pull ghcr.io/openchami/fabrica:v${VERSION}
   docker run --rm ghcr.io/openchami/fabrica:v${VERSION} --version
-  
+
   # Test project generation in container
   docker run --rm -v $(pwd):/work -w /work ghcr.io/openchami/fabrica:v${VERSION} \
     init test-docker && cd test-docker && \
