@@ -20,8 +20,8 @@ func TestInitGoMod_TokenSmithDependencyConditional(t *testing.T) {
 	})
 
 	t.Run("security_on_tokensmith_pinned", func(t *testing.T) {
-		out := mustRenderInitTemplate(t, tmpl, templateData{WithAuth: true, TokenSmithVersion: "v9.9.9"})
-		if !strings.Contains(out, "github.com/openchami/tokensmith v9.9.9") {
+		out := mustRenderInitTemplate(t, tmpl, templateData{WithAuth: true, TokenSmithVersion: "v0.0.1"})
+		if !strings.Contains(out, "github.com/openchami/tokensmith/middleware v0.0.1") {
 			t.Fatalf("expected tokensmith pinned dependency, got:\n%s", out)
 		}
 	})
