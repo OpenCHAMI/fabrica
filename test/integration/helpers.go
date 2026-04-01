@@ -22,18 +22,17 @@ import (
 )
 
 const (
-	tokenSmithBranchEnvVar  = "FABRICA_TEST_TOKENSMITH_BRANCH"
-	defaultTokenSmithBranch = "feature/ursa-policy-loader-v2"
+	tokenSmithBranchEnvVar = "FABRICA_TEST_TOKENSMITH_BRANCH"
 )
 
-// TokenSmithBranchForTests returns the TokenSmith branch to pin in integration tests.
-// Override with FABRICA_TEST_TOKENSMITH_BRANCH when validating against an unmerged branch.
-func TokenSmithBranchForTests() string {
+// TokenSmithBranchForTests returns the optional TokenSmith branch override used in integration tests.
+// Leave FABRICA_TEST_TOKENSMITH_BRANCH unset to validate against the released version pinned by Fabrica.
+func TokenSmithBranchForTests() (string, bool) {
 	branch := strings.TrimSpace(os.Getenv(tokenSmithBranchEnvVar))
-	if branch != "" {
-		return branch
+	if branch == "" {
+		return "", false
 	}
-	return defaultTokenSmithBranch
+	return branch, true
 }
 
 // TestProject represents a fabrica test project

@@ -113,8 +113,10 @@ func (s *FabricaTestSuite) TestAuthEnabledFileStorageGeneration() {
 	err := project.InitializeWithFlags(s.fabricaBinary, "--auth")
 	s.Require().NoError(err, "project initialization with auth should succeed")
 
-	err = project.PinTokenSmithBranch(TokenSmithBranchForTests()) // This is only necessary until we can pin a release in tokensmith.go. FIXME
-	s.Require().NoError(err, "pinning TokenSmith feature branch should succeed")
+	if branch, ok := TokenSmithBranchForTests(); ok {
+		err = project.PinTokenSmithBranch(branch)
+		s.Require().NoError(err, "pinning TokenSmith feature branch should succeed")
+	}
 
 	err = project.AddResource(s.fabricaBinary, "Item")
 	s.Require().NoError(err, "adding resource should succeed")

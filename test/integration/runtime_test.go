@@ -664,9 +664,11 @@ func (s *RuntimeTestSuite) TestAuthEnabledServerRuntimePath() {
 	err := project.InitializeWithFlags(s.fabricaBinary, "--auth")
 	s.Require().NoError(err, "project initialization with auth should succeed")
 
-	// Pin TokenSmith to the configured test branch (supports unmerged branch validation).
-	err = project.PinTokenSmithBranch(TokenSmithBranchForTests())
-	s.Require().NoError(err, "pinning TokenSmith should succeed")
+	if branch, ok := TokenSmithBranchForTests(); ok {
+		// Allow explicit branch validation without changing the default released-version path.
+		err = project.PinTokenSmithBranch(branch)
+		s.Require().NoError(err, "pinning TokenSmith should succeed")
+	}
 
 	// Add resource and generate
 	err = project.AddResource(s.fabricaBinary, "SecureData")
