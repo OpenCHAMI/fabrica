@@ -68,41 +68,37 @@ This creates `apis/example.fabrica.dev/v1/book_types.go`:
 package v1
 
 import (
-  "context"
-
-  "github.com/openchami/fabrica/pkg/fabrica"
+    "context"
+    "github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Book represents a Book resource
+// Book represents a book resource
 type Book struct {
-  APIVersion string           `json:"apiVersion"`
-  Kind       string           `json:"kind"`
-  Metadata   fabrica.Metadata `json:"metadata"`
-  Spec       BookSpec   `json:"spec"`
-  Status     BookStatus `json:"status"`
+    APIVersion string           `json:"apiVersion"`
+    Kind       string           `json:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata"`
+    Spec       BookSpec   `json:"spec" validate:"required"`
+    Status     BookStatus `json:"status,omitempty"`
 }
 
 // BookSpec defines the desired state of Book
 type BookSpec struct {
-    Title       string `json:"title" validate:"required,min=1,max=100"`
-    Author      string `json:"author" validate:"required,min=1,max=50"`
-    Description string `json:"description,omitempty" validate:"max=500"`
-    Price       float64 `json:"price" validate:"min=0"`
-    InStock     bool   `json:"inStock"`
+    Description string `json:"description,omitempty" validate:"max=200"`
+    // Add your spec fields here
 }
 
 // BookStatus defines the observed state of Book
 type BookStatus struct {
-    Phase       string `json:"phase,omitempty"`
-    Message     string `json:"message,omitempty"`
-    Ready       bool   `json:"ready"`
-    LastUpdated string `json:"lastUpdated,omitempty"`
+    Phase      string `json:"phase,omitempty"`
+    Message    string `json:"message,omitempty"`
+    Ready      bool   `json:"ready"`
+    // Add your status fields here
 }
-```
 
+// Validate implements custom validation logic for Book
 func (r *Book) Validate(ctx context.Context) error {
-  // Add custom validation logic here
-  return nil
+    // Add custom validation logic here
+    return nil
 }
 ```
 
