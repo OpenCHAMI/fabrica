@@ -41,16 +41,18 @@ cd bookstore
 This creates:
 ```
 bookstore/
-├── .fabrica.yaml        # Project configuration
-├── apis.yaml            # API groups/versions/resources
-├── apis/                # Versioned API definitions
-│   └── example.fabrica.dev/
-│       └── v1/          # Hub version (default)
-├── cmd/
-│   └── server/          # API server (main.go with stubs)
-├── internal/            # Generated code will go here
+├── .fabrica.yaml           # Project configuration
+├── apis                    # Versioned API definitions
+│   └── example.fabrica.dev
+│       └── v1              # Hub version (default)
+├── apis.yaml               # API groups/versions/resources
+├── cmd
+│   └── server              # API server (main.go with stubs)
+│       └── main.go
 ├── go.mod
-├── go.sum
+├── internal                # Generated code will go here
+│   └── storage
+│       └── storage.go
 └── README.md
 ```
 
