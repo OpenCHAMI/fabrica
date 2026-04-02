@@ -365,25 +365,42 @@ Let's peek under the hood (but don't worry, you don't need to edit these files):
 
 ```
 myshop/
-├── .fabrica.yaml                      # Project configuration
-├── apis.yaml                          # API group and versioning config
-├── go.mod                             # Dependencies
-├── README.md                          # Project README
-├── apis/
-│   └── example.fabrica.dev/           # API group directory
-│       └── v1/
-│           ├── product_types.go       # Your resource definition (you edited this)
-│           └── ...
-├── cmd/
-│   └── server/
-│       ├── main.go                    # Server entry point (with stubs)
-│       ├── product_handlers_generated.go    # HTTP handlers (generated)
-│       ├── routes_generated.go              # URL routing (generated)
-│       ├── models_generated.go              # Server types (generated)
-│       └── openapi_generated.go             # OpenAPI spec (generated)
-└── internal/
-    └── storage/
-        └── storage_generated.go             # Storage operations (generated)
+├── apis
+│   └── example.fabrica.dev
+│       └── v1
+│           └── product_types.go
+├── apis.yaml
+├── cmd
+│   ├── client
+│   │   └── main.go
+│   └── server
+│       ├── main.go
+│       ├── models_generated.go
+│       ├── openapi_generated.go
+│       ├── product_handlers_generated.go
+│       └── routes_generated.go
+├── data
+│   └── products
+│       └── product-62ed4401.json
+├── go.mod
+├── go.sum
+├── internal
+│   ├── middleware
+│   │   ├── conditional_middleware_generated.go
+│   │   ├── validation_middleware_generated.go
+│   │   └── versioning_middleware_generated.go
+│   └── storage
+│       ├── storage_generated.go
+│       └── storage.go
+├── pkg
+│   ├── apiversion
+│   │   └── registry_generated.go
+│   ├── client
+│   │   ├── client_generated.go
+│   │   └── models_generated.go
+│   └── resources
+│       └── register_generated.go
+└── README.md
 ```
 
 ### What Fabrica Generated
