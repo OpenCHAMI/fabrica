@@ -119,7 +119,6 @@ type BookStatus struct {
     Phase       string `json:"phase,omitempty"`
     Message     string `json:"message,omitempty"`
     Ready       bool   `json:"ready"`
-    LastUpdated string `json:"lastUpdated,omitempty"`
 }
 ```
 
@@ -203,9 +202,7 @@ Response:
     "inStock": true
   },
   "status": {
-    "phase": "Active",
-    "ready": true,
-    "lastUpdated": "2025-10-15T10:00:00Z"
+    "ready": false,
   }
 }
 ```
