@@ -145,6 +145,8 @@ This command creates a resource definition in your project's versioned API direc
 - `--with-validation` - Include validation tags (default: `true`)
 - `--with-status` - Include Status struct (default: `true`)
 
+If you open the newly generated resource definition file in your preferred editor, you'll see:
+
 ```go
 package v1
 
@@ -153,40 +155,53 @@ import (
     "github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Product represents a Product resource
+// Product represents a product resource
 type Product struct {
     APIVersion string           `json:"apiVersion"`
     Kind       string           `json:"kind"`
     Metadata   fabrica.Metadata `json:"metadata"`
-    Spec       ProductSpec   `json:"spec" validate:"required"`
-    Status     ProductStatus `json:"status,omitempty"`
+    Spec       ProductSpec      `json:"spec" validate:"required"`
+    Status     ProductStatus    `json:"status,omitempty"`
 }
 
 // ProductSpec defines the desired state of Product
 type ProductSpec struct {
-    Name        string  `json:"name" validate:"required,min=1,max=100"`
-    Description string  `json:"description,omitempty" validate:"max=500"`
-    Price       float64 `json:"price" validate:"min=0"`
-    InStock     bool    `json:"inStock"`
+    Description string  `json:"description,omitempty" validate:"max=200"`
+    // Add your spec fields here
 }
 
 // ProductStatus defines the observed state of Product
 type ProductStatus struct {
-    Phase       string `json:"phase,omitempty"`
-    Message     string `json:"message,omitempty"`
-    Ready       bool   `json:"ready"`
-    LastUpdated string `json:"lastUpdated,omitempty"`
+    Phase      string `json:"phase,omitempty"`
+    Message    string `json:"message,omitempty"`
+    Ready      bool   `json:"ready"`
+    // Add your status fields here
 }
 
+// Validate implements custom validation logic for Product
 func (r *Product) Validate(ctx context.Context) error {
     // Add custom validation logic here
     return nil
 }
+
+// All content beyond this point has been omitted for brevity
 ```
 
-**Customize the Spec:** You can edit the fields in `ProductSpec` as needed. Your resource definitions stay in the versioned API directory (`apis/<group>/<version>/`).
+## Step 3: Modify Your Resource
 
-## Step 3: Generate Code
+You can edit the fields in `ProductSpec` as needed. Your resource definitions stay in the versioned API directory (`apis/<group>/<version>/`). Let's add several additional fields and ensure the updated struct definition resembles the code below:
+
+```go
+// ProductSpec defines the desired state of Product
+type ProductSpec struct {
+    Description string  `json:"description,omitempty" validate:"max=200"`
+    Name        string  `json:"name" validate:"required,min=1,max=100"`
+    Price       float64 `json:"price" validate:"min=0"`
+    InStock     bool    `json:"inStock"`
+}
+```
+
+## Step 4: Generate Code
 
 Now generate the REST API handlers, storage, and routes:
 
@@ -215,7 +230,7 @@ You'll see:
 ✅ Code generation complete!
 ```
 
-## Step 4: Update Dependencies
+## Step 5: Update Dependencies
 
 After code generation, update your Go module dependencies:
 
@@ -225,7 +240,7 @@ go mod tidy
 
 This resolves all the new imports that were added by the code generator.
 
-## Step 5: Run Your API
+## Step 6: Run Your API
 
 Start the server:
 
@@ -245,7 +260,7 @@ You'll see:
 
 Your API is now running at `http://localhost:8080`!
 
-## Step 6: Test Your API (in a new terminal)
+## Step 7: Test Your API (in a new terminal)
 
 Open a new terminal and try the API:
 
