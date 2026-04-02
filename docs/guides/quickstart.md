@@ -255,11 +255,13 @@ Open a new terminal and try the API:
 curl -X POST http://localhost:8080/products \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "laptop-pro",
-    "displayName": "MacBook Pro",
-    "description": "15-inch MacBook Pro with M2 chip",
-    "price": 1999.99,
-    "inStock": true
+    "spec": {
+      "name": "laptop-pro",
+      "displayName": "MacBook Pro",
+      "description": "15-inch MacBook Pro with M2 chip",
+      "price": 1999.99,
+      "inStock": true
+    }
   }'
 ```
 
@@ -331,11 +333,13 @@ curl http://localhost:8080/products/pro-abc123def456
 curl -X PUT http://localhost:8080/products/pro-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "laptop-pro",
-    "displayName": "MacBook Pro M3",
-    "description": "Latest 15-inch MacBook Pro with M3 chip",
-    "price": 2199.99,
-    "inStock": true
+    "spec": {
+      "name": "laptop-pro",
+      "displayName": "MacBook Pro M3",
+      "description": "Latest 15-inch MacBook Pro with M3 chip",
+      "price": 2199.99,
+      "inStock": true
+    }
   }'
 ```
 
