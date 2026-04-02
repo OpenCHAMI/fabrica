@@ -115,17 +115,18 @@ Both options create:
 You'll see:
 
 ```
-✓ Created .fabrica.yaml
-✓ Created apis.yaml
-✓ Created go.mod
-✓ Created README.md (or skipped if exists)
-✓ Created basic project structure
+🚀 Creating myshop project...
+  ├─ Created .fabrica.yaml
+  ├─ Created apis.yaml (group example.fabrica.dev, storage v1)
 
-Your project is ready! Next steps:
-  1. fabrica add resource Product
-  2. fabrica generate
-  3. go mod tidy
-  4. go run ./cmd/server/
+✅ Project initialized successfully!
+
+Next steps:
+  1. Add resources with 'fabrica add resource <name>'
+  2. Define types in apis/example.fabrica.dev/<version>/*_types.go
+  3. Run 'fabrica generate' to generate code
+  4. Run 'go mod tidy' to update dependencies
+  5. Start development with 'go run ./cmd/server/'
 ```
 
 ## Step 2: Add Your Resource
@@ -235,10 +236,11 @@ go run ./cmd/server/
 You'll see:
 
 ```
-Starting Fabrica server...
-✓ Loaded Product handlers
-✓ Registered routes
-Server listening on :8080
+[rocky@localhost myshop]$ go run ./cmd/server/
+2026/04/02 11:19:31 Starting myshop server...
+2026/04/02 11:19:31 File storage initialized in ./data
+2026/04/02 11:19:31 Server starting on 0.0.0.0:8080
+2026/04/02 11:19:31 Storage: file backend in ./data
 ```
 
 Your API is now running at `http://localhost:8080`!
@@ -280,9 +282,7 @@ Response:
     "inStock": true
   },
   "status": {
-    "phase": "Active",
     "ready": true,
-    "lastUpdated": "2025-10-15T10:30:00Z"
   }
 }
 ```
@@ -313,9 +313,7 @@ Response (flat JSON array):
       "inStock": true
     },
     "status": {
-      "phase": "Active",
       "ready": true,
-      "lastUpdated": "2025-10-15T10:30:00Z"
     }
   }
 ]
