@@ -34,9 +34,8 @@ echo "Step 1: Initialize Fabrica project with Ent storage..."
 fabrica init demo-api --storage-type=ent --db=sqlite
 cd demo-api
 
-# Pin demo project to the local Fabrica source to avoid pulling an older release
-go mod edit -replace github.com/openchami/fabrica="$REPO_ROOT"
-go mod tidy
+# Use the local Fabrica source for code generation without modifying demo-api/go.mod
+export FABRICA_SOURCE_PATH="$REPO_ROOT"
 
 echo "✓ Project initialized"
 echo ""

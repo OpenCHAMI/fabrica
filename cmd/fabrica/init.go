@@ -56,24 +56,26 @@ type initOptions struct {
 // It contains all project metadata and feature flags needed to generate
 // initial files (main.go, go.mod, README, etc.) with appropriate settings.
 type templateData struct {
-	ProjectName       string
-	ModulePath        string
-	Description       string
-	WithAuth          bool
-	WithStorage       bool
-	WithMetrics       bool
-	WithVersion       bool
-	WithReconcile     bool
-	WithEvents        bool
-	StorageType       string
-	DBDriver          string
-	EventBusType      string
-	ReconcileWorkers  int
-	FabricaVersion    string
-	TokenSmithVersion string
-	GeneratedAt       string
-	CopyrightYear     int
-	FeaturesText      string
+	ProjectName          string
+	ModulePath           string
+	Description          string
+	WithAuth             bool
+	WithStorage          bool
+	WithMetrics          bool
+	WithVersion          bool
+	WithReconcile        bool
+	WithEvents           bool
+	StorageType          string
+	DBDriver             string
+	EventBusType         string
+	ReconcileWorkers     int
+	FabricaVersion       string
+	GoVersion            string
+	TokenSmithModulePath string
+	TokenSmithVersion    string
+	GeneratedAt          string
+	CopyrightYear        int
+	FeaturesText         string
 }
 
 // newInitCommand creates the 'fabrica init' cobra command.
@@ -410,27 +412,33 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	if err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 
 	// Template data
 	data := templateData{
-		ProjectName:       projectName,
-		ModulePath:        opts.modulePath,
-		Description:       opts.description,
-		WithAuth:          opts.withAuth,
-		WithStorage:       opts.withStorage,
-		WithMetrics:       opts.withMetrics,
-		WithVersion:       opts.withVersion,
-		WithReconcile:     opts.withReconcile,
-		WithEvents:        opts.withEvents,
-		StorageType:       opts.storageType,
-		DBDriver:          dbDriver,
-		EventBusType:      opts.eventBusType,
-		ReconcileWorkers:  opts.reconcileWorkers,
-		FabricaVersion:    version,
-		TokenSmithVersion: constants.TokenSmithVersion,
-		GeneratedAt:       time.Now().Format(time.RFC3339),
-		CopyrightYear:     time.Now().Year(),
-		FeaturesText:      "", // Will be populated later
+		ProjectName:          projectName,
+		ModulePath:           opts.modulePath,
+		Description:          opts.description,
+		WithAuth:             opts.withAuth,
+		WithStorage:          opts.withStorage,
+		WithMetrics:          opts.withMetrics,
+		WithVersion:          opts.withVersion,
+		WithReconcile:        opts.withReconcile,
+		WithEvents:           opts.withEvents,
+		StorageType:          opts.storageType,
+		DBDriver:             dbDriver,
+		EventBusType:         opts.eventBusType,
+		ReconcileWorkers:     opts.reconcileWorkers,
+		FabricaVersion:       version,
+		GoVersion:            "1.21",
+		TokenSmithModulePath: constants.TokenSmithModulePath,
+		TokenSmithVersion:    constants.TokenSmithVersion,
+		GeneratedAt:          now.Format(time.RFC3339),
+		CopyrightYear:        now.Year(),
+		FeaturesText:         "", // Will be populated later
+	}
+	if opts.withAuth {
+		data.GoVersion = constants.TokenSmithGoVersion
 	}
 
 	// Generate features text

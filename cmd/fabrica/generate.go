@@ -51,13 +51,14 @@ func readAPIsConfig() (*APIsConfig, error) {
 
 func newGenerateCommand() *cobra.Command {
 	var (
-		handlers bool
-		storage  bool
-		client   bool
-		openapi  bool
-		all      bool
-		debug    bool
-		force    bool
+		handlers      bool
+		storage       bool
+		client        bool
+		openapi       bool
+		all           bool
+		debug         bool
+		force         bool
+		fabricaSource string
 	)
 
 	cmd := &cobra.Command{
@@ -74,6 +75,7 @@ Examples:
   fabrica generate                    # Generate all
   fabrica generate --handlers         # Just handlers
   fabrica generate --client --openapi # Client + OpenAPI
+	fabrica generate --fabrica-source /path/to/fabrica # Use local Fabrica source without editing project go.mod
 `,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if !handlers && !storage && !client && !openapi {
@@ -92,6 +94,19 @@ Examples:
 			}
 			if debug {
 				fmt.Printf("  Module: %s\n", modulePath)
+			}
+
+			projectRoot, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to determine project root: %w", err)
+			}
+
+			resolvedFabricaSource, err := resolveGenerateFabricaSource(fabricaSource)
+			if err != nil {
+				return err
+			}
+			if debug && resolvedFabricaSource != "" {
+				fmt.Printf("  Using local Fabrica source: %s\n", resolvedFabricaSource)
 			}
 
 			apisConfig, err := readAPIsConfig()
@@ -171,7 +186,7 @@ Examples:
 				if debug {
 					fmt.Println("📦 Generating server code...")
 				}
-				if err := generateCodeWithRunner(modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
@@ -179,7 +194,7 @@ Examples:
 			// Generate client code
 			if all || client {
 				fmt.Println("📦 Generating client code...")
-				if err := generateCodeWithRunner(modulePath, "pkg/client", "client", false, false, false, true, debug); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
 				}
 			}
@@ -188,7 +203,7 @@ Examples:
 			config, err := readFabricaConfig()
 			if err == nil && config != nil && config.Features.Reconciliation.Enabled {
 				fmt.Println("🔄 Generating reconciliation code...")
-				if err := generateCodeWithRunner(modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
 				}
 			}
@@ -225,8 +240,38 @@ Examples:
 	cmd.Flags().BoolVar(&openapi, "openapi", false, "Generate OpenAPI spec")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug output showing detailed generation steps")
 	cmd.Flags().BoolVar(&force, "force", false, "Force regeneration even with version warnings")
+	cmd.Flags().StringVar(&fabricaSource, "fabrica-source", "", "Use a local Fabrica checkout for codegen without modifying project go.mod (or set FABRICA_SOURCE_PATH)")
 
 	return cmd
+}
+
+func resolveGenerateFabricaSource(flagValue string) (string, error) {
+	source := strings.TrimSpace(flagValue)
+	if source == "" {
+		source = strings.TrimSpace(os.Getenv("FABRICA_SOURCE_PATH"))
+	}
+	if source == "" {
+		return "", nil
+	}
+
+	absSource, err := filepath.Abs(source)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve fabrica source path %q: %w", source, err)
+	}
+
+	info, err := os.Stat(absSource)
+	if err != nil {
+		return "", fmt.Errorf("failed to access fabrica source path %q: %w", absSource, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("fabrica source path must be a directory: %s", absSource)
+	}
+
+	if _, err := os.Stat(filepath.Join(absSource, "go.mod")); err != nil {
+		return "", fmt.Errorf("fabrica source path must contain go.mod: %s", absSource)
+	}
+
+	return absSource, nil
 }
 
 // getModulePath reads the module path from go.mod
@@ -275,7 +320,7 @@ func detectStorageType() string {
 }
 
 // generateCodeWithRunner creates and runs a temporary codegen program
-func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool) error {
+func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, fabricaSource string) error {
 	// Create output directory if it doesn't exist
 	if debug {
 		fmt.Printf("  Creating output directory: %s\n", outputDir)
@@ -302,7 +347,11 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 		fmt.Printf("  Detected storage type: %s\n", storageType)
 	}
 
-	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
+	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
+
+	if fabricaSource != "" {
+		return runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode, debug, fabricaSource)
+	}
 
 	runnerPath := filepath.Join(runnerDir, "main.go")
 	if err := os.WriteFile(runnerPath, []byte(runnerCode), 0644); err != nil {
@@ -327,8 +376,66 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 	return nil
 }
 
+func runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode string, debug bool, fabricaSource string) error {
+	runnerDir, err := os.MkdirTemp("", "fabrica-codegen-*")
+	if err != nil {
+		return fmt.Errorf("failed to create isolated runner directory: %w", err)
+	}
+	defer os.RemoveAll(runnerDir) // nolint:errcheck
+
+	if err := os.WriteFile(filepath.Join(runnerDir, "go.mod"), []byte(generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource)), 0644); err != nil {
+		return fmt.Errorf("failed to write isolated runner go.mod: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(runnerDir, "main.go"), []byte(runnerCode), 0644); err != nil {
+		return fmt.Errorf("failed to write isolated runner: %w", err)
+	}
+
+	if debug {
+		fmt.Println("  Running code generator with isolated local Fabrica source...")
+	}
+
+	cmd := exec.Command("go", "run", "-mod=mod", ".")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = runnerDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("isolated code generation failed: %w", err)
+	}
+
+	return nil
+}
+
+func generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource string) string {
+	return fmt.Sprintf(`module fabrica-codegen-runner
+
+go 1.21
+
+require (
+	github.com/openchami/fabrica %s
+	%s %s
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+replace github.com/openchami/fabrica => %s
+replace %s => %s
+`, localModulePlaceholderVersion("github.com/openchami/fabrica"), modulePath, localModulePlaceholderVersion(modulePath), fabricaSource, modulePath, projectRoot)
+}
+
+func localModulePlaceholderVersion(modulePath string) string {
+	major := filepath.Base(modulePath)
+	if len(major) > 1 && major[0] == 'v' {
+		if versionNumber, err := strconv.Atoi(major[1:]); err == nil && versionNumber >= 2 {
+			return fmt.Sprintf("v%d.0.0", versionNumber)
+		}
+	}
+
+	return "v0.0.0"
+}
+
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
+func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
@@ -535,6 +642,10 @@ func loadConfig() (*FabricaConfig, error) {
 }
 
 func main() {
+	if err := os.Chdir(%q); err != nil {
+		log.Fatalf("Failed to change to project root: %%v", err)
+	}
+
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
@@ -581,7 +692,7 @@ func main() {
 	}
 
 %s}
-`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.

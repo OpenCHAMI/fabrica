@@ -184,6 +184,31 @@ func (g *Generator) SetDBDriver(driver string) {
 	g.DBDriver = driver
 }
 
+func (g *Generator) commonTemplateData(templateName string) map[string]interface{} {
+	now := time.Now().UTC()
+
+	return map[string]interface{}{
+		"Version":       g.Version,
+		"GeneratedAt":   now.Format(time.RFC3339),
+		"CopyrightYear": now.Year(),
+		"Template":      templateName,
+	}
+}
+
+func (g *Generator) mergeCommonTemplateData(templateName string, data map[string]interface{}) map[string]interface{} {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+
+	for key, value := range g.commonTemplateData(templateName) {
+		if _, exists := data[key]; !exists {
+			data[key] = value
+		}
+	}
+
+	return data
+}
+
 // templateData creates a standardized data structure for template execution
 // This ensures all templates have access to version, timestamp, and template name
 func (g *Generator) templateData(resource ResourceMetadata, templateName string) map[string]interface{} {
@@ -213,7 +238,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		uniqueImports = append(uniqueImports, Import{Path: path, Alias: alias})
 	}
 
-	return map[string]interface{}{
+	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
 		"Name":                  resource.Name,
 		"PluralName":            resource.PluralName,
 		"Package":               resource.Package,
@@ -232,10 +257,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"APIGroupVersion":       resource.APIGroupVersion,
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
-		"Version":               g.Version,
-		"GeneratedAt":           time.Now().Format(time.RFC3339),
-		"Template":              templateName,
-	}
+	})
 }
 
 // globalTemplateData creates template data for templates that process all resources at once
@@ -256,7 +278,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		uniqueImports = append(uniqueImports, Import{Path: path, Alias: alias})
 	}
 
-	return map[string]interface{}{
+	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
 		"PackageName":   g.PackageName,
 		"ModulePath":    g.ModulePath,
 		"Resources":     g.Resources,
@@ -266,25 +288,19 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"DBDriver":      g.DBDriver,
 		"Config":        g.Config,
 		"WithAuth":      g.Config.WithAuth,
-		"Version":       g.Version,
-		"GeneratedAt":   time.Now().Format(time.RFC3339),
-		"Template":      templateName,
-	}
+	})
 }
 
 // middlewareData creates template data for middleware templates
 func (g *Generator) middlewareData(templateName string) map[string]interface{} {
-	return map[string]interface{}{
+	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
 		"ValidationMode":    g.Config.ValidationMode,
 		"ValidationEnabled": g.Config.ValidationEnabled,
 		"ETagAlgorithm":     g.Config.ETagAlgorithm,
 		"VersionStrategy":   g.Config.VersionStrategy,
 		"EventBusType":      g.Config.EventBusType,
 		"EventsEnabled":     g.Config.EventsEnabled,
-		"Version":           g.Version,
-		"GeneratedAt":       time.Now().Format(time.RFC3339),
-		"Template":          templateName,
-	}
+	})
 }
 
 // RegisterResource adds a resource type for code generation
@@ -1183,11 +1199,9 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 
 	// If no data provided, create basic version data
 	if data == nil {
-		data = map[string]interface{}{
-			"Version":     g.Version,
-			"GeneratedAt": time.Now().Format(time.RFC3339),
-			"Template":    templateName,
-		}
+		data = g.commonTemplateData(templateName)
+	} else if dataMap, ok := data.(map[string]interface{}); ok {
+		data = g.mergeCommonTemplateData(templateName, dataMap)
 	}
 
 	var buf bytes.Buffer
@@ -1269,12 +1283,9 @@ func (g *Generator) GenerateAPIVersions() error {
 		})
 	}
 
-	dataMap := map[string]interface{}{
-		"Version":     g.Version,
-		"GeneratedAt": time.Now().Format(time.RFC3339),
-		"Template":    "apiversion/register.gotmpl",
-		"Groups":      groups,
-	}
+	dataMap := g.mergeCommonTemplateData("apiversion/register.gotmpl", map[string]interface{}{
+		"Groups": groups,
+	})
 
 	// Ensure output directory exists
 	outDir := filepath.Join("pkg", "apiversion")

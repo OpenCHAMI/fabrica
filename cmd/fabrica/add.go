@@ -223,7 +223,7 @@ func generateResourceFile(filePath, resourceName string, isVersioned bool, opts 
 package %s
 
 import (
-	"context"`, time.Now().Year(), packageName)
+	"context"`, time.Now().UTC().Year(), packageName)
 
 	if isVersioned {
 		// Versioned types use flattened envelope

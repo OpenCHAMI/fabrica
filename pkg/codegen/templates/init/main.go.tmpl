@@ -1,5 +1,5 @@
 {{/*
-SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+SPDX-FileCopyrightText: 2025-2026 OpenCHAMI a Series of LF Projects, LLC
 
 SPDX-License-Identifier: MIT
 */}}
@@ -31,7 +31,7 @@ import (
 	"github.com/openchami/fabrica/pkg/versioning"
 
 	{{if .WithAuth}}
-	"github.com/OpenCHAMI/tokensmith"
+	tokensmithauthn "{{.TokenSmithModulePath}}/pkg/authn"
 	{{end}}
 
 	{{if .WithStorage}}
@@ -400,8 +400,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 		//
 		// NOTE: We keep authn out of the public group (health/docs/openapi) by wiring it
 		// on the protected router group below.
-		authn, err := tokensmith.NewJWTAuthMiddleware(tokensmith.JWTAuthConfig{
-			JWKSURL: jwksURL,
+		authnMiddleware, err := tokensmithauthn.Middleware(tokensmithauthn.Options{
+			JWKSURLs:                  []string{jwksURL},
+			DisableIssuerValidation:   true,
+			DisableAudienceValidation: true,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize TokenSmith JWT middleware: %w", err)
@@ -426,7 +428,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 			protected.Method("OPTIONS", "/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
-			protected.Use(authn)
+			protected.Use(authnMiddleware)
 		}
 		{{end}}
 

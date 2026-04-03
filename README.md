@@ -80,6 +80,21 @@ cd fabrica
 make install
 ```
 
+For local codegen testing against your checkout without editing a generated project's `go.mod`, run:
+
+```bash
+fabrica generate --fabrica-source /path/to/fabrica
+```
+
+Or set an environment variable for the session:
+
+```bash
+export FABRICA_SOURCE_PATH=/path/to/fabrica
+fabrica generate
+```
+
+This override only affects `fabrica generate`; projects that do not opt in continue to use the released Fabrica module resolved from their own `go.mod`.
+
 ## 📚 Learn by Example
 
 Explore hands-on examples in the [`examples/`](examples/) directory:

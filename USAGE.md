@@ -153,6 +153,23 @@ Combine flags:
 fabrica generate --handlers --storage --openapi
 ```
 
+### Test Local Fabrica Changes Safely
+
+If you are developing Fabrica itself and want a test project to generate code from your local checkout without adding a `replace` line to that project's `go.mod`, use:
+
+```bash
+fabrica generate --fabrica-source /path/to/fabrica
+```
+
+Or set it once for your shell session:
+
+```bash
+export FABRICA_SOURCE_PATH=/path/to/fabrica
+fabrica generate
+```
+
+This keeps the generated project's dependency graph pinned to released Fabrica unless you explicitly opt into local codegen for that run.
+
 ### After Generation
 ```bash
 go mod tidy        # Download dependencies
