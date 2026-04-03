@@ -1,0 +1,27 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+
+name: REUSE Compliance
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+      - 'testing/**'
+      - 'feat/**'
+
+jobs:
+  reuse:
+    name: REUSE Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Run REUSE lint
+        uses: fsfe/reuse-action@v6.0.0

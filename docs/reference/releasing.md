@@ -196,6 +196,87 @@ After a successful release:
 3. ✅ Close related issues/PRs
 4. ✅ Update project roadmap
 
+## Release Confidence Checklist
+
+Before tagging a release, ensure the following readiness criteria are met:
+
+### Pre-Release Validation
+
+- [ ] **All integration tests pass** locally: `go test -v -timeout 10m ./test/integration`
+- [ ] **CI workflows pass** on main branch (lint, regression tests, govulncheck, REUSE)
+- [ ] **CHANGELOG.md** is updated with all changes for this release
+- [ ] **Module compatibility checks** are working (preflight validation prevents version mismatches)
+- [ ] **Auth-enabled projects** generate and compile successfully
+
+### Upgrade Path Testing
+
+- [ ] **Previous version → current version upgrade** is tested:
+  - Generate project with previous Fabrica version (e.g., v0.3.1)
+  - Run `fabrica generate` with current CLI version (v0.4.0)
+  - Verify generated code compiles and basic operations work
+
+### Binary Smoke Testing
+
+Before publishing the GitHub release, manually verify release artifacts:
+
+- [ ] Download Linux AMD64 binary and verify:
+  ```bash
+  fabrica --version
+  fabrica init test-project
+  cd test-project && fabrica add resource Device && fabrica generate
+  ```
+
+- [ ] Download macOS ARM64 binary and verify the same steps
+
+- [ ] Test server generation and startup:
+  ```bash
+  cd test-project && go run ./cmd/server serve --port 8080 &
+  curl http://localhost:8080/health
+  ```
+
+### Docker Image Smoke Testing
+
+- [ ] Pull and test release Docker image:
+  ```bash
+  docker pull ghcr.io/openchami/fabrica:v${VERSION}
+  docker run --rm ghcr.io/openchami/fabrica:v${VERSION} --version
+
+  # Test project generation in container
+  docker run --rm -v $(pwd):/work -w /work ghcr.io/openchami/fabrica:v${VERSION} \
+    init test-docker && cd test-docker && \
+    /app/fabrica add resource Service && \
+    /app/fabrica generate
+  ```
+
+- [ ] Verify multi-arch image manifest exists:
+  ```bash
+  docker manifest inspect ghcr.io/openchami/fabrica:v${VERSION}
+  ```
+
+### Generated Project Quality Gates
+
+- [ ] **Runtime validation**: Run generated server and verify:
+  - Health endpoint responds
+  - CRUD operations work
+  - Error handling returns proper HTTP status codes
+  - Validation rejects invalid requests with 400
+
+- [ ] **Concurrent operations**: Verify ETag conflict handling with simultaneous PATCH requests
+
+- [ ] **Feature flags**: Generated projects with `--auth`, `--events`, `--reconcile` compile and run
+
+### Documentation & Announcement
+
+- [ ] **Release notes** are clear and include:
+  - Key new features with examples
+  - Breaking changes (if any) with migration guidance
+  - Upgrade instructions
+  - Known issues or limitations
+
+- [ ] **Example READMEs** are current (no stale CLI commands)
+
+- [ ] **API documentation** (OpenAPI spec) is up-to-date
+
 ## Resources
 
 - [GoReleaser Documentation](https://goreleaser.com)

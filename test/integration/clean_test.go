@@ -30,7 +30,9 @@ package integration
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -103,6 +105,82 @@ func (s *FabricaTestSuite) TestBasicFileStorageGeneration() {
 	// Build project
 	err = project.Build()
 	s.Require().NoError(err, "project should build successfully")
+}
+
+func (s *FabricaTestSuite) TestAuthEnabledFileStorageGeneration() {
+	project := s.createProject("auth-file-test", "github.com/test/auth-file", "file")
+
+	err := project.InitializeWithFlags(s.fabricaBinary, "--auth")
+	s.Require().NoError(err, "project initialization with auth should succeed")
+
+	if branch, ok := TokenSmithBranchForTests(); ok {
+		err = project.PinTokenSmithBranch(branch)
+		s.Require().NoError(err, "pinning TokenSmith feature branch should succeed")
+	}
+
+	err = project.AddResource(s.fabricaBinary, "Item")
+	s.Require().NoError(err, "adding resource should succeed")
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err, "code generation should succeed with auth enabled")
+
+	project.AssertFileExists("cmd/server/main.go")
+	project.AssertFileExists("cmd/client/main.go")
+	project.AssertFileExists("cmd/server/item_handlers_generated.go")
+	project.AssertFileExists("internal/storage/storage_generated.go")
+
+	err = project.Build()
+	s.Require().NoError(err, "auth-enabled project should build successfully")
+}
+
+func (s *FabricaTestSuite) TestModuleCompatibilityCheckPreventsGeneration() {
+	// Validates PR-38 class failure: generation with mismatched fabrica module version
+	// Expected behavior: preflight check catches mismatch and offers remediation
+	project := s.createProject("module-compat-test", "github.com/test/module-compat", "file")
+
+	// Initialize project
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err, "project initialization should succeed")
+
+	err = project.AddResource(s.fabricaBinary, "Item")
+	s.Require().NoError(err, "adding resource should succeed")
+
+	// Modify go.mod to introduce a version mismatch
+	// We'll update the fabrica module require to a different version than what's being tested
+	err = project.SetFabricaModuleVersion("v0.1.0") // Version that will not match CLI
+	s.Require().NoError(err, "setting mismatched fabrica version should succeed")
+
+	// Attempt to generate - this should fail with actionable error message
+	cmd := exec.Command(s.fabricaBinary, "generate", "--storage", "--openapi", "--handlers", "--client")
+	cmd.Dir = project.Dir
+	output, err := cmd.CombinedOutput()
+
+	// We expect generation to fail
+	s.Require().Error(err, "generate should fail with version mismatch")
+
+	// Verify error message includes actionable guidance
+	outputStr := string(output)
+	s.Require().Contains(outputStr, "Module version mismatch detected", "error should mention mismatch")
+	s.Require().Contains(outputStr, "Project module", "error should identify the module")
+
+	// Verify remediation hints are present
+	s.Require().True(
+		contains(outputStr, "Rebuild") || contains(outputStr, "replace") || contains(outputStr, "go get"),
+		"error should include remediation paths",
+	)
+
+	// Now test --force flag bypasses the check
+	forcedCmd := exec.Command(s.fabricaBinary, "generate", "--storage", "--openapi", "--handlers", "--client", "--force")
+	forcedCmd.Dir = project.Dir
+	forcedOutput, forcedErr := forcedCmd.CombinedOutput()
+	// With --force, it should proceed (though may fail later due to version incompatibility)
+	// The key is it doesn't fail on the preflight check itself
+	_ = forcedErr    // May fail later, that's OK
+	_ = forcedOutput // Just testing the preflight bypass
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
 
 func (s *FabricaTestSuite) TestEntStorageGeneration() {

@@ -394,6 +394,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	{{if .WithAuth}}
+	var authn func(http.Handler) http.Handler
 	// Setup TokenSmith JWT authentication for protected routes.
 	var authnMiddleware func(http.Handler) http.Handler
 	var authzMiddleware func(http.Handler) http.Handler
@@ -403,8 +404,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("TOKENSMITH_JWKS_URL is required when security.authn.enabled is true")
 		}
 
-		// Secure defaults; can be extended later via env/config if needed.
-		//
+		opts := tsmiddleware.DefaultMiddlewareOptions()
+		opts.JWKSURL = jwksURL
+
 		// NOTE: We keep authn out of the public group (health/docs/openapi) by wiring it
 		// on the protected router group below.
 		mw, err := tokensmithauthn.Middleware(tokensmithauthn.Options{

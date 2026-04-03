@@ -21,6 +21,20 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const (
+	tokenSmithBranchEnvVar = "FABRICA_TEST_TOKENSMITH_BRANCH"
+)
+
+// TokenSmithBranchForTests returns the optional TokenSmith branch override used in integration tests.
+// Leave FABRICA_TEST_TOKENSMITH_BRANCH unset to validate against the released version pinned by Fabrica.
+func TokenSmithBranchForTests() (string, bool) {
+	branch := strings.TrimSpace(os.Getenv(tokenSmithBranchEnvVar))
+	if branch == "" {
+		return "", false
+	}
+	return branch, true
+}
+
 // TestProject represents a fabrica test project
 type TestProject struct {
 	Name       string
@@ -138,6 +152,90 @@ func (p *TestProject) addReplace() error {
 	newContent := string(content) + fmt.Sprintf("\nreplace github.com/openchami/fabrica => %s\n", fabricaRootAbs)
 	if err := os.WriteFile(goModPath, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to update go.mod: %w", err)
+	}
+
+	return nil
+}
+
+// PinTokenSmithBranch pins TokenSmith dependency to a specific branch for this test project.
+func (p *TestProject) PinTokenSmithBranch(branch string) error {
+	if strings.TrimSpace(branch) == "" {
+		return fmt.Errorf("tokensmith branch cannot be empty")
+	}
+
+	// Resolve branch to commit SHA since go module queries disallow slash-containing branch names.
+	shaCmd := exec.Command("git", "ls-remote", "https://github.com/OpenCHAMI/tokensmith.git", "refs/heads/"+branch)
+	shaOutput, err := shaCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to resolve TokenSmith branch %q: %w\nOutput: %s", branch, err, shaOutput)
+	}
+	shaFields := strings.Fields(string(shaOutput))
+	if len(shaFields) < 1 || strings.TrimSpace(shaFields[0]) == "" {
+		return fmt.Errorf("failed to parse commit SHA for TokenSmith branch %q from output: %s", branch, shaOutput)
+	}
+	commitSHA := strings.TrimSpace(shaFields[0])
+
+	rootVersionCmd := exec.Command("go", "list", "-m", "-f", "{{.Version}}", fmt.Sprintf("github.com/openchami/tokensmith@%s", commitSHA))
+	rootVersionCmd.Dir = p.Dir
+	rootVersionOutput, err := rootVersionCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to resolve TokenSmith root pseudo-version for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, rootVersionOutput)
+	}
+	rootVersion := strings.TrimSpace(string(rootVersionOutput))
+	if rootVersion == "" {
+		return fmt.Errorf("resolved empty TokenSmith root pseudo-version for branch %q (commit %s)", branch, commitSHA)
+	}
+
+	// Remove placeholder requirements first, then pin middleware module at commit.
+	for _, modulePath := range []string{"github.com/openchami/tokensmith", "github.com/openchami/tokensmith/middleware"} {
+		dropCmd := exec.Command("go", "mod", "edit", "-droprequire", modulePath)
+		dropCmd.Dir = p.Dir
+		_, _ = dropCmd.CombinedOutput()
+	}
+
+	replaceRootCmd := exec.Command(
+		"go",
+		"mod",
+		"edit",
+		"-replace",
+		fmt.Sprintf("github.com/openchami/tokensmith@v0.0.0=github.com/openchami/tokensmith@%s", rootVersion),
+	)
+	replaceRootCmd.Dir = p.Dir
+	if output, err := replaceRootCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add replace for TokenSmith root v0.0.0 on branch %q (commit %s, version %s): %w\nOutput: %s", branch, commitSHA, rootVersion, err, output)
+	}
+
+	getRootCmd := exec.Command("go", "get", fmt.Sprintf("github.com/openchami/tokensmith@%s", commitSHA))
+	getRootCmd.Dir = p.Dir
+	if output, err := getRootCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to pin TokenSmith root module for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, output)
+	}
+
+	getCmd := exec.Command("go", "get", fmt.Sprintf("github.com/openchami/tokensmith/middleware@%s", commitSHA))
+	getCmd.Dir = p.Dir
+	if output, err := getCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to pin TokenSmith middleware module for branch %q (commit %s): %w\nOutput: %s", branch, commitSHA, err, output)
+	}
+
+	return nil
+}
+
+// SetFabricaModuleVersion sets a specific version of the fabrica module in go.mod for testing
+// version mismatch scenarios (e.g., for PR-38 regression tests).
+func (p *TestProject) SetFabricaModuleVersion(version string) error {
+	// Use go mod edit to set the fabrica module version
+	cmd := exec.Command("go", "mod", "edit", "-require", fmt.Sprintf("github.com/openchami/fabrica@%s", version))
+	cmd.Dir = p.Dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set fabrica version to %s: %w\nOutput: %s", version, err, output)
+	}
+
+	// Remove the replace directive so the version mismatch is visible to the CLI
+	cmd = exec.Command("go", "mod", "edit", "-dropreplace", "github.com/openchami/fabrica")
+	cmd.Dir = p.Dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// This may fail if replace doesn't exist, which is fine
+		_ = output
 	}
 
 	return nil

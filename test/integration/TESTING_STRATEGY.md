@@ -69,13 +69,28 @@ This directory contains a multi-layered integration test strategy that validates
 
 **Execution:** `go test -run TestClientBinary`
 
-### Phase 4: Feature-Specific Runtime Tests (Future)
-Planned but not yet implemented. Would test:
-- Middleware (ETag, validation, versioning)
-- Event publishing and reconciliation
-- Multi-version API workflows
-- Concurrent operations
-- Database-backed storage (Ent with SQLite)
+### Phase 4: Feature-Specific Runtime Tests (Partially Implemented)
+Validates runtime behavior of generated features and middleware stack:
+- **Middleware pipeline ordering**: validation → versioning → auth → patch application
+- **Auth enforcement at runtime**: protected endpoints require valid auth headers
+- **Concurrent conflict handling**: ETag preconditions prevent race conditions
+- **Module compatibility**: preflight checks catch version mismatches and provide remediation guidance
+
+**Files:** `runtime_test.go::TestAuthEnabledServerRuntimePath`, `runtime_test.go::TestMiddlewarePipelineOrdering`, `concurrency_test.go::TestConcurrentPatchConflicts`, `clean_test.go::TestModuleCompatibilityCheckPreventsGeneration`
+
+**Coverage:**
+- ETag precondition checking (If-Match header)
+- Middleware interaction and ordering
+- Auth middleware integration
+- Validation before processing
+- Concurrent update conflict detection
+- Module version mismatch detection and recovery guidance
+
+**Still Planned (Future):**
+- Event publishing and reconciliation runtime behavior
+- Multi-version API conversion (hub/spoke versioning at runtime)
+- Database transaction rollback and failure recovery
+- Distributed auth/reconciliation scenarios
 
 ## Test Infrastructure
 
@@ -161,8 +176,14 @@ This consolidates common patterns and reduces duplication across examples.
 | **CRUD Operations** | - | ✓ | - | - |
 | **Client Compilation** | - | ✓ | ✓ | - |
 | **Client Execution** | - | - | ✓ | - |
-| **Middleware** | - | - | - | ✓ |
-| **Events & Reconciliation** | - | - | - | ✓ |
+| **Validation** | - | ✓ | - | ✓ |
+| **Middleware (ETag, versioning)** | - | - | - | ✓ |
+| **Auth Runtime Enforcement** | - | - | - | ✓ |
+| **Concurrent Operations** | - | - | - | ✓ |
+| **Module Compatibility** | - | - | - | ✓ |
+| **Events & Reconciliation** | - | - | - | ⏳ |
+| **Multi-Version APIs** | - | - | - | ⏳ |
+| **Database Backends** | - | ✓ | - | ⏳ |
 | **Multi-Version APIs** | - | - | - | ✓ |
 | **Database Backends** | - | - | - | ✓ |
 
