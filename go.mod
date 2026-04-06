@@ -10,7 +10,7 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-playground/validator/v10 v10.22.0
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	golang.org/x/text v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )

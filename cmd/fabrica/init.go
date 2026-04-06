@@ -632,6 +632,15 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 				WorkerCount:  opts.reconcileWorkers,
 				RequeueDelay: opts.reconcileRequeueMs,
 			},
+			Security: SecurityConfig{
+				AuthN: AuthNConfig{
+					Enabled: opts.withAuth,
+				},
+				AuthZ: AuthZConfig{
+					Enabled: false,
+					Mode:    SecurityModeEnforce,
+				},
+			},
 		},
 		Generation: GenerationConfig{
 			Handlers:       true,

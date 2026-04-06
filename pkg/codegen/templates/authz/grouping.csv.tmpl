@@ -1,0 +1,8 @@
+# Starter grouping policy for Fabrica-generated services.
+#
+# TokenSmith's authorizer evaluates role subjects directly (role:<name>).
+# Use grouping for role inheritance so broader roles automatically include the
+# permissions of narrower roles.
+
+g, role:editor, role:viewer
+g, role:admin, role:editor

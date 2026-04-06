@@ -11,6 +11,12 @@ import (
 
 func TestTemplate_DefaultAuthZClassifier_HasRoutePatternFallbackLogic(t *testing.T) {
 	got := mustReadTemplate(t, "server/authz_classifier.go.tmpl")
+	if !strings.Contains(got, "{{.TokenSmithModulePath}}/pkg/authn") {
+		t.Fatalf("default classifier template missing TokenSmith authn import")
+	}
+	if !strings.Contains(got, "PrincipalFromContext") {
+		t.Fatalf("default classifier template missing principal extraction")
+	}
 
 	// Ensure we prefer chi.RouteContext.RoutePattern() and fall back to URL path.
 	if !strings.Contains(got, "chi.RouteContext") || !strings.Contains(got, "RoutePattern()") {

@@ -46,6 +46,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/openchami/fabrica/internal/constants"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -279,15 +280,16 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 	}
 
 	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
-		"PackageName":   g.PackageName,
-		"ModulePath":    g.ModulePath,
-		"Resources":     g.Resources,
-		"UniqueImports": uniqueImports,
-		"ProjectName":   g.extractProjectName(),
-		"StorageType":   g.StorageType,
-		"DBDriver":      g.DBDriver,
-		"Config":        g.Config,
-		"WithAuth":      g.Config.WithAuth,
+		"PackageName":          g.PackageName,
+		"ModulePath":           g.ModulePath,
+		"TokenSmithModulePath": constants.TokenSmithModulePath,
+		"Resources":            g.Resources,
+		"UniqueImports":        uniqueImports,
+		"ProjectName":          g.extractProjectName(),
+		"StorageType":          g.StorageType,
+		"DBDriver":             g.DBDriver,
+		"Config":               g.Config,
+		"WithAuth":             g.Config.WithAuth,
 	})
 }
 
@@ -566,6 +568,12 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateRoutes(); err != nil {
 			return err
 		}
+		if err := g.GenerateAuthZClassifier(); err != nil {
+			return err
+		}
+		if err := g.GenerateAuthZStarterFiles(); err != nil {
+			return err
+		}
 		// Export/import commands only work with Ent storage (they use Ent-specific query methods)
 		if g.StorageType == "ent" {
 			if err := g.GenerateExportCommand(); err != nil {
@@ -775,6 +783,9 @@ func (g *Generator) LoadTemplates() error {
 		"import":                    "server/import.go.tmpl",
 		"authzClassifier":           "server/authz_classifier.go.tmpl",
 		"authzClassifierCreateOnce": "server/authz_classifier_create_once.go.tmpl",
+		"authzModel":                "authz/model.conf.tmpl",
+		"authzPolicy":               "authz/policy.csv.tmpl",
+		"authzGrouping":             "authz/grouping.csv.tmpl",
 
 		// Client templates
 		"client":       "client/client.go.tmpl",
@@ -1004,6 +1015,67 @@ func (g *Generator) GenerateRoutes() error {
 	}
 
 	fmt.Printf("  ✓ Generated %s\n", filename)
+
+	return nil
+}
+
+// GenerateAuthZClassifier generates the default and user-editable AuthZ classifiers.
+func (g *Generator) GenerateAuthZClassifier() error {
+	if !g.Config.WithAuth {
+		return nil
+	}
+
+	fmt.Printf("🔐 Generating AuthZ classifier...\n")
+
+	generatedFilename := filepath.Join(g.OutputDir, "authz_classifier_generated.go")
+	if err := g.executeTemplate("authzClassifier", generatedFilename, g.globalTemplateData("server/authz_classifier.go.tmpl")); err != nil {
+		return fmt.Errorf("failed to generate authz classifier: %w", err)
+	}
+
+	createOnceFilename := filepath.Join(g.OutputDir, "authz_classifier.go")
+	if _, err := os.Stat(createOnceFilename); os.IsNotExist(err) {
+		if err := g.executeTemplate("authzClassifierCreateOnce", createOnceFilename, g.globalTemplateData("server/authz_classifier_create_once.go.tmpl")); err != nil {
+			return fmt.Errorf("failed to generate authz classifier stub: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to stat authz classifier stub: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateAuthZStarterFiles generates starter Casbin artifacts for TokenSmith AuthZ.
+func (g *Generator) GenerateAuthZStarterFiles() error {
+	if !g.Config.WithAuth {
+		return nil
+	}
+
+	fmt.Printf("📜 Generating starter AuthZ policy files...\n")
+
+	authzDir := "authz"
+	if err := os.MkdirAll(authzDir, 0755); err != nil {
+		return fmt.Errorf("failed to create authz directory: %w", err)
+	}
+
+	files := []struct {
+		templateName string
+		templatePath string
+		outputPath   string
+	}{
+		{templateName: "authzModel", templatePath: "authz/model.conf.tmpl", outputPath: filepath.Join(authzDir, "model.conf")},
+		{templateName: "authzPolicy", templatePath: "authz/policy.csv.tmpl", outputPath: filepath.Join(authzDir, "policy.csv")},
+		{templateName: "authzGrouping", templatePath: "authz/grouping.csv.tmpl", outputPath: filepath.Join(authzDir, "grouping.csv")},
+	}
+
+	for _, file := range files {
+		if _, err := os.Stat(file.outputPath); os.IsNotExist(err) {
+			if err := g.executeTemplate(file.templateName, file.outputPath, g.globalTemplateData(file.templatePath)); err != nil {
+				return fmt.Errorf("failed to generate %s: %w", file.outputPath, err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("failed to stat %s: %w", file.outputPath, err)
+		}
+	}
 
 	return nil
 }

@@ -490,6 +490,15 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 
+		generationCalls.WriteString("\tif gen.Config.WithAuth {\n")
+		generationCalls.WriteString("\t\tif err := gen.GenerateAuthZClassifier(); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate AuthZ classifier: %v\", err)\n")
+		generationCalls.WriteString("\t\t}\n")
+		generationCalls.WriteString("\t\tif err := gen.GenerateAuthZStarterFiles(); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate starter AuthZ files: %v\", err)\n")
+		generationCalls.WriteString("\t\t}\n")
+		generationCalls.WriteString("\t}\n")
+
 		// Generate export/import commands only for Ent storage (v0.4.0+)
 		generationCalls.WriteString("\tif gen.StorageType == \"ent\" {\n")
 		generationCalls.WriteString("\t\tif err := gen.GenerateExportCommand(); err != nil {\n")
@@ -595,6 +604,7 @@ type FabricaConfig struct {
 type FeaturesConfig struct {
 	Validation  ValidationConfig  `+"`yaml:\"validation\"`"+`
 	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
+	Auth        AuthConfig        `+"`yaml:\"auth\"`"+`
 	Events      EventsConfig      `+"`yaml:\"events\"`"+`
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
 	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
@@ -608,6 +618,10 @@ type ValidationConfig struct {
 type ConditionalConfig struct {
 	Enabled       bool   `+"`yaml:\"enabled\"`"+`
 	ETagAlgorithm string `+"`yaml:\"etag_algorithm\"`"+`
+}
+
+type AuthConfig struct {
+	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
 type EventsConfig struct {
@@ -678,7 +692,7 @@ func main() {
 		}
 
 		// Wire TokenSmith-first security features into generator config.
-		if config.Features.Security.AuthN.Enabled {
+		if config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled {
 			gen.Config.WithAuth = true
 			gen.Config.SecurityAuthNEnabled = true
 		}

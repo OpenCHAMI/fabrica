@@ -20,6 +20,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	{{if .WithAuth}}
+	"strings"
+	{{end}}
 	"syscall"
 	"time"
 
@@ -32,6 +35,8 @@ import (
 
 	{{if .WithAuth}}
 	tokensmithauthn "{{.TokenSmithModulePath}}/pkg/authn"
+	tokensmithauthz "{{.TokenSmithModulePath}}/pkg/authz"
+	tokensmithauthzengine "{{.TokenSmithModulePath}}/pkg/authz/engine"
 	{{end}}
 
 	{{if .WithStorage}}
@@ -390,6 +395,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	{{if .WithAuth}}
 	// Setup TokenSmith JWT authentication for protected routes.
+	var authnMiddleware func(http.Handler) http.Handler
+	var authzMiddleware func(http.Handler) http.Handler
 	if config.AuthEnabled {
 		jwksURL := os.Getenv("TOKENSMITH_JWKS_URL")
 		if jwksURL == "" {
@@ -400,7 +407,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		//
 		// NOTE: We keep authn out of the public group (health/docs/openapi) by wiring it
 		// on the protected router group below.
-		authnMiddleware, err := tokensmithauthn.Middleware(tokensmithauthn.Options{
+		mw, err := tokensmithauthn.Middleware(tokensmithauthn.Options{
 			JWKSURLs:                  []string{jwksURL},
 			DisableIssuerValidation:   true,
 			DisableAudienceValidation: true,
@@ -408,7 +415,38 @@ func runServer(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to initialize TokenSmith JWT middleware: %w", err)
 		}
+		authnMiddleware = mw
 		log.Println("Authentication enabled (TokenSmith JWT)")
+
+		authzMode, err := parseAuthZMode(os.Getenv("TOKENSMITH_AUTHZ_MODE"))
+		if err != nil {
+			return fmt.Errorf("failed to parse TOKENSMITH_AUTHZ_MODE: %w", err)
+		}
+		if authzMode != tokensmithauthz.ModeOff {
+			modelPath := getenvDefault("TOKENSMITH_CASBIN_MODEL", "./authz/model.conf")
+			policyPath := getenvDefault("TOKENSMITH_CASBIN_POLICY", "./authz/policy.csv")
+			groupingPath := getenvDefault("TOKENSMITH_CASBIN_GROUPING", "./authz/grouping.csv")
+
+			authorizer, err := tokensmithauthzengine.NewBuilder().
+				WithModelPath(modelPath).
+				WithPolicyPath(policyPath).
+				WithGroupingPath(groupingPath).
+				Build()
+			if err != nil {
+				return fmt.Errorf("failed to initialize TokenSmith AuthZ engine: %w", err)
+			}
+
+			authzMiddleware = tokensmithauthz.NewMiddleware(
+				authorizer,
+				authzRouteMapper{},
+				tokensmithauthz.WithMode(authzMode),
+				tokensmithauthz.WithRequireAuthn(true),
+				tokensmithauthz.WithOnDecision(logAuthZDecision),
+			).Handler
+			log.Printf("Authorization enabled (TokenSmith AuthZ, mode=%s)", authzMode)
+		} else {
+			log.Println("Authorization disabled")
+		}
 	} else {
 		log.Println("Authentication disabled")
 	}
@@ -418,6 +456,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Group(func(public chi.Router) {
 		// Service health (always public)
 		public.Get("/health", healthHandler)
+		public.Get("/openapi.json", ServeOpenAPISpec)
+		public.Get("/docs", ServeSwaggerUI)
 	})
 
 	// Protected endpoints (API handlers)
@@ -429,6 +469,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			protected.Use(authnMiddleware)
+			if authzMiddleware != nil {
+				protected.Use(authzMiddleware)
+			}
 		}
 		{{end}}
 
@@ -496,6 +539,45 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"healthy","service":"{{.ProjectName}}"}`))
 }
+
+{{if .WithAuth}}
+func parseAuthZMode(s string) (tokensmithauthz.Mode, error) {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "", "off":
+		return tokensmithauthz.ModeOff, nil
+	case "shadow":
+		return tokensmithauthz.ModeShadow, nil
+	case "enforce":
+		return tokensmithauthz.ModeEnforce, nil
+	default:
+		return tokensmithauthz.ModeOff, fmt.Errorf("unknown authz mode %q", s)
+	}
+}
+
+func getenvDefault(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func logAuthZDecision(_ context.Context, rec tokensmithauthz.DecisionRecord) {
+	log.Printf(
+		"authz decision subject=%q decision=%q reason=%q mode=%q object=%q action=%q method=%q path=%q request_id=%q policy_version=%q roles_count=%d",
+		rec.PrincipalID,
+		rec.Decision,
+		rec.Reason,
+		rec.Mode,
+		rec.Object,
+		rec.Action,
+		rec.Method,
+		rec.Path,
+		rec.RequestID,
+		rec.PolicyVersion,
+		rec.RolesCount,
+	)
+}
+{{end}}
 
 // registerResourcePrefixes is defined in routes_generated.go
 
