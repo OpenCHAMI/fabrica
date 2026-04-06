@@ -74,6 +74,7 @@ type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	version    string // Optional API version for Accept/Content-Type headers
+	bearerToken string // Optional JWT bearer token for Authorization header
 }
 
 // ErrorResponse represents an API error response
@@ -98,12 +99,32 @@ func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 	}, nil
 }
 
+// NewClientWithBearerToken creates a new API client configured with a JWT bearer token.
+func NewClientWithBearerToken(baseURL, bearerToken string, httpClient *http.Client) (*Client, error) {
+	c, err := NewClient(baseURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	return c.WithBearerToken(bearerToken), nil
+}
+
 // WithVersion returns a new client configured to use a specific API version
 func (c *Client) WithVersion(version string) *Client {
 	return &Client{
 		baseURL:    c.baseURL,
 		httpClient: c.httpClient,
 		version:    version,
+		bearerToken: c.bearerToken,
+	}
+}
+
+// WithBearerToken returns a new client configured to send Authorization: Bearer <token>.
+func (c *Client) WithBearerToken(token string) *Client {
+	return &Client{
+		baseURL:     c.baseURL,
+		httpClient:  c.httpClient,
+		version:     c.version,
+		bearerToken: token,
 	}
 }
 
@@ -138,6 +159,9 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 		req.Header.Set("Content-Type", contentType)
 	}
 	req.Header.Set("Accept", acceptType)
+	if c.bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.bearerToken))
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -186,6 +210,9 @@ func (c *Client) doPatchRequest(ctx context.Context, endpoint string, patchData 
 		acceptType = fmt.Sprintf("application/json;version=%s", c.version)
 	}
 	req.Header.Set("Accept", acceptType)
+	if c.bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.bearerToken))
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
