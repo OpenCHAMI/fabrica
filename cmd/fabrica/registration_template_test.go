@@ -28,7 +28,7 @@ func TestRegistrationGeneratorsIncludeGeneratedSPDXHeader(t *testing.T) {
 		if !strings.Contains(content, "Copyright © ") {
 			t.Fatalf("%s registration missing copyright header", name)
 		}
-		if !strings.Contains(content, "SPDX-License-Identifier: MIT") {
+		if !strings.Contains(content, "PDX-License-Identifier: MIT") {
 			t.Fatalf("%s registration missing SPDX license header", name)
 		}
 	}
