@@ -115,17 +115,18 @@ Both options create:
 You'll see:
 
 ```
-✓ Created .fabrica.yaml
-✓ Created apis.yaml
-✓ Created go.mod
-✓ Created README.md (or skipped if exists)
-✓ Created basic project structure
+🚀 Creating myshop project...
+  ├─ Created .fabrica.yaml
+  ├─ Created apis.yaml (group example.fabrica.dev, storage v1)
 
-Your project is ready! Next steps:
-  1. fabrica add resource Product
-  2. fabrica generate
-  3. go mod tidy
-  4. go run ./cmd/server/
+✅ Project initialized successfully!
+
+Next steps:
+  1. Add resources with 'fabrica add resource <name>'
+  2. Define types in apis/example.fabrica.dev/<version>/*_types.go
+  3. Run 'fabrica generate' to generate code
+  4. Run 'go mod tidy' to update dependencies
+  5. Start development with 'go run ./cmd/server/'
 ```
 
 ## Step 2: Add Your Resource
@@ -144,6 +145,8 @@ This command creates a resource definition in your project's versioned API direc
 - `--with-validation` - Include validation tags (default: `true`)
 - `--with-status` - Include Status struct (default: `true`)
 
+If you open the newly generated resource definition file in your preferred editor, you'll see:
+
 ```go
 package v1
 
@@ -152,40 +155,53 @@ import (
     "github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Product represents a Product resource
+// Product represents a product resource
 type Product struct {
     APIVersion string           `json:"apiVersion"`
     Kind       string           `json:"kind"`
     Metadata   fabrica.Metadata `json:"metadata"`
-    Spec       ProductSpec   `json:"spec" validate:"required"`
-    Status     ProductStatus `json:"status,omitempty"`
+    Spec       ProductSpec      `json:"spec" validate:"required"`
+    Status     ProductStatus    `json:"status,omitempty"`
 }
 
 // ProductSpec defines the desired state of Product
 type ProductSpec struct {
-    Name        string  `json:"name" validate:"required,min=1,max=100"`
-    Description string  `json:"description,omitempty" validate:"max=500"`
-    Price       float64 `json:"price" validate:"min=0"`
-    InStock     bool    `json:"inStock"`
+    Description string  `json:"description,omitempty" validate:"max=200"`
+    // Add your spec fields here
 }
 
 // ProductStatus defines the observed state of Product
 type ProductStatus struct {
-    Phase       string `json:"phase,omitempty"`
-    Message     string `json:"message,omitempty"`
-    Ready       bool   `json:"ready"`
-    LastUpdated string `json:"lastUpdated,omitempty"`
+    Phase      string `json:"phase,omitempty"`
+    Message    string `json:"message,omitempty"`
+    Ready      bool   `json:"ready"`
+    // Add your status fields here
 }
 
+// Validate implements custom validation logic for Product
 func (r *Product) Validate(ctx context.Context) error {
     // Add custom validation logic here
     return nil
 }
+
+// All content beyond this point has been omitted for brevity
 ```
 
-**Customize the Spec:** You can edit the fields in `ProductSpec` as needed. Your resource definitions stay in the versioned API directory (`apis/<group>/<version>/`).
+## Step 3: Modify Your Resource
 
-## Step 3: Generate Code
+You can edit the fields in `ProductSpec` as needed. Your resource definitions stay in the versioned API directory (`apis/<group>/<version>/`). Let's add several additional fields and ensure the updated struct definition resembles the code below:
+
+```go
+// ProductSpec defines the desired state of Product
+type ProductSpec struct {
+    Description string  `json:"description,omitempty" validate:"max=200"`
+    Name        string  `json:"name" validate:"required,min=1,max=100"`
+    Price       float64 `json:"price" validate:"min=0"`
+    InStock     bool    `json:"inStock"`
+}
+```
+
+## Step 4: Generate Code
 
 Now generate the REST API handlers, storage, and routes:
 
@@ -214,7 +230,7 @@ You'll see:
 ✅ Code generation complete!
 ```
 
-## Step 4: Update Dependencies
+## Step 5: Update Dependencies
 
 After code generation, update your Go module dependencies:
 
@@ -224,7 +240,7 @@ go mod tidy
 
 This resolves all the new imports that were added by the code generator.
 
-## Step 5: Run Your API
+## Step 6: Run Your API
 
 Start the server:
 
@@ -235,15 +251,16 @@ go run ./cmd/server/
 You'll see:
 
 ```
-Starting Fabrica server...
-✓ Loaded Product handlers
-✓ Registered routes
-Server listening on :8080
+[rocky@localhost myshop]$ go run ./cmd/server/
+2026/04/02 11:19:31 Starting myshop server...
+2026/04/02 11:19:31 File storage initialized in ./data
+2026/04/02 11:19:31 Server starting on 0.0.0.0:8080
+2026/04/02 11:19:31 Storage: file backend in ./data
 ```
 
 Your API is now running at `http://localhost:8080`!
 
-## Step 6: Test Your API (in a new terminal)
+## Step 7: Test Your API (in a new terminal)
 
 Open a new terminal and try the API:
 
@@ -253,11 +270,13 @@ Open a new terminal and try the API:
 curl -X POST http://localhost:8080/products \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "laptop-pro",
-    "displayName": "MacBook Pro",
-    "description": "15-inch MacBook Pro with M2 chip",
-    "price": 1999.99,
-    "inStock": true
+    "spec": {
+      "name": "laptop-pro",
+      "displayName": "MacBook Pro",
+      "description": "15-inch MacBook Pro with M2 chip",
+      "price": 1999.99,
+      "inStock": true
+    }
   }'
 ```
 
@@ -280,9 +299,7 @@ Response:
     "inStock": true
   },
   "status": {
-    "phase": "Active",
     "ready": true,
-    "lastUpdated": "2025-10-15T10:30:00Z"
   }
 }
 ```
@@ -313,9 +330,7 @@ Response (flat JSON array):
       "inStock": true
     },
     "status": {
-      "phase": "Active",
       "ready": true,
-      "lastUpdated": "2025-10-15T10:30:00Z"
     }
   }
 ]
@@ -333,11 +348,13 @@ curl http://localhost:8080/products/pro-abc123def456
 curl -X PUT http://localhost:8080/products/pro-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "laptop-pro",
-    "displayName": "MacBook Pro M3",
-    "description": "Latest 15-inch MacBook Pro with M3 chip",
-    "price": 2199.99,
-    "inStock": true
+    "spec": {
+      "name": "laptop-pro",
+      "displayName": "MacBook Pro M3",
+      "description": "Latest 15-inch MacBook Pro with M3 chip",
+      "price": 2199.99,
+      "inStock": true
+    }
   }'
 ```
 
@@ -363,25 +380,42 @@ Let's peek under the hood (but don't worry, you don't need to edit these files):
 
 ```
 myshop/
-├── .fabrica.yaml                      # Project configuration
-├── apis.yaml                          # API group and versioning config
-├── go.mod                             # Dependencies
-├── README.md                          # Project README
-├── apis/
-│   └── example.fabrica.dev/           # API group directory
-│       └── v1/
-│           ├── product_types.go       # Your resource definition (you edited this)
-│           └── ...
-├── cmd/
-│   └── server/
-│       ├── main.go                    # Server entry point (with stubs)
-│       ├── product_handlers_generated.go    # HTTP handlers (generated)
-│       ├── routes_generated.go              # URL routing (generated)
-│       ├── models_generated.go              # Server types (generated)
-│       └── openapi_generated.go             # OpenAPI spec (generated)
-└── internal/
-    └── storage/
-        └── storage_generated.go             # Storage operations (generated)
+├── apis
+│   └── example.fabrica.dev
+│       └── v1
+│           └── product_types.go
+├── apis.yaml
+├── cmd
+│   ├── client
+│   │   └── main.go
+│   └── server
+│       ├── main.go
+│       ├── models_generated.go
+│       ├── openapi_generated.go
+│       ├── product_handlers_generated.go
+│       └── routes_generated.go
+├── data
+│   └── products
+│       └── product-62ed4401.json
+├── go.mod
+├── go.sum
+├── internal
+│   ├── middleware
+│   │   ├── conditional_middleware_generated.go
+│   │   ├── validation_middleware_generated.go
+│   │   └── versioning_middleware_generated.go
+│   └── storage
+│       ├── storage_generated.go
+│       └── storage.go
+├── pkg
+│   ├── apiversion
+│   │   └── registry_generated.go
+│   ├── client
+│   │   ├── client_generated.go
+│   │   └── models_generated.go
+│   └── resources
+│       └── register_generated.go
+└── README.md
 ```
 
 ### What Fabrica Generated

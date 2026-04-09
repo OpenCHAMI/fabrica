@@ -41,16 +41,18 @@ cd bookstore
 This creates:
 ```
 bookstore/
-├── .fabrica.yaml        # Project configuration
-├── apis.yaml            # API groups/versions/resources
-├── apis/                # Versioned API definitions
-│   └── example.fabrica.dev/
-│       └── v1/          # Hub version (default)
-├── cmd/
-│   └── server/          # API server (main.go with stubs)
-├── internal/            # Generated code will go here
+├── .fabrica.yaml           # Project configuration
+├── apis                    # Versioned API definitions
+│   └── example.fabrica.dev
+│       └── v1              # Hub version (default)
+├── apis.yaml               # API groups/versions/resources
+├── cmd
+│   └── server              # API server (main.go with stubs)
+│       └── main.go
 ├── go.mod
-├── go.sum
+├── internal                # Generated code will go here
+│   └── storage
+│       └── storage.go
 └── README.md
 ```
 
@@ -66,41 +68,37 @@ This creates `apis/example.fabrica.dev/v1/book_types.go`:
 package v1
 
 import (
-  "context"
-
-  "github.com/openchami/fabrica/pkg/fabrica"
+    "context"
+    "github.com/openchami/fabrica/pkg/fabrica"
 )
 
-// Book represents a Book resource
+// Book represents a book resource
 type Book struct {
-  APIVersion string           `json:"apiVersion"`
-  Kind       string           `json:"kind"`
-  Metadata   fabrica.Metadata `json:"metadata"`
-  Spec       BookSpec   `json:"spec"`
-  Status     BookStatus `json:"status"`
+    APIVersion string           `json:"apiVersion"`
+    Kind       string           `json:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata"`
+    Spec       BookSpec   `json:"spec" validate:"required"`
+    Status     BookStatus `json:"status,omitempty"`
 }
 
 // BookSpec defines the desired state of Book
 type BookSpec struct {
-    Title       string `json:"title" validate:"required,min=1,max=100"`
-    Author      string `json:"author" validate:"required,min=1,max=50"`
-    Description string `json:"description,omitempty" validate:"max=500"`
-    Price       float64 `json:"price" validate:"min=0"`
-    InStock     bool   `json:"inStock"`
+    Description string `json:"description,omitempty" validate:"max=200"`
+    // Add your spec fields here
 }
 
 // BookStatus defines the observed state of Book
 type BookStatus struct {
-    Phase       string `json:"phase,omitempty"`
-    Message     string `json:"message,omitempty"`
-    Ready       bool   `json:"ready"`
-    LastUpdated string `json:"lastUpdated,omitempty"`
+    Phase      string `json:"phase,omitempty"`
+    Message    string `json:"message,omitempty"`
+    Ready      bool   `json:"ready"`
+    // Add your status fields here
 }
-```
 
+// Validate implements custom validation logic for Book
 func (r *Book) Validate(ctx context.Context) error {
-  // Add custom validation logic here
-  return nil
+    // Add custom validation logic here
+    return nil
 }
 ```
 
@@ -121,7 +119,6 @@ type BookStatus struct {
     Phase       string `json:"phase,omitempty"`
     Message     string `json:"message,omitempty"`
     Ready       bool   `json:"ready"`
-    LastUpdated string `json:"lastUpdated,omitempty"`
 }
 ```
 
@@ -177,12 +174,16 @@ Your API is now running at `http://localhost:8080`!
 curl -X POST http://localhost:8080/books \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "golang-guide",
-    "title": "The Go Programming Language",
-    "author": "Alan Donovan",
-    "description": "A comprehensive guide to Go programming",
-    "price": 44.99,
-    "inStock": true
+    "spec": {
+      "title": "The Go Programming Language",
+      "author": "Alan Donovan",
+      "description": "A comprehensive guide to Go programming",
+      "price": 44.99,
+      "inStock": true
+    },
+    "metadata": {
+      "name": "golang-guide"
+    }
   }'
 ```
 
@@ -205,9 +206,7 @@ Response:
     "inStock": true
   },
   "status": {
-    "phase": "Active",
-    "ready": true,
-    "lastUpdated": "2025-10-15T10:00:00Z"
+    "ready": false,
   }
 }
 ```
@@ -230,12 +229,16 @@ curl http://localhost:8080/books/boo-abc123def456
 curl -X PUT http://localhost:8080/books/boo-abc123def456 \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "golang-guide",
-    "title": "The Go Programming Language",
-    "author": "Alan Donovan",
-    "description": "Updated comprehensive guide to Go programming",
-    "price": 39.99,
-    "inStock": false
+    "spec": {
+      "title": "The Go Programming Language",
+      "author": "Alan Donovan",
+      "description": "Updated comprehensive guide to Go programming",
+      "price": 39.99,
+      "inStock": false
+    },
+    "metadata": {
+      "name": "golang-guide"
+    }
   }'
 ```
 
