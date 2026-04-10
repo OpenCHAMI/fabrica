@@ -186,6 +186,13 @@ func (g *Generator) SetDBDriver(driver string) {
 	g.DBDriver = driver
 }
 
+// SetAuthEnabled maps auth enablement onto all auth-related generator toggles.
+// This provides a stable API for callers and avoids direct mutation of config internals.
+func (g *Generator) SetAuthEnabled(enabled bool) {
+	g.Config.WithAuth = enabled
+	g.Config.SecurityAuthNEnabled = enabled
+}
+
 func (g *Generator) commonTemplateData(templateName string) map[string]interface{} {
 	now := time.Now().UTC()
 

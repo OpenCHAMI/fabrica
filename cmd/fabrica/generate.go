@@ -788,10 +788,7 @@ func main() {
 		}
 
 		// Wire TokenSmith-first security features into generator config.
-		if config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled {
-			gen.Config.WithAuth = true
-			gen.Config.SecurityAuthNEnabled = true
-		}
+		gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled)
 	}
 
 	if _, err := os.Stat("apis.yaml"); err == nil {
