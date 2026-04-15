@@ -22,8 +22,13 @@ func TestInitGoMod_TokenSmithDependencyConditional(t *testing.T) {
 	})
 
 	t.Run("security_on_tokensmith_pinned", func(t *testing.T) {
+<<<<<<< bugfix/purely-local-generation
 		out := mustRenderInitTemplate(t, tmpl, templateData{WithAuth: true, GoVersion: constants.TokenSmithGoVersion, TokenSmithModulePath: constants.TokenSmithModulePath, TokenSmithVersion: "v9.9.9"})
 		if !strings.Contains(out, constants.TokenSmithModulePath+" v9.9.9") {
+=======
+		out := mustRenderInitTemplate(t, tmpl, templateData{WithAuth: true, TokenSmithVersion: "v0.0.1"})
+		if !strings.Contains(out, "github.com/openchami/tokensmith v0.0.1") {
+>>>>>>> main
 			t.Fatalf("expected tokensmith pinned dependency, got:\n%s", out)
 		}
 		if !strings.Contains(out, "go "+constants.TokenSmithGoVersion) {

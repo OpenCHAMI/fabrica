@@ -186,13 +186,21 @@ func (g *Generator) SetDBDriver(driver string) {
 	g.DBDriver = driver
 }
 
+<<<<<<< bugfix/purely-local-generation
 // SetAuthEnabled maps auth enablement onto all auth-related generator toggles.
 // This provides a stable API for callers and avoids direct mutation of config internals.
+=======
+// SetAuthEnabled sets authentication-related generation toggles.
+//
+// WithAuth is the legacy template toggle; SecurityAuthNEnabled is the
+// TokenSmith-first flag used by newer config plumbing. Keep them in sync.
+>>>>>>> main
 func (g *Generator) SetAuthEnabled(enabled bool) {
 	g.Config.WithAuth = enabled
 	g.Config.SecurityAuthNEnabled = enabled
 }
 
+<<<<<<< bugfix/purely-local-generation
 func (g *Generator) commonTemplateData(templateName string) map[string]interface{} {
 	now := time.Now().UTC()
 
@@ -218,6 +226,8 @@ func (g *Generator) mergeCommonTemplateData(templateName string, data map[string
 	return data
 }
 
+=======
+>>>>>>> main
 // templateData creates a standardized data structure for template execution
 // This ensures all templates have access to version, timestamp, and template name
 func (g *Generator) templateData(resource ResourceMetadata, templateName string) map[string]interface{} {

@@ -11,7 +11,10 @@ import (
 
 func TestGenerateRunnerCode_UsesStableAuthSetter(t *testing.T) {
 	runnerCode := generateRunnerCode(
+<<<<<<< bugfix/purely-local-generation
 		"/tmp/project",
+=======
+>>>>>>> main
 		"github.com/example/project",
 		"cmd/server",
 		"main",
@@ -23,7 +26,11 @@ func TestGenerateRunnerCode_UsesStableAuthSetter(t *testing.T) {
 		"file",
 	)
 
+<<<<<<< bugfix/purely-local-generation
 	if !strings.Contains(runnerCode, "gen.SetAuthEnabled(") {
+=======
+	if !strings.Contains(runnerCode, "gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled)") {
+>>>>>>> main
 		t.Fatalf("runner code should configure auth via SetAuthEnabled")
 	}
 
@@ -38,7 +45,10 @@ func TestGenerateRunnerCode_UsesStableAuthSetter(t *testing.T) {
 
 func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 	runnerCode := generateRunnerCode(
+<<<<<<< bugfix/purely-local-generation
 		"/tmp/project",
+=======
+>>>>>>> main
 		"github.com/example/project",
 		"cmd/server",
 		"main",
@@ -50,7 +60,11 @@ func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 		"file",
 	)
 
+<<<<<<< bugfix/purely-local-generation
 	if !strings.Contains(runnerCode, "gen.SetAuthEnabled(") {
+=======
+	if !strings.Contains(runnerCode, "gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled)") {
+>>>>>>> main
 		t.Fatalf("runner code must always pass through configured auth boolean")
 	}
 }
