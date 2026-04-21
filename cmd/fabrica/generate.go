@@ -342,7 +342,6 @@ func normalizeVersionForCompatibilityCheck(version string) string {
 	return version
 }
 
-<<<<<<< bugfix/purely-local-generation
 func resolveGenerateFabricaSource(flagValue string) (string, error) {
 	source := strings.TrimSpace(flagValue)
 	if source == "" {
@@ -372,8 +371,6 @@ func resolveGenerateFabricaSource(flagValue string) (string, error) {
 	return absSource, nil
 }
 
-=======
->>>>>>> main
 // getModulePath reads the module path from go.mod
 func getModulePath() (string, error) {
 	data, err := os.ReadFile("go.mod")
@@ -791,11 +788,7 @@ func main() {
 		}
 
 		// Wire TokenSmith-first security features into generator config.
-<<<<<<< bugfix/purely-local-generation
 		gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled)
-=======
-		gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled)
->>>>>>> main
 	}
 
 	if _, err := os.Stat("apis.yaml"); err == nil {

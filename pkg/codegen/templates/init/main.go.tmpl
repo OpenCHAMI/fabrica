@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 // Template: init/main.go.tmpl
 // Generated: {{.GeneratedAt}}
 //
-// Copyright © {{.CopyrightYear}} OpenCHAMI a Series of LF Projects, LLC
+// SPDX-FileCopyrightText: Copyright © {{.CopyrightYear}} OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
@@ -394,7 +394,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	{{if .WithAuth}}
-	var authn func(http.Handler) http.Handler
 	// Setup TokenSmith JWT authentication for protected routes.
 	var authnMiddleware func(http.Handler) http.Handler
 	var authzMiddleware func(http.Handler) http.Handler
@@ -403,9 +402,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 		if jwksURL == "" {
 			return fmt.Errorf("TOKENSMITH_JWKS_URL is required when security.authn.enabled is true")
 		}
-
-		opts := tsmiddleware.DefaultMiddlewareOptions()
-		opts.JWKSURL = jwksURL
 
 		// NOTE: We keep authn out of the public group (health/docs/openapi) by wiring it
 		// on the protected router group below.
@@ -460,16 +456,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 		public.Get("/health", healthHandler)
 		public.Get("/openapi.json", ServeOpenAPISpec)
 		public.Get("/docs", ServeSwaggerUI)
+		{{if .WithAuth}}
+		if config.AuthEnabled {
+			// Allow CORS preflight without auth.
+			public.Method("OPTIONS", "/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			}))
+		}
+		{{end}}
 	})
 
 	// Protected endpoints (API handlers)
 	r.Group(func(protected chi.Router) {
 		{{if .WithAuth}}
 		if config.AuthEnabled {
-			// Allow preflight without auth.
-			protected.Method("OPTIONS", "/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusNoContent)
-			}))
 			protected.Use(authnMiddleware)
 			if authzMiddleware != nil {
 				protected.Use(authzMiddleware)
