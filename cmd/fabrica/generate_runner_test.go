@@ -23,8 +23,8 @@ func TestGenerateRunnerCode_UsesStableAuthSetter(t *testing.T) {
 		"file",
 	)
 
-	if !strings.Contains(runnerCode, "gen.SetAuthEnabled(") {
-		t.Fatalf("runner code should configure auth via SetAuthEnabled")
+	if !strings.Contains(runnerCode, "setAuthEnabledCompat(gen, authEnabled)") {
+		t.Fatalf("runner code should configure auth via compatibility helper")
 	}
 
 	if strings.Contains(runnerCode, "gen.Config.WithAuth = true") {
@@ -50,7 +50,7 @@ func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 		"file",
 	)
 
-	if !strings.Contains(runnerCode, "gen.SetAuthEnabled(") {
+	if !strings.Contains(runnerCode, "setAuthEnabledCompat(gen, authEnabled)") {
 		t.Fatalf("runner code must always pass through configured auth boolean")
 	}
 }

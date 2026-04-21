@@ -586,11 +586,11 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 
-		generationCalls.WriteString("\tif gen.Config.WithAuth {\n")
-		generationCalls.WriteString("\t\tif err := gen.GenerateAuthZClassifier(); err != nil {\n")
+		generationCalls.WriteString("\tif authEnabled {\n")
+		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateAuthZClassifier\"); err != nil {\n")
 		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate AuthZ classifier: %v\", err)\n")
 		generationCalls.WriteString("\t\t}\n")
-		generationCalls.WriteString("\t\tif err := gen.GenerateAuthZStarterFiles(); err != nil {\n")
+		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateAuthZStarterFiles\"); err != nil {\n")
 		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate starter AuthZ files: %v\", err)\n")
 		generationCalls.WriteString("\t\t}\n")
 		generationCalls.WriteString("\t}\n")
@@ -686,6 +686,7 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 import (
 %s	"log"
 	"os"
+	"reflect"
 
 	"github.com/openchami/fabrica/pkg/codegen"
 	"%s/pkg/resources"
@@ -758,6 +759,7 @@ func main() {
 	}
 
 	gen := codegen.NewGenerator("%s", "%s", "%s")
+	authEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
 
@@ -788,7 +790,8 @@ func main() {
 		}
 
 		// Wire TokenSmith-first security features into generator config.
-		gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled)
+		authEnabled = config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled
+		setAuthEnabledCompat(gen, authEnabled)
 	}
 
 	if _, err := os.Stat("apis.yaml"); err == nil {
@@ -800,6 +803,50 @@ func main() {
 	}
 
 %s}
+
+func setAuthEnabledCompat(gen *codegen.Generator, enabled bool) {
+	if method := reflect.ValueOf(gen).MethodByName("SetAuthEnabled"); method.IsValid() {
+		method.Call([]reflect.Value{reflect.ValueOf(enabled)})
+		return
+	}
+
+	configValue := reflect.ValueOf(gen.Config)
+	if !configValue.IsValid() || configValue.Kind() != reflect.Ptr || configValue.IsNil() {
+		return
+	}
+
+	configElem := configValue.Elem()
+	if !configElem.IsValid() {
+		return
+	}
+
+	if field := configElem.FieldByName("WithAuth"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Bool {
+		field.SetBool(enabled)
+	}
+	if field := configElem.FieldByName("SecurityAuthNEnabled"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Bool {
+		field.SetBool(enabled)
+	}
+}
+
+func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
+	method := reflect.ValueOf(gen).MethodByName(methodName)
+	if !method.IsValid() {
+		return nil
+	}
+
+	results := method.Call(nil)
+	if len(results) == 0 {
+		return nil
+	}
+
+	if errValue := results[0]; errValue.IsValid() && !errValue.IsNil() {
+		if err, ok := errValue.Interface().(error); ok {
+			return err
+		}
+	}
+
+	return nil
+}
 `, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
 }
 
