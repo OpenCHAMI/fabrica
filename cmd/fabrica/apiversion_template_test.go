@@ -19,7 +19,8 @@ func TestAPIVersionTemplatesIncludeGeneratedSPDXHeader(t *testing.T) {
 		if !strings.Contains(content, "Copyright © {{.CopyrightYear}} OpenCHAMI a Series of LF Projects, LLC") {
 			t.Fatalf("template %s missing dynamic copyright header", templatePath)
 		}
-		if !strings.Contains(content, "SPDX-License-Identifier: MIT") {
+		// If the line below includes a full header, it will flag the reuse test as a malformed header and fail.
+		if !strings.Contains(content, "PDX-License-Identifier: MIT") {
 			t.Fatalf("template %s missing SPDX license header", templatePath)
 		}
 	}

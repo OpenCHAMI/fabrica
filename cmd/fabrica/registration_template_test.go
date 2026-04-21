@@ -28,7 +28,8 @@ func TestRegistrationGeneratorsIncludeGeneratedSPDXHeader(t *testing.T) {
 		if !strings.Contains(content, "Copyright © ") {
 			t.Fatalf("%s registration missing copyright header", name)
 		}
-		if !strings.Contains(content, "SPDX-License-Identifier: MIT") {
+		// If the line below includes a full header, it will flag the reuse test as a malformed header and fail.
+		if !strings.Contains(content, "PDX-License-Identifier: MIT") {
 			t.Fatalf("%s registration missing SPDX license header", name)
 		}
 	}

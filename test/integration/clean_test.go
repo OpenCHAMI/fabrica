@@ -298,8 +298,8 @@ func (s *FabricaTestSuite) TestGeneratedFilesIncludeSPDXHeaders() {
 		}
 
 		checked++
-
-		hasSPDXLicense := strings.Contains(content, "SPDX-License-Identifier: MIT")
+		// If the line below includes a full header, it will flag the reuse test as a malformed header and fail.
+		hasSPDXLicense := strings.Contains(content, "PDX-License-Identifier: MIT")
 		if !hasSPDXLicense {
 			missing = append(missing, fmt.Sprintf("%s (spdx_license=%t)", relPath, hasSPDXLicense))
 		}
