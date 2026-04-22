@@ -57,6 +57,12 @@ func NewController(eventBus events.EventBus, storage storage.StorageBackend) *Co
 	}
 }
 
+func (c *Controller) SetWorkerCount(count int) {
+	if count > 0 {
+		c.workerCount = count
+	}
+}
+
 // RegisterReconciler registers a reconciler for a resource kind.
 //
 // Parameters:
