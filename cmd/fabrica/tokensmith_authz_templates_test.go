@@ -10,34 +10,34 @@ import (
 )
 
 func TestTemplate_InitMain_WiresTokenSmithAuthZ(t *testing.T) {
-	mainTmpl := mustReadFile(t, "pkg/codegen/templates/init/main.go.tmpl")
+	authHelperTmpl := mustReadFile(t, "pkg/codegen/templates/init/auth_helpers.go.tmpl")
 
-	if !strings.Contains(mainTmpl, "{{.TokenSmithModulePath}}/pkg/authz") {
-		t.Fatalf("init/main.go.tmpl must import TokenSmith pkg/authz")
+	if !strings.Contains(authHelperTmpl, "{{.TokenSmithModulePath}}/pkg/authz") {
+		t.Fatalf("init/auth_helpers.go.tmpl must import TokenSmith pkg/authz")
 	}
-	if !strings.Contains(mainTmpl, "{{.TokenSmithModulePath}}/pkg/authz/engine") {
-		t.Fatalf("init/main.go.tmpl must import TokenSmith authz engine")
+	if !strings.Contains(authHelperTmpl, "{{.TokenSmithModulePath}}/pkg/authz/engine") {
+		t.Fatalf("init/auth_helpers.go.tmpl must import TokenSmith authz engine")
 	}
-	if !strings.Contains(mainTmpl, "tokensmithauthz.NewMiddleware(") {
-		t.Fatalf("init/main.go.tmpl must construct TokenSmith authz middleware")
+	if !strings.Contains(authHelperTmpl, "tokensmithauthz.NewMiddleware(") {
+		t.Fatalf("init/auth_helpers.go.tmpl must construct TokenSmith authz middleware")
 	}
-	if !strings.Contains(mainTmpl, "authzRouteMapper{}") {
-		t.Fatalf("init/main.go.tmpl must use the generated authz route mapper")
+	if !strings.Contains(authHelperTmpl, "authzRouteMapper{}") {
+		t.Fatalf("init/auth_helpers.go.tmpl must use the generated authz route mapper")
 	}
-	if !strings.Contains(mainTmpl, "TOKENSMITH_CASBIN_GROUPING") {
-		t.Fatalf("init/main.go.tmpl must read TOKENSMITH_CASBIN_GROUPING")
+	if !strings.Contains(authHelperTmpl, "TOKENSMITH_CASBIN_GROUPING") {
+		t.Fatalf("init/auth_helpers.go.tmpl must read TOKENSMITH_CASBIN_GROUPING")
 	}
-	if !strings.Contains(mainTmpl, "parseAuthZMode") {
-		t.Fatalf("init/main.go.tmpl must parse TOKENSMITH_AUTHZ_MODE")
+	if !strings.Contains(authHelperTmpl, "parseAuthZMode") {
+		t.Fatalf("init/auth_helpers.go.tmpl must parse TOKENSMITH_AUTHZ_MODE")
 	}
-	if !strings.Contains(mainTmpl, "tokensmithauthz.WithOnDecision(logAuthZDecision)") {
-		t.Fatalf("init/main.go.tmpl must install the default authz decision hook")
+	if !strings.Contains(authHelperTmpl, "tokensmithauthz.WithOnDecision(logAuthZDecision)") {
+		t.Fatalf("init/auth_helpers.go.tmpl must install the default authz decision hook")
 	}
-	if !strings.Contains(mainTmpl, "func logAuthZDecision(_ context.Context, rec tokensmithauthz.DecisionRecord)") {
-		t.Fatalf("init/main.go.tmpl must define a default authz decision logger")
+	if !strings.Contains(authHelperTmpl, "func logAuthZDecision(_ context.Context, rec tokensmithauthz.DecisionRecord)") {
+		t.Fatalf("init/auth_helpers.go.tmpl must define a default authz decision logger")
 	}
-	if !strings.Contains(mainTmpl, "protected.Use(authzMiddleware)") {
-		t.Fatalf("init/main.go.tmpl must apply authz middleware on protected routes")
+	if !strings.Contains(authHelperTmpl, "authzMiddleware = tokensmithauthz.NewMiddleware(") {
+		t.Fatalf("init/auth_helpers.go.tmpl must produce an authz middleware handler")
 	}
 }
 

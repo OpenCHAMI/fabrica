@@ -392,7 +392,7 @@ func runInit(projectName string, opts *initOptions) error {
 }
 
 // createProjectStructure creates the directory tree and files for a new project.
-// It generates main.go, go.mod, README.md, .gitignore, and stub storage files
+// It generates main.go, runtime helper files, go.mod, README.md, .gitignore, and stub storage files
 // from embedded templates, and writes both .fabrica.yaml and apis.yaml configs.
 //
 // The function creates:
@@ -464,6 +464,21 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 
 	// Generate main.go from template
 	if err := generateFromTemplate("init/main.go.tmpl", filepath.Join(targetDir, "cmd/server/main.go"), data); err != nil {
+		return err
+	}
+
+	// Generate runtime helpers from template
+	if err := generateFromTemplate("init/runtime_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/runtime_helpers_generated.go"), data); err != nil {
+		return err
+	}
+
+	// Generate auth helpers from template
+	if err := generateFromTemplate("init/auth_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/auth_helpers_generated.go"), data); err != nil {
+		return err
+	}
+
+	// Generate metrics helpers from template
+	if err := generateFromTemplate("init/metrics_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/metrics_helpers_generated.go"), data); err != nil {
 		return err
 	}
 
