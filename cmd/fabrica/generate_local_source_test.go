@@ -48,10 +48,11 @@ func TestGenerateIsolatedRunnerGoModIncludesReplaces(t *testing.T) {
 	fabricaSource := "/tmp/fabrica"
 	modulePath := "example.com/demo"
 
-	got := generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource)
+	got := generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource, "1.24.0")
 
 	for _, want := range []string{
 		"module fabrica-codegen-runner",
+		"go 1.24.0",
 		"github.com/openchami/fabrica v0.0.0",
 		"example.com/demo v0.0.0",
 		"replace github.com/openchami/fabrica => /tmp/fabrica",
@@ -70,6 +71,18 @@ func TestLocalModulePlaceholderVersionSupportsMajorSuffix(t *testing.T) {
 
 	if got := localModulePlaceholderVersion("example.com/demo/v2"); got != "v2.0.0" {
 		t.Fatalf("localModulePlaceholderVersion(/v2) = %q, want v2.0.0", got)
+	}
+}
+
+func TestDetectProjectGoVersion(t *testing.T) {
+	projectRoot := t.TempDir()
+	goMod := "module example.com/demo\n\ngo 1.24.3\n"
+	if err := os.WriteFile(filepath.Join(projectRoot, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if got := detectProjectGoVersion(projectRoot); got != "1.24.3" {
+		t.Fatalf("detectProjectGoVersion() = %q, want 1.24.3", got)
 	}
 }
 

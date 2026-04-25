@@ -480,7 +480,8 @@ func runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode string, debug 
 	}
 	defer os.RemoveAll(runnerDir) // nolint:errcheck
 
-	if err := os.WriteFile(filepath.Join(runnerDir, "go.mod"), []byte(generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource)), 0644); err != nil {
+	goVersion := detectProjectGoVersion(projectRoot)
+	if err := os.WriteFile(filepath.Join(runnerDir, "go.mod"), []byte(generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource, goVersion)), 0644); err != nil {
 		return fmt.Errorf("failed to write isolated runner go.mod: %w", err)
 	}
 
@@ -504,10 +505,14 @@ func runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode string, debug 
 	return nil
 }
 
-func generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource string) string {
+func generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource, goVersion string) string {
+	if strings.TrimSpace(goVersion) == "" {
+		goVersion = "1.24"
+	}
+
 	return fmt.Sprintf(`module fabrica-codegen-runner
 
-go 1.21
+go %s
 
 require (
 	github.com/openchami/fabrica %s
@@ -517,7 +522,26 @@ require (
 
 replace github.com/openchami/fabrica => %s
 replace %s => %s
-`, localModulePlaceholderVersion("github.com/openchami/fabrica"), modulePath, localModulePlaceholderVersion(modulePath), fabricaSource, modulePath, projectRoot)
+`, goVersion, localModulePlaceholderVersion("github.com/openchami/fabrica"), modulePath, localModulePlaceholderVersion(modulePath), fabricaSource, modulePath, projectRoot)
+}
+
+func detectProjectGoVersion(projectRoot string) string {
+	data, err := os.ReadFile(filepath.Join(projectRoot, "go.mod"))
+	if err != nil {
+		return "1.24"
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "go ") {
+			version := strings.TrimSpace(strings.TrimPrefix(trimmed, "go "))
+			if version != "" {
+				return version
+			}
+		}
+	}
+
+	return "1.24"
 }
 
 func localModulePlaceholderVersion(modulePath string) string {

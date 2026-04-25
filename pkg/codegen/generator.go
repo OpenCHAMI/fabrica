@@ -1379,7 +1379,40 @@ func (g *Generator) GenerateAPIVersions() error {
 		return fmt.Errorf("failed to generate version registry: %w", err)
 	}
 
+	if err := ensureSPDXHeader(outputPath, "Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC", "MIT"); err != nil {
+		return fmt.Errorf("failed to ensure SPDX header for version registry: %w", err)
+	}
+
 	return nil
+}
+
+func ensureSPDXHeader(path, copyright, license string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	content := string(b)
+	if strings.Contains(content, "SPDX-License-Identifier:") {
+		return nil
+	}
+
+	insertAfter := "// Generated at:"
+	idx := strings.Index(content, insertAfter)
+	if idx == -1 {
+		return fmt.Errorf("generated header marker %q not found", insertAfter)
+	}
+
+	lineEnd := strings.Index(content[idx:], "\n")
+	if lineEnd == -1 {
+		return fmt.Errorf("generated header line ending not found")
+	}
+
+	insertPos := idx + lineEnd + 1
+	spdx := fmt.Sprintf("// SPDX-FileCopyrightText: %s\n// SPDX-License-Identifier: %s\n", copyright, license)
+	updated := content[:insertPos] + spdx + content[insertPos:]
+
+	return os.WriteFile(path, []byte(updated), 0644)
 }
 
 // formatJSONValue formats a value appropriately for JSON based on its type
