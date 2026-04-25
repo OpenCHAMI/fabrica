@@ -56,10 +56,10 @@ func TestAPIVersionRegisterTemplateRendersSPDXHeader(t *testing.T) {
 	}
 
 	generated := out.String()
-	if !strings.Contains(generated, "SPDX-FileCopyrightText") {
+	if !strings.Contains(generated, "PDX-FileCopyrightText") {
 		t.Fatalf("generated register template missing SPDX copyright header:\n%s", generated)
 	}
-	if !strings.Contains(generated, "SPDX-License-Identifier: MIT") {
+	if !strings.Contains(generated, "PDX-License-Identifier: MIT") {
 		t.Fatalf("generated register template missing SPDX license header:\n%s", generated)
 	}
 }
