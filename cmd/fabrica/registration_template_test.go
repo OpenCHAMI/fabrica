@@ -5,6 +5,7 @@
 package main
 
 import (
+	"go/format"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,20 @@ func TestRegistrationGeneratorsIncludeGeneratedSPDXHeader(t *testing.T) {
 		// If the line below includes a full header, it will flag the reuse test as a malformed header and fail.
 		if !strings.Contains(content, "PDX-License-Identifier: MIT") {
 			t.Fatalf("%s registration missing SPDX license header", name)
+		}
+	}
+}
+
+func TestRegistrationGeneratorsProduceGofmtStableOutput(t *testing.T) {
+	apisConfig := DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
+
+	for name, content := range map[string]string{
+		"non-versioned": generateRegistrationCode("github.com/openchami/boot-service", []string{"Node", "BMC"}),
+		"versioned":     generateVersionedRegistrationCode("github.com/openchami/boot-service", apisConfig, []string{"Node", "BMC"}),
+	} {
+		_, err := format.Source([]byte(content))
+		if err != nil {
+			t.Fatalf("%s registration should be gofmt-able: %v", name, err)
 		}
 	}
 }

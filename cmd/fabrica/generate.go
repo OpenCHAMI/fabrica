@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
@@ -1076,6 +1077,11 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 		content = generateRegistrationCode(modulePath, resources)
 	}
 
+	formattedContent, err := format.Source([]byte(content))
+	if err != nil {
+		return fmt.Errorf("failed to format generated registration file: %w", err)
+	}
+
 	// 4. Ensure pkg/resources directory exists
 	resourcesDir := filepath.Join("pkg", "resources")
 	if err := os.MkdirAll(resourcesDir, 0755); err != nil {
@@ -1084,7 +1090,7 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 
 	// 5. Write to pkg/resources/register_generated.go
 	outputPath := filepath.Join(resourcesDir, "register_generated.go")
-	if err := os.WriteFile(outputPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(outputPath, formattedContent, 0644); err != nil {
 		return fmt.Errorf("failed to write registration file: %w", err)
 	}
 
