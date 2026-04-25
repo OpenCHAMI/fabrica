@@ -143,7 +143,11 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 			return nil, fmt.Errorf("failed to start reconciliation controller: %w", err)
 		}
 
-		stopController = controller.Stop
+		stopController = func() {
+			if err := controller.Stop(); err != nil {
+				log.Printf("failed to stop reconciliation controller: %v", err)
+			}
+		}
 		log.Printf("Reconciliation controller started with %d workers", {{.ReconcileWorkers}})
 	}
 
@@ -160,7 +164,7 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 	{{end}}
 	{{else}}
 	{{if .WithReconcile}}
-	log.Printf("Warning: Reconciliation is enabled but events are disabled. Enable --events to use reconciliation.")
+	log.Printf("Warning: Reconciliation requires events to be enabled. Enable --events to use reconciliation.")
 	{{end}}
 	return func() {}, nil
 	{{end}}

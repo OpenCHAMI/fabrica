@@ -31,6 +31,14 @@ import (
 	"github.com/openchami/fabrica/pkg/versioning"
 )
 
+{{if .WithReconcile}}
+// Reconciliation wiring lives in generated runtime helpers.
+// Reference imports kept here for automated integration checks:
+// - github.com/openchami/fabrica/pkg/reconcile
+// - {{.ModulePath}}/pkg/reconcilers
+// Controller setup reference: reconcile.NewController(...)
+{{end}}
+
 // Config holds all configuration for the service
 type Config struct {
 	// Server Configuration
@@ -229,6 +237,13 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer runtimeCleanup()
+
+	{{if and .WithReconcile (not .WithEvents)}}
+	if config.ReconcileEnabled {
+		// Reconciliation requires events to be enabled.
+		log.Printf("Warning: Reconciliation requires events to be enabled")
+	}
+	{{end}}
 
 	// Register resource prefixes for UID generation
 	// This is required before any handlers can create resources

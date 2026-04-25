@@ -14,17 +14,17 @@ SPDX-License-Identifier: MIT
 package main
 
 import (
+	"net/http"
+	{{if .WithAuth}}
+	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
-	{{if .WithAuth}}
 	"strings"
 
 	tokensmithauthn "{{.TokenSmithModulePath}}/pkg/authn"
 	tokensmithauthz "{{.TokenSmithModulePath}}/pkg/authz"
 	tokensmithauthzengine "{{.TokenSmithModulePath}}/pkg/authz/engine"
-	"context"
 	{{end}}
 )
 
