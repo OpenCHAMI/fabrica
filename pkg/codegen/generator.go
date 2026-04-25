@@ -1380,7 +1380,7 @@ func (g *Generator) GenerateAPIVersions() error {
 	}
 
 	if err := ensureSPDXHeader(outputPath, "Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC", "MIT"); err != nil {
-		return fmt.Errorf("failed to ensure SPDX header for version registry: %w", err)
+		return fmt.Errorf("failed to ensure PDX header for version registry: %w", err)
 	}
 
 	return nil
@@ -1393,7 +1393,7 @@ func ensureSPDXHeader(path, copyright, license string) error {
 	}
 
 	content := string(b)
-	if strings.Contains(content, "SPDX-License-Identifier:") {
+	if strings.Contains(content, "PDX-License-Identifier:") {
 		return nil
 	}
 
