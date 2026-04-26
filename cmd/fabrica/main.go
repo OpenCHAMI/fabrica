@@ -40,6 +40,7 @@ The CLI provides commands for:
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
 	rootCmd.AddCommand(newEntCommand())
+	rootCmd.AddCommand(newMCPCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	if err := rootCmd.Execute(); err != nil {

@@ -18,14 +18,16 @@ SPDX-License-Identifier: MIT
   - [fabrica add version](#fabrica-add-version)
   - [fabrica generate](#fabrica-generate)
   - [fabrica ent generate](#fabrica-ent-generate)
+  - [fabrica mcp](#fabrica-mcp)
   - [fabrica version](#fabrica-version)
+- [Dedicated MCP Docs](mcp.md)
 - [Configuration Files](#configuration-files)
 - [Environment Variables](#environment-variables)
 - [Examples](#examples)
 
 ## Overview
 
-The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, and managing API versions. All commands support both interactive and non-interactive modes.
+The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
 
 **Installation:**
 ```bash
@@ -402,6 +404,42 @@ Fabrica version v0.4.1
   commit: abc123def456
   built: 2025-01-14T10:00:00Z
 ```
+
+---
+
+### fabrica mcp
+
+Run Fabrica as an MCP server over stdio for local workspace automation.
+
+For full MCP method, tool, error-schema, and safety details, see [Fabrica MCP Mode Reference](mcp.md).
+
+**Usage:**
+```bash
+fabrica mcp [flags]
+```
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--workspace <path>` | string | `.` | Workspace root for all MCP operations |
+
+**Supported MCP methods:**
+- `initialize`
+- `tools/list`
+- `tools/call`
+
+**Current tool set:**
+- `inspect_project`
+- `validate_project`
+- `create_service`
+- `add_resource`
+- `add_version`
+- `generate_code`
+- `sync_dependencies`
+
+**Notes:**
+- Mutating tools support `mode` values `dry_run` and `execute`
+- Tool paths are constrained to the configured workspace root
 
 ---
 
