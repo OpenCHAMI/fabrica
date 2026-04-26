@@ -13,6 +13,19 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
+ACT_GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' go.mod | cut -d. -f1,2)
+ACT_LOCAL_GO_VERSION ?= 1.25
+ACT_DOCKER_HOST ?= $(shell docker context inspect $${DOCKER_CONTEXT:-$$(docker context show 2>/dev/null)} 2>/dev/null | awk -F'"' '/"Host":/ {print $$4; exit}')
+
+define run_act
+	@docker_host="$${DOCKER_HOST:-$(ACT_DOCKER_HOST)}"; \
+	if [ -n "$$docker_host" ]; then \
+		echo "Using DOCKER_HOST=$$docker_host"; \
+		DOCKER_HOST="$$docker_host" act $(1); \
+	else \
+		act $(1); \
+	fi
+endef
 
 help: ## Display this help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -35,7 +48,7 @@ lint-fix: ## Run golangci-lint with auto-fix
 
 clean: ## Clean build artifacts
 	rm -rf bin/ dist/ coverage.out coverage.html
-	$(GO) clean
+	$(GO) clean -cache
 
 install: ## Install dependencies
 	$(GO) mod download
@@ -138,40 +151,40 @@ act-list: ## List all GitHub Actions workflows
 	@echo "Available workflows:"
 	@ls -1 .github/workflows/*.yaml | sed 's/.*\//  - /'
 
-act-test: ## Run GitHub Actions test workflow locally (ubuntu only, stable Go)
+act-test: ## Run the integration workflow locally (ubuntu only)
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
-	@echo "Note: Testing with ubuntu-latest and stable Go version only (full matrix runs on GitHub)"
-	act push -W .github/workflows/test.yaml --container-architecture linux/amd64 --matrix os:ubuntu-latest --matrix go-version:stable
+	@echo "Note: GitHub CI uses Go $(ACT_GO_VERSION); local act defaults to Go $(ACT_LOCAL_GO_VERSION) because the Go $(ACT_GO_VERSION) linux/amd64 toolchain is currently crashing under act"
+	$(call run_act,push -W .github/workflows/regression-tests.yml --container-architecture linux/amd64 -j integration-tests --matrix go-version:$(ACT_LOCAL_GO_VERSION))
 
-act-build: ## Run GitHub Actions build workflow locally
+act-build: ## Run the release workflow locally
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
-	act push -W .github/workflows/build.yaml --container-architecture linux/amd64
+	$(call run_act,push -W .github/workflows/release.yaml --container-architecture linux/amd64 -j goreleaser)
 
-act-lint: ## Run GitHub Actions golangci-lint workflow locally
+act-lint: ## Run the lint workflow locally
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
-	act push -W .github/workflows/golangci-lint.yaml --container-architecture linux/amd64
+	$(call run_act,push -W .github/workflows/lint.yaml --container-architecture linux/amd64 -j golangci-lint)
 
 act-reuse: ## Run GitHub Actions REUSE workflow locally
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
-	act push -W .github/workflows/reuse.yaml --container-architecture linux/amd64
+	$(call run_act,push -W .github/workflows/reuse.yaml --container-architecture linux/amd64)
 
 act-vuln: ## Run GitHub Actions vulnerability check workflow locally
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
-	act push -W .github/workflows/govulncheck.yaml --container-architecture linux/amd64
+	$(call run_act,push -W .github/workflows/govulncheck.yaml --container-architecture linux/amd64 -j govulncheck)
 
 act-all: ## Run all testable workflows locally (build, test, lint, reuse, vuln)
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
 	@echo "Running all testable workflows..."
 	@echo "\n=== Build Workflow ==="
-	@act -W .github/workflows/build.yaml || true
+	$(call run_act,push -W .github/workflows/release.yaml --container-architecture linux/amd64 -j goreleaser) || true
 	@echo "\n=== Test Workflow ==="
-	@act -W .github/workflows/test.yaml || true
+	$(call run_act,push -W .github/workflows/regression-tests.yml --container-architecture linux/amd64 -j integration-tests --matrix go-version:$(ACT_LOCAL_GO_VERSION)) || true
 	@echo "\n=== Lint Workflow ==="
-	@act -W .github/workflows/golangci-lint.yaml || true
+	$(call run_act,push -W .github/workflows/lint.yaml --container-architecture linux/amd64 -j golangci-lint) || true
 	@echo "\n=== REUSE Workflow ==="
-	@act -W .github/workflows/reuse.yaml || true
+	$(call run_act,push -W .github/workflows/reuse.yaml --container-architecture linux/amd64) || true
 	@echo "\n=== Vulnerability Check Workflow ==="
-	@act -W .github/workflows/govulncheck.yaml || true
+	$(call run_act,push -W .github/workflows/govulncheck.yaml --container-architecture linux/amd64 -j govulncheck) || true
 
 all: clean install lint test build ## Run all checks and build
 
