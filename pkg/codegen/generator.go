@@ -1393,7 +1393,7 @@ func ensureSPDXHeader(path, copyright, license string) error {
 	}
 
 	content := string(b)
-	if strings.Contains(content, "SPDX-License-Identifier:") {
+	if strings.Contains(content, "PDX-License-Identifier:") {
 		return nil
 	}
 
