@@ -34,6 +34,9 @@ func readFabricaConfig() (*FabricaConfig, error) {
 		}
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+	if err := ValidateConfig(config); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 
 	return config, nil
 }
@@ -109,6 +112,11 @@ Examples:
 			}
 			if debug && resolvedFabricaSource != "" {
 				fmt.Printf("  Using local Fabrica source: %s\n", resolvedFabricaSource)
+			}
+
+			config, err := readFabricaConfig()
+			if err != nil {
+				return err
 			}
 
 			apisConfig, err := readAPIsConfig()
@@ -209,8 +217,7 @@ Examples:
 			}
 
 			// Check if reconciliation is enabled in config
-			config, err := readFabricaConfig()
-			if err == nil && config != nil && config.Features.Reconciliation.Enabled {
+			if config != nil && config.Features.Reconciliation.Enabled {
 				fmt.Println("🔄 Generating reconciliation code...")
 				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
@@ -602,14 +609,17 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\t}\n")
 		}
 
-		// Always generate routes and models if doing server-side generation
-		generationCalls.WriteString("\tif err := gen.GenerateRoutes(); err != nil {\n")
-		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate routes: %v\", err)\n")
-		generationCalls.WriteString("\t}\n")
+		if handlers {
+			generationCalls.WriteString("\tif err := gen.GenerateRoutes(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate routes: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
+		}
 
-		generationCalls.WriteString("\tif err := gen.GenerateModels(); err != nil {\n")
-		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
-		generationCalls.WriteString("\t}\n")
+		if handlers || openapi {
+			generationCalls.WriteString("\tif err := gen.GenerateModels(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
+		}
 
 		generationCalls.WriteString("\tif authEnabled {\n")
 		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateAuthZClassifier\"); err != nil {\n")
@@ -620,25 +630,28 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t\t}\n")
 		generationCalls.WriteString("\t}\n")
 
-		// Generate export/import commands only for Ent storage (v0.4.0+)
-		generationCalls.WriteString("\tif gen.StorageType == \"ent\" {\n")
-		generationCalls.WriteString("\t\tif err := gen.GenerateExportCommand(); err != nil {\n")
-		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate export command: %v\", err)\n")
-		generationCalls.WriteString("\t\t}\n")
+		// Generate export/import commands only when regenerating Ent storage (v0.4.0+)
+		if storage {
+			generationCalls.WriteString("\tif gen.StorageType == \"ent\" {\n")
+			generationCalls.WriteString("\t\tif err := gen.GenerateExportCommand(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate export command: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
 
-		generationCalls.WriteString("\t\tif err := gen.GenerateImportCommand(); err != nil {\n")
-		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate import command: %v\", err)\n")
-		generationCalls.WriteString("\t\t}\n")
-		generationCalls.WriteString("\t}\n")
+			generationCalls.WriteString("\t\tif err := gen.GenerateImportCommand(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate import command: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
+			generationCalls.WriteString("\t}\n")
+		}
 
-		// Generate API version registry if apis.yaml exists
-		generationCalls.WriteString("\n")
-		generationCalls.WriteString("\t// Generate API version registry if versioning enabled\n")
-		generationCalls.WriteString("\tif gen.Config.VersioningEnabled {\n")
-		generationCalls.WriteString("\t\tif err := gen.GenerateAPIVersions(); err != nil {\n")
-		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate API versions: %v\", err)\n")
-		generationCalls.WriteString("\t\t}\n")
-		generationCalls.WriteString("\t}\n")
+		if handlers || openapi {
+			generationCalls.WriteString("\n")
+			generationCalls.WriteString("\t// Generate API version registry if versioning enabled\n")
+			generationCalls.WriteString("\tif gen.Config.VersioningEnabled {\n")
+			generationCalls.WriteString("\t\tif err := gen.GenerateAPIVersions(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate API versions: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
+			generationCalls.WriteString("\t}\n")
+		}
 	} else if client {
 		// Client-side generation
 		if debug {
@@ -1136,16 +1149,16 @@ func generateRegistrationCode(modulePath string, resources []string) string {
 		resourceStruct := toPascal(resource)
 
 		pkg := strings.ToLower(resource)
-		imports.WriteString(fmt.Sprintf("\t\"%s/pkg/resources/%s\"\n", modulePath, pkg))
-		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
-		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
+		fmt.Fprintf(&imports, "\t\"%s/pkg/resources/%s\"\n", modulePath, pkg)
+		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
+		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
 
 		// After registration, set per-resource tags if markers are present.
 		// Marker: // +fabrica:resource-versioning=enabled on the resource source file
 		registrations.WriteString("\t// Set per-resource tags based on source markers\n")
-		registrations.WriteString(fmt.Sprintf("\tif hasVersioningMarker(\"%s\") {\n", resource))
-		registrations.WriteString(fmt.Sprintf("\t\tgen.SetResourceTag(\"%s\", \"versioning\", \"enabled\")\n", resource))
+		fmt.Fprintf(&registrations, "\tif hasVersioningMarker(\"%s\") {\n", resource)
+		fmt.Fprintf(&registrations, "\t\tgen.SetResourceTag(\"%s\", \"versioning\", \"enabled\")\n", resource)
 		registrations.WriteString("\t}\n")
 	}
 
@@ -1194,13 +1207,13 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *APIsConfig
 	pkg := hubVersion // Package name is the version (e.g., v1)
 	// Import path: module/apis/group/version
 	importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group.Name, hubVersion)
-	imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
+	fmt.Fprintf(&imports, "\t%s \"%s\"\n", pkg, importPath)
 
 	for _, resource := range resources {
 		resourceStruct := toPascal(resource)
 
-		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
-		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
+		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
+		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
 	}
 

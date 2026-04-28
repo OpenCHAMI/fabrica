@@ -92,7 +92,7 @@ fabrica init [project-name] [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth` | bool | false | Enable authentication scaffolding |
-| `--storage` | bool | true | Enable storage backend |
+| `--storage` | bool | true | Enable storage backend. Must remain enabled for generated CRUD APIs |
 | `--metrics` | bool | false | Enable metrics/monitoring |
 | `--events` | bool | false | Enable CloudEvents integration |
 | `--reconcile` | bool | false | Enable reconciliation framework |
@@ -106,7 +106,7 @@ fabrica init [project-name] [flags]
 #### Event Options
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--events-bus <type>` | string | `memory` | Event bus type: `memory`, `nats`, `kafka` |
+| `--events-bus <type>` | string | `memory` | Event bus type: `memory` |
 
 #### Reconciliation Options
 | Flag | Type | Default | Description |
@@ -281,11 +281,11 @@ fabrica generate [flags]
 **Flags:**
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--handlers` | bool | true | Generate HTTP handlers |
-| `--storage` | bool | true | Generate storage layer |
-| `--client` | bool | true | Generate HTTP client |
-| `--openapi` | bool | true | Generate OpenAPI spec |
-| `--all` | bool | true | Generate everything (default) |
+| `--handlers` | bool | false | Generate handlers plus routes, models, and middleware |
+| `--storage` | bool | false | Generate storage layer |
+| `--client` | bool | false | Generate HTTP client and CLI client |
+| `--openapi` | bool | false | Generate OpenAPI spec plus request/response models |
+| no artifact flags | - | - | Generate everything |
 | `--debug` | bool | false | Show detailed generation steps |
 | `--force` | bool | false | Overwrite existing files without prompting |
 
@@ -295,8 +295,8 @@ fabrica generate [flags]
 # Generate everything (default)
 fabrica generate
 
-# Generate only handlers and storage
-fabrica generate --handlers --storage --client=false --openapi=false
+# Generate handlers and storage
+fabrica generate --handlers --storage
 
 # Debug mode
 fabrica generate --debug
@@ -474,7 +474,7 @@ features:
 
   events:
     enabled: true
-    bus_type: memory          # memory | nats | kafka
+    bus_type: memory          # memory
     lifecycle_events: true
     condition_events: true
 

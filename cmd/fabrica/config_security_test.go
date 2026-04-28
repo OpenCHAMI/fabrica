@@ -20,6 +20,35 @@ func TestValidateConfig_AuthZRequiresAuthN(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_RequiresStorage(t *testing.T) {
+	cfg := NewDefaultConfig("test", "example.com/test")
+	cfg.Features.Storage.Enabled = false
+
+	if err := ValidateConfig(cfg); err == nil {
+		t.Fatalf("expected storage-disabled config to be rejected")
+	}
+}
+
+func TestValidateConfig_EventsBusMemoryOnly(t *testing.T) {
+	cfg := NewDefaultConfig("test", "example.com/test")
+	cfg.Features.Events.Enabled = true
+	cfg.Features.Events.BusType = "nats"
+
+	if err := ValidateConfig(cfg); err == nil {
+		t.Fatalf("expected non-memory event bus to be rejected")
+	}
+}
+
+func TestValidateConfig_ReconciliationRequiresEvents(t *testing.T) {
+	cfg := NewDefaultConfig("test", "example.com/test")
+	cfg.Features.Reconciliation.Enabled = true
+	cfg.Features.Events.Enabled = false
+
+	if err := ValidateConfig(cfg); err == nil {
+		t.Fatalf("expected reconciliation without events to be rejected")
+	}
+}
+
 func TestValidateConfig_InvalidAuthZModeDefaultsToEnforceAndWarns(t *testing.T) {
 	var warn bytes.Buffer
 

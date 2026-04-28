@@ -35,7 +35,7 @@ type initOptions struct {
 	// New feature flags for core features
 	validationMode string // strict, warn, disabled
 	withEvents     bool   // Enable CloudEvents support
-	eventBusType   string // memory, nats, kafka
+	eventBusType   string // memory
 
 	// API Versioning (hub/spoke)
 	apiGroup       string   // e.g., "infra.example.io"
@@ -103,7 +103,7 @@ func newInitCommand() *cobra.Command {
 
 Instead of complex modes, use feature flags to customize your project:
   --auth          Enable authentication with TokenSmith
-  --storage       Enable persistent storage (file or database)
+  --storage       Enable persistent storage (required for generated CRUD APIs)
   --metrics       Enable Prometheus metrics
 
 The interactive flag launches a guided wizard to help you choose.
@@ -142,14 +142,14 @@ or by providing the name of an existing directory.`,
 
 	// Feature flags
 	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable authentication with TokenSmith")
-	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage")
+	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage (required for generated CRUD APIs)")
 	cmd.Flags().BoolVar(&opts.withMetrics, "metrics", false, "Enable Prometheus metrics")
 	cmd.Flags().BoolVar(&opts.withVersion, "version", true, "Enable version command")
 
 	// Core feature configuration
 	cmd.Flags().StringVar(&opts.validationMode, "validation-mode", "strict", "Validation mode: strict, warn, or disabled")
 	cmd.Flags().BoolVar(&opts.withEvents, "events", false, "Enable CloudEvents support")
-	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory, nats, or kafka")
+	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory")
 
 	// API Versioning configuration
 	cmd.Flags().StringVar(&opts.apiGroup, "group", "", "API group name (e.g., infra.example.io)")
@@ -296,6 +296,10 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 // or creating a new directory. It checks for existing Fabrica projects to avoid
 // accidental overwrites.
 func runInit(projectName string, opts *initOptions) error {
+	if err := validateInitOptions(opts); err != nil {
+		return err
+	}
+
 	// Determine if we're initializing in current directory
 	inCurrentDir := projectName == "."
 	var projectBaseName string
@@ -388,6 +392,22 @@ func runInit(projectName string, opts *initOptions) error {
 		fmt.Println()
 	}
 
+	return nil
+}
+
+func validateInitOptions(opts *initOptions) error {
+	if opts == nil {
+		return fmt.Errorf("init options are required")
+	}
+	if !opts.withStorage {
+		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file or --storage-type ent")
+	}
+	if opts.withEvents && opts.eventBusType != "memory" {
+		return fmt.Errorf("unsupported events bus %q: only memory is implemented", opts.eventBusType)
+	}
+	if opts.withReconcile && !opts.withEvents {
+		return fmt.Errorf("reconciliation requires events; add --events or remove --reconcile")
+	}
 	return nil
 }
 

@@ -90,52 +90,65 @@ func (c *Catalog) GetFields(packagePath, typeName string) ([]Field, error) {
 func (c *Catalog) ScanLocalPackage(pkgPath string) error {
 	fset := token.NewFileSet()
 
-	pkgs, err := parser.ParseDir(fset, pkgPath, nil, parser.ParseComments)
+	entries, err := os.ReadDir(pkgPath)
 	if err != nil {
-		return fmt.Errorf("failed to parse package: %w", err)
+		return fmt.Errorf("failed to read package directory: %w", err)
 	}
 
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				typeSpec, ok := n.(*ast.TypeSpec)
-				if !ok {
-					return true
-				}
-
-				structType, ok := typeSpec.Type.(*ast.StructType)
-				if !ok {
-					return true
-				}
-
-				// Extract fields
-				var fields []Field
-				for _, field := range structType.Fields.List {
-					for _, name := range field.Names {
-						jsonTag := ""
-						if field.Tag != nil {
-							jsonTag = extractJSONTag(field.Tag.Value)
-						}
-
-						fields = append(fields, Field{
-							Name:    name.Name,
-							Type:    exprToString(field.Type),
-							JSONTag: jsonTag,
-						})
-					}
-				}
-
-				// Store type info
-				key := pkg.Name + "." + typeSpec.Name.Name
-				c.types[key] = &TypeInfo{
-					Name:    typeSpec.Name.Name,
-					Package: pkg.Name,
-					Fields:  fields,
-				}
-
-				return false
-			})
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		filePath := filepath.Join(pkgPath, name)
+		file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		if err != nil {
+			return fmt.Errorf("failed to parse file %s: %w", filePath, err)
+		}
+
+		pkgName := file.Name.Name
+		ast.Inspect(file, func(n ast.Node) bool {
+			typeSpec, ok := n.(*ast.TypeSpec)
+			if !ok {
+				return true
+			}
+
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				return true
+			}
+
+			// Extract fields
+			var fields []Field
+			for _, field := range structType.Fields.List {
+				for _, fieldName := range field.Names {
+					jsonTag := ""
+					if field.Tag != nil {
+						jsonTag = extractJSONTag(field.Tag.Value)
+					}
+
+					fields = append(fields, Field{
+						Name:    fieldName.Name,
+						Type:    exprToString(field.Type),
+						JSONTag: jsonTag,
+					})
+				}
+			}
+
+			// Store type info
+			key := pkgName + "." + typeSpec.Name.Name
+			c.types[key] = &TypeInfo{
+				Name:    typeSpec.Name.Name,
+				Package: pkgName,
+				Fields:  fields,
+			}
+
+			return false
+		})
 	}
 
 	return nil

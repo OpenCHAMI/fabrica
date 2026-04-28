@@ -440,7 +440,7 @@ myshop/
 
 5. **OpenAPI Spec** (`cmd/server/openapi_generated.go`):
    - Complete API documentation
-   - Swagger UI available at `/swagger/`
+   - Swagger UI available at `/docs`
 
 ### What You Wrote
 
@@ -517,7 +517,7 @@ Validation happens automatically - invalid requests return 400 errors with detai
 
 Visit these URLs while your server is running:
 
-- **OpenAPI Docs**: http://localhost:8080/swagger/
+- **OpenAPI Docs**: http://localhost:8080/docs
 - **Health Check**: http://localhost:8080/health
 - **API Discovery**: http://localhost:8080/api/v1/
 

@@ -111,11 +111,11 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 	events.InitializeEventBridge()
 
 	log.Println("Initializing single event bus...")
+	var eventBus events.EventBus
 	{{if eq .EventBusType "memory"}}
-	eventBus := events.NewInMemoryEventBus(1000, 10)
+	eventBus = events.NewInMemoryEventBus(1000, 10)
 	{{else}}
-	// TODO: Configure {{.EventBusType}} event bus
-	eventBus := events.NewInMemoryEventBus(1000, 10) // Fallback
+	return nil, fmt.Errorf("unsupported event bus type {{.EventBusType}}: only memory is implemented")
 	{{end}}
 	eventBus.Start()
 

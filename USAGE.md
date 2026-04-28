@@ -28,7 +28,7 @@ fabrica version
 
 **Expected output:**
 ```
-Fabrica v0.3.1
+Fabrica v0.4.1
 ```
 
 If you get "command not found", see [Installation](README.md#-installation).
@@ -45,7 +45,7 @@ cd my-api
 
 Creates a project with:
 - ✅ File-based storage (development-friendly)
-- ✅ Single API group (`api.example/v1`)
+- ✅ Single API group (`example.fabrica.dev/v1`)
 - ✅ Basic CRUD endpoints
 - ✅ OpenAPI documentation
 
@@ -68,6 +68,8 @@ Adds:
 - 📡 CloudEvents publishing on resource CRUD
 - 🔄 Reconciliation controller framework
 - 🗃️ Database storage for durability
+
+Reconciliation requires events. The generated runtime currently supports the in-memory event bus (`--events-bus memory`).
 
 ### Custom API Group
 ```bash
@@ -92,12 +94,12 @@ fabrica add resource User
 ```
 
 Generates:
-- `apis/api.example/v1/user_types.go` - Resource struct definition
+- `apis/example.fabrica.dev/v1/user_types.go` - Resource struct definition
 - Handler stubs in `cmd/server/user_handlers_generated.go`
-- Storage functions in `internal/storage/user_storage_generated.go`
+- Storage functions in `internal/storage/storage_generated.go`
 
 ### Customize Your Resource
-Edit the generated resource file (e.g., `apis/api.example/v1/user_types.go`):
+Edit the generated resource file (e.g., `apis/example.fabrica.dev/v1/user_types.go`):
 
 ```go
 // UserSpec defines the desired state
@@ -142,10 +144,10 @@ Regenerates:
 
 ### Generate Specific Artifacts
 ```bash
-fabrica generate --handlers        # Only API handlers
-fabrica generate --storage         # Only storage layer
-fabrica generate --openapi         # Only OpenAPI spec
-fabrica generate --client          # Only HTTP client
+fabrica generate --handlers        # Handlers plus routes, models, and middleware
+fabrica generate --storage         # Storage layer
+fabrica generate --openapi         # OpenAPI spec plus request/response models
+fabrica generate --client          # HTTP client and CLI client
 ```
 
 Combine flags:
@@ -187,7 +189,7 @@ go run ./cmd/server
 **Output:**
 ```
 Server listening on :8080
-View API docs: http://localhost:8080/swagger/
+View API docs: http://localhost:8080/docs
 ```
 
 ### Production Build
@@ -203,9 +205,8 @@ go build -o bin/server ./cmd/server
 curl -X POST http://localhost:8080/users \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Alice",
-    "email": "alice@example.com",
-    "role": "admin"
+    "metadata": {"name": "alice"},
+    "spec": {"description": "Example user"}
   }'
 ```
 
@@ -216,24 +217,27 @@ curl http://localhost:8080/users
 
 **Get specific resource:**
 ```bash
-curl http://localhost:8080/users/alice
+curl http://localhost:8080/users/{uid}
 ```
 
 **Update resource:**
 ```bash
-curl -X PUT http://localhost:8080/users/alice \
+curl -X PUT http://localhost:8080/users/{uid} \
   -H "Content-Type: application/json" \
-  -d '{"email": "alice.new@example.com", "role": "user"}'
+  -d '{
+    "metadata": {"name": "alice"},
+    "spec": {"description": "Updated example user"}
+  }'
 ```
 
 **Delete resource:**
 ```bash
-curl -X DELETE http://localhost:8080/users/alice
+curl -X DELETE http://localhost:8080/users/{uid}
 ```
 
 **View OpenAPI spec:**
 ```bash
-open http://localhost:8080/swagger/
+open http://localhost:8080/docs
 ```
 
 ---
@@ -381,7 +385,7 @@ go mod tidy
 If still failing, check `apis.yaml` and `.fabrica.yaml`:
 ```yaml
 groups:
-  - name: api.example  # Should match your API group
+  - name: example.fabrica.dev  # Should match your API group
     storageVersion: v1
 ```
 

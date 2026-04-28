@@ -40,10 +40,10 @@ fabrica codegen init
 fabrica generate
 
 # Or generate specific components
-fabrica generate --handlers     # Just HTTP handlers
-fabrica generate --storage      # Just storage layer
-fabrica generate --client       # Just client library
-fabrica generate --openapi      # Just OpenAPI spec
+fabrica generate --handlers     # Handlers plus routes, models, and middleware
+fabrica generate --storage      # Storage layer
+fabrica generate --client       # Client library and CLI client
+fabrica generate --openapi      # OpenAPI spec plus request/response models
 
 # Or use the Makefile for the complete workflow
 make dev                        # Clean, init, generate, and build

@@ -46,6 +46,11 @@ func TestMCPHandle_InitializeAndToolsList(t *testing.T) {
 	if !hasToolName(toolDefs, "validate_project") {
 		t.Fatalf("expected validate_project tool in tools/list")
 	}
+	for _, name := range []string{"define_resource_schema", "build_project", "test_project", "smoke_test_api", "describe_workflow"} {
+		if !hasToolName(toolDefs, name) {
+			t.Fatalf("expected %s tool in tools/list", name)
+		}
+	}
 }
 
 func TestMCPCallTool_CreateServiceDryRun_HasPlannedFiles(t *testing.T) {
@@ -106,6 +111,53 @@ func TestMCPCallTool_TypedErrorCodeForInvalidArguments(t *testing.T) {
 	}
 	if errorPayload["code"] != "invalid_arguments" {
 		t.Fatalf("expected invalid_arguments code, got %v", errorPayload["code"])
+	}
+}
+
+func TestMCPCallTool_RejectsUnknownArguments(t *testing.T) {
+	srv := &mcpServer{workspaceRoot: t.TempDir()}
+
+	resp, err := srv.callTool(mcpToolCallParams{
+		Name: "generate_code",
+		Arguments: map[string]interface{}{
+			"project_path": ".",
+			"bogus":        true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("callTool failed: %v", err)
+	}
+	result := resp.(mcpToolCallResult)
+	if !result.IsError {
+		t.Fatalf("expected unknown argument to produce an error")
+	}
+	errorPayload := result.StructuredContent["error"].(map[string]interface{})
+	if errorPayload["code"] != "invalid_arguments" {
+		t.Fatalf("expected invalid_arguments, got %v", errorPayload["code"])
+	}
+}
+
+func TestMCPCallTool_DefaultModeIsDryRun(t *testing.T) {
+	srv := &mcpServer{workspaceRoot: t.TempDir()}
+
+	resp, err := srv.callTool(mcpToolCallParams{
+		Name: "create_service",
+		Arguments: map[string]interface{}{
+			"project_name": "default-dry-run",
+		},
+	})
+	if err != nil {
+		t.Fatalf("callTool failed: %v", err)
+	}
+	result := resp.(mcpToolCallResult)
+	if result.IsError {
+		t.Fatalf("expected dry-run create_service to succeed: %#v", result.StructuredContent)
+	}
+	if result.StructuredContent["status"] != "dry_run" {
+		t.Fatalf("expected default mode dry_run, got %v", result.StructuredContent["status"])
+	}
+	if _, err := os.Stat(filepath.Join(srv.workspaceRoot, "default-dry-run")); !os.IsNotExist(err) {
+		t.Fatalf("default create_service should not mutate filesystem")
 	}
 }
 
@@ -193,6 +245,67 @@ func TestMCPValidateProject_DetectsGeneratedArtifactsStale(t *testing.T) {
 	}
 	if !issuesContainCode(result.StructuredContent["issues"], "generated_artifacts_stale") {
 		t.Fatalf("expected generated_artifacts_stale issue, got %#v", result.StructuredContent["issues"])
+	}
+}
+
+func TestMCPDefineResourceSchema_UpdatesTypeFile(t *testing.T) {
+	workspace := t.TempDir()
+	projectDir := filepath.Join(workspace, "schema-api")
+	opts := &initOptions{
+		modulePath:       "github.com/example/schema-api",
+		withStorage:      true,
+		withVersion:      true,
+		validationMode:   "strict",
+		eventBusType:     "memory",
+		apiGroup:         "example.fabrica.dev",
+		storageVersion:   "v1",
+		apiVersions:      []string{"v1"},
+		storageType:      "file",
+		dbDriver:         "sqlite",
+		reconcileWorkers: 3,
+	}
+	if err := runInit(projectDir, opts); err != nil {
+		t.Fatalf("runInit failed: %v", err)
+	}
+	if err := withWorkingDir(projectDir, func() error {
+		return runAddResource("Widget", &addOptions{withValidation: true, withStatus: true})
+	}); err != nil {
+		t.Fatalf("runAddResource failed: %v", err)
+	}
+
+	srv := &mcpServer{workspaceRoot: workspace}
+	resp, err := srv.callTool(mcpToolCallParams{
+		Name: "define_resource_schema",
+		Arguments: map[string]interface{}{
+			"project_path":  "schema-api",
+			"resource_name": "Widget",
+			"mode":          "execute",
+			"spec_fields": []interface{}{
+				map[string]interface{}{"name": "SerialNumber", "type": "string", "json_name": "serialNumber", "required": true, "validation": "required,min=3", "description": "SerialNumber identifies the widget."},
+			},
+			"status_fields": []interface{}{
+				map[string]interface{}{"name": "Ready", "type": "bool", "json_name": "ready", "description": "Ready indicates whether the widget is usable."},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("define_resource_schema failed: %v", err)
+	}
+	result := resp.(mcpToolCallResult)
+	if result.IsError {
+		t.Fatalf("define_resource_schema returned error: %#v", result.StructuredContent)
+	}
+	resourceFile := result.StructuredContent["resource_file"].(string)
+	data, err := os.ReadFile(resourceFile)
+	if err != nil {
+		t.Fatalf("ReadFile resource: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "SerialNumber string `json:\"serialNumber\" validate:\"required,min=3\"`") {
+		t.Fatalf("spec field not rendered as expected:\n%s", content)
+	}
+	if !strings.Contains(content, "Ready bool `json:\"ready,omitempty\"`") {
+		t.Fatalf("status field not rendered as expected:\n%s", content)
 	}
 }
 
@@ -308,6 +421,40 @@ func TestMCPExecuteFlow_CreateAddVersionAndInspect(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(planned, ","), "go.mod") {
 		t.Fatalf("sync_dependencies planned_files should include go.mod: %v", planned)
+	}
+
+	buildDryRunResp, err := srv.callTool(mcpToolCallParams{
+		Name: "build_project",
+		Arguments: map[string]interface{}{
+			"project_path": "flow-api",
+		},
+	})
+	if err != nil {
+		t.Fatalf("build_project dry_run failed: %v", err)
+	}
+	buildDryRun := buildDryRunResp.(mcpToolCallResult)
+	if buildDryRun.IsError {
+		t.Fatalf("build_project dry_run returned error result")
+	}
+	if buildDryRun.StructuredContent["status"] != "dry_run" {
+		t.Fatalf("expected build_project default dry_run, got %v", buildDryRun.StructuredContent["status"])
+	}
+
+	workflowResp, err := srv.callTool(mcpToolCallParams{
+		Name: "describe_workflow",
+		Arguments: map[string]interface{}{
+			"goal": "new_crud_api",
+		},
+	})
+	if err != nil {
+		t.Fatalf("describe_workflow failed: %v", err)
+	}
+	workflow := workflowResp.(mcpToolCallResult)
+	if workflow.IsError {
+		t.Fatalf("describe_workflow returned error")
+	}
+	if _, ok := workflow.StructuredContent["workflow"].([]map[string]interface{}); !ok {
+		t.Fatalf("workflow response missing typed workflow: %T", workflow.StructuredContent["workflow"])
 	}
 }
 

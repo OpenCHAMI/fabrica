@@ -28,6 +28,7 @@ SPDX-License-Identifier: MIT
 | **[Quickstart](docs/guides/quickstart.md)** | Five minute quickstart |
 | **[Getting Started Guide](docs/guides/getting-started.md)** | Step-by-step introduction to Fabrica |
 | **[Examples](examples/)** | Hands-on learning with real-world projects |
+| **[MCP Mode](docs/reference/mcp.md)** | Configure Fabrica as an MCP server for coding agents |
 
 
 Fabrica is a powerful code generation tool that accelerates API development by transforming simple Go struct definitions into complete, production-ready REST APIs. Define your resources once, and Fabrica generates everything you need: handlers, storage layers, clients, validation, OpenAPI documentation, and more.
@@ -94,6 +95,55 @@ fabrica generate
 ```
 
 This override only affects `fabrica generate`; projects that do not opt in continue to use the released Fabrica module resolved from their own `go.mod`.
+
+## 🤖 Using Fabrica MCP with Coding Agents
+
+Fabrica can run as a local MCP server over stdio:
+
+```bash
+fabrica mcp --workspace /path/to/workspace
+```
+
+Use the workspace root that contains the projects the agent may inspect or modify. If `fabrica` is not on your `PATH`, replace `fabrica` with the absolute path to the binary. Mutating MCP tools default to dry-run behavior; pass `mode: "execute"` when you want the agent to apply changes.
+
+### Claude Code
+
+Add Fabrica as a local stdio MCP server:
+
+```bash
+claude mcp add fabrica -- fabrica mcp --workspace /path/to/workspace
+```
+
+For a project-scoped configuration, add `.mcp.json` at the project root:
+
+```json
+{
+  "mcpServers": {
+    "fabrica": {
+      "command": "fabrica",
+      "args": ["mcp", "--workspace", "/path/to/workspace"]
+    }
+  }
+}
+```
+
+### Codex
+
+Register the server from the Codex CLI:
+
+```bash
+codex mcp add fabrica -- fabrica mcp --workspace /path/to/workspace
+```
+
+Or add it to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.fabrica]
+command = "fabrica"
+args = ["mcp", "--workspace", "/path/to/workspace"]
+```
+
+After connecting, ask the agent to call `describe_workflow` with `goal: "new_crud_api"` for guided API construction, or call tools such as `inspect_project`, `validate_project`, `define_resource_schema`, `add_resource`, `generate_code`, `sync_dependencies`, and `build_project` directly.
 
 ## 📚 Learn by Example
 
