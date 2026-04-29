@@ -214,7 +214,8 @@ This command:
 - Generates HTTP handlers (Create, Read, Update, Delete, List)
 - Generates file-based storage
 - Generates API routes
-- Generates OpenAPI specification
+- Generates OpenAPI specification for all Fabrica-managed routes
+- Creates `cmd/server/openapi_extensions.go` (once) for you to add custom routes to the spec
 
 You'll see:
 

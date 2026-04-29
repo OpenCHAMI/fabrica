@@ -313,7 +313,8 @@ Generated Files:
 │   ├── *_handlers_generated.go     # CRUD handlers (per resource)
 │   ├── models_generated.go         # Request/response models
 │   ├── routes_generated.go         # Route registration
-│   ├── openapi_generated.go        # OpenAPI spec
+│   ├── openapi_generated.go        # OpenAPI spec (Fabrica-managed routes)
+│   ├── openapi_extensions.go       # ✅ User-editable: add custom routes to the spec
 │   ├── export.go                   # Export command
 │   └── import.go                   # Import command
 ├── internal/
@@ -359,7 +360,8 @@ Generated Files:
 
 **Important:**
 - Always run `go mod tidy` after generation
-- Files ending in `_generated.go` are completely overwritten
+- Files ending in `_generated.go` are completely overwritten on every `fabrica generate`
+- **Create-once files** (e.g., `openapi_extensions.go`, `authz_classifier.go`) are written only when they do not yet exist — safe to edit freely
 - Your resource definitions (`*_types.go`) are never modified
 - Run from project root directory
 - Versioned APIs require `pkg/apiversion/registry_generated.go` for apiVersion validation

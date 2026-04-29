@@ -106,7 +106,8 @@ All templates are located in [pkg/codegen/templates/](../pkg/codegen/templates/)
 | `storage_ent.go.tmpl` | Ent database storage operations | `internal/storage/storage_generated.go` | Server (ent backend) |
 | `routes.go.tmpl` | HTTP route registration | `cmd/server/routes_generated.go` | Server |
 | `models.go.tmpl` | Request/response types | `cmd/server/models_generated.go` | Server |
-| `openapi.go.tmpl` | OpenAPI 3.0 specification | `cmd/server/openapi_generated.go` | Server |
+| `openapi.go.tmpl` | OpenAPI 3.0 specification (generated resource paths) | `cmd/server/openapi_generated.go` | Server |
+| `openapi_extensions.go.tmpl` | User-editable hook for custom/non-generated routes | `cmd/server/openapi_extensions.go` (**create-once**, never overwritten) | Server |
 | `client.go.tmpl` | HTTP client library | `pkg/client/client_generated.go` | Client |
 | `client-models.go.tmpl` | Client-side types | `pkg/client/models_generated.go` | Client |
 | `client-cmd.go.tmpl` | CLI application (Cobra-based) | `cmd/cli/main_generated.go` | CLI |
@@ -197,7 +198,7 @@ Generates complete server-side code:
 - `GenerateStorage()` - Data persistence layer
 - `GenerateRoutes()` - URL routing configuration
 - `GenerateModels()` - Request/response types
-- `GenerateOpenAPI()` - OpenAPI specification
+- `GenerateOpenAPI()` - OpenAPI specification for all Fabrica-managed resources, plus a one-time `openapi_extensions.go` stub for custom routes (see [OpenAPI Extensions](../guides/openapi-extensions.md))
 - `GenerateMiddleware()` - Validation, versioning, conditional requests
 
 **Output:** Files in `cmd/server/`, `internal/storage/`, and `internal/middleware/`

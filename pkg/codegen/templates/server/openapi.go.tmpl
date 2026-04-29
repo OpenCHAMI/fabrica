@@ -107,6 +107,10 @@ func GenerateOpenAPISpec() *openapi3.T {
 	// Register all resource paths
 {{range .Resources}}	register{{.Name}}Paths(spec)
 {{end}}
+	// Register custom (non-Fabrica-generated) paths.
+	// Defined in openapi_extensions.go – safe to edit, never overwritten.
+	registerCustomOpenAPIPaths(spec)
+
 	return spec
 }
 

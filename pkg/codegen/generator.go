@@ -787,6 +787,7 @@ func (g *Generator) LoadTemplates() error {
 		"routes":                    "server/routes.go.tmpl",
 		"models":                    "server/models.go.tmpl",
 		"openapi":                   "server/openapi.go.tmpl",
+		"openapiExtensions":         "server/openapi_extensions.go.tmpl",
 		"export":                    "server/export.go.tmpl",
 		"import":                    "server/import.go.tmpl",
 		"authzClassifier":           "server/authz_classifier.go.tmpl",
@@ -1142,6 +1143,24 @@ func (g *Generator) GenerateOpenAPI() error {
 	}
 
 	fmt.Printf("  ✓ Generated %s\n", filename)
+
+	// Generate the user-editable extensions stub only if it doesn't already exist
+	extStubFilename := filepath.Join(g.OutputDir, "openapi_extensions.go")
+	if _, err := os.Stat(extStubFilename); os.IsNotExist(err) {
+		var extBuf bytes.Buffer
+		extData := g.globalTemplateData("server/openapi_extensions.go.tmpl")
+		if err := g.Templates["openapiExtensions"].Execute(&extBuf, extData); err != nil {
+			return fmt.Errorf("failed to execute openapi extensions template: %w", err)
+		}
+		extFormatted, err := format.Source(extBuf.Bytes())
+		if err != nil {
+			return fmt.Errorf("failed to format openapi extensions stub: %w", err)
+		}
+		if err := os.WriteFile(extStubFilename, extFormatted, 0644); err != nil {
+			return fmt.Errorf("failed to write openapi extensions stub: %w", err)
+		}
+		fmt.Printf("  ✓ Generated %s\n", extStubFilename)
+	}
 
 	return nil
 }
