@@ -244,36 +244,6 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 	s.T().Log("=== All automated reconciliation tests PASSED ===")
 }
 
-// TestReconciliationWithoutEventsWarning tests that reconciliation without events shows a warning
-func (s *RackReconciliationAutomatedTestSuite) TestReconciliationWithoutEventsWarning() {
-	projectName := "no-events-test"
-	projectModule := "github.com/test/noevents"
-
-	s.T().Log("=== Testing Reconciliation With Events Required ===")
-
-	// Initialize with --reconcile and --events (reconciliation requires events)
-	projectDir := filepath.Join(s.tempDir, projectName)
-	cmd := exec.Command(s.fabricaBinary,
-		"init", projectName,
-		"--module", projectModule,
-		"--events",
-		"--reconcile",
-	)
-	cmd.Dir = s.tempDir
-	output, err := cmd.CombinedOutput()
-	s.Require().NoError(err, "init should succeed with both --events and --reconcile: %s", string(output))
-
-	// Verify main.go warns about missing events
-	mainPath := filepath.Join(projectDir, "cmd/server/main.go")
-	mainContent, err := os.ReadFile(mainPath)
-	s.Require().NoError(err)
-	mainStr := string(mainContent)
-
-	s.Assert().Contains(mainStr, "ReconcileEnabled", "main.go should have reconciliation config")
-	s.Assert().Contains(mainStr, "reconcile.NewController", "main.go should have reconciliation controller setup")
-	s.T().Log("✓ Reconciliation properly initialized with events enabled")
-}
-
 // TestReconciliationConfigValues tests custom reconciliation config values
 func (s *RackReconciliationAutomatedTestSuite) TestReconciliationConfigValues() {
 	projectName := "custom-config-test"

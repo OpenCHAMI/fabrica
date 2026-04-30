@@ -20,8 +20,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )
 
@@ -43,8 +45,7 @@ all operations constrained to the workspace root.`,
 
 			server := &mcpServer{
 				workspaceRoot: root,
-				in:            bufio.NewReader(os.Stdin),
-				out:           os.Stdout,
+				debug:         os.Getenv("FABRICA_MCP_DEBUG") == "1",
 			}
 			return server.serve()
 		},
@@ -57,28 +58,7 @@ all operations constrained to the workspace root.`,
 
 type mcpServer struct {
 	workspaceRoot string
-	in            *bufio.Reader
-	out           io.Writer
-}
-
-type mcpRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type mcpResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *mcpError   `json:"error,omitempty"`
-}
-
-type mcpError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	debug         bool
 }
 
 type mcpToolDef struct {
@@ -149,75 +129,283 @@ func toolError(code, message, remediation string, err error) error {
 }
 
 func (s *mcpServer) serve() error {
+	serverVersion := version
+	if serverVersion == "" || serverVersion == "dev" {
+		serverVersion = "0.0.0-dev"
+	}
+
+	sdkServer := mcp.NewServer(
+		&mcp.Implementation{
+			Name:    "fabrica-mcp",
+			Version: serverVersion,
+		},
+		&mcp.ServerOptions{
+			Capabilities: &mcp.ServerCapabilities{
+				Resources: &mcp.ResourceCapabilities{ListChanged: false},
+				Tools:     &mcp.ToolCapabilities{ListChanged: false},
+			},
+		},
+	)
+
+	s.registerTools(sdkServer)
+	s.debugf("starting SDK-backed MCP server workspace=%s", s.workspaceRoot)
+	wire := &mcpWireMode{}
+	return sdkServer.Run(context.Background(), &mcp.IOTransport{
+		Reader: newMCPAutoReader(os.Stdin, wire),
+		Writer: newMCPAutoWriter(os.Stdout, wire),
+	})
+}
+
+type mcpWireProtocol int
+
+const (
+	mcpWireUnknown mcpWireProtocol = iota
+	mcpWireNDJSON
+	mcpWireContentLength
+)
+
+type mcpWireMode struct {
+	mu       sync.RWMutex
+	protocol mcpWireProtocol
+}
+
+func (m *mcpWireMode) get() mcpWireProtocol {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.protocol
+}
+
+func (m *mcpWireMode) set(p mcpWireProtocol) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.protocol == mcpWireUnknown {
+		m.protocol = p
+	}
+}
+
+type mcpAutoReader struct {
+	br      *bufio.Reader
+	mode    *mcpWireMode
+	pending []byte
+}
+
+func newMCPAutoReader(r io.Reader, mode *mcpWireMode) *mcpAutoReader {
+	return &mcpAutoReader{
+		br:   bufio.NewReader(r),
+		mode: mode,
+	}
+}
+
+func (r *mcpAutoReader) Read(p []byte) (int, error) {
+	switch r.detectProtocol() {
+	case mcpWireNDJSON:
+		return r.br.Read(p)
+	case mcpWireContentLength:
+		if len(r.pending) == 0 {
+			frame, err := r.readContentLengthFrame()
+			if err != nil {
+				return 0, err
+			}
+			r.pending = append(frame, '\n')
+		}
+		n := copy(p, r.pending)
+		r.pending = r.pending[n:]
+		return n, nil
+	default:
+		return 0, errors.New("unknown MCP wire protocol")
+	}
+}
+
+func (r *mcpAutoReader) Close() error { return nil }
+
+func (r *mcpAutoReader) detectProtocol() mcpWireProtocol {
+	if p := r.mode.get(); p != mcpWireUnknown {
+		return p
+	}
 	for {
-		payload, err := readMCPMessage(s.in)
+		b, err := r.br.Peek(1)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return nil
+				return mcpWireUnknown
 			}
-			return err
+			return mcpWireUnknown
 		}
-
-		var req mcpRequest
-		if err := json.Unmarshal(payload, &req); err != nil {
-			if err := s.writeError(nil, -32700, "Parse error", err.Error()); err != nil {
-				return err
-			}
+		switch b[0] {
+		case ' ', '\t', '\r', '\n':
+			_, _ = r.br.ReadByte()
 			continue
-		}
-
-		if req.Method == "" {
-			if err := s.writeError(req.idValue(), -32600, "Invalid request", "missing method"); err != nil {
-				return err
-			}
-			continue
-		}
-
-		result, callErr := s.handle(req)
-		if len(req.ID) == 0 {
-			// Notification, no response.
-			continue
-		}
-		if callErr != nil {
-			if err := s.writeError(req.idValue(), -32000, callErr.Error(), nil); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := s.writeResult(req.idValue(), result); err != nil {
-			return err
+		case '{', '[':
+			r.mode.set(mcpWireNDJSON)
+			return mcpWireNDJSON
+		default:
+			r.mode.set(mcpWireContentLength)
+			return mcpWireContentLength
 		}
 	}
 }
 
-func (s *mcpServer) handle(req mcpRequest) (interface{}, error) {
-	switch req.Method {
-	case "initialize":
-		return map[string]interface{}{
-			"protocolVersion": "2024-11-05",
-			"capabilities": map[string]interface{}{
-				"tools": map[string]interface{}{"listChanged": false},
-			},
-			"serverInfo": map[string]interface{}{
-				"name":    "fabrica-mcp",
-				"version": version,
-			},
-		}, nil
-	case "notifications/initialized":
-		return nil, nil
-	case "tools/list":
-		return map[string]interface{}{"tools": s.tools()}, nil
-	case "tools/call":
-		var params mcpToolCallParams
-		if len(req.Params) > 0 {
-			if err := json.Unmarshal(req.Params, &params); err != nil {
-				return nil, fmt.Errorf("invalid tools/call params: %w", err)
+func (r *mcpAutoReader) readContentLengthFrame() ([]byte, error) {
+	contentLength := -1
+	for {
+		line, err := r.br.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) && line == "" {
+				return nil, io.EOF
 			}
+			return nil, err
 		}
-		return s.callTool(params)
-	default:
-		return nil, fmt.Errorf("method not found: %s", req.Method)
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			n, convErr := strconv.Atoi(strings.TrimSpace(value))
+			if convErr != nil || n < 0 {
+				return nil, fmt.Errorf("invalid Content-Length header %q", line)
+			}
+			contentLength = n
+		}
 	}
+	if contentLength < 0 {
+		return nil, errors.New("missing Content-Length header")
+	}
+	payload := make([]byte, contentLength)
+	if _, err := io.ReadFull(r.br, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+type mcpAutoWriter struct {
+	out  io.Writer
+	mode *mcpWireMode
+
+	mu  sync.Mutex
+	buf []byte
+}
+
+func newMCPAutoWriter(w io.Writer, mode *mcpWireMode) *mcpAutoWriter {
+	return &mcpAutoWriter{
+		out:  w,
+		mode: mode,
+	}
+}
+
+func (w *mcpAutoWriter) Write(p []byte) (int, error) {
+	if w.mode.get() != mcpWireContentLength {
+		_, err := w.out.Write(p)
+		return len(p), err
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf = append(w.buf, p...)
+	for {
+		idx := bytes.IndexByte(w.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		line := bytes.TrimSpace(w.buf[:idx])
+		w.buf = w.buf[idx+1:]
+		if len(line) == 0 {
+			continue
+		}
+		header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(line))
+		if os.Getenv("FABRICA_MCP_DEBUG") == "1" {
+			_, _ = fmt.Fprintf(os.Stderr, "[fabrica-mcp] outgoing header=%q payload=%s\n", header, string(line))
+		}
+		if _, err := io.WriteString(w.out, header); err != nil {
+			return 0, err
+		}
+		if _, err := w.out.Write(line); err != nil {
+			return 0, err
+		}
+	}
+	return len(p), nil
+}
+
+func (w *mcpAutoWriter) Close() error {
+	if w.mode.get() != mcpWireContentLength {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(bytes.TrimSpace(w.buf)) > 0 {
+		line := bytes.TrimSpace(w.buf)
+		header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(line))
+		if _, err := io.WriteString(w.out, header); err != nil {
+			return err
+		}
+		if _, err := w.out.Write(line); err != nil {
+			return err
+		}
+	}
+	w.buf = nil
+	return nil
+}
+
+func (s *mcpServer) registerTools(sdkServer *mcp.Server) {
+	for _, def := range s.tools() {
+		toolDef := def
+		sdkServer.AddTool(
+			&mcp.Tool{
+				Name:        toolDef.Name,
+				Title:       toolDef.Name,
+				Description: toolDef.Description,
+				InputSchema: toolDef.InputSchema,
+			},
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				_ = ctx
+				args := map[string]interface{}{}
+				if len(req.Params.Arguments) > 0 {
+					if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+						result := &mcp.CallToolResult{}
+						result.SetError(fmt.Errorf("invalid tool arguments JSON: %w", err))
+						return result, nil
+					}
+				}
+				return s.callToolSDK(toolDef.Name, args)
+			},
+		)
+	}
+}
+
+func (s *mcpServer) callToolSDK(name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
+	callRes, err := s.callTool(mcpToolCallParams{Name: name, Arguments: args})
+	if err != nil {
+		return nil, err
+	}
+	res, ok := callRes.(mcpToolCallResult)
+	if !ok {
+		return nil, fmt.Errorf("unexpected tool result type %T", callRes)
+	}
+
+	content := make([]mcp.Content, 0, len(res.Content))
+	for _, c := range res.Content {
+		if c.Type == "text" {
+			content = append(content, &mcp.TextContent{Text: c.Text})
+		}
+	}
+	if len(content) == 0 {
+		content = append(content, &mcp.TextContent{Text: "{}"})
+	}
+
+	return &mcp.CallToolResult{
+		Content:           content,
+		StructuredContent: res.StructuredContent,
+		IsError:           res.IsError,
+	}, nil
+}
+
+func (s *mcpServer) debugf(format string, args ...interface{}) {
+	if !s.debug {
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr, "[fabrica-mcp] "+format+"\n", args...)
 }
 
 func (s *mcpServer) tools() []mcpToolDef {
@@ -1619,74 +1807,6 @@ func listGeneratedFiles(projectDir string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
-}
-
-func readMCPMessage(r *bufio.Reader) ([]byte, error) {
-	headers := map[string]string{}
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			break
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		headers[strings.ToLower(strings.TrimSpace(parts[0]))] = strings.TrimSpace(parts[1])
-	}
-
-	clHeader, ok := headers["content-length"]
-	if !ok {
-		return nil, fmt.Errorf("missing Content-Length header")
-	}
-	length, err := strconv.Atoi(clHeader)
-	if err != nil || length < 0 {
-		return nil, fmt.Errorf("invalid Content-Length header")
-	}
-
-	body := make([]byte, length)
-	if _, err := io.ReadFull(r, body); err != nil {
-		return nil, err
-	}
-	return body, nil
-}
-
-func (s *mcpServer) writeResult(id interface{}, result interface{}) error {
-	resp := mcpResponse{JSONRPC: "2.0", ID: id, Result: result}
-	return writeMCPMessage(s.out, resp)
-}
-
-func (s *mcpServer) writeError(id interface{}, code int, message string, data interface{}) error {
-	resp := mcpResponse{JSONRPC: "2.0", ID: id, Error: &mcpError{Code: code, Message: message, Data: data}}
-	return writeMCPMessage(s.out, resp)
-}
-
-func writeMCPMessage(w io.Writer, payload interface{}) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(data))
-	if _, err := io.WriteString(w, header); err != nil {
-		return err
-	}
-	_, err = w.Write(data)
-	return err
-}
-
-func (r mcpRequest) idValue() interface{} {
-	if len(r.ID) == 0 {
-		return nil
-	}
-	var decoded interface{}
-	if err := json.Unmarshal(r.ID, &decoded); err != nil {
-		return nil
-	}
-	return decoded
 }
 
 func schemaObject(props map[string]interface{}) map[string]interface{} {

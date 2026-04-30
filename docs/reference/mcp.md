@@ -15,7 +15,8 @@ SPDX-License-Identifier: MIT
 Key characteristics:
 
 - JSON-RPC 2.0 message envelope
-- MCP framing via `Content-Length` headers
+- MCP framing via `Content-Length` headers (primary)
+- Compatibility input mode for raw JSON envelopes on stdio during handshake/interoperability edge cases
 - Tool execution constrained to `--workspace`
 - Explicit mutating modes: `dry_run` and `execute`; mutating tools default to `dry_run`
 - Structured tool error payload with code and remediation
@@ -38,6 +39,8 @@ fabrica mcp --workspace /path/to/workspace
 
 - `initialize`
 - `notifications/initialized`
+- `resources/list`
+- `resources/templates/list`
 - `tools/list`
 - `tools/call`
 

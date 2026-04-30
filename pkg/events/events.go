@@ -254,6 +254,9 @@ type SubscriptionID string
 
 // EventBus manages event publishing and subscription
 type EventBus interface {
+	// Start begins processing events.
+	Start()
+
 	// Publish a CloudEvent
 	Publish(ctx context.Context, event Event) error
 

@@ -5,7 +5,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,33 +15,9 @@ import (
 	"time"
 )
 
-func TestMCPHandle_InitializeAndToolsList(t *testing.T) {
+func TestMCPToolsList_HasExpectedTools(t *testing.T) {
 	srv := &mcpServer{workspaceRoot: t.TempDir()}
-
-	initResp, err := srv.handle(mcpRequest{Method: "initialize"})
-	if err != nil {
-		t.Fatalf("initialize failed: %v", err)
-	}
-	initMap, ok := initResp.(map[string]interface{})
-	if !ok {
-		t.Fatalf("initialize response type mismatch: %T", initResp)
-	}
-	if initMap["protocolVersion"] != "2024-11-05" {
-		t.Fatalf("unexpected protocolVersion: %v", initMap["protocolVersion"])
-	}
-
-	toolsResp, err := srv.handle(mcpRequest{Method: "tools/list"})
-	if err != nil {
-		t.Fatalf("tools/list failed: %v", err)
-	}
-	toolsMap, ok := toolsResp.(map[string]interface{})
-	if !ok {
-		t.Fatalf("tools/list response type mismatch: %T", toolsResp)
-	}
-	toolDefs, ok := toolsMap["tools"].([]mcpToolDef)
-	if !ok {
-		t.Fatalf("tools/list tools type mismatch: %T", toolsMap["tools"])
-	}
+	toolDefs := srv.tools()
 	if !hasToolName(toolDefs, "create_service") {
 		t.Fatalf("expected create_service tool in tools/list")
 	}
@@ -50,6 +28,49 @@ func TestMCPHandle_InitializeAndToolsList(t *testing.T) {
 		if !hasToolName(toolDefs, name) {
 			t.Fatalf("expected %s tool in tools/list", name)
 		}
+	}
+}
+
+func TestMCPAutoReader_ContentLengthInput(t *testing.T) {
+	mode := &mcpWireMode{}
+	payload := `{"jsonrpc":"2.0","id":0,"method":"initialize"}`
+	input := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(payload), payload)
+	reader := newMCPAutoReader(strings.NewReader(input), mode)
+	out, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if string(out) != payload+"\n" {
+		t.Fatalf("unexpected output: %q", string(out))
+	}
+	if got := mode.get(); got != mcpWireContentLength {
+		t.Fatalf("expected content-length mode, got %v", got)
+	}
+}
+
+func TestMCPAutoWriter_NDJSONPassthroughAndFramedOutput(t *testing.T) {
+	payload := `{"jsonrpc":"2.0","id":0,"result":{}}` + "\n"
+
+	ndMode := &mcpWireMode{}
+	var ndOut bytes.Buffer
+	ndWriter := newMCPAutoWriter(&ndOut, ndMode)
+	if _, err := ndWriter.Write([]byte(payload)); err != nil {
+		t.Fatalf("ndjson write failed: %v", err)
+	}
+	if ndOut.String() != payload {
+		t.Fatalf("expected passthrough payload, got %q", ndOut.String())
+	}
+
+	framedMode := &mcpWireMode{}
+	framedMode.set(mcpWireContentLength)
+	var framedOut bytes.Buffer
+	framedWriter := newMCPAutoWriter(&framedOut, framedMode)
+	if _, err := framedWriter.Write([]byte(payload)); err != nil {
+		t.Fatalf("framed write failed: %v", err)
+	}
+	want := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(strings.TrimSpace(payload)), strings.TrimSpace(payload))
+	if framedOut.String() != want {
+		t.Fatalf("unexpected framed output:\n%s\nwant:\n%s", framedOut.String(), want)
 	}
 }
 
