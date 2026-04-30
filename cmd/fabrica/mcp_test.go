@@ -5,15 +5,20 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+const latestNegotiatedProtocolVersion = "2025-11-25"
 
 func TestMCPToolsList_HasExpectedTools(t *testing.T) {
 	srv := &mcpServer{workspaceRoot: t.TempDir()}
@@ -45,6 +50,49 @@ func TestMCPAutoReader_ContentLengthInput(t *testing.T) {
 	}
 	if got := mode.get(); got != mcpWireContentLength {
 		t.Fatalf("expected content-length mode, got %v", got)
+	}
+}
+
+func TestMCPAutoReader_RawJSONInitializeInput(t *testing.T) {
+	mode := &mcpWireMode{}
+	payload := `{"jsonrpc":"2.0","id":0,"method":"initialize"}` + "\n"
+	reader := newMCPAutoReader(strings.NewReader(payload), mode)
+	out, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if string(out) != payload {
+		t.Fatalf("unexpected output: %q", string(out))
+	}
+	if got := mode.get(); got != mcpWireNDJSON {
+		t.Fatalf("expected ndjson mode, got %v", got)
+	}
+}
+
+func TestMCPServe_InitializeFlow_EndToEnd(t *testing.T) {
+	workspace := t.TempDir()
+	srv := &mcpServer{workspaceRoot: workspace}
+	result := performInitialize(t, srv, "2024-11-05")
+	if _, ok := result["protocolVersion"].(string); !ok {
+		t.Fatalf("initialize result missing protocolVersion: %#v", result)
+	}
+}
+
+func TestMCPServe_InitializeFlow_NegotiatesSupportedProtocolVersion(t *testing.T) {
+	workspace := t.TempDir()
+	srv := &mcpServer{workspaceRoot: workspace}
+	result := performInitialize(t, srv, "2024-11-05")
+	if got := fmt.Sprintf("%v", result["protocolVersion"]); got != "2024-11-05" {
+		t.Fatalf("expected supported protocol version to be preserved, got %q", got)
+	}
+}
+
+func TestMCPServe_InitializeFlow_FallsBackForUnsupportedProtocolVersion(t *testing.T) {
+	workspace := t.TempDir()
+	srv := &mcpServer{workspaceRoot: workspace}
+	result := performInitialize(t, srv, "2099-01-01")
+	if got := fmt.Sprintf("%v", result["protocolVersion"]); got != latestNegotiatedProtocolVersion {
+		t.Fatalf("expected fallback to latest supported protocol version %q, got %q", latestNegotiatedProtocolVersion, got)
 	}
 }
 
@@ -513,4 +561,96 @@ func issuesContainCode(raw interface{}, code string) bool {
 		}
 	}
 	return false
+}
+
+func readFramedMCPResponse(r io.Reader) ([]byte, error) {
+	br := bufio.NewReader(r)
+	contentLength := -1
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			n, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return nil, err
+			}
+			contentLength = n
+		}
+	}
+	if contentLength < 0 {
+		return nil, fmt.Errorf("missing Content-Length header")
+	}
+	payload := make([]byte, contentLength)
+	if _, err := io.ReadFull(br, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func performInitialize(t *testing.T, srv *mcpServer, protocolVersion string) map[string]interface{} {
+	t.Helper()
+
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- srv.serveWithIO(inR, outW)
+	}()
+
+	initReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]interface{}{
+			"protocolVersion": protocolVersion,
+			"capabilities":    map[string]interface{}{},
+			"clientInfo": map[string]interface{}{
+				"name":    "mcp-test",
+				"version": "0.0.0",
+			},
+		},
+	}
+	payload, err := json.Marshal(initReq)
+	if err != nil {
+		t.Fatalf("marshal initialize payload: %v", err)
+	}
+	framed := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(payload), payload)
+	if _, err := io.WriteString(inW, framed); err != nil {
+		t.Fatalf("write initialize request: %v", err)
+	}
+
+	respPayload, err := readFramedMCPResponse(outR)
+	if err != nil {
+		t.Fatalf("read initialize response: %v", err)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(respPayload, &resp); err != nil {
+		t.Fatalf("unmarshal initialize response: %v", err)
+	}
+	if _, hasErr := resp["error"]; hasErr {
+		t.Fatalf("initialize returned error: %s", string(respPayload))
+	}
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("initialize response missing result: %s", string(respPayload))
+	}
+
+	_ = inW.Close()
+	if err := <-errCh; err != nil {
+		t.Fatalf("serveWithIO exited with error: %v", err)
+	}
+
+	return result
 }

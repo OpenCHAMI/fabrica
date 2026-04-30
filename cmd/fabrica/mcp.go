@@ -129,6 +129,10 @@ func toolError(code, message, remediation string, err error) error {
 }
 
 func (s *mcpServer) serve() error {
+	return s.serveWithIO(os.Stdin, os.Stdout)
+}
+
+func (s *mcpServer) serveWithIO(in io.Reader, out io.Writer) error {
 	serverVersion := version
 	if serverVersion == "" || serverVersion == "dev" {
 		serverVersion = "0.0.0-dev"
@@ -151,8 +155,8 @@ func (s *mcpServer) serve() error {
 	s.debugf("starting SDK-backed MCP server workspace=%s", s.workspaceRoot)
 	wire := &mcpWireMode{}
 	return sdkServer.Run(context.Background(), &mcp.IOTransport{
-		Reader: newMCPAutoReader(os.Stdin, wire),
-		Writer: newMCPAutoWriter(os.Stdout, wire),
+		Reader: newMCPAutoReader(in, wire),
+		Writer: newMCPAutoWriter(out, wire),
 	})
 }
 

@@ -17,11 +17,24 @@ Key characteristics:
 - JSON-RPC 2.0 message envelope
 - MCP framing via `Content-Length` headers (primary)
 - Compatibility input mode for raw JSON envelopes on stdio during handshake/interoperability edge cases
+- Initialize protocol negotiation preserves supported client protocol versions and falls back to the latest SDK-supported version for unknown newer versions
 - Tool execution constrained to `--workspace`
 - Explicit mutating modes: `dry_run` and `execute`; mutating tools default to `dry_run`
 - Structured tool error payload with code and remediation
 - Agent-ready `recommended_next_calls` in mutating tool results
 - Strict argument validation; unknown arguments and wrong types return `invalid_arguments`
+
+## Protocol Negotiation
+
+During `initialize`, Fabrica follows the go-sdk negotiation policy:
+
+- If the client requests a protocol version supported by the bundled SDK, Fabrica responds with that same version.
+- If the client requests an unknown newer protocol version, Fabrica falls back to the latest protocol version supported by the bundled SDK.
+
+Currently tested against:
+
+- `2024-11-05` as a preserved supported version
+- `2025-11-25` as the current latest supported fallback version
 
 ## Start The Server
 
