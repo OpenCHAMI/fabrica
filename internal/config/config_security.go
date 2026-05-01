@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package config provides shared Fabrica project configuration models and helpers.
 package config
 
 import (
@@ -15,8 +16,10 @@ import (
 type SecurityMode string
 
 const (
+	// SecurityModeEnforce causes generated authorization to reject unauthorized requests.
 	SecurityModeEnforce SecurityMode = "enforce"
-	SecurityModeShadow  SecurityMode = "shadow"
+	// SecurityModeShadow causes generated authorization to observe and report denials without enforcing them.
+	SecurityModeShadow SecurityMode = "shadow"
 )
 
 // SecurityConfig controls TokenSmith-first authentication/authorization generation.
@@ -27,10 +30,12 @@ type SecurityConfig struct {
 	AuthZ AuthZConfig `yaml:"authz"`
 }
 
+// AuthNConfig controls whether authentication support is generated.
 type AuthNConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
 
+// AuthZConfig controls whether authorization is generated and how it behaves.
 type AuthZConfig struct {
 	Enabled bool         `yaml:"enabled"`
 	Mode    SecurityMode `yaml:"mode"`
@@ -45,6 +50,7 @@ func (m SecurityMode) valid() bool {
 	}
 }
 
+// NormalizeSecurityMode coerces empty or invalid modes to the default enforce mode.
 func NormalizeSecurityMode(mode SecurityMode, warnOut io.Writer) SecurityMode {
 	if mode == "" {
 		return SecurityModeEnforce

@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package mcp provides Fabrica's built-in MCP server and supporting helpers.
 package mcp
 
 import (
-	"bytes"
 	"fmt"
 	"go/format"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -316,53 +315,6 @@ func withWorkingDir(dir string, fn func() error) error {
 		_ = os.Chdir(cwd)
 	}()
 	return fn()
-}
-
-// runWithCapturedOutput executes fn and captures its stdout/stderr output.
-// Restores stdout/stderr after execution completes.
-func runWithCapturedOutput(fn func() error) (string, error) {
-	oldOut := os.Stdout
-	oldErr := os.Stderr
-
-	outR, outW, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	errR, errW, err := os.Pipe()
-	if err != nil {
-		_ = outR.Close()
-		_ = outW.Close()
-		return "", err
-	}
-
-	os.Stdout = outW
-	os.Stderr = errW
-
-	var outBuf, errBuf bytes.Buffer
-	outDone := make(chan struct{})
-	errDone := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&outBuf, outR)
-		close(outDone)
-	}()
-	go func() {
-		_, _ = io.Copy(&errBuf, errR)
-		close(errDone)
-	}()
-
-	callErr := fn()
-
-	_ = outW.Close()
-	_ = errW.Close()
-	os.Stdout = oldOut
-	os.Stderr = oldErr
-	<-outDone
-	<-errDone
-	_ = outR.Close()
-	_ = errR.Close()
-
-	output := strings.TrimSpace(strings.Join([]string{outBuf.String(), errBuf.String()}, "\n"))
-	return output, callErr
 }
 
 // execCommand runs a command in a working directory with output capture.

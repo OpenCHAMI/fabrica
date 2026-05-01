@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package mcp provides Fabrica's built-in MCP server and supporting helpers.
 package mcp
 
 import (

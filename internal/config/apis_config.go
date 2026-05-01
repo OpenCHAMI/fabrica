@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Package config provides shared Fabrica project configuration models and helpers.
 package config
 
 import (
@@ -255,10 +256,6 @@ func (c *APIsConfig) PrimaryGroup() (*APIGroup, error) {
 	return &c.Groups[0], nil
 }
 
-func (c *APIsConfig) primaryGroup() (*APIGroup, error) {
-	return c.PrimaryGroup()
-}
-
 // AddResource appends a resource name to the primary group's resource list
 // if it isn't already present. This is called automatically by
 // 'fabrica add resource' to maintain the resource inventory in apis.yaml.
@@ -277,8 +274,4 @@ func (c *APIsConfig) AddResource(name string) {
 		}
 	}
 	group.Resources = append(group.Resources, name)
-}
-
-func (c *APIsConfig) addResource(name string) {
-	c.AddResource(name)
 }

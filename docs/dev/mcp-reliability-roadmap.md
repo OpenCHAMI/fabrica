@@ -6,11 +6,11 @@ SPDX-License-Identifier: MIT
 
 # Fabrica MCP Reliability Roadmap
 
-Status snapshot (2026-04-30):
+Status snapshot (2026-05-01):
 
-- Completed: core MCP server migration to go-sdk, workspace-scoped tooling, transport compatibility layer, baseline unit coverage for framing and tool error contracts.
-- Partially completed: capability conformance checks.
-- Not started: real-client contract matrix, release gating for MCP contracts, and ownership/codeowner policy.
+- Completed: core MCP server migration to go-sdk, workspace-scoped tooling, transport compatibility layer, protocol negotiation regression tests, and baseline unit coverage for framing and tool error contracts.
+- Partially completed: capability conformance checks and release discipline documentation.
+- Not started: real-client contract matrix, CI-enforced MCP contract gate, and named reliability ownership.
 
 ## Goals
 
@@ -35,7 +35,7 @@ Status snapshot (2026-04-30):
 - Regression tests status:
   - [x] framed initialize request (covered by unit tests for Content-Length input)
   - [x] raw JSON initialize request (covered by dedicated raw JSON initialize input test)
-  - [x] end-to-end `serve()` initialize flow
+  - [x] end-to-end `serve()` initialize flow (`serveWithIO` test path)
 
 ## Phase 2: Compatibility Matrix And Contract Tests
 
@@ -65,6 +65,5 @@ Status snapshot (2026-04-30):
 ## Ownership
 
 - [ ] Assign one maintainer as MCP reliability owner.
-- [ ] Require code-owner review for files under `cmd/fabrica/mcp*` and MCP docs.
+- [ ] Require code-owner review for files under `internal/mcp/*` and MCP docs.
   Current state: no CODEOWNERS file is present in the repository.
-

@@ -6,15 +6,13 @@ package mcp
 
 import (
 	"encoding/json"
-	"io"
 )
 
 // mcpServer represents an MCP (Model Context Protocol) server that communicates over stdio.
 // It manages workspace boundaries and handles all tool calls within the workspace root.
 type mcpServer struct {
 	workspaceRoot string
-	in            io.Reader
-	out           io.Writer
+	debug         bool
 }
 
 // MCP Protocol Message Types
@@ -25,21 +23,6 @@ type mcpRequest struct {
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-// mcpResponse represents an outgoing MCP JSON-RPC response.
-type mcpResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *mcpError   `json:"error,omitempty"`
-}
-
-// mcpError represents an error in an MCP JSON-RPC response.
-type mcpError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
 }
 
 // Tool Definition and Invocation Types
