@@ -13,6 +13,7 @@ import (
 	"text/template"
 	"time"
 
+	configpkg "github.com/openchami/fabrica/internal/config"
 	"github.com/openchami/fabrica/internal/constants"
 	"github.com/openchami/fabrica/pkg/codegen"
 	"github.com/spf13/cobra"
@@ -350,8 +351,8 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("✅ Project initialized successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
-	if group, err := apiConfig.primaryGroup(); err == nil {
+	apiConfig := configpkg.DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
+	if group, err := apiConfig.PrimaryGroup(); err == nil {
 		fmt.Printf("  1. Add resources with 'fabrica add resource <name>'\n")
 		fmt.Printf("  2. Define types in apis/%s/<version>/*_types.go\n", group.Name)
 	} else {
@@ -427,8 +428,8 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		dbDriver = "sqlite3"
 	}
 
-	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
-	group, err := apiConfig.primaryGroup()
+	apiConfig := configpkg.DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
+	group, err := apiConfig.PrimaryGroup()
 	if err != nil {
 		return err
 	}
@@ -528,10 +529,10 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	}
 
 	// Create apis.yaml to declare groups and versions
-	if err := SaveAPIsConfig(targetDir, apiConfig); err != nil {
-		return fmt.Errorf("failed to write %s: %w", APIsConfigFileName, err)
+	if err := configpkg.SaveAPIsConfig(targetDir, apiConfig); err != nil {
+		return fmt.Errorf("failed to write %s: %w", configpkg.APIsConfigFileName, err)
 	}
-	fmt.Printf("  ├─ Created %s (group %s, storage %s)\n", APIsConfigFileName, group.Name, group.StorageVersion)
+	fmt.Printf("  ├─ Created %s (group %s, storage %s)\n", configpkg.APIsConfigFileName, group.Name, group.StorageVersion)
 
 	// Create stub storage files if storage is enabled
 	if opts.withStorage {
@@ -631,53 +632,53 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 	}
 
 	// Build configuration from options
-	config := &FabricaConfig{
-		Project: ProjectConfig{
+	cfg := &configpkg.FabricaConfig{
+		Project: configpkg.ProjectConfig{
 			Name:        projectName,
 			Module:      opts.modulePath,
 			Description: opts.description,
 			Created:     time.Now(),
 		},
-		Features: FeaturesConfig{
-			Validation: ValidationConfig{
+		Features: configpkg.FeaturesConfig{
+			Validation: configpkg.ValidationConfig{
 				Enabled: opts.validationMode != "disabled",
 				Mode:    opts.validationMode,
 			},
-			Events: EventsConfig{
+			Events: configpkg.EventsConfig{
 				Enabled: opts.withEvents,
 				BusType: opts.eventBusType,
 			},
-			Conditional: ConditionalConfig{
+			Conditional: configpkg.ConditionalConfig{
 				Enabled:       true, // Core feature always enabled
 				ETagAlgorithm: "sha256",
 			},
-			Auth: AuthConfig{
+			Auth: configpkg.AuthConfig{
 				Enabled: opts.withAuth,
 			},
-			Storage: StorageConfig{
+			Storage: configpkg.StorageConfig{
 				Enabled:  opts.withStorage,
 				Type:     opts.storageType,
 				DBDriver: dbDriver,
 			},
-			Metrics: MetricsConfig{
+			Metrics: configpkg.MetricsConfig{
 				Enabled: opts.withMetrics,
 			},
-			Reconciliation: ReconciliationConfig{
+			Reconciliation: configpkg.ReconciliationConfig{
 				Enabled:      opts.withReconcile,
 				WorkerCount:  opts.reconcileWorkers,
 				RequeueDelay: opts.reconcileRequeueMs,
 			},
-			Security: SecurityConfig{
-				AuthN: AuthNConfig{
+			Security: configpkg.SecurityConfig{
+				AuthN: configpkg.AuthNConfig{
 					Enabled: opts.withAuth,
 				},
-				AuthZ: AuthZConfig{
+				AuthZ: configpkg.AuthZConfig{
 					Enabled: false,
-					Mode:    SecurityModeEnforce,
+					Mode:    configpkg.SecurityModeEnforce,
 				},
 			},
 		},
-		Generation: GenerationConfig{
+		Generation: configpkg.GenerationConfig{
 			Handlers:       true,
 			Storage:        opts.withStorage,
 			Client:         true,
@@ -689,11 +690,11 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 	}
 
 	// Save configuration
-	if err := SaveConfig(targetDir, config); err != nil {
+	if err := configpkg.SaveConfig(targetDir, cfg); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
-	fmt.Printf("  ├─ Created %s\n", ConfigFileName)
+	fmt.Printf("  ├─ Created %s\n", configpkg.ConfigFileName)
 
 	return nil
 }

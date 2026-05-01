@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package config
 
 import (
 	"fmt"
@@ -217,7 +217,7 @@ func SaveConfig(targetDir string, config *FabricaConfig) error {
 // Returns a descriptive error if any validation rule is violated.
 func ValidateConfig(config *FabricaConfig) error {
 	// Normalize security settings first (may emit warnings).
-	config.Features.Security.AuthZ.Mode = normalizeSecurityMode(config.Features.Security.AuthZ.Mode, os.Stderr)
+	config.Features.Security.AuthZ.Mode = NormalizeSecurityMode(config.Features.Security.AuthZ.Mode, os.Stderr)
 
 	// Validate project fields
 	if config.Project.Name == "" {

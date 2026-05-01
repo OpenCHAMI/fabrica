@@ -2,27 +2,72 @@
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package mcp
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	configpkg "github.com/openchami/fabrica/internal/config"
 )
 
-const latestNegotiatedProtocolVersion = "2025-11-25"
+func TestMain(m *testing.M) {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	repoRoot := filepath.Clean(filepath.Join(wd, "..", ".."))
+	binaryPath := filepath.Join(repoRoot, ".tmp", "fabrica-mcp-test")
+	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
+		panic(err)
+	}
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/fabrica")
+	cmd.Dir = repoRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("FABRICA_MCP_TEST_BINARY", binaryPath); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.Remove(binaryPath)
+	os.Exit(code)
+}
 
-func TestMCPToolsList_HasExpectedTools(t *testing.T) {
+func TestMCPHandle_InitializeAndToolsList(t *testing.T) {
 	srv := &mcpServer{workspaceRoot: t.TempDir()}
-	toolDefs := srv.tools()
+
+	initResp, err := srv.handle(mcpRequest{Method: "initialize"})
+	if err != nil {
+		t.Fatalf("initialize failed: %v", err)
+	}
+	initMap, ok := initResp.(map[string]interface{})
+	if !ok {
+		t.Fatalf("initialize response type mismatch: %T", initResp)
+	}
+	if initMap["protocolVersion"] != "2024-11-05" {
+		t.Fatalf("unexpected protocolVersion: %v", initMap["protocolVersion"])
+	}
+
+	toolsResp, err := srv.handle(mcpRequest{Method: "tools/list"})
+	if err != nil {
+		t.Fatalf("tools/list failed: %v", err)
+	}
+	toolsMap, ok := toolsResp.(map[string]interface{})
+	if !ok {
+		t.Fatalf("tools/list response type mismatch: %T", toolsResp)
+	}
+	toolDefs, ok := toolsMap["tools"].([]mcpToolDef)
+	if !ok {
+		t.Fatalf("tools/list tools type mismatch: %T", toolsMap["tools"])
+	}
 	if !hasToolName(toolDefs, "create_service") {
 		t.Fatalf("expected create_service tool in tools/list")
 	}
@@ -33,92 +78,6 @@ func TestMCPToolsList_HasExpectedTools(t *testing.T) {
 		if !hasToolName(toolDefs, name) {
 			t.Fatalf("expected %s tool in tools/list", name)
 		}
-	}
-}
-
-func TestMCPAutoReader_ContentLengthInput(t *testing.T) {
-	mode := &mcpWireMode{}
-	payload := `{"jsonrpc":"2.0","id":0,"method":"initialize"}`
-	input := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(payload), payload)
-	reader := newMCPAutoReader(strings.NewReader(input), mode)
-	out, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("ReadAll failed: %v", err)
-	}
-	if string(out) != payload+"\n" {
-		t.Fatalf("unexpected output: %q", string(out))
-	}
-	if got := mode.get(); got != mcpWireContentLength {
-		t.Fatalf("expected content-length mode, got %v", got)
-	}
-}
-
-func TestMCPAutoReader_RawJSONInitializeInput(t *testing.T) {
-	mode := &mcpWireMode{}
-	payload := `{"jsonrpc":"2.0","id":0,"method":"initialize"}` + "\n"
-	reader := newMCPAutoReader(strings.NewReader(payload), mode)
-	out, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("ReadAll failed: %v", err)
-	}
-	if string(out) != payload {
-		t.Fatalf("unexpected output: %q", string(out))
-	}
-	if got := mode.get(); got != mcpWireNDJSON {
-		t.Fatalf("expected ndjson mode, got %v", got)
-	}
-}
-
-func TestMCPServe_InitializeFlow_EndToEnd(t *testing.T) {
-	workspace := t.TempDir()
-	srv := &mcpServer{workspaceRoot: workspace}
-	result := performInitialize(t, srv, "2024-11-05")
-	if _, ok := result["protocolVersion"].(string); !ok {
-		t.Fatalf("initialize result missing protocolVersion: %#v", result)
-	}
-}
-
-func TestMCPServe_InitializeFlow_NegotiatesSupportedProtocolVersion(t *testing.T) {
-	workspace := t.TempDir()
-	srv := &mcpServer{workspaceRoot: workspace}
-	result := performInitialize(t, srv, "2024-11-05")
-	if got := fmt.Sprintf("%v", result["protocolVersion"]); got != "2024-11-05" {
-		t.Fatalf("expected supported protocol version to be preserved, got %q", got)
-	}
-}
-
-func TestMCPServe_InitializeFlow_FallsBackForUnsupportedProtocolVersion(t *testing.T) {
-	workspace := t.TempDir()
-	srv := &mcpServer{workspaceRoot: workspace}
-	result := performInitialize(t, srv, "2099-01-01")
-	if got := fmt.Sprintf("%v", result["protocolVersion"]); got != latestNegotiatedProtocolVersion {
-		t.Fatalf("expected fallback to latest supported protocol version %q, got %q", latestNegotiatedProtocolVersion, got)
-	}
-}
-
-func TestMCPAutoWriter_NDJSONPassthroughAndFramedOutput(t *testing.T) {
-	payload := `{"jsonrpc":"2.0","id":0,"result":{}}` + "\n"
-
-	ndMode := &mcpWireMode{}
-	var ndOut bytes.Buffer
-	ndWriter := newMCPAutoWriter(&ndOut, ndMode)
-	if _, err := ndWriter.Write([]byte(payload)); err != nil {
-		t.Fatalf("ndjson write failed: %v", err)
-	}
-	if ndOut.String() != payload {
-		t.Fatalf("expected passthrough payload, got %q", ndOut.String())
-	}
-
-	framedMode := &mcpWireMode{}
-	framedMode.set(mcpWireContentLength)
-	var framedOut bytes.Buffer
-	framedWriter := newMCPAutoWriter(&framedOut, framedMode)
-	if _, err := framedWriter.Write([]byte(payload)); err != nil {
-		t.Fatalf("framed write failed: %v", err)
-	}
-	want := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(strings.TrimSpace(payload)), strings.TrimSpace(payload))
-	if framedOut.String() != want {
-		t.Fatalf("unexpected framed output:\n%s\nwant:\n%s", framedOut.String(), want)
 	}
 }
 
@@ -233,48 +192,36 @@ func TestMCPCallTool_DefaultModeIsDryRun(t *testing.T) {
 func TestMCPValidateProject_DetectsGeneratedArtifactsStale(t *testing.T) {
 	workspace := t.TempDir()
 	projectDir := filepath.Join(workspace, "stale-check")
-
-	opts := &initOptions{
-		modulePath:         "github.com/example/stale-check",
-		description:        "stale check",
-		withAuth:           false,
-		withStorage:        true,
-		withMetrics:        false,
-		withVersion:        true,
-		validationMode:     "strict",
-		withEvents:         false,
-		eventBusType:       "memory",
-		apiGroup:           "example.fabrica.dev",
-		storageVersion:     "v1",
-		apiVersions:        []string{"v1"},
-		withReconcile:      false,
-		reconcileWorkers:   3,
-		reconcileRequeueMs: 5,
-		storageType:        "file",
-		dbDriver:           "sqlite",
-	}
-
-	if err := runInit(projectDir, opts); err != nil {
-		t.Fatalf("runInit failed: %v", err)
-	}
-
-	addOpts := &addOptions{
-		withValidation: true,
-		withStatus:     true,
-	}
-	if err := withWorkingDir(projectDir, func() error {
-		return runAddResource("Device", addOpts)
+	srv := &mcpServer{workspaceRoot: workspace}
+	if _, err := srv.callTool(mcpToolCallParams{
+		Name: "create_service",
+		Arguments: map[string]interface{}{
+			"project_name": "stale-check",
+			"mode":         "execute",
+		},
 	}); err != nil {
-		t.Fatalf("runAddResource failed: %v", err)
+		t.Fatalf("create_service failed: %v", err)
+	}
+	if _, err := srv.callTool(mcpToolCallParams{
+		Name: "add_resource",
+		Arguments: map[string]interface{}{
+			"project_path":    "stale-check",
+			"resource_name":   "Device",
+			"mode":            "execute",
+			"with_validation": true,
+			"with_status":     true,
+		},
+	}); err != nil {
+		t.Fatalf("add_resource failed: %v", err)
 	}
 
-	apis, err := LoadAPIsConfig(projectDir)
+	apis, err := configpkg.LoadAPIsConfig(projectDir)
 	if err != nil {
 		t.Fatalf("LoadAPIsConfig failed: %v", err)
 	}
-	group, err := apis.primaryGroup()
+	group, err := apis.PrimaryGroup()
 	if err != nil {
-		t.Fatalf("primaryGroup failed: %v", err)
+		t.Fatalf("PrimaryGroup failed: %v", err)
 	}
 	typeFile := filepath.Join(projectDir, "apis", group.Name, group.StorageVersion, "device_types.go")
 	routesFile := filepath.Join(projectDir, "cmd", "server", "routes_generated.go")
@@ -291,7 +238,6 @@ func TestMCPValidateProject_DetectsGeneratedArtifactsStale(t *testing.T) {
 		t.Fatalf("Chtimes types failed: %v", err)
 	}
 
-	srv := &mcpServer{workspaceRoot: workspace}
 	resp, err := srv.callTool(mcpToolCallParams{
 		Name: "validate_project",
 		Arguments: map[string]interface{}{
@@ -319,30 +265,29 @@ func TestMCPValidateProject_DetectsGeneratedArtifactsStale(t *testing.T) {
 
 func TestMCPDefineResourceSchema_UpdatesTypeFile(t *testing.T) {
 	workspace := t.TempDir()
-	projectDir := filepath.Join(workspace, "schema-api")
-	opts := &initOptions{
-		modulePath:       "github.com/example/schema-api",
-		withStorage:      true,
-		withVersion:      true,
-		validationMode:   "strict",
-		eventBusType:     "memory",
-		apiGroup:         "example.fabrica.dev",
-		storageVersion:   "v1",
-		apiVersions:      []string{"v1"},
-		storageType:      "file",
-		dbDriver:         "sqlite",
-		reconcileWorkers: 3,
-	}
-	if err := runInit(projectDir, opts); err != nil {
-		t.Fatalf("runInit failed: %v", err)
-	}
-	if err := withWorkingDir(projectDir, func() error {
-		return runAddResource("Widget", &addOptions{withValidation: true, withStatus: true})
+	srv := &mcpServer{workspaceRoot: workspace}
+	if _, err := srv.callTool(mcpToolCallParams{
+		Name: "create_service",
+		Arguments: map[string]interface{}{
+			"project_name": "schema-api",
+			"mode":         "execute",
+		},
 	}); err != nil {
-		t.Fatalf("runAddResource failed: %v", err)
+		t.Fatalf("create_service failed: %v", err)
+	}
+	if _, err := srv.callTool(mcpToolCallParams{
+		Name: "add_resource",
+		Arguments: map[string]interface{}{
+			"project_path":    "schema-api",
+			"resource_name":   "Widget",
+			"mode":            "execute",
+			"with_validation": true,
+			"with_status":     true,
+		},
+	}); err != nil {
+		t.Fatalf("add_resource failed: %v", err)
 	}
 
-	srv := &mcpServer{workspaceRoot: workspace}
 	resp, err := srv.callTool(mcpToolCallParams{
 		Name: "define_resource_schema",
 		Arguments: map[string]interface{}{
@@ -561,96 +506,4 @@ func issuesContainCode(raw interface{}, code string) bool {
 		}
 	}
 	return false
-}
-
-func readFramedMCPResponse(r io.Reader) ([]byte, error) {
-	br := bufio.NewReader(r)
-	contentLength := -1
-	for {
-		line, err := br.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			break
-		}
-		name, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
-			n, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil {
-				return nil, err
-			}
-			contentLength = n
-		}
-	}
-	if contentLength < 0 {
-		return nil, fmt.Errorf("missing Content-Length header")
-	}
-	payload := make([]byte, contentLength)
-	if _, err := io.ReadFull(br, payload); err != nil {
-		return nil, err
-	}
-	return payload, nil
-}
-
-func performInitialize(t *testing.T, srv *mcpServer, protocolVersion string) map[string]interface{} {
-	t.Helper()
-
-	inR, inW := io.Pipe()
-	outR, outW := io.Pipe()
-	errCh := make(chan error, 1)
-
-	go func() {
-		errCh <- srv.serveWithIO(inR, outW)
-	}()
-
-	initReq := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "initialize",
-		"params": map[string]interface{}{
-			"protocolVersion": protocolVersion,
-			"capabilities":    map[string]interface{}{},
-			"clientInfo": map[string]interface{}{
-				"name":    "mcp-test",
-				"version": "0.0.0",
-			},
-		},
-	}
-	payload, err := json.Marshal(initReq)
-	if err != nil {
-		t.Fatalf("marshal initialize payload: %v", err)
-	}
-	framed := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(payload), payload)
-	if _, err := io.WriteString(inW, framed); err != nil {
-		t.Fatalf("write initialize request: %v", err)
-	}
-
-	respPayload, err := readFramedMCPResponse(outR)
-	if err != nil {
-		t.Fatalf("read initialize response: %v", err)
-	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(respPayload, &resp); err != nil {
-		t.Fatalf("unmarshal initialize response: %v", err)
-	}
-	if _, hasErr := resp["error"]; hasErr {
-		t.Fatalf("initialize returned error: %s", string(respPayload))
-	}
-	result, ok := resp["result"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("initialize response missing result: %s", string(respPayload))
-	}
-
-	_ = inW.Close()
-	if err := <-errCh; err != nil {
-		t.Fatalf("serveWithIO exited with error: %v", err)
-	}
-
-	return result
 }

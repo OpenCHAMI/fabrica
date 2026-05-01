@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package config
 
 import (
 	"fmt"
@@ -237,7 +237,7 @@ func (c *APIsConfig) Validate() error {
 	return nil
 }
 
-// primaryGroup returns the first (and currently only supported) API group.
+// PrimaryGroup returns the first (and currently only supported) API group.
 //
 // Multiple API groups in a single project are planned for future versions,
 // but not yet implemented. This function validates the configuration and
@@ -245,7 +245,7 @@ func (c *APIsConfig) Validate() error {
 //
 // Returns the primary group or an error if validation fails or multiple
 // groups are configured.
-func (c *APIsConfig) primaryGroup() (*APIGroup, error) {
+func (c *APIsConfig) PrimaryGroup() (*APIGroup, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -255,15 +255,19 @@ func (c *APIsConfig) primaryGroup() (*APIGroup, error) {
 	return &c.Groups[0], nil
 }
 
-// addResource appends a resource name to the primary group's resource list
+func (c *APIsConfig) primaryGroup() (*APIGroup, error) {
+	return c.PrimaryGroup()
+}
+
+// AddResource appends a resource name to the primary group's resource list
 // if it isn't already present. This is called automatically by
 // 'fabrica add resource' to maintain the resource inventory in apis.yaml.
 //
 // If the configuration is invalid or multiple groups exist, the operation
 // silently fails (returns without error). This is a convenience method for
 // CLI operations that should not block on configuration issues.
-func (c *APIsConfig) addResource(name string) {
-	group, err := c.primaryGroup()
+func (c *APIsConfig) AddResource(name string) {
+	group, err := c.PrimaryGroup()
 	if err != nil {
 		return
 	}
@@ -273,4 +277,8 @@ func (c *APIsConfig) addResource(name string) {
 		}
 	}
 	group.Resources = append(group.Resources, name)
+}
+
+func (c *APIsConfig) addResource(name string) {
+	c.AddResource(name)
 }

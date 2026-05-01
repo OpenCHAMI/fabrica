@@ -20,13 +20,15 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
+
+	"github.com/openchami/fabrica/internal/config"
 )
 
 // readFabricaConfig reads the .fabrica.yaml configuration file
 // Now uses the comprehensive config system from config.go
-func readFabricaConfig() (*FabricaConfig, error) {
+func readFabricaConfig() (*config.FabricaConfig, error) {
 	// Try to load config from current directory
-	config, err := LoadConfig("")
+	cfg, err := config.LoadConfig("")
 	if err != nil {
 		// If file doesn't exist, return nil without error (optional config)
 		if os.IsNotExist(err) {
@@ -34,16 +36,16 @@ func readFabricaConfig() (*FabricaConfig, error) {
 		}
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
-	if err := ValidateConfig(config); err != nil {
+	if err := config.ValidateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	return config, nil
+	return cfg, nil
 }
 
 // readAPIsConfig reads apis.yaml when present.
-func readAPIsConfig() (*APIsConfig, error) {
-	cfg, err := LoadAPIsConfig("")
+func readAPIsConfig() (*config.APIsConfig, error) {
+	cfg, err := config.LoadAPIsConfig("")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -138,7 +140,7 @@ Examples:
 
 			if len(resources) == 0 {
 				if apisConfig != nil {
-					if group, err := apisConfig.primaryGroup(); err == nil {
+					if group, err := apisConfig.PrimaryGroup(); err == nil {
 						fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", group.Name, group.StorageVersion)
 					} else {
 						fmt.Println("⚠️  No resources found in apis/<group>/<version>/")
@@ -890,7 +892,7 @@ func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.
-func discoverResources(apisConfig *APIsConfig) ([]string, error) {
+func discoverResources(apisConfig *config.APIsConfig) ([]string, error) {
 	if apisConfig != nil {
 		return discoverVersionedResources(apisConfig)
 	}
@@ -900,8 +902,8 @@ func discoverResources(apisConfig *APIsConfig) ([]string, error) {
 }
 
 // discoverVersionedResources scans apis/<group>/<storage-version>/ for resource definitions
-func discoverVersionedResources(apisConfig *APIsConfig) ([]string, error) {
-	group, err := apisConfig.primaryGroup()
+func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error) {
+	group, err := apisConfig.PrimaryGroup()
 	if err != nil {
 		return nil, err
 	}
@@ -1049,7 +1051,7 @@ func discoverLegacyResources() ([]string, error) {
 }
 
 // generateRegistrationFile creates pkg/resources/register_generated.go
-func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
+func generateRegistrationFile(debug bool, apisConfig *config.APIsConfig) error {
 	if !debug {
 		fmt.Println("🔍 Discovering resources...")
 	}
@@ -1068,7 +1070,7 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 
 	if len(resources) == 0 {
 		if apisConfig != nil {
-			if group, err := apisConfig.primaryGroup(); err == nil {
+			if group, err := apisConfig.PrimaryGroup(); err == nil {
 				fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", group.Name, group.StorageVersion)
 			}
 		} else {
@@ -1196,11 +1198,11 @@ func hasVersioningMarker(resourceName string) bool {
 }
 
 // generateVersionedRegistrationCode creates registration code for versioned (apis/) mode
-func generateVersionedRegistrationCode(modulePath string, apisConfig *APIsConfig, resources []string) string {
+func generateVersionedRegistrationCode(modulePath string, apisConfig *config.APIsConfig, resources []string) string {
 	var imports strings.Builder
 	var registrations strings.Builder
 
-	group, _ := apisConfig.primaryGroup()
+	group, _ := apisConfig.PrimaryGroup()
 	hubVersion := group.StorageVersion
 
 	// Import the hub version package once

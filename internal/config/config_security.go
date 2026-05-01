@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package config
 
 import (
 	"fmt"
@@ -45,7 +45,7 @@ func (m SecurityMode) valid() bool {
 	}
 }
 
-func normalizeSecurityMode(mode SecurityMode, warnOut io.Writer) SecurityMode {
+func NormalizeSecurityMode(mode SecurityMode, warnOut io.Writer) SecurityMode {
 	if mode == "" {
 		return SecurityModeEnforce
 	}

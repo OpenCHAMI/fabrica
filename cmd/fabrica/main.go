@@ -11,6 +11,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/openchami/fabrica/internal/mcp"
 )
 
 var (
@@ -20,6 +22,8 @@ var (
 )
 
 func main() {
+	mcp.Version = version
+
 	rootCmd := &cobra.Command{
 		Use:   "fabrica",
 		Short: "Fabrica - Resource-based REST API framework",
@@ -40,7 +44,7 @@ The CLI provides commands for:
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
 	rootCmd.AddCommand(newEntCommand())
-	rootCmd.AddCommand(newMCPCommand())
+	rootCmd.AddCommand(mcp.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	if err := rootCmd.Execute(); err != nil {
