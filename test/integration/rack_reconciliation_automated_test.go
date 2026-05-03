@@ -244,36 +244,6 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 	s.T().Log("=== All automated reconciliation tests PASSED ===")
 }
 
-// TestReconciliationWithoutEventsWarning tests that reconciliation without events shows a warning
-func (s *RackReconciliationAutomatedTestSuite) TestReconciliationWithoutEventsWarning() {
-	projectName := "no-events-test"
-	projectModule := "github.com/test/noevents"
-
-	s.T().Log("=== Testing Reconciliation Without Events ===")
-
-	// Initialize with --reconcile but WITHOUT --events
-	projectDir := filepath.Join(s.tempDir, projectName)
-	cmd := exec.Command(s.fabricaBinary,
-		"init", projectName,
-		"--module", projectModule,
-		"--reconcile",
-		// Note: no --events flag
-	)
-	cmd.Dir = s.tempDir
-	output, err := cmd.CombinedOutput()
-	s.Require().NoError(err, "init should succeed even without events: %s", string(output))
-
-	// Verify main.go warns about missing events
-	mainPath := filepath.Join(projectDir, "cmd/server/main.go")
-	mainContent, err := os.ReadFile(mainPath)
-	s.Require().NoError(err)
-	mainStr := string(mainContent)
-
-	s.Assert().Contains(mainStr, "Reconciliation requires events to be enabled",
-		"main.go should warn when reconciliation is enabled without events")
-	s.T().Log("✓ Warning message present when reconciliation enabled without events")
-}
-
 // TestReconciliationConfigValues tests custom reconciliation config values
 func (s *RackReconciliationAutomatedTestSuite) TestReconciliationConfigValues() {
 	projectName := "custom-config-test"

@@ -88,3 +88,34 @@ func TestInitScaffold_EmitsHelperBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateInitOptions_RejectsUnsupportedCombinations(t *testing.T) {
+	base := &initOptions{
+		withStorage:  true,
+		withEvents:   true,
+		eventBusType: "memory",
+	}
+
+	if err := validateInitOptions(base); err != nil {
+		t.Fatalf("valid init options rejected: %v", err)
+	}
+
+	noStorage := *base
+	noStorage.withStorage = false
+	if err := validateInitOptions(&noStorage); err == nil {
+		t.Fatalf("expected storage-disabled init to be rejected")
+	}
+
+	nats := *base
+	nats.eventBusType = "nats"
+	if err := validateInitOptions(&nats); err == nil {
+		t.Fatalf("expected unsupported event bus to be rejected")
+	}
+
+	reconcileNoEvents := *base
+	reconcileNoEvents.withEvents = false
+	reconcileNoEvents.withReconcile = true
+	if err := validateInitOptions(&reconcileNoEvents); err == nil {
+		t.Fatalf("expected reconciliation without events to be rejected")
+	}
+}

@@ -12,6 +12,8 @@ SPDX-License-Identifier: MIT
 
 - **[Quick Start](guides/quickstart.md)** - Get started in 30 minutes
 - **[Getting Started Guide](guides/getting-started.md)** - Full tutorial
+- **[CLI Reference](reference/cli.md)** - Full command and flag reference
+- **[MCP Mode Reference](reference/mcp.md)** - Dedicated docs for Fabrica MCP server mode
 - **[Architecture Overview](reference/architecture.md)** - Framework design
 - **[API Reference](https://pkg.go.dev/github.com/openchami/fabrica)** - Go package docs
 - **[Blog](./blog/)** - Short, friendly posts with examples
@@ -44,6 +46,8 @@ Step-by-step tutorials and how-tos for building with Fabrica:
 Technical reference and in-depth explanations:
 
 - **[Architecture](reference/architecture.md)** - Framework design and principles
+- **[CLI Reference](reference/cli.md)** - Command and flag reference
+- **[MCP Mode Reference](reference/mcp.md)** - MCP server mode, tools, dry-run/execute, and errors
 - **[Code Generation](reference/codegen.md)** - How templates work and customization
 - **[Framework Comparison](reference/comparison.md)** - Fabrica vs other Go frameworks
 - **[Releasing](reference/releasing.md)** - Release process and versioning

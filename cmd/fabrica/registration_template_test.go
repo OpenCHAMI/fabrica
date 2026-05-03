@@ -8,6 +8,8 @@ import (
 	"go/format"
 	"strings"
 	"testing"
+
+	configpkg "github.com/openchami/fabrica/internal/config"
 )
 
 func TestRegistrationGeneratorsIncludeGeneratedSPDXHeader(t *testing.T) {
@@ -17,7 +19,7 @@ func TestRegistrationGeneratorsIncludeGeneratedSPDXHeader(t *testing.T) {
 		version = oldVersion
 	}()
 
-	apisConfig := DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
+	apisConfig := configpkg.DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
 
 	for name, content := range map[string]string{
 		"non-versioned": generateRegistrationCode("example.com/test", []string{"Device"}),
@@ -37,7 +39,7 @@ func TestRegistrationGeneratorsIncludeGeneratedSPDXHeader(t *testing.T) {
 }
 
 func TestRegistrationGeneratorsProduceGofmtStableOutput(t *testing.T) {
-	apisConfig := DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
+	apisConfig := configpkg.DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
 
 	for name, content := range map[string]string{
 		"non-versioned": generateRegistrationCode("github.com/openchami/boot-service", []string{"Node", "BMC"}),

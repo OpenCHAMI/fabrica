@@ -18,14 +18,16 @@ SPDX-License-Identifier: MIT
   - [fabrica add version](#fabrica-add-version)
   - [fabrica generate](#fabrica-generate)
   - [fabrica ent generate](#fabrica-ent-generate)
+  - [fabrica mcp](#fabrica-mcp)
   - [fabrica version](#fabrica-version)
+- [Dedicated MCP Docs](mcp.md)
 - [Configuration Files](#configuration-files)
 - [Environment Variables](#environment-variables)
 - [Examples](#examples)
 
 ## Overview
 
-The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, and managing API versions. All commands support both interactive and non-interactive modes.
+The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
 
 **Installation:**
 ```bash
@@ -90,7 +92,7 @@ fabrica init [project-name] [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth` | bool | false | Enable authentication scaffolding |
-| `--storage` | bool | true | Enable storage backend |
+| `--storage` | bool | true | Enable storage backend. Must remain enabled for generated CRUD APIs |
 | `--metrics` | bool | false | Enable metrics/monitoring |
 | `--events` | bool | false | Enable CloudEvents integration |
 | `--reconcile` | bool | false | Enable reconciliation framework |
@@ -104,7 +106,7 @@ fabrica init [project-name] [flags]
 #### Event Options
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--events-bus <type>` | string | `memory` | Event bus type: `memory`, `nats`, `kafka` |
+| `--events-bus <type>` | string | `memory` | Event bus type: `memory` |
 
 #### Reconciliation Options
 | Flag | Type | Default | Description |
@@ -279,11 +281,11 @@ fabrica generate [flags]
 **Flags:**
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--handlers` | bool | true | Generate HTTP handlers |
-| `--storage` | bool | true | Generate storage layer |
-| `--client` | bool | true | Generate HTTP client |
-| `--openapi` | bool | true | Generate OpenAPI spec |
-| `--all` | bool | true | Generate everything (default) |
+| `--handlers` | bool | false | Generate handlers plus routes, models, and middleware |
+| `--storage` | bool | false | Generate storage layer |
+| `--client` | bool | false | Generate HTTP client and CLI client |
+| `--openapi` | bool | false | Generate OpenAPI spec plus request/response models |
+| no artifact flags | - | - | Generate everything |
 | `--debug` | bool | false | Show detailed generation steps |
 | `--force` | bool | false | Overwrite existing files without prompting |
 
@@ -293,8 +295,8 @@ fabrica generate [flags]
 # Generate everything (default)
 fabrica generate
 
-# Generate only handlers and storage
-fabrica generate --handlers --storage --client=false --openapi=false
+# Generate handlers and storage
+fabrica generate --handlers --storage
 
 # Debug mode
 fabrica generate --debug
@@ -311,7 +313,8 @@ Generated Files:
 │   ├── *_handlers_generated.go     # CRUD handlers (per resource)
 │   ├── models_generated.go         # Request/response models
 │   ├── routes_generated.go         # Route registration
-│   ├── openapi_generated.go        # OpenAPI spec
+│   ├── openapi_generated.go        # OpenAPI spec (Fabrica-managed routes)
+│   ├── openapi_extensions.go       # ✅ User-editable: add custom routes to the spec
 │   ├── export.go                   # Export command
 │   └── import.go                   # Import command
 ├── internal/
@@ -357,7 +360,8 @@ Generated Files:
 
 **Important:**
 - Always run `go mod tidy` after generation
-- Files ending in `_generated.go` are completely overwritten
+- Files ending in `_generated.go` are completely overwritten on every `fabrica generate`
+- **Create-once files** (e.g., `openapi_extensions.go`, `authz_classifier.go`) are written only when they do not yet exist — safe to edit freely
 - Your resource definitions (`*_types.go`) are never modified
 - Run from project root directory
 - Versioned APIs require `pkg/apiversion/registry_generated.go` for apiVersion validation
@@ -405,6 +409,42 @@ Fabrica version v0.4.1
 
 ---
 
+### fabrica mcp
+
+Run Fabrica as an MCP server over stdio for local workspace automation.
+
+For full MCP method, tool, error-schema, and safety details, see [Fabrica MCP Mode Reference](mcp.md).
+
+**Usage:**
+```bash
+fabrica mcp [flags]
+```
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--workspace <path>` | string | `.` | Workspace root for all MCP operations |
+
+**Supported MCP methods:**
+- `initialize`
+- `tools/list`
+- `tools/call`
+
+**Current tool set:**
+- `inspect_project`
+- `validate_project`
+- `create_service`
+- `add_resource`
+- `add_version`
+- `generate_code`
+- `sync_dependencies`
+
+**Notes:**
+- Mutating tools support `mode` values `dry_run` and `execute`
+- Tool paths are constrained to the configured workspace root
+
+---
+
 ## Configuration Files
 
 ### .fabrica.yaml
@@ -436,7 +476,7 @@ features:
 
   events:
     enabled: true
-    bus_type: memory          # memory | nats | kafka
+    bus_type: memory          # memory
     lifecycle_events: true
     condition_events: true
 
