@@ -26,6 +26,7 @@ type initOptions struct {
 	interactive bool
 	modulePath  string
 	description string
+	workDir     string // Target directory for project creation
 
 	// Feature flags instead of modes
 	withAuth    bool // Enable authentication
@@ -113,6 +114,15 @@ You can initialize in an existing directory by using '.' as the project name,
 or by providing the name of an existing directory.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			if opts.workDir != "" {
+				if err := os.MkdirAll(opts.workDir, 0755); err != nil {
+					return fmt.Errorf("failed to create working directory: %w", err)
+				}
+				if err := os.Chdir(opts.workDir); err != nil {
+					return fmt.Errorf("failed to change directory to %s: %w", opts.workDir, err)
+				}
+			}
+
 			projectName := "myproject"
 			if len(args) > 0 {
 				projectName = args[0]
@@ -140,6 +150,7 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().BoolVarP(&opts.interactive, "interactive", "i", false, "Interactive wizard mode")
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
 	cmd.Flags().StringVar(&opts.description, "description", "", "Project description")
+	cmd.Flags().StringVarP(&opts.workDir, "dir", "d", "", "Target working directory (useful for automation/MCP)")
 
 	// Feature flags
 	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable authentication with TokenSmith")
@@ -332,7 +343,7 @@ func runInit(projectName string, opts *initOptions) error {
 			// Create new directory
 			fmt.Printf("🚀 Creating %s project...\n", projectName)
 		}
-		projectBaseName = projectName
+		projectBaseName = filepath.Base(projectName)
 		targetDir = projectName
 	}
 
