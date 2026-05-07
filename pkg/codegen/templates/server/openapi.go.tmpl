@@ -104,6 +104,8 @@ func GenerateOpenAPISpec() *openapi3.T {
 		},
 	}
 
+	registerSharedResponseSchemas(spec)
+
 	// Register all resource paths
 {{range .Resources}}	register{{.Name}}Paths(spec)
 {{end}}
@@ -126,20 +128,6 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 
 	updateReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Update{{.Name}}Request{}, spec.Components.Schemas)
 	spec.Components.Schemas["Update{{.Name}}Request"] = updateReqSchema
-
-	// Error response schema
-	if _, exists := spec.Components.Schemas["ErrorResponse"]; !exists {
-		errorSchema := openapi3.NewObjectSchema().
-			WithProperty("error", openapi3.NewStringSchema()).
-			WithRequired([]string{"error"})
-		spec.Components.Schemas["ErrorResponse"] = &openapi3.SchemaRef{Value: errorSchema}
-	}
-
-	// DELETE response schema
-	if _, exists := spec.Components.Schemas["DeleteResponse"]; !exists {
-		deleteSchema, _ := openapi3gen.NewSchemaRefForValue(&DeleteResponse{}, spec.Components.Schemas)
-		spec.Components.Schemas["DeleteResponse"] = deleteSchema
-	}
 
 	// List {{.Name}}s operation
 	listOp := openapi3.NewOperation()
@@ -308,6 +296,20 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	{{- end}}{{- end}}
 }
 {{end}}
+
+func registerSharedResponseSchemas(spec *openapi3.T) {
+	if _, exists := spec.Components.Schemas["ErrorResponse"]; !exists {
+		errorSchema := openapi3.NewObjectSchema().
+			WithProperty("error", openapi3.NewStringSchema()).
+			WithRequired([]string{"error"})
+		spec.Components.Schemas["ErrorResponse"] = &openapi3.SchemaRef{Value: errorSchema}
+	}
+
+	if _, exists := spec.Components.Schemas["DeleteResponse"]; !exists {
+		deleteSchema, _ := openapi3gen.NewSchemaRefForValue(&DeleteResponse{}, spec.Components.Schemas)
+		spec.Components.Schemas["DeleteResponse"] = deleteSchema
+	}
+}
 
 // Helper function for error responses
 func errorResponse() *openapi3.ResponseRef {

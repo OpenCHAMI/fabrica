@@ -67,6 +67,24 @@ func LoadAll{{.StorageName}}s(ctx context.Context) ([]*{{.PackageAlias}}.{{.Name
 	return resources, nil
 }
 
+// LoadAll{{.StorageName}}sWithVersion loads all {{.Name}} resources in the requested version.
+func LoadAll{{.StorageName}}sWithVersion(ctx context.Context, version string) ([]*{{.PackageAlias}}.{{.Name}}, error) {
+	rawData, err := Backend.LoadAllWithVersion(ctx, "{{.Name}}", version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load {{.Name}} resources with version %s: %w", version, err)
+	}
+
+	var resources []*{{.PackageAlias}}.{{.Name}}
+	for _, raw := range rawData {
+		resource := &{{.PackageAlias}}.{{.Name}}{}
+		if err := json.Unmarshal(raw, resource); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+		}
+		resources = append(resources, resource)
+	}
+	return resources, nil
+}
+
 // Load{{.StorageName}} loads a single {{.Name}} resource by UID from Ent storage
 func Load{{.StorageName}}(ctx context.Context, uid string) (*{{.PackageAlias}}.{{.Name}}, error) {
 	if entClient == nil {
@@ -96,6 +114,20 @@ func Load{{.StorageName}}(ctx context.Context, uid string) (*{{.PackageAlias}}.{
 	}
 
 	return fabricaResource.(*{{.PackageAlias}}.{{.Name}}), nil
+}
+
+// Load{{.StorageName}}WithVersion loads a {{.Name}} in the requested version.
+func Load{{.StorageName}}WithVersion(ctx context.Context, uid, version string) (*{{.PackageAlias}}.{{.Name}}, string, error) {
+	rawData, actualVersion, err := Backend.LoadWithVersion(ctx, "{{.Name}}", uid, version)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load {{.Name}} %s with version %s: %w", uid, version, err)
+	}
+
+	var resource {{.PackageAlias}}.{{.Name}}
+	if err := json.Unmarshal(rawData, &resource); err != nil {
+		return nil, "", fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+	}
+	return &resource, actualVersion, nil
 }
 
 // Save{{.StorageName}} saves a {{.Name}} resource to Ent storage

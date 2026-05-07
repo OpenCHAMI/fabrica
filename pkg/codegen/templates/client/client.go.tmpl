@@ -65,6 +65,8 @@ import (
 	"net/url"
 	"path"
 {{if $hasVersioning}}	"time"{{end}}
+{{if .Config.SharedAPITypes}}	apitypes "{{.ModulePath}}/pkg/apitypes"
+{{end}}
 	{{range .UniqueImports}}"{{.Path}}"
 	{{end}}
 )
@@ -77,10 +79,14 @@ type Client struct {
 	bearerToken string // Optional JWT bearer token for Authorization header
 }
 
+{{if .Config.SharedAPITypes}}
+type ErrorResponse = apitypes.ErrorResponse
+{{else}}
 // ErrorResponse represents an API error response
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+{{end}}
 
 // NewClient creates a new API client
 func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {

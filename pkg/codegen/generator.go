@@ -134,6 +134,18 @@ type GeneratorConfig struct {
 	WithAuth bool
 
 	SecurityAuthNEnabled bool
+
+	// PluralizationMode controls how resource names become plural URL paths.
+	// "smart" (default) applies simple inflection rules and avoids double pluralization.
+	// "legacy" preserves the historical behavior of appending "s".
+	PluralizationMode string
+
+	// SharedAPITypes emits shared request/response helper types in pkg/apitypes.
+	SharedAPITypes bool
+
+	// HandlersMode controls handler generation style.
+	// "generic" enables shared helper scaffolding; "per-resource" preserves classic output shape.
+	HandlersMode string
 }
 
 // Generator handles code generation for resources
@@ -173,6 +185,9 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			DBDriver:             "sqlite",
 			WithAuth:             false,
 			SecurityAuthNEnabled: false,
+			PluralizationMode:    "smart",
+			SharedAPITypes:       false,
+			HandlersMode:         "generic",
 		},
 	}
 }
@@ -352,7 +367,7 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 
 	// Extract resource metadata
 	name := t.Name()
-	pluralName := strings.ToLower(name) + "s"
+	pluralName := pluralizeResourceName(name, g.Config.PluralizationMode)
 
 	// Determine spec type name
 	specTypeName := name + "Spec"
@@ -409,6 +424,63 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 
 	g.Resources = append(g.Resources, metadata)
 	return nil
+}
+
+func pluralizeResourceName(name, mode string) string {
+	base := strings.ToLower(name)
+	if base == "" {
+		return base
+	}
+
+	if mode == "legacy" {
+		return base + "s"
+	}
+
+	// Treat already-plural names as stable by default.
+	if isLikelyPlural(base) {
+		return base
+	}
+
+	// consonant+y => ies (policy -> policies)
+	if strings.HasSuffix(base, "y") && len(base) > 1 {
+		prev := base[len(base)-2]
+		if !strings.ContainsRune("aeiou", rune(prev)) {
+			return base[:len(base)-1] + "ies"
+		}
+	}
+
+	// s/x/z/ch/sh => es
+	if strings.HasSuffix(base, "s") ||
+		strings.HasSuffix(base, "x") ||
+		strings.HasSuffix(base, "z") ||
+		strings.HasSuffix(base, "ch") ||
+		strings.HasSuffix(base, "sh") {
+		return base + "es"
+	}
+
+	return base + "s"
+}
+
+func isLikelyPlural(name string) bool {
+	if strings.HasSuffix(name, "ies") ||
+		strings.HasSuffix(name, "ses") ||
+		strings.HasSuffix(name, "xes") ||
+		strings.HasSuffix(name, "zes") ||
+		strings.HasSuffix(name, "ches") ||
+		strings.HasSuffix(name, "shes") {
+		return true
+	}
+
+	if !strings.HasSuffix(name, "s") {
+		return false
+	}
+
+	// Common singular endings that happen to end with 's'
+	if strings.HasSuffix(name, "us") || strings.HasSuffix(name, "is") || strings.HasSuffix(name, "ss") {
+		return false
+	}
+
+	return true
 }
 
 // SetResourceTag sets a tag key/value on a registered resource by name.
@@ -576,6 +648,11 @@ func (g *Generator) GenerateAll() error {
 	switch g.PackageName {
 	case "main":
 		// Server code - handlers, routes, models, storage, and openapi
+		if g.Config.SharedAPITypes {
+			if err := g.GenerateSharedAPITypes(); err != nil {
+				return err
+			}
+		}
 
 		// Generate Ent schemas first if using Ent storage
 		if g.StorageType == "ent" {
@@ -629,6 +706,11 @@ func (g *Generator) GenerateAll() error {
 		}
 	case "client":
 		// Client code - client and models only
+		if g.Config.SharedAPITypes {
+			if err := g.GenerateSharedAPITypes(); err != nil {
+				return err
+			}
+		}
 		if err := g.GenerateClient(); err != nil {
 			return err
 		}
@@ -826,6 +908,7 @@ func (g *Generator) LoadTemplates() error {
 		"openapiExtensions":         "server/openapi_extensions.go.tmpl",
 		"export":                    "server/export.go.tmpl",
 		"import":                    "server/import.go.tmpl",
+		"handlersCommon":            "server/handlers_common.go.tmpl",
 		"authzClassifier":           "server/authz_classifier.go.tmpl",
 		"authzClassifierCreateOnce": "server/authz_classifier_create_once.go.tmpl",
 		"authzModel":                "authz/model.conf.tmpl",
@@ -836,6 +919,7 @@ func (g *Generator) LoadTemplates() error {
 		"client":       "client/client.go.tmpl",
 		"clientModels": "client/models.go.tmpl",
 		"clientCmd":    "client/cmd.go.tmpl",
+		"apiTypes":     "shared/apitypes.go.tmpl",
 
 		// Storage templates
 		"storage":         "storage/file.go.tmpl",
@@ -892,6 +976,23 @@ func (g *Generator) LoadTemplates() error {
 // GenerateHandlers generates REST API handlers for all resources
 func (g *Generator) GenerateHandlers() error {
 	fmt.Printf("🛠️  Generating handlers...\n")
+	var commonBuf bytes.Buffer
+	if err := g.Templates["handlersCommon"].Execute(&commonBuf, g.globalTemplateData("server/handlers_common.go.tmpl")); err != nil {
+		return fmt.Errorf("failed to execute common handlers template: %w", err)
+	}
+	formattedCommon, err := format.Source(commonBuf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format common handlers code: %w", err)
+	}
+	commonFilename := filepath.Join(g.OutputDir, "handlers_common_generated.go")
+	written, err := writeGeneratedFile(commonFilename, formattedCommon)
+	if err != nil {
+		return fmt.Errorf("failed to write common handlers file: %w", err)
+	}
+	if written {
+		fmt.Printf("  ✓ Generated %s\n", commonFilename)
+	}
+
 	for _, resource := range g.Resources {
 		var buf bytes.Buffer
 		data := g.templateData(resource, "server/handlers.go.tmpl")
@@ -1042,6 +1143,39 @@ func (g *Generator) GenerateModels() error {
 	written, err := writeGeneratedFile(filename, formatted)
 	if err != nil {
 		return fmt.Errorf("failed to write models file: %w", err)
+	}
+
+	if written {
+		fmt.Printf("  ✓ Generated %s\n", filename)
+	}
+
+	return nil
+}
+
+// GenerateSharedAPITypes generates shared API types used by both server and client code.
+func (g *Generator) GenerateSharedAPITypes() error {
+	fmt.Printf("🧩 Generating shared API types...\n")
+	var buf bytes.Buffer
+	data := g.globalTemplateData("shared/apitypes.go.tmpl")
+
+	if err := g.Templates["apiTypes"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute shared api types template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format shared api types code: %w", err)
+	}
+
+	outDir := filepath.Join("pkg", "apitypes")
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("failed to create shared api types directory: %w", err)
+	}
+
+	filename := filepath.Join(outDir, "types_generated.go")
+	written, err := writeGeneratedFile(filename, formatted)
+	if err != nil {
+		return fmt.Errorf("failed to write shared api types file: %w", err)
 	}
 
 	if written {

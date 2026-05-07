@@ -37,6 +37,8 @@ package client
 
 import (
 	"github.com/openchami/fabrica/pkg/fabrica"
+{{if .Config.SharedAPITypes}}	apitypes "{{.ModulePath}}/pkg/apitypes"
+{{end}}
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{end}}
@@ -61,8 +63,12 @@ type Update{{.Name}}Request struct {
 
 {{end}}
 
+{{if .Config.SharedAPITypes}}
+type DeleteResponse = apitypes.DeleteResponse
+{{else}}
 // DeleteResponse represents a successful deletion response
 type DeleteResponse struct {
 	Message string `json:"message"`
 	UID     string `json:"uid"`
 }
+{{end}}

@@ -105,6 +105,27 @@ func LoadAll{{.StorageName}}s(ctx context.Context) ([]{{.TypeName}}, error) {
 	return {{camelCase .PluralName}}, nil
 }
 
+// LoadAll{{.StorageName}}sWithVersion retrieves all {{.Name}} resources converted to a requested API version.
+func LoadAll{{.StorageName}}sWithVersion(ctx context.Context, version string) ([]{{.TypeName}}, error) {
+	ensureBackend()
+
+	rawData, err := Backend.LoadAllWithVersion(ctx, "{{.Name}}", version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load all {{.PluralName}} with version %s: %w", version, err)
+	}
+
+	{{camelCase .PluralName}} := make([]{{.TypeName}}, 0, len(rawData))
+	for _, raw := range rawData {
+		{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{}
+		if err := json.Unmarshal(raw, {{camelCase .Name}}); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+		}
+		{{camelCase .PluralName}} = append({{camelCase .PluralName}}, {{camelCase .Name}})
+	}
+
+	return {{camelCase .PluralName}}, nil
+}
+
 // Load{{.StorageName}} retrieves a single {{.Name}} resource by UID.
 //
 // Parameters:
@@ -128,6 +149,23 @@ func Load{{.StorageName}}(ctx context.Context, uid string) ({{.TypeName}}, error
 	}
 
 	return {{camelCase .Name}}, nil
+}
+
+// Load{{.StorageName}}WithVersion retrieves a {{.Name}} resource converted to the requested API version.
+func Load{{.StorageName}}WithVersion(ctx context.Context, uid, version string) ({{.TypeName}}, string, error) {
+	ensureBackend()
+
+	rawData, actualVersion, err := Backend.LoadWithVersion(ctx, "{{.Name}}", uid, version)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load {{.Name}} %s with version %s: %w", uid, version, err)
+	}
+
+	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{}
+	if err := json.Unmarshal(rawData, {{camelCase .Name}}); err != nil {
+		return nil, "", fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+	}
+
+	return {{camelCase .Name}}, actualVersion, nil
 }
 
 // Save{{.StorageName}} stores a {{.Name}} resource.

@@ -148,6 +148,7 @@ func NewResourceEvent(action, resourceKind, resourceUID string, data interface{}
 		"updated": true, "update": true,
 		"deleted": true, "delete": true,
 		"patched": true, "patch": true,
+		"status.updated": true, "status.patched": true,
 	}
 
 	if lifecycleActions[strings.ToLower(action)] && !AreLifecycleEventsEnabled() {
@@ -313,6 +314,7 @@ func PublishResourceEvent(ctx context.Context, action, resourceKind, resourceUID
 		"updated": true, "update": true,
 		"deleted": true, "delete": true,
 		"patched": true, "patch": true,
+		"status.updated": true, "status.patched": true,
 	}
 
 	if lifecycleActions[strings.ToLower(action)] && !AreLifecycleEventsEnabled() {
@@ -487,6 +489,47 @@ func PublishResourcePatched(ctx context.Context, resourceKind, resourceUID, reso
 	}
 
 	return PublishResourceEvent(ctx, "patched", resourceKind, resourceUID, data)
+}
+
+// PublishResourceStatusUpdated publishes a status-only update event for a resource.
+// Subscribers can use this distinct event type instead of inspecting update metadata.
+func PublishResourceStatusUpdated(ctx context.Context, resourceKind, resourceUID, resourceName string, resource interface{}, metadata map[string]interface{}) error {
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	metadata["updateType"] = "status"
+
+	data := ResourceChangeData{
+		Action:       "status.updated",
+		ResourceKind: resourceKind,
+		ResourceUID:  resourceUID,
+		ResourceName: resourceName,
+		ChangeTime:   time.Now(),
+		Resource:     resource,
+		Metadata:     metadata,
+	}
+
+	return PublishResourceEvent(ctx, "status.updated", resourceKind, resourceUID, data)
+}
+
+// PublishResourceStatusPatched publishes a status-only patch event for a resource.
+func PublishResourceStatusPatched(ctx context.Context, resourceKind, resourceUID, resourceName string, resource interface{}, metadata map[string]interface{}) error {
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	metadata["updateType"] = "status"
+
+	data := ResourceChangeData{
+		Action:       "status.patched",
+		ResourceKind: resourceKind,
+		ResourceUID:  resourceUID,
+		ResourceName: resourceName,
+		ChangeTime:   time.Now(),
+		Resource:     resource,
+		Metadata:     metadata,
+	}
+
+	return PublishResourceEvent(ctx, "status.patched", resourceKind, resourceUID, data)
 }
 
 // generateEventID generates a unique event ID

@@ -39,6 +39,8 @@ import (
 	"net/http"
 
 	"github.com/openchami/fabrica/pkg/fabrica"
+{{if .Config.SharedAPITypes}}	apitypes "{{.ModulePath}}/pkg/apitypes"
+{{end}}
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{end}}
@@ -76,6 +78,10 @@ func (r *Update{{.Name}}Request) AsSpec() {{.SpecType}} {
 
 {{end}}
 
+{{if .Config.SharedAPITypes}}
+type ErrorResponse = apitypes.ErrorResponse
+type DeleteResponse = apitypes.DeleteResponse
+{{else}}
 // ErrorResponse represents an error response
 type ErrorResponse struct {
 	Error   string `json:"error"`
@@ -88,6 +94,7 @@ type DeleteResponse struct {
 	Message string `json:"message"`
 	UID     string `json:"uid"`
 }
+{{end}}
 
 // Helper functions for handlers
 

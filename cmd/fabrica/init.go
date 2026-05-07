@@ -690,13 +690,16 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 			},
 		},
 		Generation: configpkg.GenerationConfig{
-			Handlers:       true,
-			Storage:        opts.withStorage,
-			Client:         true,
-			OpenAPI:        true,
-			Events:         opts.withEvents,
-			Middleware:     true, // Core features always include middleware
-			Reconciliation: opts.withReconcile,
+			Handlers:          true,
+			Storage:           opts.withStorage,
+			Client:            true,
+			OpenAPI:           true,
+			Events:            opts.withEvents,
+			Middleware:        true, // Core features always include middleware
+			Reconciliation:    opts.withReconcile,
+			PluralizationMode: "smart",
+			SharedAPITypes:    false,
+			HandlersMode:      "generic",
 		},
 	}
 

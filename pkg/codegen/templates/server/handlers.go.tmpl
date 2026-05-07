@@ -35,7 +35,7 @@ SPDX-License-Identifier: MIT
 // To enable full version conversion for this resource:
 //   1. Add new version: fabrica add version <group> <version>
 //   2. Implement converter: apis/<group>/<version>/converter.go
-//   3. Add version-aware storage: storage.Load{{.StorageName}}WithVersion()
+//   3. Use version-aware storage: storage.Load{{.StorageName}}WithVersion()
 //   4. Register versions in cmd/server/main.go
 //
 package main
@@ -83,7 +83,7 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Version context available here for version-aware operations
 	// versionCtx := versioning.GetVersionContext(r.Context())
 	// Requested version: versionCtx.ServeVersion
-	// To enable: replace storage.Load{{.StorageName}}() with version-aware function
+	// To enable: use storage.Load{{.StorageName}}WithVersion() with versionCtx.ServeVersion
 
 	// Authorization: Add custom middleware in routes.go or implement checks here
 	// Example: if !authorized(r) { respondError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized")); return }
@@ -183,6 +183,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := runBeforeSaveHook(r.Context(), {{camelCase .Name}}); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+
 	// Set initial status
     // This assumes the generator passes an 'IsReconcilable' boolean
     // to this template, and that the resource has a .Status.Phase field.
@@ -199,11 +204,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create initial version snapshot (Spec + metadata only) and persist version into status
 	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
-		fmt.Printf("Warning: failed to create initial version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("failed to create initial version for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 	} else {
 		{{camelCase .Name}}.Status.Version = verID
 		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+			logEventPublishWarning("failed to persist version into status for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
 	{{- end }}{{- end }}
@@ -212,11 +217,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{if .IsVersioned}}
 	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource created event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+		logEventPublishWarning("Failed to publish resource created event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
 {{else}}
 	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource created event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("Failed to publish resource created event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 {{end}}
 	}
 
@@ -290,6 +295,11 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{camelCase .Name}}.Touch()
 {{end}}
 
+	if err := runBeforeSaveHook(r.Context(), {{camelCase .Name}}); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
@@ -298,11 +308,11 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create version snapshot after spec update and persist version into status
 	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
-		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("failed to create version for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 	} else {
 		{{camelCase .Name}}.Status.Version = verID
 		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+			logEventPublishWarning("failed to persist version into status for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
 	{{- end }}{{- end }}
@@ -314,11 +324,11 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{if .IsVersioned}}
 	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}, updateMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource updated event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+		logEventPublishWarning("Failed to publish resource updated event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
 {{else}}
 	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, updateMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource updated event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("Failed to publish resource updated event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 {{end}}
 	}
 
@@ -381,6 +391,11 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{camelCase .Name}}.Touch()
 {{end}}
 
+	if err := runBeforeSaveHook(r.Context(), {{camelCase .Name}}); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+
 	// Save the patched resource
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}}: %w", err))
@@ -390,11 +405,11 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create version snapshot after spec patch and persist version into status
 	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
-		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("failed to create version for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 	} else {
 		{{camelCase .Name}}.Status.Version = verID
 		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+			logEventPublishWarning("failed to persist version into status for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
 	{{- end }}{{- end }}
@@ -407,11 +422,11 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{if .IsVersioned}}
 	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}, patchMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource patched event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+		logEventPublishWarning("Failed to publish resource patched event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
 {{else}}
 	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, patchMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource patched event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("Failed to publish resource patched event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 {{end}}
 	}
 
@@ -470,13 +485,13 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		"updateType": "status",
 	}
 {{if .IsVersioned}}
-	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, statusMetadata); err != nil {
+	if err := events.PublishResourceStatusUpdated(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, statusMetadata); err != nil {
 		// Log but don't fail - events are non-critical
-		fmt.Printf("Warning: Failed to publish status update event for {{.Name}} %s: %v\n", res.Metadata.UID, err)
+		logEventPublishWarning("Failed to publish status update event for {{.Name}} %s: %v", res.Metadata.UID, err)
 {{else}}
-	if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, statusMetadata); err != nil {
+	if err := events.PublishResourceStatusUpdated(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, statusMetadata); err != nil {
 		// Log but don't fail - events are non-critical
-		fmt.Printf("Warning: Failed to publish status update event for {{.Name}} %s: %v\n", res.GetUID(), err)
+		logEventPublishWarning("Failed to publish status update event for {{.Name}} %s: %v", res.GetUID(), err)
 {{end}}
 	}
 
@@ -559,11 +574,11 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		"updateType": "status",
 	}
 {{if .IsVersioned}}
-	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, patchMetadata); err != nil {
-		fmt.Printf("Warning: Failed to publish status patch event for {{.Name}} %s: %v\n", res.Metadata.UID, err)
+	if err := events.PublishResourceStatusPatched(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, patchMetadata); err != nil {
+		logEventPublishWarning("Failed to publish status patch event for {{.Name}} %s: %v", res.Metadata.UID, err)
 {{else}}
-	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, patchMetadata); err != nil {
-		fmt.Printf("Warning: Failed to publish status patch event for {{.Name}} %s: %v\n", res.GetUID(), err)
+	if err := events.PublishResourceStatusPatched(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, patchMetadata); err != nil {
+		logEventPublishWarning("Failed to publish status patch event for {{.Name}} %s: %v", res.GetUID(), err)
 {{end}}
 	}
 
@@ -648,11 +663,11 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{if .IsVersioned}}
 	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, deleteMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource deleted event for {{.Name}} %s: %v\n", {{camelCase .Name}}.Metadata.UID, err)
+		logEventPublishWarning("Failed to publish resource deleted event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
 {{else}}
 	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), deleteMetadata); err != nil {
 		// Log the error but don't fail the request - events are non-critical
-		fmt.Printf("Warning: Failed to publish resource deleted event for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
+		logEventPublishWarning("Failed to publish resource deleted event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
 {{end}}
 	}
 

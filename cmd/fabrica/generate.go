@@ -68,6 +68,7 @@ func newGenerateCommand() *cobra.Command {
 		debug         bool
 		force         bool
 		fabricaSource string
+		legacyPlural  bool
 	)
 
 	cmd := &cobra.Command{
@@ -207,7 +208,7 @@ Examples:
 				if debug {
 					fmt.Println("📦 Generating server code...")
 				}
-				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource, legacyPlural); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
@@ -215,7 +216,7 @@ Examples:
 			// Generate client code
 			if all || client {
 				fmt.Println("📦 Generating client code...")
-				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource, legacyPlural); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
 				}
 			}
@@ -223,7 +224,7 @@ Examples:
 			// Check if reconciliation is enabled in config
 			if config != nil && config.Features.Reconciliation.Enabled {
 				fmt.Println("🔄 Generating reconciliation code...")
-				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource, legacyPlural); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
 				}
 			}
@@ -261,6 +262,7 @@ Examples:
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug output showing detailed generation steps")
 	cmd.Flags().BoolVar(&force, "force", false, "Force regeneration even with version warnings")
 	cmd.Flags().StringVar(&fabricaSource, "fabrica-source", "", "Use a local Fabrica checkout for codegen without modifying project go.mod (or set FABRICA_SOURCE_PATH)")
+	cmd.Flags().BoolVar(&legacyPlural, "legacy-pluralization", false, "Use legacy pluralization mode (append 's') for generated resource paths")
 
 	return cmd
 }
@@ -429,7 +431,7 @@ func detectStorageType() string {
 }
 
 // generateCodeWithRunner creates and runs a temporary codegen program
-func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, fabricaSource string) error {
+func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, fabricaSource string, legacyPluralization bool) error {
 	// Create output directory if it doesn't exist
 	if debug {
 		fmt.Printf("  Creating output directory: %s\n", outputDir)
@@ -456,7 +458,7 @@ func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName stri
 		fmt.Printf("  Detected storage type: %s\n", storageType)
 	}
 
-	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
+	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType, legacyPluralization)
 
 	if fabricaSource != "" {
 		return runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode, debug, fabricaSource)
@@ -568,7 +570,7 @@ func localModulePlaceholderVersion(modulePath string) string {
 }
 
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
+func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string, legacyPluralization bool) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
@@ -578,6 +580,11 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		}
 		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+		generationCalls.WriteString("\tif gen.Config.SharedAPITypes {\n")
+		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateSharedAPITypes\"); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate shared API types: %v\", err)\n")
+		generationCalls.WriteString("\t\t}\n")
 		generationCalls.WriteString("\t}\n")
 
 		if handlers {
@@ -663,6 +670,11 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		}
 		generationCalls.WriteString("\tif err := gen.LoadTemplates(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+		generationCalls.WriteString("\tif gen.Config.SharedAPITypes {\n")
+		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateSharedAPITypes\"); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate shared API types: %v\", err)\n")
+		generationCalls.WriteString("\t\t}\n")
 		generationCalls.WriteString("\t}\n\n")
 
 		if debug {
@@ -739,6 +751,7 @@ import (
 // FabricaConfig structures to load .fabrica.yaml
 type FabricaConfig struct {
 	Features FeaturesConfig `+"`yaml:\"features\"`"+`
+	Generation GenerationConfig `+"`yaml:\"generation\"`"+`
 }
 
 type FeaturesConfig struct {
@@ -782,6 +795,12 @@ type AuthNConfig struct {
 	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
+type GenerationConfig struct {
+	PluralizationMode string `+"`yaml:\"pluralization_mode\"`"+`
+	SharedAPITypes bool `+"`yaml:\"shared_api_types\"`"+`
+	HandlersMode string `+"`yaml:\"handlers_mode\"`"+`
+}
+
 func loadConfig() (*FabricaConfig, error) {
 	data, err := os.ReadFile(".fabrica.yaml")
 	if err != nil {
@@ -805,6 +824,8 @@ func main() {
 	authEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
+	gen.Config.PluralizationMode = "smart"
+	gen.Config.HandlersMode = "generic"
 
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
@@ -821,6 +842,13 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
+		if config.Generation.PluralizationMode != "" {
+			gen.Config.PluralizationMode = config.Generation.PluralizationMode
+		}
+		gen.Config.SharedAPITypes = config.Generation.SharedAPITypes
+		if config.Generation.HandlersMode != "" {
+			gen.Config.HandlersMode = config.Generation.HandlersMode
+		}
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {
@@ -835,6 +863,10 @@ func main() {
 		// Wire TokenSmith-first security features into generator config.
 		authEnabled = config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled
 		setAuthEnabledCompat(gen, authEnabled)
+	}
+
+	if %t {
+		gen.Config.PluralizationMode = "legacy"
 	}
 
 	if _, err := os.Stat("apis.yaml"); err == nil {
@@ -890,7 +922,7 @@ func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
 
 	return nil
 }
-`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, legacyPluralization, generationCalls.String())
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.

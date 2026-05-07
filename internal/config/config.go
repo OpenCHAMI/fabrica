@@ -151,6 +151,14 @@ type GenerationConfig struct {
 	Events         bool `yaml:"events"`
 	Middleware     bool `yaml:"middleware"`
 	Reconciliation bool `yaml:"reconciliation"`
+	// PluralizationMode controls resource pluralization in generated paths.
+	// Valid values: "smart" (default), "legacy" (append "s").
+	PluralizationMode string `yaml:"pluralization_mode,omitempty"`
+	// SharedAPITypes emits pkg/apitypes and has client/server reuse shared error/delete types.
+	SharedAPITypes bool `yaml:"shared_api_types,omitempty"`
+	// HandlersMode controls handler generation style.
+	// Valid values: "generic" (default), "per-resource".
+	HandlersMode string `yaml:"handlers_mode,omitempty"`
 }
 
 // LoadConfig reads and parses .fabrica.yaml from the specified directory.
@@ -286,6 +294,22 @@ func ValidateConfig(config *FabricaConfig) error {
 		}
 	}
 
+	// Validate generation options
+	if config.Generation.PluralizationMode != "" {
+		validPluralization := map[string]bool{"smart": true, "legacy": true}
+		if !validPluralization[config.Generation.PluralizationMode] {
+			return fmt.Errorf("invalid generation.pluralization_mode: %s (must be 'smart' or 'legacy')",
+				config.Generation.PluralizationMode)
+		}
+	}
+	if config.Generation.HandlersMode != "" {
+		validHandlersMode := map[string]bool{"generic": true, "per-resource": true}
+		if !validHandlersMode[config.Generation.HandlersMode] {
+			return fmt.Errorf("invalid generation.handlers_mode: %s (must be 'generic' or 'per-resource')",
+				config.Generation.HandlersMode)
+		}
+	}
+
 	return nil
 }
 
@@ -340,12 +364,15 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 			},
 		},
 		Generation: GenerationConfig{
-			Handlers:   true,
-			Storage:    true,
-			Client:     true,
-			OpenAPI:    true,
-			Events:     false,
-			Middleware: true,
+			Handlers:          true,
+			Storage:           true,
+			Client:            true,
+			OpenAPI:           true,
+			Events:            false,
+			Middleware:        true,
+			PluralizationMode: "smart",
+			SharedAPITypes:    false,
+			HandlersMode:      "generic",
 		},
 	}
 }

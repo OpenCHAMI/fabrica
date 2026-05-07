@@ -63,14 +63,11 @@ type ResourceMapper interface {
 // DefaultResourceMapper provides a simple heuristic-based resource mapper
 type DefaultResourceMapper struct{}
 
-// MapResourceToKind provides a simple pluralization heuristic
+// MapResourceToKind provides a conservative mapping.
+// It preserves the full resource token and relies on VersionRegistry.ResolveKind
+// to handle singular/plural normalization.
 func (m *DefaultResourceMapper) MapResourceToKind(pluralName string) string {
 	caser := cases.Title(language.English)
-	// Simple heuristic: remove 's' suffix and capitalize
-	if strings.HasSuffix(pluralName, "s") && len(pluralName) > 1 {
-		singular := pluralName[:len(pluralName)-1]
-		return caser.String(singular)
-	}
 	return caser.String(pluralName)
 }
 
