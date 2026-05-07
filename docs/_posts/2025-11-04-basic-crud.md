@@ -11,7 +11,7 @@ description: "How the CLI and Go library help you use your API the same way ever
 author: "Alex Lovell-Troy"
 ---
 
-> **Note (v0.4.1):** This post predates hub/spoke API versioning and the flattened resource envelope. Some snippets may differ from current generator output.
+> **Note (v0.4.4):** This post predates hub/spoke API versioning and the flattened resource envelope. Some snippets may differ from current generator output.
 
 APIs are easier to use when the client is predictable. You should not have to remember custom flags or one‑off scripts. Fabrica generates two clients that match your server: a CLI and a Go library. They share patterns and types, so your shell steps and your code read the same way.
 
