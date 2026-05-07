@@ -28,7 +28,9 @@ fabrica version
 
 **Expected output:**
 ```
-Fabrica v0.4.1
+Fabrica version v0.4.4
+  commit: <git-sha>
+  built: <timestamp>
 ```
 
 If you get "command not found", see [Installation](README.md#-installation).

@@ -26,7 +26,7 @@ Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.4.1
+# Output: fabrica version v0.4.4
 ```
 
 ## Create Your First API

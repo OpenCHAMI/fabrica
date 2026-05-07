@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
@@ -21,7 +22,50 @@ var (
 	date    = "unknown"
 )
 
+func resolveVersionInfo(currentVersion, currentCommit, currentDate string, buildInfo *debug.BuildInfo) (string, string, string) {
+	if buildInfo == nil {
+		return currentVersion, currentCommit, currentDate
+	}
+
+	resolvedVersion := currentVersion
+	resolvedCommit := currentCommit
+	resolvedDate := currentDate
+
+	if resolvedVersion == "dev" && buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
+		resolvedVersion = buildInfo.Main.Version
+	}
+
+	if resolvedCommit != "none" && resolvedDate != "unknown" {
+		return resolvedVersion, resolvedCommit, resolvedDate
+	}
+
+	for _, setting := range buildInfo.Settings {
+		if resolvedCommit == "none" && setting.Key == "vcs.revision" && setting.Value != "" {
+			resolvedCommit = setting.Value
+		}
+		if resolvedDate == "unknown" && setting.Key == "vcs.time" && setting.Value != "" {
+			resolvedDate = setting.Value
+		}
+	}
+
+	return resolvedVersion, resolvedCommit, resolvedDate
+}
+
+func resolveBuildVersionInfo() {
+	if version != "dev" && commit != "none" && date != "unknown" {
+		return
+	}
+
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+
+	version, commit, date = resolveVersionInfo(version, commit, date, buildInfo)
+}
+
 func main() {
+	resolveBuildVersionInfo()
 	mcp.Version = version
 
 	rootCmd := &cobra.Command{
