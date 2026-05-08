@@ -64,6 +64,19 @@ func resolveBuildVersionInfo() {
 	version, commit, date = resolveVersionInfo(version, commit, date, buildInfo)
 }
 
+func versionString() string {
+	if commit == "none" && date == "unknown" {
+		return version
+	}
+	if commit == "none" {
+		return fmt.Sprintf("%s (built: %s)", version, date)
+	}
+	if date == "unknown" {
+		return fmt.Sprintf("%s (commit: %s)", version, commit)
+	}
+	return fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date)
+}
+
 func main() {
 	resolveBuildVersionInfo()
 	mcp.Version = version
@@ -80,7 +93,7 @@ The CLI provides commands for:
   - Interactive wizards for guided setup
   - Example generation with progressive disclosure
   - Documentation generation`,
-		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+		Version: versionString(),
 	}
 
 	// Add commands
@@ -103,8 +116,12 @@ func newVersionCommand() *cobra.Command {
 		Short: "Print version information",
 		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Printf("Fabrica version %s\n", version)
-			fmt.Printf("  commit: %s\n", commit)
-			fmt.Printf("  built: %s\n", date)
+			if commit != "none" {
+				fmt.Printf("  commit: %s\n", commit)
+			}
+			if date != "unknown" {
+				fmt.Printf("  built:  %s\n", date)
+			}
 		},
 	}
 }
