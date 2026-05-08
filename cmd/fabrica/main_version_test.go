@@ -9,15 +9,34 @@ import (
 	"testing"
 )
 
+func TestVersionString_ReleaseBuildNoVCS(t *testing.T) {
+	version = "v0.4.4"
+	commit = "none"
+	date = "unknown"
+	if got := versionString(); got != "v0.4.4" {
+		t.Fatalf("expected clean version string, got %q", got)
+	}
+}
+
+func TestVersionString_FullBuild(t *testing.T) {
+	version = "v0.4.4"
+	commit = "abc1234"
+	date = "2026-05-07T12:00:00Z"
+	want := "v0.4.4 (commit: abc1234, built: 2026-05-07T12:00:00Z)"
+	if got := versionString(); got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestResolveVersionInfo_UsesModuleVersionWhenUnset(t *testing.T) {
 	bi := &debug.BuildInfo{
-		Main: debug.Module{Version: "v0.4.3"},
+		Main: debug.Module{Version: "v0.4.4"},
 	}
 
 	resolvedVersion, resolvedCommit, resolvedDate := resolveVersionInfo("dev", "none", "unknown", bi)
 
-	if resolvedVersion != "v0.4.3" {
-		t.Fatalf("expected version v0.4.3, got %q", resolvedVersion)
+	if resolvedVersion != "v0.4.4" {
+		t.Fatalf("expected version v0.4.4, got %q", resolvedVersion)
 	}
 	if resolvedCommit != "none" {
 		t.Fatalf("expected commit none when unavailable, got %q", resolvedCommit)
@@ -51,7 +70,7 @@ func TestResolveVersionInfo_UsesVCSSettingsWhenUnset(t *testing.T) {
 
 func TestResolveVersionInfo_PreservesLdflagsValues(t *testing.T) {
 	bi := &debug.BuildInfo{
-		Main: debug.Module{Version: "v0.4.3"},
+		Main: debug.Module{Version: "v0.4.4"},
 		Settings: []debug.BuildSetting{
 			{Key: "vcs.revision", Value: "frombuildinfo"},
 			{Key: "vcs.time", Value: "frombuildinfo"},
