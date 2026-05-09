@@ -65,5 +65,7 @@ examples/myapp/
 examples/rack-inventory/
 examples/sensor-monitor/
 
-# Graphify Out
-graphify-out/*
+graphify-out/
+#graphify-out/manifest.json    # mtime-based, breaks after git clone
+#graphify-out/cost.json        # local only
+#graphify-out/cache/*         # optional: commit for speed, skip to keep repo small

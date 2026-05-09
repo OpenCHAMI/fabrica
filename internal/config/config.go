@@ -156,8 +156,8 @@ type GenerationConfig struct {
 	PluralizationMode string `yaml:"pluralization_mode,omitempty"`
 	// SharedAPITypes emits pkg/apitypes and has client/server reuse shared error/delete types.
 	SharedAPITypes bool `yaml:"shared_api_types,omitempty"`
-	// HandlersMode controls handler generation style.
-	// Valid values: "generic" (default), "per-resource".
+	// HandlersMode controls generated HTTP scaffolding style.
+	// Valid values: "generic" (default shared route/helper scaffolding), "per-resource" (explicit route blocks).
 	HandlersMode string `yaml:"handlers_mode,omitempty"`
 }
 

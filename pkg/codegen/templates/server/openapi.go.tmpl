@@ -105,6 +105,7 @@ func GenerateOpenAPISpec() *openapi3.T {
 	}
 
 	registerSharedResponseSchemas(spec)
+	registerServicePaths(spec)
 
 	// Register all resource paths
 {{range .Resources}}	register{{.Name}}Paths(spec)
@@ -128,6 +129,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 
 	updateReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Update{{.Name}}Request{}, spec.Components.Schemas)
 	spec.Components.Schemas["Update{{.Name}}Request"] = updateReqSchema
+
+	statusSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.PackageAlias}}.{{.Name}}Status{}, spec.Components.Schemas)
+	spec.Components.Schemas["{{.Name}}Status"] = statusSchema
 
 	// List {{.Name}}s operation
 	listOp := openapi3.NewOperation()
@@ -211,6 +215,79 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	updateOp.Responses.Set("404", errorResponse())
 	updateOp.Responses.Set("500", errorResponse())
 
+	// Patch {{.Name}} operation
+	patchOp := openapi3.NewOperation()
+	patchOp.OperationID = "patch{{.Name}}"
+	patchOp.Summary = "Patch a {{.Name}} resource"
+	patchOp.Description = "Patches an existing {{.Name}} resource spec"
+	patchOp.Tags = []string{"{{.Name}}"}
+	patchOp.RequestBody = &openapi3.RequestBodyRef{
+		Value: openapi3.NewRequestBody().
+			WithRequired(true).
+			WithJSONSchema(openapi3.NewObjectSchema()),
+	}
+	patchOp.Responses = openapi3.NewResponses()
+	patchOp.Responses.Set("200", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Resource patched successfully").
+			WithJSONSchemaRef(&openapi3.SchemaRef{
+				Ref: "#/components/schemas/{{.Name}}",
+			}),
+	})
+	patchOp.Responses.Set("400", errorResponse())
+	patchOp.Responses.Set("404", errorResponse())
+	patchOp.Responses.Set("422", errorResponse())
+	patchOp.Responses.Set("500", errorResponse())
+
+	// Update {{.Name}} status operation
+	updateStatusOp := openapi3.NewOperation()
+	updateStatusOp.OperationID = "update{{.Name}}Status"
+	updateStatusOp.Summary = "Update {{.Name}} status"
+	updateStatusOp.Description = "Updates only the status subresource of a {{.Name}}"
+	updateStatusOp.Tags = []string{"{{.Name}}"}
+	updateStatusOp.RequestBody = &openapi3.RequestBodyRef{
+		Value: openapi3.NewRequestBody().
+			WithRequired(true).
+			WithJSONSchemaRef(&openapi3.SchemaRef{
+				Ref: "#/components/schemas/{{.Name}}Status",
+			}),
+	}
+	updateStatusOp.Responses = openapi3.NewResponses()
+	updateStatusOp.Responses.Set("200", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Status updated successfully").
+			WithJSONSchemaRef(&openapi3.SchemaRef{
+				Ref: "#/components/schemas/{{.Name}}",
+			}),
+	})
+	updateStatusOp.Responses.Set("400", errorResponse())
+	updateStatusOp.Responses.Set("404", errorResponse())
+	updateStatusOp.Responses.Set("500", errorResponse())
+
+	// Patch {{.Name}} status operation
+	patchStatusOp := openapi3.NewOperation()
+	patchStatusOp.OperationID = "patch{{.Name}}Status"
+	patchStatusOp.Summary = "Patch {{.Name}} status"
+	patchStatusOp.Description = "Patches only the status subresource of a {{.Name}}"
+	patchStatusOp.Tags = []string{"{{.Name}}"}
+	patchStatusOp.RequestBody = &openapi3.RequestBodyRef{
+		Value: openapi3.NewRequestBody().
+			WithRequired(true).
+			WithJSONSchema(openapi3.NewObjectSchema()),
+	}
+	patchStatusOp.Responses = openapi3.NewResponses()
+	patchStatusOp.Responses.Set("200", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Status patched successfully").
+			WithJSONSchemaRef(&openapi3.SchemaRef{
+				Ref: "#/components/schemas/{{.Name}}",
+			}),
+	})
+	patchStatusOp.Responses.Set("400", errorResponse())
+	patchStatusOp.Responses.Set("404", errorResponse())
+	patchStatusOp.Responses.Set("422", errorResponse())
+	patchStatusOp.Responses.Set("500", errorResponse())
+
 	// Delete {{.Name}} operation
 	deleteOp := openapi3.NewOperation()
 	deleteOp.OperationID = "delete{{.Name}}"
@@ -243,7 +320,16 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	itemPath := &openapi3.PathItem{
 		Get:        getOp,
 		Put:        updateOp,
+		Patch:      patchOp,
 		Delete:     deleteOp,
+		Parameters: []*openapi3.ParameterRef{
+			{Value: uidParam},
+		},
+	}
+
+	statusPath := &openapi3.PathItem{
+		Put:   updateStatusOp,
+		Patch: patchStatusOp,
 		Parameters: []*openapi3.ParameterRef{
 			{Value: uidParam},
 		},
@@ -252,6 +338,7 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	// Add paths to spec
 	spec.Paths.Set("{{.URLPath}}", collectionPath)
 	spec.Paths.Set("{{.URLPath}}/{uid}", itemPath)
+	spec.Paths.Set("{{.URLPath}}/{uid}/status", statusPath)
 
 	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 	// Versions endpoints
@@ -296,6 +383,24 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	{{- end}}{{- end}}
 }
 {{end}}
+
+func registerServicePaths(spec *openapi3.T) {
+	healthOp := openapi3.NewOperation()
+	healthOp.OperationID = "getHealth"
+	healthOp.Summary = "Service health"
+	healthOp.Description = "Returns service health status. This endpoint is always public."
+	healthOp.Tags = []string{"Service"}
+	healthOp.Responses = openapi3.NewResponses()
+	healthOp.Responses.Set("200", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Service is healthy").
+			WithJSONSchema(openapi3.NewObjectSchema().
+				WithProperty("status", openapi3.NewStringSchema()).
+				WithRequired([]string{"status"})),
+	})
+
+	spec.Paths.Set("/health", &openapi3.PathItem{Get: healthOp})
+}
 
 func registerSharedResponseSchemas(spec *openapi3.T) {
 	if _, exists := spec.Components.Schemas["ErrorResponse"]; !exists {

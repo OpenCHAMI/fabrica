@@ -148,3 +148,90 @@ func TestWriteGeneratedFileWritesRealChanges(t *testing.T) {
 		t.Fatalf("file content mismatch: got %q want %q", got, updated)
 	}
 }
+
+func TestGenerateRoutes_GenericModeUsesSharedRegistrar(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+	gen.Config.HandlersMode = "generic"
+	gen.Resources = []ResourceMetadata{
+		{
+			Name:         "Node",
+			PluralName:   "nodes",
+			Package:      "example.com/test/pkg/resources/node",
+			PackageAlias: "node",
+			TypeName:     "*node.Node",
+			SpecType:     "node.NodeSpec",
+			StatusType:   "node.NodeStatus",
+			URLPath:      "/nodes",
+			StorageName:  "Node",
+		},
+	}
+
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	if err := gen.GenerateRoutes(); err != nil {
+		t.Fatalf("GenerateRoutes: %v", err)
+	}
+
+	outPath := filepath.Join(gen.OutputDir, "routes_generated.go")
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("ReadFile(routes_generated.go): %v", err)
+	}
+
+	content := string(got)
+	if !strings.Contains(content, "type resourceRouteHandlers struct") {
+		t.Fatalf("generic mode should emit shared resourceRouteHandlers type")
+	}
+	if !strings.Contains(content, "func registerResourceRoutes(") {
+		t.Fatalf("generic mode should emit shared registerResourceRoutes helper")
+	}
+	if !strings.Contains(content, "registerResourceRoutes(protected, \"/nodes\"") {
+		t.Fatalf("generic mode should register each resource via shared registrar")
+	}
+	if strings.Contains(content, "protected.Route(\"/nodes\"") {
+		t.Fatalf("generic mode should not emit per-resource protected.Route blocks")
+	}
+}
+
+func TestGenerateRoutes_PerResourceModeKeepsExplicitRoutes(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+	gen.Config.HandlersMode = "per-resource"
+	gen.Resources = []ResourceMetadata{
+		{
+			Name:         "Node",
+			PluralName:   "nodes",
+			Package:      "example.com/test/pkg/resources/node",
+			PackageAlias: "node",
+			TypeName:     "*node.Node",
+			SpecType:     "node.NodeSpec",
+			StatusType:   "node.NodeStatus",
+			URLPath:      "/nodes",
+			StorageName:  "Node",
+		},
+	}
+
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	if err := gen.GenerateRoutes(); err != nil {
+		t.Fatalf("GenerateRoutes: %v", err)
+	}
+
+	outPath := filepath.Join(gen.OutputDir, "routes_generated.go")
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("ReadFile(routes_generated.go): %v", err)
+	}
+
+	content := string(got)
+	if strings.Contains(content, "type resourceRouteHandlers struct") {
+		t.Fatalf("per-resource mode should not emit shared resourceRouteHandlers type")
+	}
+	if strings.Contains(content, "func registerResourceRoutes(") {
+		t.Fatalf("per-resource mode should not emit shared registerResourceRoutes helper")
+	}
+	if !strings.Contains(content, "protected.Route(\"/nodes\"") {
+		t.Fatalf("per-resource mode should keep explicit protected.Route blocks")
+	}
+}

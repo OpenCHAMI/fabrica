@@ -143,8 +143,8 @@ type GeneratorConfig struct {
 	// SharedAPITypes emits shared request/response helper types in pkg/apitypes.
 	SharedAPITypes bool
 
-	// HandlersMode controls handler generation style.
-	// "generic" enables shared helper scaffolding; "per-resource" preserves classic output shape.
+	// HandlersMode controls generated HTTP scaffolding style.
+	// "generic" enables shared route/helper scaffolding; "per-resource" preserves explicit per-resource output.
 	HandlersMode string
 }
 

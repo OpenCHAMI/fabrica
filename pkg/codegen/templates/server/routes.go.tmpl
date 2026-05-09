@@ -35,6 +35,10 @@
 package main
 
 import (
+	{{if eq .Config.HandlersMode "generic"}}
+	"net/http"
+	{{end}}
+
 	"github.com/go-chi/chi/v5"
 	"github.com/openchami/fabrica/pkg/resource"
 )
@@ -48,6 +52,51 @@ func registerResourcePrefixes() error {
 	return nil
 }
 
+{{if eq .Config.HandlersMode "generic"}}
+type resourceRouteHandlers struct {
+	List        http.HandlerFunc
+	Create      http.HandlerFunc
+	Get         http.HandlerFunc
+	Update      http.HandlerFunc
+	Patch       http.HandlerFunc
+	Delete      http.HandlerFunc
+	UpdateStatus http.HandlerFunc
+	PatchStatus  http.HandlerFunc
+
+	ListVersions   http.HandlerFunc
+	GetVersion     http.HandlerFunc
+	DeleteVersion  http.HandlerFunc
+}
+
+func registerResourceRoutes(r chi.Router, path string, handlers resourceRouteHandlers, withVersions bool) {
+	r.Route(path, func(r chi.Router) {
+		r.Get("/", handlers.List)
+		r.Post("/", handlers.Create)
+		r.Route("/{uid}", func(r chi.Router) {
+			r.Get("/", handlers.Get)
+			r.Put("/", handlers.Update)
+			r.Patch("/", handlers.Patch)
+			r.Delete("/", handlers.Delete)
+
+			// Status subresource
+			r.Route("/status", func(r chi.Router) {
+				r.Put("/", handlers.UpdateStatus)
+				r.Patch("/", handlers.PatchStatus)
+			})
+
+			if withVersions {
+				// Versions subresource
+				r.Route("/versions", func(r chi.Router) {
+					r.Get("/", handlers.ListVersions)
+					r.Get("/{versionID}", handlers.GetVersion)
+					r.Delete("/{versionID}", handlers.DeleteVersion)
+				})
+			}
+		})
+	})
+}
+{{end}}
+
 // RegisterGeneratedRoutes registers all generated resource routes.
 // Note: Middleware should be applied in main.go before calling this function.
 // Public service routes such as /health, /openapi.json, and /docs are registered
@@ -56,6 +105,24 @@ func RegisterGeneratedRoutes(r chi.Router) {
 	// Protected endpoints (resource APIs)
 	r.Group(func(protected chi.Router) {
 {{range .Resources}}
+		{{if eq $.Config.HandlersMode "generic"}}
+		// {{.Name}} routes
+		registerResourceRoutes(protected, "{{.URLPath}}", resourceRouteHandlers{
+			List:         Get{{.Name}}s,
+			Create:       Create{{.Name}},
+			Get:          Get{{.Name}},
+			Update:       Update{{.Name}},
+			Patch:        Patch{{.Name}},
+			Delete:       Delete{{.Name}},
+			UpdateStatus: Update{{.Name}}Status,
+			PatchStatus:  Patch{{.Name}}Status,
+			{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+			ListVersions:  List{{.Name}}Versions,
+			GetVersion:    Get{{.Name}}Version,
+			DeleteVersion: Delete{{.Name}}Version,
+			{{- end }}{{- end }}
+		}, {{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}true{{else}}false{{end}}{{else}}false{{end}})
+		{{else}}
 		// {{.Name}} routes
 		protected.Route("{{.URLPath}}", func(r chi.Router) {
 		r.Get("/", Get{{.Name}}s)
@@ -82,6 +149,7 @@ func RegisterGeneratedRoutes(r chi.Router) {
 			{{- end }}{{- end }}
 		})
 	})
+		{{end}}
 {{end}}
 	})
 }
