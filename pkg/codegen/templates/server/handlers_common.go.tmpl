@@ -84,3 +84,131 @@ func withLoadedResource[T any](
 
 	handler(uid, value)
 }
+
+func publishNonCriticalEvent(kind, action, uid string, publish func() error) {
+	if err := publish(); err != nil {
+		logEventPublishWarning("Failed to publish %s event for %s %s: %v", action, kind, uid, err)
+	}
+}
+
+func persistVersionSnapshot(
+	ctx context.Context,
+	kind string,
+	uid string,
+	action string,
+	createSnapshot func(context.Context) (string, error),
+	assignVersion func(string),
+	persist func(context.Context) error,
+) {
+	verID, err := createSnapshot(ctx)
+	if err != nil {
+		logEventPublishWarning("failed to create %s version for %s %s: %v", action, kind, uid, err)
+		return
+	}
+
+	assignVersion(verID)
+	if err := persist(ctx); err != nil {
+		logEventPublishWarning("failed to persist version into status for %s %s: %v", kind, uid, err)
+	}
+}
+
+func applyStringMap(values map[string]string, set func(string, string)) {
+	for k, v := range values {
+		set(k, v)
+	}
+}
+
+type resourceAdapter[T any] struct {
+	Kind   string
+	Load   func(context.Context, string) (*T, error)
+	Save   func(context.Context, *T) error
+	Delete func(context.Context, string) error
+}
+
+func createResourceWithAdapter[T any](
+	w http.ResponseWriter,
+	r *http.Request,
+	adapter resourceAdapter[T],
+	build func(context.Context) (*T, bool),
+	afterSave func(*T),
+) {
+	resourceValue, ok := build(r.Context())
+	if !ok {
+		return
+	}
+
+	if err := runBeforeSaveHook(r.Context(), resourceValue); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	if err := adapter.Save(r.Context(), resourceValue); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save %s: %w", adapter.Kind, err))
+		return
+	}
+
+	afterSave(resourceValue)
+}
+
+func mutateResourceWithAdapter[T any](
+	w http.ResponseWriter,
+	r *http.Request,
+	adapter resourceAdapter[T],
+	mutate func(uid string, resourceValue *T) bool,
+	afterSave func(uid string, resourceValue *T),
+) {
+	withLoadedResource(w, r, adapter.Kind, adapter.Load, func(uid string, resourceValue *T) {
+		if !mutate(uid, resourceValue) {
+			return
+		}
+
+		if err := runBeforeSaveHook(r.Context(), resourceValue); err != nil {
+			respondError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		if err := adapter.Save(r.Context(), resourceValue); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save %s: %w", adapter.Kind, err))
+			return
+		}
+
+		afterSave(uid, resourceValue)
+	})
+}
+
+func mutateResourceWithAdapterNoHook[T any](
+	w http.ResponseWriter,
+	r *http.Request,
+	adapter resourceAdapter[T],
+	mutate func(uid string, resourceValue *T) bool,
+	afterSave func(uid string, resourceValue *T),
+) {
+	withLoadedResource(w, r, adapter.Kind, adapter.Load, func(uid string, resourceValue *T) {
+		if !mutate(uid, resourceValue) {
+			return
+		}
+
+		if err := adapter.Save(r.Context(), resourceValue); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save %s: %w", adapter.Kind, err))
+			return
+		}
+
+		afterSave(uid, resourceValue)
+	})
+}
+
+func deleteResourceWithAdapter[T any](
+	w http.ResponseWriter,
+	r *http.Request,
+	adapter resourceAdapter[T],
+	afterDelete func(uid string, resourceValue *T),
+) {
+	withLoadedResource(w, r, adapter.Kind, adapter.Load, func(uid string, resourceValue *T) {
+		if err := adapter.Delete(r.Context(), uid); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete %s: %w", adapter.Kind, err))
+			return
+		}
+
+		afterDelete(uid, resourceValue)
+	})
+}

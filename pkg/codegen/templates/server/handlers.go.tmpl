@@ -41,6 +41,7 @@ SPDX-License-Identifier: MIT
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -81,149 +82,163 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware in routes.go or implement checks here
 	// Example: if !authorized(r) { respondError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized")); return }
 
-	withLoadedResource(w, r, "{{.Name}}", storage.Load{{.StorageName}}, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
+	adapter := {{camelCase .Name}}Adapter()
+	withLoadedResource(w, r, adapter.Kind, adapter.Load, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
 		respondJSON(w, http.StatusOK, {{camelCase .Name}})
 	})
 }
 
+func {{camelCase .Name}}Identity(res *{{.PackageAlias}}.{{.Name}}) (string, string) {
+{{if .IsVersioned}}
+	return res.Metadata.UID, res.Metadata.Name
+{{else}}
+	return res.GetUID(), res.GetName()
+{{end}}
+}
+
+func {{camelCase .Name}}Adapter() resourceAdapter[{{.PackageAlias}}.{{.Name}}] {
+	return resourceAdapter[{{.PackageAlias}}.{{.Name}}]{
+		Kind:   "{{.Name}}",
+		Load:   storage.Load{{.StorageName}},
+		Save:   storage.Save{{.StorageName}},
+		Delete: storage.Delete{{.StorageName}},
+	}
+}
+
 // Create{{.Name}} creates a new {{.Name}} resource
 func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
-	var req Create{{.Name}}Request
-	if !decodeRequestJSON(w, r, &req, "request") {
-		return
-	}
+	adapter := {{camelCase .Name}}Adapter()
+	createResourceWithAdapter(w, r, adapter,
+		func(ctx context.Context) (*{{.PackageAlias}}.{{.Name}}, bool) {
+			var req Create{{.Name}}Request
+			if !decodeRequestJSON(w, r, &req, "request") {
+				return nil, false
+			}
 
-	// Layer 1: Request validation (validates inline spec fields and metadata)
-	if err := validation.ValidateResource(&req); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
+			// Layer 1: Request validation (validates inline spec fields and metadata)
+			if err := validation.ValidateResource(&req); err != nil {
+				respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+				return nil, false
+			}
 
-	// Get version context from request (set by version negotiation middleware)
-	versionCtx := versioning.GetVersionContext(r.Context())
+			// Get version context from request (set by version negotiation middleware)
+			versionCtx := versioning.GetVersionContext(ctx)
 
-	uid, err := resource.GenerateUIDForResource("{{.Name}}")
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate UID: %w", err))
-		return
-	}
+			uid, err := resource.GenerateUIDForResource("{{.Name}}")
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate UID: %w", err))
+				return nil, false
+			}
 
 {{if .IsVersioned}}
-	// Versioned mode: flat fields with fabrica.Metadata
-	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
-		// Use negotiated ServeVersion (from Accept header) for apiVersion
-		APIVersion: versionCtx.ServeVersion,
-		Kind:       "{{.Name}}",
-		Spec:       req.AsSpec(),
-	}
+			// Versioned mode: flat fields with fabrica.Metadata
+			{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
+				// Use negotiated ServeVersion (from Accept header) for apiVersion
+				APIVersion: versionCtx.ServeVersion,
+				Kind:       "{{.Name}}",
+				Spec:       req.AsSpec(),
+			}
 
-	// Initialize metadata from request
-	{{camelCase .Name}}.Metadata = req.Metadata
-	{{camelCase .Name}}.Metadata.UID = uid
-	now := time.Now()
-	{{camelCase .Name}}.Metadata.CreatedAt = now
-	{{camelCase .Name}}.Metadata.UpdatedAt = now
+			// Initialize metadata from request
+			{{camelCase .Name}}.Metadata = req.Metadata
+			{{camelCase .Name}}.Metadata.UID = uid
+			now := time.Now()
+			{{camelCase .Name}}.Metadata.CreatedAt = now
+			{{camelCase .Name}}.Metadata.UpdatedAt = now
 
-	// Set labels and annotations
-	if {{camelCase .Name}}.Metadata.Labels == nil {
-		{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
-	}
-	for k, v := range req.Labels {
-		{{camelCase .Name}}.Metadata.Labels[k] = v
-	}
-	if {{camelCase .Name}}.Metadata.Annotations == nil {
-		{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
-	}
-	for k, v := range req.Annotations {
-		{{camelCase .Name}}.Metadata.Annotations[k] = v
-	}
+			// Set labels and annotations
+			if {{camelCase .Name}}.Metadata.Labels == nil {
+				{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
+			}
+			applyStringMap(req.Labels, func(k, v string) {
+				{{camelCase .Name}}.Metadata.Labels[k] = v
+			})
+			if {{camelCase .Name}}.Metadata.Annotations == nil {
+				{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
+			}
+			applyStringMap(req.Annotations, func(k, v string) {
+				{{camelCase .Name}}.Metadata.Annotations[k] = v
+			})
 {{else}}
-	// Legacy mode: embedded resource.Resource
-	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
-		Resource: resource.Resource{
-			APIVersion:    versionCtx.GroupVersion,
-			Kind:          "{{.Name}}",
-			SchemaVersion: versionCtx.ServeVersion,
+			// Legacy mode: embedded resource.Resource
+			{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{
+				Resource: resource.Resource{
+					APIVersion:    versionCtx.GroupVersion,
+					Kind:          "{{.Name}}",
+					SchemaVersion: versionCtx.ServeVersion,
+				},
+				Spec: req.AsSpec(),
+			}
+
+			// Initialize metadata from request
+			if req.Metadata.Name != "" {
+				{{camelCase .Name}}.Metadata.Initialize(req.Metadata.Name, uid)
+			} else {
+				{{camelCase .Name}}.Metadata.Initialize("", uid)
+			}
+			now := time.Now()
+			{{camelCase .Name}}.Metadata.CreatedAt = now
+			{{camelCase .Name}}.Metadata.UpdatedAt = now
+
+			// Set labels and annotations
+			applyStringMap(req.Labels, {{camelCase .Name}}.SetLabel)
+			applyStringMap(req.Annotations, {{camelCase .Name}}.SetAnnotation)
+{{end}}
+
+			// Layer 2: Custom business logic validation
+			if err := validation.ValidateWithContext(ctx, {{camelCase .Name}}); err != nil {
+				respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+				return nil, false
+			}
+
+			// Set initial status
+			// This assumes the generator passes an 'IsReconcilable' boolean
+			// to this template, and that the resource has a .Status.Phase field.
+			{{if .IsReconcilable}}
+			{{camelCase .Name}}.Status.Phase = "Pending"
+			{{end}}
+
+			return {{camelCase .Name}}, true
 		},
-		Spec: req.AsSpec(),
-	}
+		func({{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
+			{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+			// Create initial version snapshot (Spec + metadata only) and persist version into status
+			persistVersionSnapshot(
+				r.Context(),
+				"{{.Name}}",
+				{{camelCase .Name}}.GetUID(),
+				"initial",
+				func(ctx context.Context) (string, error) {
+					return storage.Create{{.Name}}VersionSnapshot(ctx, {{camelCase .Name}})
+				},
+				func(verID string) {
+					{{camelCase .Name}}.Status.Version = verID
+				},
+				func(ctx context.Context) error {
+					return adapter.Save(ctx, {{camelCase .Name}})
+				},
+			)
+			{{- end }}{{- end }}
 
-	// Initialize metadata from request
-	if req.Metadata.Name != "" {
-		{{camelCase .Name}}.Metadata.Initialize(req.Metadata.Name, uid)
-	} else {
-		{{camelCase .Name}}.Metadata.Initialize("", uid)
-	now := time.Now()
-	{{camelCase .Name}}.Metadata.CreatedAt = now
-	{{camelCase .Name}}.Metadata.UpdatedAt = now
+			// Publish resource created event
+			createdUID, createdName := {{camelCase .Name}}Identity({{camelCase .Name}})
+			publishNonCriticalEvent("{{.Name}}", "resource created", createdUID, func() error {
+				return events.PublishResourceCreated(r.Context(), "{{.Name}}", createdUID, createdName, {{camelCase .Name}})
+			})
 
-	// Set labels and annotations
-	for k, v := range req.Labels {
-		{{camelCase .Name}}.SetLabel(k, v)
-	}
-	for k, v := range req.Annotations {
-		{{camelCase .Name}}.SetAnnotation(k, v)
-	}
-{{end}}
-
-	// Layer 2: Custom business logic validation
-	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
-
-	if err := runBeforeSaveHook(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	// Set initial status
-    // This assumes the generator passes an 'IsReconcilable' boolean
-    // to this template, and that the resource has a .Status.Phase field.
-    {{if .IsReconcilable}}
-    {{camelCase .Name}}.Status.Phase = "Pending"
-    {{end}}
-
-	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
-	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
-		return
-	}
-
-	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
-	// Create initial version snapshot (Spec + metadata only) and persist version into status
-	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
-		logEventPublishWarning("failed to create initial version for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-	} else {
-		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			logEventPublishWarning("failed to persist version into status for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-		}
-	}
-	{{- end }}{{- end }}
-
-	// Publish resource created event
-{{if .IsVersioned}}
-	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}); err != nil {
-		// Log the error but don't fail the request - events are non-critical
-		logEventPublishWarning("Failed to publish resource created event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
-{{else}}
-	if err := events.PublishResourceCreated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}); err != nil {
-		// Log the error but don't fail the request - events are non-critical
-		logEventPublishWarning("Failed to publish resource created event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-{{end}}
-	}
-
-	respondJSON(w, http.StatusCreated, {{camelCase .Name}})
+			respondJSON(w, http.StatusCreated, {{camelCase .Name}})
+		},
+	)
 }
 
 // Update{{.Name}} updates the spec of an existing {{.Name}} resource
 // NOTE: This endpoint ONLY updates the spec. Use PUT /{{.URLPath}}/{uid}/status to update status.
 func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
-	withLoadedResource(w, r, "{{.Name}}", storage.Load{{.StorageName}}, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
+	adapter := {{camelCase .Name}}Adapter()
+	mutateResourceWithAdapter(w, r, adapter, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) bool {
 		var req Update{{.Name}}Request
 		if !decodeRequestJSON(w, r, &req, "request") {
-			return
+			return false
 		}
 
 		// Apply updates
@@ -240,15 +255,15 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		if {{camelCase .Name}}.Metadata.Labels == nil {
 			{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
 		}
-		for k, v := range req.Labels {
+		applyStringMap(req.Labels, func(k, v string) {
 			{{camelCase .Name}}.Metadata.Labels[k] = v
-		}
+		})
 		if {{camelCase .Name}}.Metadata.Annotations == nil {
 			{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
 		}
-		for k, v := range req.Annotations {
+		applyStringMap(req.Annotations, func(k, v string) {
 			{{camelCase .Name}}.Metadata.Annotations[k] = v
-		}
+		})
 
 		// Update timestamp
 		{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
@@ -262,52 +277,42 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{camelCase .Name}}.Spec = req.AsSpec()
 
 		// Update labels and annotations
-		for k, v := range req.Labels {
-			{{camelCase .Name}}.SetLabel(k, v)
-		}
-		for k, v := range req.Annotations {
-			{{camelCase .Name}}.SetAnnotation(k, v)
-		}
+		applyStringMap(req.Labels, {{camelCase .Name}}.SetLabel)
+		applyStringMap(req.Annotations, {{camelCase .Name}}.SetAnnotation)
 
 		{{camelCase .Name}}.Touch()
 {{end}}
 
-		if err := runBeforeSaveHook(r.Context(), {{camelCase .Name}}); err != nil {
-			respondError(w, http.StatusBadRequest, err)
-			return
-		}
-
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
-			return
-		}
+		return true
+	}, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 		// Create version snapshot after spec update and persist version into status
-		if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
-			logEventPublishWarning("failed to create version for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-		} else {
-			{{camelCase .Name}}.Status.Version = verID
-			if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-				logEventPublishWarning("failed to persist version into status for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-			}
-		}
+		persistVersionSnapshot(
+			r.Context(),
+			"{{.Name}}",
+			{{camelCase .Name}}.GetUID(),
+			"update",
+			func(ctx context.Context) (string, error) {
+				return storage.Create{{.Name}}VersionSnapshot(ctx, {{camelCase .Name}})
+			},
+			func(verID string) {
+				{{camelCase .Name}}.Status.Version = verID
+			},
+			func(ctx context.Context) error {
+				return adapter.Save(ctx, {{camelCase .Name}})
+			},
+		)
 	{{- end }}{{- end }}
 
 		// Publish resource updated event
 		updateMetadata := map[string]interface{}{
 			"updatedAt": {{camelCase .Name}}.Metadata.UpdatedAt,
 		}
-{{if .IsVersioned}}
-		if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}, updateMetadata); err != nil {
-			// Log the error but don't fail the request - events are non-critical
-			logEventPublishWarning("Failed to publish resource updated event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
-{{else}}
-		if err := events.PublishResourceUpdated(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, updateMetadata); err != nil {
-			// Log the error but don't fail the request - events are non-critical
-			logEventPublishWarning("Failed to publish resource updated event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-{{end}}
-		}
+		updatedUID, updatedName := {{camelCase .Name}}Identity({{camelCase .Name}})
+		publishNonCriticalEvent("{{.Name}}", "resource updated", updatedUID, func() error {
+			return events.PublishResourceUpdated(r.Context(), "{{.Name}}", updatedUID, updatedName, {{camelCase .Name}}, updateMetadata)
+		})
 
 		respondJSON(w, http.StatusOK, {{camelCase .Name}})
 	})
@@ -316,23 +321,25 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 // Patch{{.Name}} patches an existing {{.Name}} resource spec using JSON Merge Patch, JSON Patch, or Shorthand Patch
 // Only the spec portion of the resource can be patched - metadata and status are API-managed
 func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
-	withLoadedResource(w, r, "{{.Name}}", storage.Load{{.StorageName}}, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
+	adapter := {{camelCase .Name}}Adapter()
+	var patchType patch.PatchType
+	mutateResourceWithAdapter(w, r, adapter, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) bool {
 		// Read patch document
 		patchData, ok := readRequestBody(w, r, "patch data")
 		if !ok {
-			return
+			return false
 		}
 
 	// Marshal current spec to JSON for patching (only allow spec modifications)
 		currentSpecJSON, err := json.Marshal({{camelCase .Name}}.Spec)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current spec: %w", err))
-			return
+			return false
 		}
 
 	// Detect patch type from Content-Type header
 		contentType := r.Header.Get("Content-Type")
-		patchType := patch.DetectPatchType(contentType)
+		patchType = patch.DetectPatchType(contentType)
 
 	// Apply patch to spec only
 		patchResult, err := patch.ApplyPatchWithOptions(currentSpecJSON, patchData, patchType, patch.PatchOptions{
@@ -341,13 +348,13 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("failed to apply patch to spec: %w", err))
-			return
+			return false
 		}
 
 	// Unmarshal the patched result back to the spec
 		if err := json.Unmarshal(patchResult.Updated, &{{camelCase .Name}}.Spec); err != nil {
 			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to unmarshal patched spec: %w", err))
-			return
+			return false
 		}
 
 	// Touch to update metadata
@@ -357,27 +364,26 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	{{camelCase .Name}}.Touch()
 {{end}}
 
-		if err := runBeforeSaveHook(r.Context(), {{camelCase .Name}}); err != nil {
-			respondError(w, http.StatusBadRequest, err)
-			return
-		}
-
-	// Save the patched resource
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}}: %w", err))
-			return
-		}
+		return true
+	}, func(_ string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create version snapshot after spec patch and persist version into status
-	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
-		logEventPublishWarning("failed to create version for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-	} else {
-		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-			logEventPublishWarning("failed to persist version into status for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-		}
-	}
+	persistVersionSnapshot(
+		r.Context(),
+		"{{.Name}}",
+		{{camelCase .Name}}.GetUID(),
+		"patch",
+		func(ctx context.Context) (string, error) {
+			return storage.Create{{.Name}}VersionSnapshot(ctx, {{camelCase .Name}})
+		},
+		func(verID string) {
+			{{camelCase .Name}}.Status.Version = verID
+		},
+		func(ctx context.Context) error {
+			return adapter.Save(ctx, {{camelCase .Name}})
+		},
+	)
 	{{- end }}{{- end }}
 
 	// Publish resource patched event
@@ -385,16 +391,10 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 			"patchType": patchType,
 			"updatedAt": {{camelCase .Name}}.Metadata.UpdatedAt,
 		}
-{{if .IsVersioned}}
-	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, {{camelCase .Name}}, patchMetadata); err != nil {
-		// Log the error but don't fail the request - events are non-critical
-		logEventPublishWarning("Failed to publish resource patched event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
-{{else}}
-	if err := events.PublishResourcePatched(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), {{camelCase .Name}}, patchMetadata); err != nil {
-		// Log the error but don't fail the request - events are non-critical
-		logEventPublishWarning("Failed to publish resource patched event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-{{end}}
-	}
+		patchedUID, patchedName := {{camelCase .Name}}Identity({{camelCase .Name}})
+		publishNonCriticalEvent("{{.Name}}", "resource patched", patchedUID, func() error {
+			return events.PublishResourcePatched(r.Context(), "{{.Name}}", patchedUID, patchedName, {{camelCase .Name}}, patchMetadata)
+		})
 
 		respondJSON(w, http.StatusOK, {{camelCase .Name}})
 	})
@@ -410,45 +410,40 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status update authorization
 	// Status updates can have different permissions than spec updates
 
-	withLoadedResource(w, r, "{{.Name}}", storage.Load{{.StorageName}}, func(_ string, res *{{.PackageAlias}}.{{.Name}}) {
+	adapter := {{camelCase .Name}}Adapter()
+	mutateResourceWithAdapterNoHook(w, r, adapter, func(_ string, res *{{.PackageAlias}}.{{.Name}}) bool {
 		var statusUpdate {{.PackageAlias}}.{{.Name}}Status
 		if !decodeRequestJSON(w, r, &statusUpdate, "status") {
-			return
+			return false
 		}
 
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	prevVersion := res.Status.Version
+	{{- end }}{{- end }}
 	// Preserve spec - only update status
 	res.Status = statusUpdate
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Preserve server-managed version field in status
-	prevVersion := res.Status.Version
 	res.Status.Version = prevVersion
 	{{- end }}{{- end }}
-{{if .IsVersioned}}
-	res.Metadata.UpdatedAt = time.Now()
-{{else}}
-	res.Touch()
-{{end}}
+	{{if .IsVersioned}}
+		res.Metadata.UpdatedAt = time.Now()
+	{{else}}
+		res.Touch()
+	{{end}}
 
-		if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}} status: %w", err))
-			return
-		}
+		return true
+	}, func(_ string, res *{{.PackageAlias}}.{{.Name}}) {
 
 	// Publish status update event
 	statusMetadata := map[string]interface{}{
 		"updatedAt":  res.Metadata.UpdatedAt,
 		"updateType": "status",
 	}
-{{if .IsVersioned}}
-	if err := events.PublishResourceStatusUpdated(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, statusMetadata); err != nil {
-		// Log but don't fail - events are non-critical
-		logEventPublishWarning("Failed to publish status update event for {{.Name}} %s: %v", res.Metadata.UID, err)
-{{else}}
-	if err := events.PublishResourceStatusUpdated(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, statusMetadata); err != nil {
-		// Log but don't fail - events are non-critical
-		logEventPublishWarning("Failed to publish status update event for {{.Name}} %s: %v", res.GetUID(), err)
-{{end}}
-	}
+	statusUID, statusName := {{camelCase .Name}}Identity(res)
+	publishNonCriticalEvent("{{.Name}}", "status update", statusUID, func() error {
+		return events.PublishResourceStatusUpdated(r.Context(), "{{.Name}}", statusUID, statusName, res, statusMetadata)
+	})
 
 		respondJSON(w, http.StatusOK, res)
 	})
@@ -461,21 +456,23 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status patch authorization
 	// Status patches can have different permissions than spec patches
 
-	withLoadedResource(w, r, "{{.Name}}", storage.Load{{.StorageName}}, func(uid string, res *{{.PackageAlias}}.{{.Name}}) {
+	adapter := {{camelCase .Name}}Adapter()
+	var patchType patch.PatchType
+	mutateResourceWithAdapterNoHook(w, r, adapter, func(uid string, res *{{.PackageAlias}}.{{.Name}}) bool {
 		patchData, ok := readRequestBody(w, r, "patch data")
 		if !ok {
-			return
+			return false
 		}
 
 	// Marshal current status for patching
 		currentStatusJSON, err := json.Marshal(res.Status)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current status: %w", err))
-			return
+			return false
 		}
 
 		contentType := r.Header.Get("Content-Type")
-		patchType := patch.DetectPatchType(contentType)
+		patchType = patch.DetectPatchType(contentType)
 
 		patchResult, err := patch.ApplyPatchWithOptions(currentStatusJSON, patchData, patchType, patch.PatchOptions{
 			AllowAddFields:    true,
@@ -483,13 +480,13 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("failed to apply patch to status: %w", err))
-			return
+			return false
 		}
 
 	// Unmarshal patched status back
 		if err := json.Unmarshal(patchResult.Updated, &res.Status); err != nil {
 			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to unmarshal patched status: %w", err))
-			return
+			return false
 		}
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
@@ -500,16 +497,14 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	}
 	{{- end }}{{- end }}
 
-{{if .IsVersioned}}
-	res.Metadata.UpdatedAt = time.Now()
-{{else}}
-	res.Touch()
-{{end}}
+	{{if .IsVersioned}}
+		res.Metadata.UpdatedAt = time.Now()
+	{{else}}
+		res.Touch()
+	{{end}}
 
-		if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}} status: %w", err))
-			return
-		}
+		return true
+	}, func(_ string, res *{{.PackageAlias}}.{{.Name}}) {
 
 	// Publish status patch event
 	patchMetadata := map[string]interface{}{
@@ -517,14 +512,10 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		"updatedAt":  res.Metadata.UpdatedAt,
 		"updateType": "status",
 	}
-{{if .IsVersioned}}
-	if err := events.PublishResourceStatusPatched(r.Context(), "{{.Name}}", res.Metadata.UID, res.Metadata.Name, res, patchMetadata); err != nil {
-		logEventPublishWarning("Failed to publish status patch event for {{.Name}} %s: %v", res.Metadata.UID, err)
-{{else}}
-	if err := events.PublishResourceStatusPatched(r.Context(), "{{.Name}}", res.GetUID(), res.GetName(), res, patchMetadata); err != nil {
-		logEventPublishWarning("Failed to publish status patch event for {{.Name}} %s: %v", res.GetUID(), err)
-{{end}}
-	}
+	statusPatchUID, statusPatchName := {{camelCase .Name}}Identity(res)
+	publishNonCriticalEvent("{{.Name}}", "status patch", statusPatchUID, func() error {
+		return events.PublishResourceStatusPatched(r.Context(), "{{.Name}}", statusPatchUID, statusPatchName, res, patchMetadata)
+	})
 
 		respondJSON(w, http.StatusOK, res)
 	})
@@ -582,31 +573,21 @@ func Delete{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 
 // Delete{{.Name}} deletes a {{.Name}} resource
 func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
-	withLoadedResource(w, r, "{{.Name}}", storage.Load{{.StorageName}}, func(uid string, {{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
-		// Load resource before deletion for event publishing
-		if err := storage.Delete{{.StorageName}}(r.Context(), uid); err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete {{.Name}}: %w", err))
-			return
-		}
-
-	// Publish resource deleted event
-	deleteMetadata := map[string]interface{}{
-		"deletedAt": time.Now(),
-	}
-{{if .IsVersioned}}
-	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.Metadata.UID, {{camelCase .Name}}.Metadata.Name, deleteMetadata); err != nil {
-		// Log the error but don't fail the request - events are non-critical
-		logEventPublishWarning("Failed to publish resource deleted event for {{.Name}} %s: %v", {{camelCase .Name}}.Metadata.UID, err)
-{{else}}
-	if err := events.PublishResourceDeleted(r.Context(), "{{.Name}}", {{camelCase .Name}}.GetUID(), {{camelCase .Name}}.GetName(), deleteMetadata); err != nil {
-		// Log the error but don't fail the request - events are non-critical
-		logEventPublishWarning("Failed to publish resource deleted event for {{.Name}} %s: %v", {{camelCase .Name}}.GetUID(), err)
-{{end}}
-	}
-
-		respondJSON(w, http.StatusOK, &DeleteResponse{
-			Message: "{{.Name}} deleted successfully",
-			UID:     uid,
-		})
-	})
+	adapter := {{camelCase .Name}}Adapter()
+	deleteResourceWithAdapter(w, r, adapter,
+		func({{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) {
+			// Publish resource deleted event
+			deleteMetadata := map[string]interface{}{
+				"deletedAt": time.Now(),
+			}
+			deletedUID, deletedName := {{camelCase .Name}}Identity({{camelCase .Name}})
+			publishNonCriticalEvent("{{.Name}}", "resource deleted", deletedUID, func() error {
+				return events.PublishResourceDeleted(r.Context(), "{{.Name}}", deletedUID, deletedName, deleteMetadata)
+			})
+			respondJSON(w, http.StatusOK, &DeleteResponse{
+				Message: "{{.Name}} deleted successfully",
+				UID:     deletedUID,
+			})
+		},
+	)
 }
