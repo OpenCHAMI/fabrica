@@ -64,3 +64,5 @@ examples/fru-service/
 examples/myapp/
 examples/rack-inventory/
 examples/sensor-monitor/
+
+graphify-out/
