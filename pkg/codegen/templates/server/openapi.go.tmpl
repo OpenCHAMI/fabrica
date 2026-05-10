@@ -107,7 +107,20 @@ func GenerateOpenAPISpec() *openapi3.T {
 	// Register all resource paths
 {{range .Resources}}	register{{.Name}}Paths(spec)
 {{end}}
-	registerServicePaths(spec)
+	// Register /health endpoint
+	healthOp := openapi3.NewOperation()
+	healthOp.OperationID = "health"
+	healthOp.Summary = "Service health"
+	healthOp.Description = "Returns service health information"
+	healthOp.Tags = []string{"Service"}
+	healthOp.Responses = openapi3.NewResponses()
+	healthOp.Responses.Set("200", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Healthy").
+			WithJSONSchemaRef(&openapi3.SchemaRef{Value: openapi3.NewObjectSchema()}),
+	})
+	spec.Paths.Set("/health", &openapi3.PathItem{Get: healthOp})
+
 	// Register custom (non-Fabrica-generated) paths.
 	// Defined in openapi_extensions.go – safe to edit, never overwritten.
 	registerCustomOpenAPIPaths(spec)
@@ -381,22 +394,6 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	{{- end}}{{- end}}
 }
 {{end}}
-
-func registerServicePaths(spec *openapi3.T) {
-	healthOp := openapi3.NewOperation()
-	healthOp.OperationID = "health"
-	healthOp.Summary = "Service health"
-	healthOp.Description = "Returns service health information"
-	healthOp.Tags = []string{"Service"}
-	healthOp.Responses = openapi3.NewResponses()
-	healthOp.Responses.Set("200", &openapi3.ResponseRef{
-		Value: openapi3.NewResponse().
-			WithDescription("Healthy").
-			WithJSONSchemaRef(&openapi3.SchemaRef{Value: openapi3.NewObjectSchema()}),
-	})
-
-	spec.Paths.Set("/health", &openapi3.PathItem{Get: healthOp})
-}
 
 func patchRequestBody() *openapi3.RequestBodyRef {
 	patchSchema := &openapi3.SchemaRef{Value: openapi3.NewObjectSchema()}
