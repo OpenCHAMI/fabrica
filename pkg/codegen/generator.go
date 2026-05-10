@@ -53,7 +53,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed templates/*
+//go:embed templates/**
 var embeddedTemplates embed.FS
 
 // GetEmbeddedTemplates returns the embedded template filesystem
@@ -1580,3 +1580,4 @@ var templateFuncs = template.FuncMap{
 		return "{\n" + strings.Join(parts, ",\n") + "\n  }"
 	},
 }
+

@@ -12,11 +12,11 @@ import (
 func TestTemplate_OpenAPIIncludesServiceHealthPath(t *testing.T) {
 	got := mustReadFile(t, "pkg/codegen/templates/server/openapi.go.tmpl")
 
-	if !strings.Contains(got, "registerServicePaths(spec)") {
-		t.Fatalf("openapi template should register service-level paths")
+	if !strings.Contains(got, "healthOp := openapi3.NewOperation()") {
+		t.Fatalf("openapi template should define /health operation")
 	}
-	if !strings.Contains(got, "func registerServicePaths(spec *openapi3.T)") {
-		t.Fatalf("openapi template should define registerServicePaths helper")
+	if !strings.Contains(got, "healthOp.OperationID = \"health\"") {
+		t.Fatalf("openapi template should set health operation ID")
 	}
 	if !strings.Contains(got, "spec.Paths.Set(\"/health\"") {
 		t.Fatalf("openapi template should include /health path")
