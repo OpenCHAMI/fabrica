@@ -1580,4 +1580,3 @@ var templateFuncs = template.FuncMap{
 		return "{\n" + strings.Join(parts, ",\n") + "\n  }"
 	},
 }
-
