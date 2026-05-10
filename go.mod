@@ -4,7 +4,7 @@
 
 module github.com/openchami/fabrica
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
