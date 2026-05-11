@@ -805,6 +805,7 @@ func main() {
 	authEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
+	gen.Commit = "%s" // Fabrica git commit SHA used for generation
 
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
@@ -890,7 +891,7 @@ func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
 
 	return nil
 }
-`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, commit, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.
