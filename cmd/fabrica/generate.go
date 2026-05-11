@@ -1302,8 +1302,19 @@ func generateEntCode(debug bool) error {
 // parseVersion extracts version from a string like "v1.2.3" or "1.2.3"
 // Returns major, minor, patch as integers
 func parseVersion(v string) (major, minor, patch int, err error) {
+	v = strings.TrimSpace(v)
+
 	// Remove 'v' prefix if present
 	v = strings.TrimPrefix(v, "v")
+
+	// Handle git-describe style versions like "0.4.4-4-g1c64d98"
+	// and strip build metadata suffixes when present.
+	if idx := strings.Index(v, "-"); idx > 0 {
+		v = v[:idx]
+	}
+	if idx := strings.Index(v, "+"); idx > 0 {
+		v = v[:idx]
+	}
 
 	// Handle "dev" or empty versions
 	if v == "" || v == "dev" || v == "none" {
