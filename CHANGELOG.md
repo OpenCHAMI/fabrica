@@ -12,8 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.4.5] - 2026-05-12
+
+### Added
+- Generated servers now expose a health check endpoint, and generated clients/CLI gain a matching health command for service status checks.
+- Added regression coverage for health endpoint OpenAPI parity, version parsing, and generation compatibility checks.
+
+### Changed
+- Improved version reporting so release builds, git-describe builds, and build-metadata suffixes are handled consistently across generation and CLI output.
+- OpenAPI generation now includes the generated `/openapi.json` and `/docs` endpoints alongside the health operation.
+
+### Fixed
+- Stabilized OpenAPI generation and parity checks to validate endpoint semantics instead of fragile helper-function shapes.
+- Updated generated file metadata handling and client templates to include the new health functionality cleanly.
+
 ### Security
 - Upgrade Go from 1.26.2 to 1.26.3 across modules and CI to address standard-library vulnerabilities reported by `govulncheck`.
+
+### Documentation
+- Updated release documentation, install/version examples, and blog post notes for the `v0.4.5` release.
 
 ## [v0.4.4] - 2026-05-07
 
