@@ -212,7 +212,7 @@ Before tagging a release, ensure the following readiness criteria are met:
 
 - [ ] **Previous version → current version upgrade** is tested:
   - Generate project with previous Fabrica version (e.g., v0.3.1)
-  - Run `fabrica generate` with current CLI version (v0.4.4)
+  - Run `fabrica generate` with current CLI version (v0.4.5)
   - Verify generated code compiles and basic operations work
 
 ### Binary Smoke Testing

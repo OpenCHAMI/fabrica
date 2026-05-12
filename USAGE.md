@@ -28,7 +28,7 @@ fabrica version
 
 **Expected output:**
 ```
-Fabrica version v0.4.4
+Fabrica version v0.4.5
   commit: <git-sha>
   built: <timestamp>
 ```
