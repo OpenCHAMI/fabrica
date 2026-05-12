@@ -21,6 +21,15 @@ func TestTemplate_OpenAPIIncludesServiceHealthPath(t *testing.T) {
 	if !strings.Contains(got, "spec.Paths.Set(\"/health\"") {
 		t.Fatalf("openapi template should include /health path")
 	}
+	if !strings.Contains(got, "healthResponseSchema := openapi3.NewObjectSchema()") {
+		t.Fatalf("openapi template should define health response schema")
+	}
+	if !strings.Contains(got, "healthExample := map[string]interface{}") {
+		t.Fatalf("openapi template should define health response example payload")
+	}
+	if !strings.Contains(got, "Example: healthExample") {
+		t.Fatalf("openapi template should set media type example for /health response")
+	}
 }
 
 func TestTemplate_OpenAPIIncludesPatchAndStatusSubresourcePaths(t *testing.T) {

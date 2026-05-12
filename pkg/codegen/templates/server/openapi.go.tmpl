@@ -113,11 +113,29 @@ func GenerateOpenAPISpec() *openapi3.T {
 	healthOp.Summary = "Service health"
 	healthOp.Description = "Returns service health information"
 	healthOp.Tags = []string{"Service"}
+	healthResponseSchema := openapi3.NewObjectSchema().
+		WithProperty("status", openapi3.NewStringSchema()).
+		WithProperty("service", openapi3.NewStringSchema()).
+		WithProperty("version", openapi3.NewStringSchema()).
+		WithProperty("time", openapi3.NewStringSchema()).
+		WithRequired([]string{"status"})
+	healthExample := map[string]interface{}{
+		"status":  "ok",
+		"service": "{{.ProjectName}}",
+		"version": "1.0.0",
+		"time":    "2026-01-01T00:00:00Z",
+	}
+	healthResponseSchema.Example = healthExample
 	healthOp.Responses = openapi3.NewResponses()
 	healthOp.Responses.Set("200", &openapi3.ResponseRef{
 		Value: openapi3.NewResponse().
 			WithDescription("Healthy").
-			WithJSONSchemaRef(&openapi3.SchemaRef{Value: openapi3.NewObjectSchema()}),
+			WithContent(map[string]*openapi3.MediaType{
+				"application/json": {
+					Schema:  &openapi3.SchemaRef{Value: healthResponseSchema},
+					Example: healthExample,
+				},
+			}),
 	})
 	spec.Paths.Set("/health", &openapi3.PathItem{Get: healthOp})
 
