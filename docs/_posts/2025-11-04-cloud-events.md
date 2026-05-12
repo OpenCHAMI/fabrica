@@ -11,7 +11,7 @@ description: "How Fabrica’s event system lets you model and drive resource sta
 author: "Alex Lovell-Troy"
 ---
 
-> **Note (v0.4.4):** This post predates hub/spoke API versioning and the flattened resource envelope. Some snippets may differ from current generator output.
+> **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
 
 Events let your API tell the world what changed. In Fabrica, that stream becomes more than a log. It is a simple way to model a resource’s state and move it forward. When a resource is created, updated, or deleted, the server publishes an event. When Status changes in a meaningful way, you can publish a condition change. Other parts of your system can subscribe and react.
 
