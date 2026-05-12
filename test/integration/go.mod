@@ -4,7 +4,7 @@
 
 module github.com/openchami/fabrica/test/integration
 
-go 1.26.2
+go 1.26.3
 
 replace github.com/openchami/fabrica => ../..
 

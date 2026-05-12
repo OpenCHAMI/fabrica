@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Upgrade Go from 1.26.2 to 1.26.3 across modules and CI to address standard-library vulnerabilities reported by `govulncheck`.
+
 ## [v0.4.1] - 2026-04-26
 
 ### Changed

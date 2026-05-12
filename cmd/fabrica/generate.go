@@ -805,6 +805,7 @@ func main() {
 	authEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
+	gen.Commit = "%s" // Fabrica git commit SHA used for generation
 
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
@@ -890,7 +891,7 @@ func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
 
 	return nil
 }
-`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, commit, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.
@@ -1302,8 +1303,19 @@ func generateEntCode(debug bool) error {
 // parseVersion extracts version from a string like "v1.2.3" or "1.2.3"
 // Returns major, minor, patch as integers
 func parseVersion(v string) (major, minor, patch int, err error) {
+	v = strings.TrimSpace(v)
+
 	// Remove 'v' prefix if present
 	v = strings.TrimPrefix(v, "v")
+
+	// Handle git-describe style versions like "0.4.4-4-g1c64d98"
+	// and strip build metadata suffixes when present.
+	if idx := strings.Index(v, "-"); idx > 0 {
+		v = v[:idx]
+	}
+	if idx := strings.Index(v, "+"); idx > 0 {
+		v = v[:idx]
+	}
 
 	// Handle "dev" or empty versions
 	if v == "" || v == "dev" || v == "none" {
@@ -1400,27 +1412,29 @@ func checkVersionCompatibility(currentVer, generatedVer string, force bool) (boo
 	}
 
 	// Parse versions
-	currMajor, currMinor, _, err := parseVersion(currentVer)
+	currMajor, currMinor, currPatch, err := parseVersion(currentVer)
 	if err != nil {
 		// Can't parse current version, allow with warning
 		fmt.Printf("⚠️  Warning: Could not parse current version: %s\n", currentVer)
 		return true, nil
 	}
 
-	genMajor, genMinor, _, err := parseVersion(generatedVer)
+	genMajor, genMinor, genPatch, err := parseVersion(generatedVer)
 	if err != nil {
 		// Can't parse generated version, allow with warning
 		fmt.Printf("⚠️  Warning: Could not parse generated version: %s\n", generatedVer)
 		return true, nil
 	}
 
-	// Rule 1: Generated version is higher or equal to current minor version
-	if genMajor > currMajor || (genMajor == currMajor && genMinor >= currMinor) {
+	// Rule 1: Generated version is newer than current CLI version.
+	if genMajor > currMajor ||
+		(genMajor == currMajor && genMinor > currMinor) ||
+		(genMajor == currMajor && genMinor == currMinor && genPatch > currPatch) {
 		fmt.Println()
 		fmt.Printf("⚠️  WARNING: Generated code is from Fabrica %s\n", generatedVer)
 		fmt.Printf("   Current Fabrica version is %s\n", currentVer)
 		fmt.Println()
-		fmt.Println("   You are trying to regenerate code with an OLDER or SAME version of Fabrica.")
+		fmt.Println("   You are trying to regenerate code with an OLDER version of Fabrica.")
 		fmt.Println("   This may cause regressions or unexpected behavior.")
 		fmt.Println()
 		fmt.Println("   Use --force to proceed with regeneration")

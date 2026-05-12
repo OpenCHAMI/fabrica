@@ -400,11 +400,16 @@ Display Fabrica version information.
 fabrica version
 ```
 
-**Output:**
+**Output (release build):**
+```
+Fabrica version v0.4.4
+```
+
+**Output (build from source or CI with VCS metadata):**
 ```
 Fabrica version v0.4.4
   commit: abc123def456
-  built: 2025-01-14T10:00:00Z
+  built:  2026-05-07T10:00:00Z
 ```
 
 ---
