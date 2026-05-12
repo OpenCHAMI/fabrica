@@ -5,7 +5,11 @@
 package main
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +91,30 @@ func TestResolveVersionInfo_PreservesLdflagsValues(t *testing.T) {
 	}
 	if resolvedDate != "ldflagsdate" {
 		t.Fatalf("expected ldflags date to be preserved, got %q", resolvedDate)
+	}
+}
+
+func TestBuiltCLI_VersionCommandRuns(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd failed: %v", err)
+	}
+	binaryPath := filepath.Join(t.TempDir(), "fabrica")
+
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, ".")
+	buildCmd.Dir = wd
+	output, err := buildCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build failed: %v\n%s", err, output)
+	}
+
+	versionCmd := exec.Command(binaryPath, "version")
+	versionCmd.Dir = wd
+	output, err = versionCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("built version command failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "Fabrica version") {
+		t.Fatalf("expected version output, got %q", string(output))
 	}
 }

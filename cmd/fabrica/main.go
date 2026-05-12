@@ -51,19 +51,6 @@ func resolveVersionInfo(currentVersion, currentCommit, currentDate string, build
 	return resolvedVersion, resolvedCommit, resolvedDate
 }
 
-func resolveBuildVersionInfo() {
-	if version != "dev" && commit != "none" && date != "unknown" {
-		return
-	}
-
-	buildInfo, ok := debug.ReadBuildInfo()
-	if !ok {
-		return
-	}
-
-	version, commit, date = resolveVersionInfo(version, commit, date, buildInfo)
-}
-
 func versionString() string {
 	if commit == "none" && date == "unknown" {
 		return version
@@ -78,7 +65,6 @@ func versionString() string {
 }
 
 func main() {
-	resolveBuildVersionInfo()
 	mcp.Version = version
 
 	rootCmd := &cobra.Command{
