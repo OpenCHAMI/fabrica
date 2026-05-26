@@ -248,6 +248,29 @@ curl -X PUT http://localhost:8080/books/boo-abc123def456 \
 curl -X DELETE http://localhost:8080/books/boo-abc123def456
 ```
 
+### Using the Generated Client
+
+Fabrica also generates a CLI client in `cmd/client/` that provides a convenient way to interact with your API:
+
+```bash
+# List books
+go run ./cmd/client/ book list
+
+# List books with debug logging
+go run ./cmd/client/ --log-level debug book list
+
+# Create a book
+go run ./cmd/client/ book create --spec '{"title":"The Go Programming Language","author":"Donovan & Kernighan","price":44.99,"inStock":true}' -o json
+
+# Get output as JSON and process with jq
+go run ./cmd/client/ book list -o json | jq '.[0].metadata.uid'
+
+# Debug API interactions
+go run ./cmd/client/ -l debug book create --spec '{"title":"Test Book"}' -o json 2> debug.log
+```
+
+The `--log-level debug` flag is particularly useful when troubleshooting API interactions, as it shows all HTTP requests and responses including headers and bodies.
+
 ## Understanding the Resource Model
 
 Fabrica uses a Kubernetes-style resource model with a flattened envelope pattern:

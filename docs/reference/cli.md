@@ -674,6 +674,96 @@ DATABASE_URL="postgres://user:pass@localhost/mydb" go run ./cmd/server/
 
 ---
 
+## Generated Client CLI
+
+After running `fabrica generate`, your project includes a fully functional CLI client in `cmd/client/main.go`. The client provides commands for all CRUD operations on your resources.
+
+### Client Global Flags
+
+The generated client supports these global flags:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--server` | `-s` | string | `http://localhost:8080` | API server URL |
+| `--timeout` | `-t` | duration | `30s` | Request timeout |
+| `--output` | `-o` | string | `table` | Output format: `table`, `json`, `yaml` |
+| `--log-level` | `-l` | string | `warning` | Log verbosity: `debug`, `info`, `warning` |
+| `--token` | | string | | JWT bearer token for authentication |
+| `--version` | `-v` | string | | API version to request (e.g., `v1`, `v2beta1`) |
+
+### Log Levels
+
+The `--log-level` flag controls the verbosity of client logging:
+
+- **`warning`** (default) - Only shows warnings and errors
+- **`info`** - Shows informational messages plus warnings/errors
+- **`debug`** - Shows detailed HTTP request/response information including:
+  - HTTP method and URL
+  - Request and response headers
+  - Request and response bodies
+  - Error details
+
+**Examples:**
+
+```bash
+# Default (warning level)
+go run ./cmd/client/ device list
+
+# Debug mode for troubleshooting
+go run ./cmd/client/ --log-level debug device list
+
+# Using shorthand
+go run ./cmd/client/ -l debug device create --spec '{"name":"test"}'
+
+# Redirect debug logs separately from output
+go run ./cmd/client/ -l debug device list -o json > output.json 2> debug.log
+```
+
+### Tab Completion
+
+The generated client supports shell completion for the `--log-level` flag:
+
+```bash
+# Bash
+source <(go run ./cmd/client/ completion bash)
+
+# Zsh
+go run ./cmd/client/ completion zsh > "${fpath[1]}/_client"
+
+# Then tab complete:
+go run ./cmd/client/ --log-level <TAB>
+# Shows: debug info warning
+```
+
+### Resource Commands
+
+For each resource in your API, the client generates subcommands:
+
+```bash
+# List resources
+go run ./cmd/client/ device list
+
+# Get specific resource
+go run ./cmd/client/ device get <uid>
+
+# Create resource
+go run ./cmd/client/ device create --spec '{"name":"device-01"}'
+
+# Update resource
+go run ./cmd/client/ device update <uid> --spec '{"name":"updated"}'
+
+# Patch resource
+go run ./cmd/client/ device patch <uid> --spec '{"name":"patched"}'
+
+# Delete resource
+go run ./cmd/client/ device delete <uid>
+
+# Update status (if status subresource is enabled)
+go run ./cmd/client/ device update-status <uid> --spec '{"ready":true}'
+```
+
+---
+
 ## Common Errors
 
 ### "Command not found: fabrica"
