@@ -11,6 +11,8 @@ description: "How the CLI and Go library help you use your API the same way ever
 author: "Alex Lovell-Troy"
 ---
 
+> **Updated for v0.5.6:** This post has been updated to document the new client log level feature for debugging API interactions.
+
 > **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
 
 APIs are easier to use when the client is predictable. You should not have to remember custom flags or one‑off scripts. Fabrica generates two clients that match your server: a CLI and a Go library. They share patterns and types, so your shell steps and your code read the same way.
@@ -26,6 +28,22 @@ The Go client library comes from `pkg/codegen/templates/client/client.go.tmpl`. 
 The CLI creates a typed client with `client.NewClient` and calls methods that mirror your resources. The methods issue HTTP requests to the server’s generated routes (`pkg/codegen/templates/server/routes.go.tmpl`) and unmarshal responses into your types from `apis/<group>/<version>/...`. Status operations go to `/status` endpoints to avoid spec conflicts.
 
 When you enable spec versioning on a resource, the generator adds version helpers and subcommands. The Go client gets `List<Resource>Versions`, `Get<Resource>Version`, and `Delete<Resource>Version`, and the CLI nests them under `<resource> versions ...`. These come from the same templates, so you do not maintain them by hand.
+
+## Debugging with log levels
+
+The client supports three log levels controlled by the `--log-level` (or `-l`) flag: `debug`, `info`, and `warning` (default). Debug level shows HTTP requests and responses, headers, and body content. This helps when troubleshooting API interactions or understanding what the client sends.
+
+```bash
+go run ./cmd/client/ --log-level debug device list
+```
+
+The debug output appears on stderr, so you can redirect it separately from the JSON output:
+
+```bash
+go run ./cmd/client/ device list -o json > devices.json 2> debug.log
+```
+
+The client creates a console logger that writes to stderr without timestamps, making it easy to read during development.
 
 ## Trade‑offs and limits
 

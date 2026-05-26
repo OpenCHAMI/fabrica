@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Client log levels: Generated clients now support `--log-level` flag with `debug`, `info`, and `warning` levels for controlling output verbosity
+- Debug logging in client library shows HTTP requests, responses, headers, and bodies for troubleshooting
+- Shell completion for `--log-level` flag in generated clients
+- Comprehensive test coverage for client log level functionality including unit and integration tests
+
 ## [v0.4.5] - 2026-05-12
 
 ### Added

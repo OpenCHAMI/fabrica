@@ -45,6 +45,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 - **🌐 Cloud-Native Ready** - [Hub/spoke API versioning](docs/guides/versioning.md), conditional requests (ETags), event-driven patterns
 - **🔄 API Versioning (Hub/Spoke)** - Kubebuilder-style versioning with automatic conversion between versions
 - **🏗️ Production Patterns** - Consistent API structure, error handling, and middleware
+- **🔍 Built-in Client Debugging** - Generated CLI with configurable log levels for easy troubleshooting
 
 ## 🎯 Perfect For
 
