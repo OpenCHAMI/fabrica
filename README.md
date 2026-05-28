@@ -201,18 +201,22 @@ Fabrica follows clean architecture principles and generates well-structured proj
 > - `apis/<group>/<version>/*_types.go` - Your resource definitions (spec/status structs)
 > - `apis.yaml` - API group and version configuration
 > - `.fabrica.yaml` - Feature flags and project settings
-> - `cmd/server/main.go` - Server customizations (before first `// Generated` comment)
+> - `pkg/reconcilers/*_reconciler.go` (without `_generated`) - Custom reconciliation logic
+> - `cmd/server/authz_classifier.go` - Authorization tuple mapping (create-once)
+> - `cmd/server/openapi_extensions.go` - Custom OpenAPI routes (if you create it)
+>
+> **⚠️ LIMITED EDITING:**
+> - `cmd/server/main.go` - Mostly generated; prefer adding custom code via helper files
 >
 > **❌ NEVER EDIT:**
 > - **Any file ending in `_generated.go`** - These are completely regenerated on each `fabrica generate`
-> - Files in generated directories after running `fabrica generate`
 >
 > **🔄 Regeneration Command:**
 > ```bash
 > fabrica generate  # Safely regenerates all *_generated.go files
 > ```
 >
-> Your custom code in resource definitions and main.go will be preserved, but all generated files will be completely rewritten.
+> Your custom code in resource definitions, reconcilers, and classifier files will be preserved. All `*_generated.go` files will be completely rewritten.
 
 ## 📦 Resource Structure
 
