@@ -125,10 +125,11 @@ func NewClientWithBearerToken(baseURL, bearerToken string, httpClient *http.Clie
 // WithVersion returns a new client configured to use a specific API version
 func (c *Client) WithVersion(version string) *Client {
 	return &Client{
-		baseURL:    c.baseURL,
-		httpClient: c.httpClient,
-		version:    version,
+		baseURL:     c.baseURL,
+		httpClient:  c.httpClient,
+		version:     version,
 		bearerToken: c.bearerToken,
+		logger:      c.logger,
 	}
 }
 
@@ -139,6 +140,7 @@ func (c *Client) WithBearerToken(token string) *Client {
 		httpClient:  c.httpClient,
 		version:     c.version,
 		bearerToken: token,
+		logger:      c.logger,
 	}
 }
 
