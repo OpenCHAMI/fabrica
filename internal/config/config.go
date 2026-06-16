@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package config
 
 import (
 	"fmt"
@@ -71,11 +71,11 @@ type ValidationConfig struct {
 
 // EventsConfig controls CloudEvents integration.
 // When enabled, the generator emits CloudEvents for resource lifecycle
-// operations (create, update, delete) and condition changes. Supported
-// bus types include memory (in-process), nats, and kafka.
+// operations (create, update, delete) and condition changes. The generated
+// runtime currently supports the memory bus.
 type EventsConfig struct {
 	Enabled bool   `yaml:"enabled"`
-	BusType string `yaml:"bus_type"` // memory, nats, kafka
+	BusType string `yaml:"bus_type"` // memory
 }
 
 // ConditionalConfig controls ETag and conditional request handling.
@@ -209,7 +209,7 @@ func SaveConfig(targetDir string, config *FabricaConfig) error {
 // Validation rules include:
 //   - Project name and module path are required
 //   - Validation mode must be 'strict', 'warn', or 'disabled'
-//   - Event bus type must be 'memory', 'nats', or 'kafka'
+//   - Event bus type must be 'memory'
 //   - ETag algorithm must be 'sha256' or 'md5'
 //   - Storage type must be 'file' or 'ent'
 //   - DB driver (when using ent) must be 'postgres', 'mysql', 'sqlite', or 'sqlite3'
@@ -217,7 +217,7 @@ func SaveConfig(targetDir string, config *FabricaConfig) error {
 // Returns a descriptive error if any validation rule is violated.
 func ValidateConfig(config *FabricaConfig) error {
 	// Normalize security settings first (may emit warnings).
-	config.Features.Security.AuthZ.Mode = normalizeSecurityMode(config.Features.Security.AuthZ.Mode, os.Stderr)
+	config.Features.Security.AuthZ.Mode = NormalizeSecurityMode(config.Features.Security.AuthZ.Mode, os.Stderr)
 
 	// Validate project fields
 	if config.Project.Name == "" {
@@ -240,9 +240,9 @@ func ValidateConfig(config *FabricaConfig) error {
 
 	// Validate event bus type
 	if config.Features.Events.Enabled {
-		validBusTypes := map[string]bool{"memory": true, "nats": true, "kafka": true}
+		validBusTypes := map[string]bool{"memory": true}
 		if !validBusTypes[config.Features.Events.BusType] {
-			return fmt.Errorf("invalid events.bus_type: %s (must be 'memory', 'nats', or 'kafka')",
+			return fmt.Errorf("invalid events.bus_type: %s (must be 'memory')",
 				config.Features.Events.BusType)
 		}
 	}
@@ -263,22 +263,26 @@ func ValidateConfig(config *FabricaConfig) error {
 	if config.Features.Security.AuthZ.Enabled && !config.Features.Security.AuthN.Enabled {
 		return fmt.Errorf("features.security.authz.enabled requires features.security.authn.enabled")
 	}
+	if !config.Features.Storage.Enabled {
+		return fmt.Errorf("features.storage.enabled must be true; generated CRUD APIs require storage")
+	}
+	if config.Features.Reconciliation.Enabled && !config.Features.Events.Enabled {
+		return fmt.Errorf("features.reconciliation.enabled requires features.events.enabled")
+	}
 
 	// Validate storage type
-	if config.Features.Storage.Enabled {
-		validTypes := map[string]bool{"file": true, "ent": true}
-		if !validTypes[config.Features.Storage.Type] {
-			return fmt.Errorf("invalid storage.type: %s (must be 'file' or 'ent')",
-				config.Features.Storage.Type)
-		}
+	validTypes := map[string]bool{"file": true, "ent": true}
+	if !validTypes[config.Features.Storage.Type] {
+		return fmt.Errorf("invalid storage.type: %s (must be 'file' or 'ent')",
+			config.Features.Storage.Type)
+	}
 
-		// Validate DB driver if using ent
-		if config.Features.Storage.Type == "ent" && config.Features.Storage.DBDriver != "" {
-			validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true, "sqlite3": true}
-			if !validDrivers[config.Features.Storage.DBDriver] {
-				return fmt.Errorf("invalid storage.db_driver: %s (must be 'postgres', 'mysql', 'sqlite', or 'sqlite3')",
-					config.Features.Storage.DBDriver)
-			}
+	// Validate DB driver if using ent
+	if config.Features.Storage.Type == "ent" && config.Features.Storage.DBDriver != "" {
+		validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true, "sqlite3": true}
+		if !validDrivers[config.Features.Storage.DBDriver] {
+			return fmt.Errorf("invalid storage.db_driver: %s (must be 'postgres', 'mysql', 'sqlite', or 'sqlite3')",
+				config.Features.Storage.DBDriver)
 		}
 	}
 

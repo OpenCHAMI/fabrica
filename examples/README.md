@@ -375,12 +375,20 @@ After completing these examples:
 
 ### Working with Local Fabrica
 
-If developing Fabrica itself, add a replace directive to use local templates:
+If developing Fabrica itself, prefer the local-source generate override instead of editing your test project's `go.mod`:
 
-```go
-// In your test project's go.mod
-replace github.com/openchami/fabrica => /path/to/local/fabrica
+```bash
+fabrica generate --fabrica-source /path/to/local/fabrica
 ```
+
+Or set it once per shell session:
+
+```bash
+export FABRICA_SOURCE_PATH=/path/to/local/fabrica
+fabrica generate
+```
+
+This keeps temporary test projects clean and avoids accidentally committing a `replace` directive.
 
 ### Regenerating Code
 

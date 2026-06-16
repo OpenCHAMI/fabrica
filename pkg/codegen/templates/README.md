@@ -102,6 +102,28 @@ func Get{{.Name}}Count(c fuego.ContextNoBody) (int, error) {
 - **Follow Go conventions**: Generated code should be idiomatic
 - **Add TODO comments**: Mark areas where manual customization is needed
 
+## Scaffold Contract (Maintainers)
+
+The init scaffold uses an orchestration-first boundary for server startup templates.
+
+- `init/main.go.tmpl` is the orchestration shell only.
+- Feature implementations belong in helper templates, not in `init/main.go.tmpl`.
+- Keep startup wiring in function calls from main, and place feature logic in generated helper files.
+
+Current ownership model:
+
+- `init/main.go.tmpl`: command setup, config loading, router grouping, lifecycle orchestration.
+- `init/runtime_helpers.go.tmpl`: storage setup, events/reconciliation setup, startup configuration logging.
+- `init/auth_helpers.go.tmpl`: TokenSmith authn/authz initialization and related helper functions.
+- `init/metrics_helpers.go.tmpl`: metrics server setup and handler wiring.
+
+When adding features:
+
+1. Add or extend a feature helper template.
+2. Call the helper from `init/main.go.tmpl`.
+3. Keep implementation details out of `init/main.go.tmpl`.
+4. Update scaffold-boundary tests in `cmd/fabrica/scaffold_scope_boundary_test.go`.
+
 ## Testing Templates
 
 After modifying templates:

@@ -42,13 +42,14 @@ $FABRICA_BIN init node-service \
 cd node-service
 ```
 
-### Step 2: Use Local Fabrica Library
+### Step 2: Use Local Fabrica Source for Generation
 
 ```bash
 FABRICA_REPO=/path/to/fabrica
-go mod edit -replace github.com/openchami/fabrica=$FABRICA_REPO
-go mod tidy
+export FABRICA_SOURCE_PATH="$FABRICA_REPO"
 ```
+
+This keeps the example project's `go.mod` pinned to released Fabrica unless you explicitly opt into local code generation for the current shell session.
 
 ### Step 3: Add Resources
 

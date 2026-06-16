@@ -7,6 +7,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/openchami/fabrica/internal/constants"
 )
 
 func TestInitGoMod_TokenSmithDependencyConditional(t *testing.T) {
@@ -20,9 +22,12 @@ func TestInitGoMod_TokenSmithDependencyConditional(t *testing.T) {
 	})
 
 	t.Run("security_on_tokensmith_pinned", func(t *testing.T) {
-		out := mustRenderInitTemplate(t, tmpl, templateData{WithAuth: true, TokenSmithVersion: "v0.0.1"})
-		if !strings.Contains(out, "github.com/openchami/tokensmith v0.0.1") {
+		out := mustRenderInitTemplate(t, tmpl, templateData{WithAuth: true, GoVersion: constants.TokenSmithGoVersion, TokenSmithModulePath: constants.TokenSmithModulePath, TokenSmithVersion: "v9.9.9"})
+		if !strings.Contains(out, constants.TokenSmithModulePath+" v9.9.9") {
 			t.Fatalf("expected tokensmith pinned dependency, got:\n%s", out)
+		}
+		if !strings.Contains(out, "go "+constants.TokenSmithGoVersion) {
+			t.Fatalf("expected TokenSmith-auth projects to use go %s, got:\n%s", constants.TokenSmithGoVersion, out)
 		}
 	})
 }

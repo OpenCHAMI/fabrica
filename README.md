@@ -28,6 +28,7 @@ SPDX-License-Identifier: MIT
 | **[Quickstart](docs/guides/quickstart.md)** | Five minute quickstart |
 | **[Getting Started Guide](docs/guides/getting-started.md)** | Step-by-step introduction to Fabrica |
 | **[Examples](examples/)** | Hands-on learning with real-world projects |
+| **[MCP Mode](docs/reference/mcp.md)** | Configure Fabrica as an MCP server for coding agents |
 
 
 Fabrica is a powerful code generation tool that accelerates API development by transforming simple Go struct definitions into complete, production-ready REST APIs. Define your resources once, and Fabrica generates everything you need: handlers, storage layers, clients, validation, OpenAPI documentation, and more.
@@ -44,6 +45,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 - **🌐 Cloud-Native Ready** - [Hub/spoke API versioning](docs/guides/versioning.md), conditional requests (ETags), event-driven patterns
 - **🔄 API Versioning (Hub/Spoke)** - Kubebuilder-style versioning with automatic conversion between versions
 - **🏗️ Production Patterns** - Consistent API structure, error handling, and middleware
+- **🔍 Built-in Client Debugging** - Generated CLI with configurable log levels for easy troubleshooting
 
 ## 🎯 Perfect For
 
@@ -54,12 +56,12 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 
 ## 📦 Installation
 
-### Latest Release (v0.4.0)
+### Latest Release (v0.4.5)
 
 **macOS/Linux:**
 ```bash
 # Direct download and install
-curl -L https://github.com/openchami/fabrica/releases/download/v0.4.0/fabrica-$(uname -s)-$(uname -m) -o fabrica
+curl -L https://github.com/openchami/fabrica/releases/download/v0.4.5/fabrica-$(uname -s)-$(uname -m) -o fabrica
 chmod +x fabrica
 sudo mv fabrica /usr/local/bin/
 
@@ -69,7 +71,7 @@ fabrica version
 
 **Using Go:**
 ```bash
-go install github.com/openchami/fabrica/cmd/fabrica@v0.4.0
+go install github.com/openchami/fabrica/cmd/fabrica@v0.4.5
 ```
 
 ### Development Version
@@ -79,6 +81,70 @@ git clone https://github.com/openchami/fabrica.git
 cd fabrica
 make install
 ```
+
+For local codegen testing against your checkout without editing a generated project's `go.mod`, run:
+
+```bash
+fabrica generate --fabrica-source /path/to/fabrica
+```
+
+Or set an environment variable for the session:
+
+```bash
+export FABRICA_SOURCE_PATH=/path/to/fabrica
+fabrica generate
+```
+
+This override only affects `fabrica generate`; projects that do not opt in continue to use the released Fabrica module resolved from their own `go.mod`.
+
+## 🤖 Using Fabrica MCP with Coding Agents
+
+Fabrica can run as a local MCP server over stdio:
+
+```bash
+fabrica mcp --workspace /path/to/workspace
+```
+
+Use the workspace root that contains the projects the agent may inspect or modify. If `fabrica` is not on your `PATH`, replace `fabrica` with the absolute path to the binary. Mutating MCP tools default to dry-run behavior; pass `mode: "execute"` when you want the agent to apply changes.
+
+### Claude Code
+
+Add Fabrica as a local stdio MCP server:
+
+```bash
+claude mcp add fabrica -- fabrica mcp --workspace /path/to/workspace
+```
+
+For a project-scoped configuration, add `.mcp.json` at the project root:
+
+```json
+{
+  "mcpServers": {
+    "fabrica": {
+      "command": "fabrica",
+      "args": ["mcp", "--workspace", "/path/to/workspace"]
+    }
+  }
+}
+```
+
+### Codex
+
+Register the server from the Codex CLI:
+
+```bash
+codex mcp add fabrica -- fabrica mcp --workspace /path/to/workspace
+```
+
+Or add it to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.fabrica]
+command = "fabrica"
+args = ["mcp", "--workspace", "/path/to/workspace"]
+```
+
+After connecting, ask the agent to call `describe_workflow` with `goal: "new_crud_api"` for guided API construction, or call tools such as `inspect_project`, `validate_project`, `define_resource_schema`, `add_resource`, `generate_code`, `sync_dependencies`, and `build_project` directly.
 
 ## 📚 Learn by Example
 
@@ -135,18 +201,22 @@ Fabrica follows clean architecture principles and generates well-structured proj
 > - `apis/<group>/<version>/*_types.go` - Your resource definitions (spec/status structs)
 > - `apis.yaml` - API group and version configuration
 > - `.fabrica.yaml` - Feature flags and project settings
-> - `cmd/server/main.go` - Server customizations (before first `// Generated` comment)
+> - `pkg/reconcilers/*_reconciler.go` (without `_generated`) - Custom reconciliation logic
+> - `cmd/server/authz_classifier.go` - Authorization tuple mapping (create-once)
+> - `cmd/server/openapi_extensions.go` - Custom OpenAPI routes (if you create it)
+>
+> **⚠️ LIMITED EDITING:**
+> - `cmd/server/main.go` - Mostly generated; prefer adding custom code via helper files
 >
 > **❌ NEVER EDIT:**
 > - **Any file ending in `_generated.go`** - These are completely regenerated on each `fabrica generate`
-> - Files in generated directories after running `fabrica generate`
 >
 > **🔄 Regeneration Command:**
 > ```bash
 > fabrica generate  # Safely regenerates all *_generated.go files
 > ```
 >
-> Your custom code in resource definitions and main.go will be preserved, but all generated files will be completely rewritten.
+> Your custom code in resource definitions, reconcilers, and classifier files will be preserved. All `*_generated.go` files will be completely rewritten.
 
 ## 📦 Resource Structure
 
@@ -277,7 +347,7 @@ We welcome contributions from the community! Here's how to get involved:
 
 ## 🏷️ Releases & Roadmap
 
-**Current Version:** [v0.4.0](https://github.com/openchami/fabrica/releases/tag/v0.4.0)
+**Current Version:** [v0.4.5](https://github.com/openchami/fabrica/releases/tag/v0.4.5)
 
 **📅 Recent Updates:**
 - ✅ Hub/Spoke API versioning with automatic conversion

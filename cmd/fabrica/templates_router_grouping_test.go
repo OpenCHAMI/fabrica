@@ -12,18 +12,13 @@ import (
 func TestTemplate_RouterGrouping_PublicAndProtected(t *testing.T) {
 	got := mustReadTemplate(t, "server/routes.go.tmpl")
 
-	// Public routes should be explicitly grouped.
-	if !strings.Contains(got, "// Public endpoints (bypass AuthN/AuthZ)") {
-		t.Fatalf("routes template missing public endpoints grouping comment")
+	// Public docs/openapi routes live in the init main template so they remain
+	// outside auth middleware.
+	if strings.Contains(got, "public.Get(\"/openapi.json\"") {
+		t.Fatalf("routes template should not register /openapi.json directly")
 	}
-	if !strings.Contains(got, "r.Group(func(public chi.Router)") {
-		t.Fatalf("routes template missing public chi group")
-	}
-	if !strings.Contains(got, "public.Get(\"/openapi.json\"") {
-		t.Fatalf("routes template should register /openapi.json on public group")
-	}
-	if !strings.Contains(got, "public.Get(\"/docs\"") {
-		t.Fatalf("routes template should register /docs on public group")
+	if strings.Contains(got, "public.Get(\"/docs\"") {
+		t.Fatalf("routes template should not register /docs directly")
 	}
 
 	// Protected group should exist and resource routes should be under it.
@@ -44,8 +39,17 @@ func TestTemplate_RouterGrouping_PublicAndProtected(t *testing.T) {
 }
 
 func TestTemplate_MainRouterHasPublicProtectedGroups(t *testing.T) {
-	// NOTE: the init server "main" template is not loaded into
-	// codegen.Generator.LoadTemplates() today (see TestDumpTemplateKeys).
-	// We validate public/protected routing via server/routes.go.tmpl.
-	t.Skip("init/main.go.tmpl is not loaded into codegen.Generator templates")
+	got := mustReadFile(t, "pkg/codegen/templates/init/main.go.tmpl")
+	if !strings.Contains(got, "public.Get(\"/health\"") {
+		t.Fatalf("main template should register /health on the public group")
+	}
+	if !strings.Contains(got, "public.Get(\"/openapi.json\"") {
+		t.Fatalf("main template should register /openapi.json on the public group")
+	}
+	if !strings.Contains(got, "public.Get(\"/docs\"") {
+		t.Fatalf("main template should register /docs on the public group")
+	}
+	if !strings.Contains(got, "protected.Use(authnMiddleware)") {
+		t.Fatalf("main template should apply authn middleware on protected routes")
+	}
 }

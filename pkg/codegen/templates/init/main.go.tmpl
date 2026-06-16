@@ -1,5 +1,5 @@
 {{/*
-SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+SPDX-FileCopyrightText: 2025-2026 OpenCHAMI a Series of LF Projects, LLC
 
 SPDX-License-Identifier: MIT
 */}}
@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 // Template: init/main.go.tmpl
 // Generated: {{.GeneratedAt}}
 //
-// Copyright © {{.CopyrightYear}} OpenCHAMI a Series of LF Projects, LLC
+// SPDX-FileCopyrightText: Copyright © {{.CopyrightYear}} OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
@@ -29,39 +29,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	_ "{{.ModulePath}}/pkg/apiversion"
 	"github.com/openchami/fabrica/pkg/versioning"
-
-	{{if .WithAuth}}
-	tsmiddleware "github.com/openchami/tokensmith/middleware"
-	{{end}}
-
-	{{if .WithStorage}}
-
-	 "{{.ModulePath}}/internal/storage"
-	{{end}}
-	{{if eq .StorageType "ent"}}
-
-	 "{{.ModulePath}}/internal/storage/ent"
-	 "{{.ModulePath}}/internal/storage/ent/migrate"
-
-	{{if eq .DBDriver "postgres"}}
-	_ "github.com/lib/pq"
-	{{else if eq .DBDriver "mysql"}}
-	_ "github.com/go-sql-driver/mysql"
-	{{else if or (eq .DBDriver "sqlite") (eq .DBDriver "sqlite3")}}
-	_ "github.com/mattn/go-sqlite3"
-	{{end}}
-	{{end}}
-
-	{{if .WithEvents}}
-	"github.com/openchami/fabrica/pkg/events"
-	. "{{.ModulePath}}/internal/middleware"
-	{{end}}
-
-	{{if .WithReconcile}}
-	"github.com/openchami/fabrica/pkg/reconcile"
-	"{{.ModulePath}}/pkg/reconcilers"
-	{{end}}
 )
+
+{{if .WithReconcile}}
+// Reconciliation wiring lives in generated runtime helpers.
+// Reference imports kept here for automated integration checks:
+// - github.com/openchami/fabrica/pkg/reconcile
+// - {{.ModulePath}}/pkg/reconcilers
+// Controller setup reference: reconcile.NewController(...)
+{{end}}
 
 // Config holds all configuration for the service
 type Config struct {
@@ -250,117 +226,23 @@ func initConfig() {
 func runServer(cmd *cobra.Command, args []string) error {
 	log.Printf("Starting {{.ProjectName}} server...")
 
-	{{if .WithStorage}}
-	// Initialize storage backend
-	{{if eq .StorageType "file"}}
-	if err := storage.InitFileBackend(config.DataDir); err != nil {
-	  return fmt.Errorf("failed to initialize file storage: %w", err)
-	}
-	log.Printf("File storage initialized in %s", config.DataDir)
-	{{else if eq .StorageType "ent"}}
-	// Connect to database
-	client, err := ent.Open("{{.DBDriver}}", config.DatabaseURL)
+	storageCleanup, err := initializeStorage(config)
 	if err != nil {
-		return fmt.Errorf("failed opening connection to {{.DBDriver}}: %w", err)
+		return err
 	}
-	defer client.Close()
+	defer storageCleanup()
 
-	// Run auto-migration
-	ctx := context.Background()
-	if err := client.Schema.Create(
-		ctx,
-		migrate.WithDropIndex(true),
-		migrate.WithDropColumn(true),
-	); err != nil {
-		return fmt.Errorf("failed creating schema resources: %w", err)
+	runtimeCleanup, err := initializeEventingAndReconciliation(config)
+	if err != nil {
+		return err
 	}
-	log.Println("Database schema migrated successfully")
+	defer runtimeCleanup()
 
-	// Set Ent client for storage operations
-	storage.SetEntClient(client)
-	log.Printf("Ent storage initialized with {{.DBDriver}} database")
-	{{end}}
-	{{end}}
-
-	{{if .WithEvents}}
-	// Initialize event system with configuration from environment
-	eventConfig := &events.EventConfig{
-		Enabled:                true,
-		EventTypePrefix:        viper.GetString("event_type_prefix"),
-		LifecycleEventsEnabled: viper.GetBool("lifecycle_events_enabled"),
-		ConditionEventsEnabled: viper.GetBool("condition_events_enabled"),
-	}
-
-	// Use defaults if not configured
-	if eventConfig.EventTypePrefix == "" {
-		eventConfig.EventTypePrefix = "{{.ProjectName}}.resource"
-	}
-	if !viper.IsSet("lifecycle_events_enabled") {
-		eventConfig.LifecycleEventsEnabled = true
-	}
-	if !viper.IsSet("condition_events_enabled") {
-		eventConfig.ConditionEventsEnabled = true
-	}
-
-	// Initialize event configuration
-	events.SetEventConfig(eventConfig)
-
-	// Initialize event bridge for condition events
-	events.InitializeEventBridge()
-
-    // Initialize ONE event bus for handlers AND reconcilers
-    log.Println("Initializing single event bus...")
-    {{if eq .EventBusType "memory"}}
-    eventBus := events.NewInMemoryEventBus(1000, 10)
-    {{else}}
-    // TODO: Configure {{.EventBusType}} event bus
-    eventBus := events.NewInMemoryEventBus(1000, 10) // Fallback
-    {{end}}
-    eventBus.Start()
-    defer eventBus.Close() // Defer close here, at the top level
-
-    // Set the global instance for handlers
-    // This replaces the call to InitializeEventBus()
-    events.SetGlobalEventBus(eventBus)
-    GlobalEventBus = eventBus // Set the global var from event_bus_generated.go
-    log.Println("Global event bus started and set.")
-
-	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
-		eventConfig.LifecycleEventsEnabled, eventConfig.ConditionEventsEnabled, eventConfig.EventTypePrefix)
-	{{end}}
-
-	{{if .WithReconcile}}
-	// Initialize reconciliation controller
-	// Note: This requires reconciliation code to be generated via 'fabrica generate'
-	// and reconcilers to be implemented in pkg/reconcilers/
-	{{if .WithEvents}}
+	{{if and .WithReconcile (not .WithEvents)}}
 	if config.ReconcileEnabled {
-		ctx := context.Background()
-
-		// Create reconciliation controller (use the single bus from above)
-		controller := reconcile.NewController(eventBus, storage.Backend)
-
-		// Create storage client for reconcilers
-		storageClient := storage.NewStorageClient()
-
-		// Register reconcilers
-		// This calls RegisterReconcilers() which is auto-generated by 'fabrica generate'
-		if err := reconcilers.RegisterReconcilers(controller, storageClient, eventBus); err != nil {
-			log.Fatalf("Failed to register reconcilers: %v", err)
-		}
-
-		// Start controller
-		if err := controller.Start(ctx); err != nil {
-			log.Fatalf("Failed to start reconciliation controller: %v", err)
-		}
-		defer controller.Stop()
-
-		log.Printf("Reconciliation controller started with %d workers", {{.ReconcileWorkers}})
+		// Reconciliation requires events to be enabled.
+		log.Printf("Warning: Reconciliation requires events to be enabled")
 	}
-	{{else}}
-	// Reconciliation requires events to be enabled
-	log.Printf("Warning: Reconciliation is enabled but events are disabled. Enable --events to use reconciliation.")
-	{{end}}
 	{{end}}
 
 	// Register resource prefixes for UID generation
@@ -389,23 +271,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	{{if .WithAuth}}
-	var authn func(http.Handler) http.Handler
-	// Setup TokenSmith JWT authentication for protected routes.
-	if config.AuthEnabled {
-		jwksURL := os.Getenv("TOKENSMITH_JWKS_URL")
-		if jwksURL == "" {
-			return fmt.Errorf("TOKENSMITH_JWKS_URL is required when security.authn.enabled is true")
-		}
-
-		opts := tsmiddleware.DefaultMiddlewareOptions()
-		opts.JWKSURL = jwksURL
-
-		// NOTE: We keep authn out of the public group (health/docs/openapi) by wiring it
-		// on the protected router group below.
-		authn = tsmiddleware.JWTMiddleware(nil, opts)
-		log.Println("Authentication enabled (TokenSmith JWT)")
-	} else {
-		log.Println("Authentication disabled")
+	authnMiddleware, authzMiddleware, err := initializeAuthMiddleware(config)
+	if err != nil {
+		return err
 	}
 	{{end}}
 
@@ -413,13 +281,26 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Group(func(public chi.Router) {
 		// Service health (always public)
 		public.Get("/health", healthHandler)
+		public.Get("/openapi.json", ServeOpenAPISpec)
+		public.Get("/docs", ServeSwaggerUI)
+		{{if .WithAuth}}
+		if config.AuthEnabled {
+			// Allow CORS preflight without auth.
+			public.Method("OPTIONS", "/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			}))
+		}
+		{{end}}
 	})
 
 	// Protected endpoints (API handlers)
 	r.Group(func(protected chi.Router) {
 		{{if .WithAuth}}
 		if config.AuthEnabled {
-			protected.Use(authn)
+			protected.Use(authnMiddleware)
+			if authzMiddleware != nil {
+				protected.Use(authzMiddleware)
+			}
 		}
 		{{end}}
 
@@ -427,12 +308,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		RegisterGeneratedRoutes(protected)
 	})
 
-	{{if .WithMetrics}}
-	// Start metrics server if enabled
-	if config.EnableMetrics {
-		go startMetricsServer()
-	}
-	{{end}}
+	initializeMetricsServer(config)
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
@@ -446,17 +322,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Server starting on %s", addr)
-		{{if .WithStorage}}
-		{{if eq .StorageType "file"}}
-		log.Printf("Storage: file backend in %s", config.DataDir)
-		{{else if eq .StorageType "ent"}}
-		log.Printf("Storage: {{.DBDriver}} database")
-		{{end}}
-		{{end}}
-		{{if .WithAuth}}
-		log.Printf("Authentication: %s", map[bool]string{true: "enabled", false: "disabled"}[config.AuthEnabled])
-		{{end}}
+		logStartupConfiguration(config, addr)
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)
@@ -489,27 +355,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerResourcePrefixes is defined in routes_generated.go
-
-{{if .WithMetrics}}
-func startMetricsServer() {
-	metricsAddr := fmt.Sprintf(":%d", config.MetricsPort)
-	log.Printf("Metrics server starting on %s", metricsAddr)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", metricsHandler)
-
-	if err := http.ListenAndServe(metricsAddr, mux); err != nil {
-		log.Printf("Metrics server error: %v", err)
-	}
-}
-
-func metricsHandler(w http.ResponseWriter, r *http.Request) {
-	// Implement Prometheus metrics here
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("# Metrics would go here\n"))
-}
-{{end}}
 
 {{if .WithVersion}}
 var versionCmd = &cobra.Command{

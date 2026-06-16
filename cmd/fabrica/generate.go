@@ -5,26 +5,32 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
+
+	"github.com/openchami/fabrica/internal/config"
 )
 
 // readFabricaConfig reads the .fabrica.yaml configuration file
 // Now uses the comprehensive config system from config.go
-func readFabricaConfig() (*FabricaConfig, error) {
+func readFabricaConfig() (*config.FabricaConfig, error) {
 	// Try to load config from current directory
-	config, err := LoadConfig("")
+	cfg, err := config.LoadConfig("")
 	if err != nil {
 		// If file doesn't exist, return nil without error (optional config)
 		if os.IsNotExist(err) {
@@ -32,13 +38,16 @@ func readFabricaConfig() (*FabricaConfig, error) {
 		}
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+	if err := config.ValidateConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 
-	return config, nil
+	return cfg, nil
 }
 
 // readAPIsConfig reads apis.yaml when present.
-func readAPIsConfig() (*APIsConfig, error) {
-	cfg, err := LoadAPIsConfig("")
+func readAPIsConfig() (*config.APIsConfig, error) {
+	cfg, err := config.LoadAPIsConfig("")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -51,13 +60,14 @@ func readAPIsConfig() (*APIsConfig, error) {
 
 func newGenerateCommand() *cobra.Command {
 	var (
-		handlers bool
-		storage  bool
-		client   bool
-		openapi  bool
-		all      bool
-		debug    bool
-		force    bool
+		handlers      bool
+		storage       bool
+		client        bool
+		openapi       bool
+		all           bool
+		debug         bool
+		force         bool
+		fabricaSource string
 	)
 
 	cmd := &cobra.Command{
@@ -74,6 +84,7 @@ Examples:
   fabrica generate                    # Generate all
   fabrica generate --handlers         # Just handlers
   fabrica generate --client --openapi # Client + OpenAPI
+	fabrica generate --fabrica-source /path/to/fabrica # Use local Fabrica source without editing project go.mod
 `,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if !handlers && !storage && !client && !openapi {
@@ -92,6 +103,24 @@ Examples:
 			}
 			if debug {
 				fmt.Printf("  Module: %s\n", modulePath)
+			}
+
+			projectRoot, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to determine project root: %w", err)
+			}
+
+			resolvedFabricaSource, err := resolveGenerateFabricaSource(fabricaSource)
+			if err != nil {
+				return err
+			}
+			if debug && resolvedFabricaSource != "" {
+				fmt.Printf("  Using local Fabrica source: %s\n", resolvedFabricaSource)
+			}
+
+			config, err := readFabricaConfig()
+			if err != nil {
+				return err
 			}
 
 			apisConfig, err := readAPIsConfig()
@@ -113,7 +142,7 @@ Examples:
 
 			if len(resources) == 0 {
 				if apisConfig != nil {
-					if group, err := apisConfig.primaryGroup(); err == nil {
+					if group, err := apisConfig.PrimaryGroup(); err == nil {
 						fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", group.Name, group.StorageVersion)
 					} else {
 						fmt.Println("⚠️  No resources found in apis/<group>/<version>/")
@@ -178,7 +207,7 @@ Examples:
 				if debug {
 					fmt.Println("📦 Generating server code...")
 				}
-				if err := generateCodeWithRunner(modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
@@ -186,7 +215,7 @@ Examples:
 			// Generate client code
 			if all || client {
 				fmt.Println("📦 Generating client code...")
-				if err := generateCodeWithRunner(modulePath, "pkg/client", "client", false, false, false, true, debug); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
 				}
 			}
@@ -199,7 +228,7 @@ Examples:
 				}
 				
 				fmt.Println("🔄 Generating reconciliation code...")
-				if err := generateCodeWithRunner(modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
 				}
 			}
@@ -236,6 +265,7 @@ Examples:
 	cmd.Flags().BoolVar(&openapi, "openapi", false, "Generate OpenAPI spec")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug output showing detailed generation steps")
 	cmd.Flags().BoolVar(&force, "force", false, "Force regeneration even with version warnings")
+	cmd.Flags().StringVar(&fabricaSource, "fabrica-source", "", "Use a local Fabrica checkout for codegen without modifying project go.mod (or set FABRICA_SOURCE_PATH)")
 
 	return cmd
 }
@@ -329,6 +359,35 @@ func normalizeVersionForCompatibilityCheck(version string) string {
 	return version
 }
 
+func resolveGenerateFabricaSource(flagValue string) (string, error) {
+	source := strings.TrimSpace(flagValue)
+	if source == "" {
+		source = strings.TrimSpace(os.Getenv("FABRICA_SOURCE_PATH"))
+	}
+	if source == "" {
+		return "", nil
+	}
+
+	absSource, err := filepath.Abs(source)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve fabrica source path %q: %w", source, err)
+	}
+
+	info, err := os.Stat(absSource)
+	if err != nil {
+		return "", fmt.Errorf("failed to access fabrica source path %q: %w", absSource, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("fabrica source path must be a directory: %s", absSource)
+	}
+
+	if _, err := os.Stat(filepath.Join(absSource, "go.mod")); err != nil {
+		return "", fmt.Errorf("fabrica source path must contain go.mod: %s", absSource)
+	}
+
+	return absSource, nil
+}
+
 // getModulePath reads the module path from go.mod
 func getModulePath() (string, error) {
 	data, err := os.ReadFile("go.mod")
@@ -375,7 +434,7 @@ func detectStorageType() string {
 }
 
 // generateCodeWithRunner creates and runs a temporary codegen program
-func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool) error {
+func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, fabricaSource string) error {
 	// Create output directory if it doesn't exist
 	if debug {
 		fmt.Printf("  Creating output directory: %s\n", outputDir)
@@ -402,7 +461,11 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 		fmt.Printf("  Detected storage type: %s\n", storageType)
 	}
 
-	runnerCode := generateRunnerCode(modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
+	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
+
+	if fabricaSource != "" {
+		return runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode, debug, fabricaSource)
+	}
 
 	runnerPath := filepath.Join(runnerDir, "main.go")
 	if err := os.WriteFile(runnerPath, []byte(runnerCode), 0644); err != nil {
@@ -427,8 +490,90 @@ func generateCodeWithRunner(modulePath, outputDir, packageName string, handlers,
 	return nil
 }
 
+func runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode string, debug bool, fabricaSource string) error {
+	runnerDir, err := os.MkdirTemp("", "fabrica-codegen-*")
+	if err != nil {
+		return fmt.Errorf("failed to create isolated runner directory: %w", err)
+	}
+	defer os.RemoveAll(runnerDir) // nolint:errcheck
+
+	goVersion := detectProjectGoVersion(projectRoot)
+	if err := os.WriteFile(filepath.Join(runnerDir, "go.mod"), []byte(generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource, goVersion)), 0644); err != nil {
+		return fmt.Errorf("failed to write isolated runner go.mod: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(runnerDir, "main.go"), []byte(runnerCode), 0644); err != nil {
+		return fmt.Errorf("failed to write isolated runner: %w", err)
+	}
+
+	if debug {
+		fmt.Println("  Running code generator with isolated local Fabrica source...")
+	}
+
+	cmd := exec.Command("go", "run", "-mod=mod", ".")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = runnerDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("isolated code generation failed: %w", err)
+	}
+
+	return nil
+}
+
+func generateIsolatedRunnerGoMod(modulePath, projectRoot, fabricaSource, goVersion string) string {
+	if strings.TrimSpace(goVersion) == "" {
+		goVersion = "1.24"
+	}
+
+	return fmt.Sprintf(`module fabrica-codegen-runner
+
+go %s
+
+require (
+	github.com/openchami/fabrica %s
+	%s %s
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+replace github.com/openchami/fabrica => %s
+replace %s => %s
+`, goVersion, localModulePlaceholderVersion("github.com/openchami/fabrica"), modulePath, localModulePlaceholderVersion(modulePath), fabricaSource, modulePath, projectRoot)
+}
+
+func detectProjectGoVersion(projectRoot string) string {
+	data, err := os.ReadFile(filepath.Join(projectRoot, "go.mod"))
+	if err != nil {
+		return "1.24"
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "go ") {
+			version := strings.TrimSpace(strings.TrimPrefix(trimmed, "go "))
+			if version != "" {
+				return version
+			}
+		}
+	}
+
+	return "1.24"
+}
+
+func localModulePlaceholderVersion(modulePath string) string {
+	major := filepath.Base(modulePath)
+	if len(major) > 1 && major[0] == 'v' {
+		if versionNumber, err := strconv.Atoi(major[1:]); err == nil && versionNumber >= 2 {
+			return fmt.Sprintf("v%d.0.0", versionNumber)
+		}
+	}
+
+	return "v0.0.0"
+}
+
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
+func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
@@ -473,34 +618,49 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 			generationCalls.WriteString("\t}\n")
 		}
 
-		// Always generate routes and models if doing server-side generation
-		generationCalls.WriteString("\tif err := gen.GenerateRoutes(); err != nil {\n")
-		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate routes: %v\", err)\n")
-		generationCalls.WriteString("\t}\n")
+		if handlers {
+			generationCalls.WriteString("\tif err := gen.GenerateRoutes(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate routes: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
+		}
 
-		generationCalls.WriteString("\tif err := gen.GenerateModels(); err != nil {\n")
-		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
-		generationCalls.WriteString("\t}\n")
+		if handlers || openapi {
+			generationCalls.WriteString("\tif err := gen.GenerateModels(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate models: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
+		}
 
-		// Generate export/import commands only for Ent storage (v0.4.0+)
-		generationCalls.WriteString("\tif gen.StorageType == \"ent\" {\n")
-		generationCalls.WriteString("\t\tif err := gen.GenerateExportCommand(); err != nil {\n")
-		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate export command: %v\", err)\n")
+		generationCalls.WriteString("\tif authEnabled {\n")
+		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateAuthZClassifier\"); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate AuthZ classifier: %v\", err)\n")
 		generationCalls.WriteString("\t\t}\n")
-
-		generationCalls.WriteString("\t\tif err := gen.GenerateImportCommand(); err != nil {\n")
-		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate import command: %v\", err)\n")
-		generationCalls.WriteString("\t\t}\n")
-		generationCalls.WriteString("\t}\n")
-
-		// Generate API version registry if apis.yaml exists
-		generationCalls.WriteString("\n")
-		generationCalls.WriteString("\t// Generate API version registry if versioning enabled\n")
-		generationCalls.WriteString("\tif gen.Config.VersioningEnabled {\n")
-		generationCalls.WriteString("\t\tif err := gen.GenerateAPIVersions(); err != nil {\n")
-		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate API versions: %v\", err)\n")
+		generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateAuthZStarterFiles\"); err != nil {\n")
+		generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate starter AuthZ files: %v\", err)\n")
 		generationCalls.WriteString("\t\t}\n")
 		generationCalls.WriteString("\t}\n")
+
+		// Generate export/import commands only when regenerating Ent storage (v0.4.0+)
+		if storage {
+			generationCalls.WriteString("\tif gen.StorageType == \"ent\" {\n")
+			generationCalls.WriteString("\t\tif err := gen.GenerateExportCommand(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate export command: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
+
+			generationCalls.WriteString("\t\tif err := gen.GenerateImportCommand(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate import command: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
+			generationCalls.WriteString("\t}\n")
+		}
+
+		if handlers || openapi {
+			generationCalls.WriteString("\n")
+			generationCalls.WriteString("\t// Generate API version registry if versioning enabled\n")
+			generationCalls.WriteString("\tif gen.Config.VersioningEnabled {\n")
+			generationCalls.WriteString("\t\tif err := gen.GenerateAPIVersions(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate API versions: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
+			generationCalls.WriteString("\t}\n")
+		}
 	} else if client {
 		// Client-side generation
 		if debug {
@@ -573,9 +733,11 @@ func generateRunnerCode(modulePath, outputDir, packageName string, handlers, sto
 import (
 %s	"log"
 	"os"
+	"reflect"
 
-	"github.com/openchami/fabrica/pkg/codegen"
+
 	"%s/pkg/resources"
+	"github.com/openchami/fabrica/pkg/codegen"
 	"gopkg.in/yaml.v3"
 )
 
@@ -587,6 +749,7 @@ type FabricaConfig struct {
 type FeaturesConfig struct {
 	Validation  ValidationConfig  `+"`yaml:\"validation\"`"+`
 	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
+	Auth        AuthConfig        `+"`yaml:\"auth\"`"+`
 	Events      EventsConfig      `+"`yaml:\"events\"`"+`
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
 	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
@@ -600,6 +763,10 @@ type ValidationConfig struct {
 type ConditionalConfig struct {
 	Enabled       bool   `+"`yaml:\"enabled\"`"+`
 	ETagAlgorithm string `+"`yaml:\"etag_algorithm\"`"+`
+}
+
+type AuthConfig struct {
+	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
 type EventsConfig struct {
@@ -635,9 +802,15 @@ func loadConfig() (*FabricaConfig, error) {
 }
 
 func main() {
+	if err := os.Chdir(%q); err != nil {
+		log.Fatalf("Failed to change to project root: %%v", err)
+	}
+
 	gen := codegen.NewGenerator("%s", "%s", "%s")
+	authEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
+	gen.Commit = "%s" // Fabrica git commit SHA used for generation
 
 	// Configure storage type - passed from main generate command
 	gen.SetStorageType("%s")
@@ -666,7 +839,8 @@ func main() {
 		}
 
 		// Wire TokenSmith-first security features into generator config.
-		gen.SetAuthEnabled(config.Features.Security.AuthN.Enabled)
+		authEnabled = config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled
+		setAuthEnabledCompat(gen, authEnabled)
 	}
 
 	if _, err := os.Stat("apis.yaml"); err == nil {
@@ -678,11 +852,55 @@ func main() {
 	}
 
 %s}
-`, fmtImport, modulePath, outputDir, packageName, modulePath, verboseFlag, version, storageType, storageType, generationCalls.String())
+
+func setAuthEnabledCompat(gen *codegen.Generator, enabled bool) {
+	if method := reflect.ValueOf(gen).MethodByName("SetAuthEnabled"); method.IsValid() {
+		method.Call([]reflect.Value{reflect.ValueOf(enabled)})
+		return
+	}
+
+	configValue := reflect.ValueOf(gen.Config)
+	if !configValue.IsValid() || configValue.Kind() != reflect.Ptr || configValue.IsNil() {
+		return
+	}
+
+	configElem := configValue.Elem()
+	if !configElem.IsValid() {
+		return
+	}
+
+	if field := configElem.FieldByName("WithAuth"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Bool {
+		field.SetBool(enabled)
+	}
+	if field := configElem.FieldByName("SecurityAuthNEnabled"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Bool {
+		field.SetBool(enabled)
+	}
+}
+
+func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
+	method := reflect.ValueOf(gen).MethodByName(methodName)
+	if !method.IsValid() {
+		return nil
+	}
+
+	results := method.Call(nil)
+	if len(results) == 0 {
+		return nil
+	}
+
+	if errValue := results[0]; errValue.IsValid() && !errValue.IsNil() {
+		if err, ok := errValue.Interface().(error); ok {
+			return err
+		}
+	}
+
+	return nil
+}
+`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, commit, storageType, storageType, generationCalls.String())
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.
-func discoverResources(apisConfig *APIsConfig) ([]string, error) {
+func discoverResources(apisConfig *config.APIsConfig) ([]string, error) {
 	if apisConfig != nil {
 		return discoverVersionedResources(apisConfig)
 	}
@@ -692,8 +910,8 @@ func discoverResources(apisConfig *APIsConfig) ([]string, error) {
 }
 
 // discoverVersionedResources scans apis/<group>/<storage-version>/ for resource definitions
-func discoverVersionedResources(apisConfig *APIsConfig) ([]string, error) {
-	group, err := apisConfig.primaryGroup()
+func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error) {
+	group, err := apisConfig.PrimaryGroup()
 	if err != nil {
 		return nil, err
 	}
@@ -841,7 +1059,7 @@ func discoverLegacyResources() ([]string, error) {
 }
 
 // generateRegistrationFile creates pkg/resources/register_generated.go
-func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
+func generateRegistrationFile(debug bool, apisConfig *config.APIsConfig) error {
 	if !debug {
 		fmt.Println("🔍 Discovering resources...")
 	}
@@ -860,7 +1078,7 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 
 	if len(resources) == 0 {
 		if apisConfig != nil {
-			if group, err := apisConfig.primaryGroup(); err == nil {
+			if group, err := apisConfig.PrimaryGroup(); err == nil {
 				fmt.Printf("⚠️  No resources found in apis/%s/%s/\n", group.Name, group.StorageVersion)
 			}
 		} else {
@@ -882,6 +1100,11 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 		content = generateRegistrationCode(modulePath, resources)
 	}
 
+	formattedContent, err := format.Source([]byte(content))
+	if err != nil {
+		return fmt.Errorf("failed to format generated registration file: %w", err)
+	}
+
 	// 4. Ensure pkg/resources directory exists
 	resourcesDir := filepath.Join("pkg", "resources")
 	if err := os.MkdirAll(resourcesDir, 0755); err != nil {
@@ -890,7 +1113,7 @@ func generateRegistrationFile(debug bool, apisConfig *APIsConfig) error {
 
 	// 5. Write to pkg/resources/register_generated.go
 	outputPath := filepath.Join(resourcesDir, "register_generated.go")
-	if err := os.WriteFile(outputPath, []byte(content), 0644); err != nil {
+	if _, err := writeGeneratedFile(outputPath, formattedContent); err != nil {
 		return fmt.Errorf("failed to write registration file: %w", err)
 	}
 
@@ -913,6 +1136,49 @@ func toPascal(s string) string {
 	return string(unicode.ToUpper(r)) + s[n:]
 }
 
+func generatedRegistrationFileHeader(generatorName string) string {
+	now := time.Now().UTC()
+
+	return fmt.Sprintf(`// Code generated by Fabrica %s. DO NOT EDIT.
+// Template: %s
+// Generated: %s
+//
+// Copyright © %d OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+
+`, version, generatorName, now.Format(time.RFC3339), now.Year())
+}
+
+var generatedTimestampLineRE = regexp.MustCompile(`(?m)^((?://|#)\sGenerated(?: at)?:\s|Generated(?: at)?:\s).*$`)
+var generatedVersionLineRE = regexp.MustCompile(`(?m)^(// Code generated by Fabrica ).*(\. DO NOT EDIT\.)$`)
+
+func normalizeGeneratedTimestamps(content []byte) []byte {
+	normalized := generatedTimestampLineRE.ReplaceAll(content, []byte("${1}<normalized>"))
+	return generatedVersionLineRE.ReplaceAll(normalized, []byte("${1}<normalized>${2}"))
+}
+
+func writeGeneratedFile(path string, content []byte) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if err == nil {
+		if bytes.Equal(existing, content) {
+			return false, nil
+		}
+
+		if bytes.Equal(normalizeGeneratedTimestamps(existing), normalizeGeneratedTimestamps(content)) {
+			return false, nil
+		}
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // generateRegistrationCode creates the content of the registration file
 func generateRegistrationCode(modulePath string, resources []string) string {
 	var imports strings.Builder
@@ -922,27 +1188,26 @@ func generateRegistrationCode(modulePath string, resources []string) string {
 		resourceStruct := toPascal(resource)
 
 		pkg := strings.ToLower(resource)
-		imports.WriteString(fmt.Sprintf("\t\"%s/pkg/resources/%s\"\n", modulePath, pkg))
-		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
-		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
+		fmt.Fprintf(&imports, "\t\"%s/pkg/resources/%s\"\n", modulePath, pkg)
+		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
+		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
 
 		// After registration, set per-resource tags if markers are present.
 		// Marker: // +fabrica:resource-versioning=enabled on the resource source file
 		registrations.WriteString("\t// Set per-resource tags based on source markers\n")
-		registrations.WriteString(fmt.Sprintf("\tif hasVersioningMarker(\"%s\") {\n", resource))
-		registrations.WriteString(fmt.Sprintf("\t\tgen.SetResourceTag(\"%s\", \"versioning\", \"enabled\")\n", resource))
+		fmt.Fprintf(&registrations, "\tif hasVersioningMarker(\"%s\") {\n", resource)
+		fmt.Fprintf(&registrations, "\t\tgen.SetResourceTag(\"%s\", \"versioning\", \"enabled\")\n", resource)
 		registrations.WriteString("\t}\n")
 	}
 
-	return fmt.Sprintf(`// Code generated by fabrica codegen init. DO NOT EDIT.
-package resources
+	return fmt.Sprintf(`%spackage resources
 
 import (
 	"fmt"
-		"os"
-		"path/filepath"
-		"strings"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/openchami/fabrica/pkg/codegen"
 %s)
@@ -954,45 +1219,44 @@ func RegisterAllResources(gen *codegen.Generator) error {
 	return nil
 }
 
-	// hasVersioningMarker inspects the resource source file for the versioning marker comment.
-	func hasVersioningMarker(resourceName string) bool {
-		// Derive path: pkg/resources/<lower(resourceName)>/<lower(resourceName)>.go
-		pkg := strings.ToLower(resourceName)
-		path := filepath.Join("pkg", "resources", pkg, pkg+".go")
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return false
-		}
-		content := string(data)
-		return strings.Contains(content, "+fabrica:resource-versioning=enabled")
+// hasVersioningMarker inspects the resource source file for the versioning marker comment.
+func hasVersioningMarker(resourceName string) bool {
+	// Derive path: pkg/resources/<lower(resourceName)>/<lower(resourceName)>.go
+	pkg := strings.ToLower(resourceName)
+	path := filepath.Join("pkg", "resources", pkg, pkg+".go")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
 	}
-`, imports.String(), registrations.String())
+	content := string(data)
+	return strings.Contains(content, "+fabrica:resource-versioning=enabled")
+}
+`, generatedRegistrationFileHeader("cmd/fabrica/generate.go:generateRegistrationCode"), imports.String(), registrations.String())
 }
 
 // generateVersionedRegistrationCode creates registration code for versioned (apis/) mode
-func generateVersionedRegistrationCode(modulePath string, apisConfig *APIsConfig, resources []string) string {
+func generateVersionedRegistrationCode(modulePath string, apisConfig *config.APIsConfig, resources []string) string {
 	var imports strings.Builder
 	var registrations strings.Builder
 
-	group, _ := apisConfig.primaryGroup()
+	group, _ := apisConfig.PrimaryGroup()
 	hubVersion := group.StorageVersion
 
 	// Import the hub version package once
 	pkg := hubVersion // Package name is the version (e.g., v1)
 	// Import path: module/apis/group/version
 	importPath := fmt.Sprintf("%s/apis/%s/%s", modulePath, group.Name, hubVersion)
-	imports.WriteString(fmt.Sprintf("\t%s \"%s\"\n", pkg, importPath))
+	fmt.Fprintf(&imports, "\t%s \"%s\"\n", pkg, importPath)
 
 	for _, resource := range resources {
 		resourceStruct := toPascal(resource)
 
-		registrations.WriteString(fmt.Sprintf("\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct))
-		registrations.WriteString(fmt.Sprintf("\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource))
+		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
+		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
 	}
 
-	return fmt.Sprintf(`// Code generated by fabrica. DO NOT EDIT.
-package resources
+	return fmt.Sprintf(`%spackage resources
 
 import (
 	"fmt"
@@ -1006,7 +1270,7 @@ func RegisterAllResources(gen *codegen.Generator) error {
 %s
 	return nil
 }
-`, imports.String(), registrations.String())
+`, generatedRegistrationFileHeader("cmd/fabrica/generate.go:generateVersionedRegistrationCode"), imports.String(), registrations.String())
 }
 
 // generateEntCode runs 'go generate ./internal/storage' to generate Ent client code
@@ -1044,8 +1308,19 @@ func generateEntCode(debug bool) error {
 // parseVersion extracts version from a string like "v1.2.3" or "1.2.3"
 // Returns major, minor, patch as integers
 func parseVersion(v string) (major, minor, patch int, err error) {
+	v = strings.TrimSpace(v)
+
 	// Remove 'v' prefix if present
 	v = strings.TrimPrefix(v, "v")
+
+	// Handle git-describe style versions like "0.4.4-4-g1c64d98"
+	// and strip build metadata suffixes when present.
+	if idx := strings.Index(v, "-"); idx > 0 {
+		v = v[:idx]
+	}
+	if idx := strings.Index(v, "+"); idx > 0 {
+		v = v[:idx]
+	}
 
 	// Handle "dev" or empty versions
 	if v == "" || v == "dev" || v == "none" {
@@ -1142,27 +1417,29 @@ func checkVersionCompatibility(currentVer, generatedVer string, force bool) (boo
 	}
 
 	// Parse versions
-	currMajor, currMinor, _, err := parseVersion(currentVer)
+	currMajor, currMinor, currPatch, err := parseVersion(currentVer)
 	if err != nil {
 		// Can't parse current version, allow with warning
 		fmt.Printf("⚠️  Warning: Could not parse current version: %s\n", currentVer)
 		return true, nil
 	}
 
-	genMajor, genMinor, _, err := parseVersion(generatedVer)
+	genMajor, genMinor, genPatch, err := parseVersion(generatedVer)
 	if err != nil {
 		// Can't parse generated version, allow with warning
 		fmt.Printf("⚠️  Warning: Could not parse generated version: %s\n", generatedVer)
 		return true, nil
 	}
 
-	// Rule 1: Generated version is higher or equal to current minor version
-	if genMajor > currMajor || (genMajor == currMajor && genMinor >= currMinor) {
+	// Rule 1: Generated version is newer than current CLI version.
+	if genMajor > currMajor ||
+		(genMajor == currMajor && genMinor > currMinor) ||
+		(genMajor == currMajor && genMinor == currMinor && genPatch > currPatch) {
 		fmt.Println()
 		fmt.Printf("⚠️  WARNING: Generated code is from Fabrica %s\n", generatedVer)
 		fmt.Printf("   Current Fabrica version is %s\n", currentVer)
 		fmt.Println()
-		fmt.Println("   You are trying to regenerate code with an OLDER or SAME version of Fabrica.")
+		fmt.Println("   You are trying to regenerate code with an OLDER version of Fabrica.")
 		fmt.Println("   This may cause regressions or unexpected behavior.")
 		fmt.Println()
 		fmt.Println("   Use --force to proceed with regeneration")

@@ -52,7 +52,7 @@ Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.4.0
+# Output: fabrica version v0.4.5
 ```
 
 ## Step 1: Initialize Your Project
@@ -214,7 +214,8 @@ This command:
 - Generates HTTP handlers (Create, Read, Update, Delete, List)
 - Generates file-based storage
 - Generates API routes
-- Generates OpenAPI specification
+- Generates OpenAPI specification for all Fabrica-managed routes
+- Creates `cmd/server/openapi_extensions.go` (once) for you to add custom routes to the spec
 
 You'll see:
 
@@ -440,7 +441,7 @@ myshop/
 
 5. **OpenAPI Spec** (`cmd/server/openapi_generated.go`):
    - Complete API documentation
-   - Swagger UI available at `/swagger/`
+   - Swagger UI available at `/docs`
 
 ### What You Wrote
 
@@ -517,7 +518,7 @@ Validation happens automatically - invalid requests return 400 errors with detai
 
 Visit these URLs while your server is running:
 
-- **OpenAPI Docs**: http://localhost:8080/swagger/
+- **OpenAPI Docs**: http://localhost:8080/docs
 - **Health Check**: http://localhost:8080/health
 - **API Discovery**: http://localhost:8080/api/v1/
 

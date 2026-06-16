@@ -4,9 +4,7 @@
 
 module github.com/openchami/fabrica/test/integration
 
-go 1.24.0
-
-toolchain go1.24.11
+go 1.26.3
 
 replace github.com/openchami/fabrica => ../..
 

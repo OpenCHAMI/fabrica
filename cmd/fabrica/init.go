@@ -13,6 +13,7 @@ import (
 	"text/template"
 	"time"
 
+	configpkg "github.com/openchami/fabrica/internal/config"
 	"github.com/openchami/fabrica/internal/constants"
 	"github.com/openchami/fabrica/pkg/codegen"
 	"github.com/spf13/cobra"
@@ -25,6 +26,7 @@ type initOptions struct {
 	interactive bool
 	modulePath  string
 	description string
+	workDir     string // Target directory for project creation
 
 	// Feature flags instead of modes
 	withAuth    bool // Enable authentication
@@ -35,7 +37,7 @@ type initOptions struct {
 	// New feature flags for core features
 	validationMode string // strict, warn, disabled
 	withEvents     bool   // Enable CloudEvents support
-	eventBusType   string // memory, nats, kafka
+	eventBusType   string // memory
 
 	// API Versioning (hub/spoke)
 	apiGroup       string   // e.g., "infra.example.io"
@@ -56,24 +58,26 @@ type initOptions struct {
 // It contains all project metadata and feature flags needed to generate
 // initial files (main.go, go.mod, README, etc.) with appropriate settings.
 type templateData struct {
-	ProjectName       string
-	ModulePath        string
-	Description       string
-	WithAuth          bool
-	WithStorage       bool
-	WithMetrics       bool
-	WithVersion       bool
-	WithReconcile     bool
-	WithEvents        bool
-	StorageType       string
-	DBDriver          string
-	EventBusType      string
-	ReconcileWorkers  int
-	FabricaVersion    string
-	TokenSmithVersion string
-	GeneratedAt       string
-	CopyrightYear     int
-	FeaturesText      string
+	ProjectName          string
+	ModulePath           string
+	Description          string
+	WithAuth             bool
+	WithStorage          bool
+	WithMetrics          bool
+	WithVersion          bool
+	WithReconcile        bool
+	WithEvents           bool
+	StorageType          string
+	DBDriver             string
+	EventBusType         string
+	ReconcileWorkers     int
+	FabricaVersion       string
+	GoVersion            string
+	TokenSmithModulePath string
+	TokenSmithVersion    string
+	GeneratedAt          string
+	CopyrightYear        int
+	FeaturesText         string
 }
 
 // newInitCommand creates the 'fabrica init' cobra command.
@@ -101,7 +105,7 @@ func newInitCommand() *cobra.Command {
 
 Instead of complex modes, use feature flags to customize your project:
   --auth          Enable authentication with TokenSmith
-  --storage       Enable persistent storage (file or database)
+  --storage       Enable persistent storage (required for generated CRUD APIs)
   --metrics       Enable Prometheus metrics
 
 The interactive flag launches a guided wizard to help you choose.
@@ -110,6 +114,15 @@ You can initialize in an existing directory by using '.' as the project name,
 or by providing the name of an existing directory.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			if opts.workDir != "" {
+				if err := os.MkdirAll(opts.workDir, 0755); err != nil {
+					return fmt.Errorf("failed to create working directory: %w", err)
+				}
+				if err := os.Chdir(opts.workDir); err != nil {
+					return fmt.Errorf("failed to change directory to %s: %w", opts.workDir, err)
+				}
+			}
+
 			projectName := "myproject"
 			if len(args) > 0 {
 				projectName = args[0]
@@ -137,17 +150,18 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().BoolVarP(&opts.interactive, "interactive", "i", false, "Interactive wizard mode")
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
 	cmd.Flags().StringVar(&opts.description, "description", "", "Project description")
+	cmd.Flags().StringVarP(&opts.workDir, "dir", "d", "", "Target working directory (useful for automation/MCP)")
 
 	// Feature flags
 	cmd.Flags().BoolVar(&opts.withAuth, "auth", false, "Enable authentication with TokenSmith")
-	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage")
+	cmd.Flags().BoolVar(&opts.withStorage, "storage", true, "Enable persistent storage (required for generated CRUD APIs)")
 	cmd.Flags().BoolVar(&opts.withMetrics, "metrics", false, "Enable Prometheus metrics")
 	cmd.Flags().BoolVar(&opts.withVersion, "version", true, "Enable version command")
 
 	// Core feature configuration
 	cmd.Flags().StringVar(&opts.validationMode, "validation-mode", "strict", "Validation mode: strict, warn, or disabled")
 	cmd.Flags().BoolVar(&opts.withEvents, "events", false, "Enable CloudEvents support")
-	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory, nats, or kafka")
+	cmd.Flags().StringVar(&opts.eventBusType, "events-bus", "memory", "Event bus type: memory")
 
 	// API Versioning configuration
 	cmd.Flags().StringVar(&opts.apiGroup, "group", "", "API group name (e.g., infra.example.io)")
@@ -294,6 +308,10 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 // or creating a new directory. It checks for existing Fabrica projects to avoid
 // accidental overwrites.
 func runInit(projectName string, opts *initOptions) error {
+	if err := validateInitOptions(opts); err != nil {
+		return err
+	}
+
 	// Determine if we're initializing in current directory
 	inCurrentDir := projectName == "."
 	var projectBaseName string
@@ -325,7 +343,7 @@ func runInit(projectName string, opts *initOptions) error {
 			// Create new directory
 			fmt.Printf("🚀 Creating %s project...\n", projectName)
 		}
-		projectBaseName = projectName
+		projectBaseName = filepath.Base(projectName)
 		targetDir = projectName
 	}
 
@@ -344,8 +362,8 @@ func runInit(projectName string, opts *initOptions) error {
 	fmt.Println("✅ Project initialized successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
-	if group, err := apiConfig.primaryGroup(); err == nil {
+	apiConfig := configpkg.DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
+	if group, err := apiConfig.PrimaryGroup(); err == nil {
 		fmt.Printf("  1. Add resources with 'fabrica add resource <name>'\n")
 		fmt.Printf("  2. Define types in apis/%s/<version>/*_types.go\n", group.Name)
 	} else {
@@ -389,8 +407,24 @@ func runInit(projectName string, opts *initOptions) error {
 	return nil
 }
 
+func validateInitOptions(opts *initOptions) error {
+	if opts == nil {
+		return fmt.Errorf("init options are required")
+	}
+	if !opts.withStorage {
+		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file or --storage-type ent")
+	}
+	if opts.withEvents && opts.eventBusType != "memory" {
+		return fmt.Errorf("unsupported events bus %q: only memory is implemented", opts.eventBusType)
+	}
+	if opts.withReconcile && !opts.withEvents {
+		return fmt.Errorf("reconciliation requires events; add --events or remove --reconcile")
+	}
+	return nil
+}
+
 // createProjectStructure creates the directory tree and files for a new project.
-// It generates main.go, go.mod, README.md, .gitignore, and stub storage files
+// It generates main.go, runtime helper files, go.mod, README.md, .gitignore, and stub storage files
 // from embedded templates, and writes both .fabrica.yaml and apis.yaml configs.
 //
 // The function creates:
@@ -405,32 +439,38 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		dbDriver = "sqlite3"
 	}
 
-	apiConfig := DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
-	group, err := apiConfig.primaryGroup()
+	apiConfig := configpkg.DefaultAPIsConfig(opts.apiGroup, opts.storageVersion, opts.apiVersions)
+	group, err := apiConfig.PrimaryGroup()
 	if err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 
 	// Template data
 	data := templateData{
-		ProjectName:       projectName,
-		ModulePath:        opts.modulePath,
-		Description:       opts.description,
-		WithAuth:          opts.withAuth,
-		WithStorage:       opts.withStorage,
-		WithMetrics:       opts.withMetrics,
-		WithVersion:       opts.withVersion,
-		WithReconcile:     opts.withReconcile,
-		WithEvents:        opts.withEvents,
-		StorageType:       opts.storageType,
-		DBDriver:          dbDriver,
-		EventBusType:      opts.eventBusType,
-		ReconcileWorkers:  opts.reconcileWorkers,
-		FabricaVersion:    version,
-		TokenSmithVersion: constants.TokenSmithVersion,
-		GeneratedAt:       time.Now().Format(time.RFC3339),
-		CopyrightYear:     time.Now().Year(),
-		FeaturesText:      "", // Will be populated later
+		ProjectName:          projectName,
+		ModulePath:           opts.modulePath,
+		Description:          opts.description,
+		WithAuth:             opts.withAuth,
+		WithStorage:          opts.withStorage,
+		WithMetrics:          opts.withMetrics,
+		WithVersion:          opts.withVersion,
+		WithReconcile:        opts.withReconcile,
+		WithEvents:           opts.withEvents,
+		StorageType:          opts.storageType,
+		DBDriver:             dbDriver,
+		EventBusType:         opts.eventBusType,
+		ReconcileWorkers:     opts.reconcileWorkers,
+		FabricaVersion:       version,
+		GoVersion:            "1.21",
+		TokenSmithModulePath: constants.TokenSmithModulePath,
+		TokenSmithVersion:    constants.TokenSmithVersion,
+		GeneratedAt:          now.Format(time.RFC3339),
+		CopyrightYear:        now.Year(),
+		FeaturesText:         "", // Will be populated later
+	}
+	if opts.withAuth {
+		data.GoVersion = constants.TokenSmithGoVersion
 	}
 
 	// Generate features text
@@ -456,6 +496,21 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 
 	// Generate main.go from template
 	if err := generateFromTemplate("init/main.go.tmpl", filepath.Join(targetDir, "cmd/server/main.go"), data); err != nil {
+		return err
+	}
+
+	// Generate runtime helpers from template
+	if err := generateFromTemplate("init/runtime_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/runtime_helpers_generated.go"), data); err != nil {
+		return err
+	}
+
+	// Generate auth helpers from template
+	if err := generateFromTemplate("init/auth_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/auth_helpers_generated.go"), data); err != nil {
+		return err
+	}
+
+	// Generate metrics helpers from template
+	if err := generateFromTemplate("init/metrics_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/metrics_helpers_generated.go"), data); err != nil {
 		return err
 	}
 
@@ -485,10 +540,10 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	}
 
 	// Create apis.yaml to declare groups and versions
-	if err := SaveAPIsConfig(targetDir, apiConfig); err != nil {
-		return fmt.Errorf("failed to write %s: %w", APIsConfigFileName, err)
+	if err := configpkg.SaveAPIsConfig(targetDir, apiConfig); err != nil {
+		return fmt.Errorf("failed to write %s: %w", configpkg.APIsConfigFileName, err)
 	}
-	fmt.Printf("  ├─ Created %s (group %s, storage %s)\n", APIsConfigFileName, group.Name, group.StorageVersion)
+	fmt.Printf("  ├─ Created %s (group %s, storage %s)\n", configpkg.APIsConfigFileName, group.Name, group.StorageVersion)
 
 	// Create stub storage files if storage is enabled
 	if opts.withStorage {
@@ -588,44 +643,53 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 	}
 
 	// Build configuration from options
-	config := &FabricaConfig{
-		Project: ProjectConfig{
+	cfg := &configpkg.FabricaConfig{
+		Project: configpkg.ProjectConfig{
 			Name:        projectName,
 			Module:      opts.modulePath,
 			Description: opts.description,
 			Created:     time.Now(),
 		},
-		Features: FeaturesConfig{
-			Validation: ValidationConfig{
+		Features: configpkg.FeaturesConfig{
+			Validation: configpkg.ValidationConfig{
 				Enabled: opts.validationMode != "disabled",
 				Mode:    opts.validationMode,
 			},
-			Events: EventsConfig{
+			Events: configpkg.EventsConfig{
 				Enabled: opts.withEvents,
 				BusType: opts.eventBusType,
 			},
-			Conditional: ConditionalConfig{
+			Conditional: configpkg.ConditionalConfig{
 				Enabled:       true, // Core feature always enabled
 				ETagAlgorithm: "sha256",
 			},
-			Auth: AuthConfig{
+			Auth: configpkg.AuthConfig{
 				Enabled: opts.withAuth,
 			},
-			Storage: StorageConfig{
+			Storage: configpkg.StorageConfig{
 				Enabled:  opts.withStorage,
 				Type:     opts.storageType,
 				DBDriver: dbDriver,
 			},
-			Metrics: MetricsConfig{
+			Metrics: configpkg.MetricsConfig{
 				Enabled: opts.withMetrics,
 			},
-			Reconciliation: ReconciliationConfig{
+			Reconciliation: configpkg.ReconciliationConfig{
 				Enabled:      opts.withReconcile,
 				WorkerCount:  opts.reconcileWorkers,
 				RequeueDelay: opts.reconcileRequeueMs,
 			},
+			Security: configpkg.SecurityConfig{
+				AuthN: configpkg.AuthNConfig{
+					Enabled: opts.withAuth,
+				},
+				AuthZ: configpkg.AuthZConfig{
+					Enabled: false,
+					Mode:    configpkg.SecurityModeEnforce,
+				},
+			},
 		},
-		Generation: GenerationConfig{
+		Generation: configpkg.GenerationConfig{
 			Handlers:       true,
 			Storage:        opts.withStorage,
 			Client:         true,
@@ -637,11 +701,11 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 	}
 
 	// Save configuration
-	if err := SaveConfig(targetDir, config); err != nil {
+	if err := configpkg.SaveConfig(targetDir, cfg); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
-	fmt.Printf("  ├─ Created %s\n", ConfigFileName)
+	fmt.Printf("  ├─ Created %s\n", configpkg.ConfigFileName)
 
 	return nil
 }
@@ -681,18 +745,24 @@ func createStubStorage(targetDir string, data templateData) error {
 	var stubContent string
 	switch data.StorageType {
 	case "file":
-		stubContent = `// Code generated by Fabrica. DO NOT EDIT manually.
-// This is a stub file created during init to prevent import errors.
-// It will be replaced when you run 'fabrica generate --storage'
+		stubContent = `// Code generated by Fabrica. This file will be replaced on first 'fabrica generate'.
+// SPDX-FileCopyrightText: Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+// SPDX-License-Identifier: MIT
+//
+// This is a temporary stub created during 'fabrica init' to prevent import errors.
+// Run 'fabrica generate --storage' to replace this with actual generated code.
 
 package storage
 
 // Placeholder to prevent import errors - will be replaced by generated code
 `
 	case "ent":
-		stubContent = `// Code generated by Fabrica. DO NOT EDIT manually.
-// This is a stub file created during init to prevent import errors.
-// It will be replaced when you run 'fabrica generate --storage'
+		stubContent = `// Code generated by Fabrica. This file will be replaced on first 'fabrica generate'.
+// SPDX-FileCopyrightText: Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+// SPDX-License-Identifier: MIT
+//
+// This is a temporary stub created during 'fabrica init' to prevent import errors.
+// Run 'fabrica generate --storage' to replace this with actual generated code.
 
 package storage
 
@@ -704,9 +774,12 @@ package storage
 			return fmt.Errorf("failed to create ent directory: %w", err)
 		}
 
-		entStubContent := `// Code generated by Fabrica. DO NOT EDIT manually.
-// This is a stub file created during init to prevent import errors.
-// It will be replaced when Ent generates the real schema code.
+		entStubContent := `// Code generated by Fabrica. This file will be replaced by Ent.
+// SPDX-FileCopyrightText: Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+// SPDX-License-Identifier: MIT
+//
+// This is a temporary stub created during 'fabrica init' to prevent import errors.
+// Run 'fabrica generate --storage' and Ent will replace this with real schema code.
 
 package ent
 
@@ -722,9 +795,12 @@ package ent
 			return fmt.Errorf("failed to create ent/migrate directory: %w", err)
 		}
 
-		migrateStubContent := `// Code generated by Fabrica. DO NOT EDIT manually.
-// This is a stub file created during init to prevent import errors.
-// It will be replaced when Ent generates the real migration code.
+		migrateStubContent := `// Code generated by Fabrica. This file will be replaced by Ent.
+// SPDX-FileCopyrightText: Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+// SPDX-License-Identifier: MIT
+//
+// This is a temporary stub created during 'fabrica init' to prevent import errors.
+// Run 'fabrica generate --storage' and Ent will replace this with real migration code.
 
 package migrate
 
@@ -743,9 +819,12 @@ package migrate
 				return fmt.Errorf("failed to create ent/%s directory: %w", pkg, err)
 			}
 
-			pkgStubContent := fmt.Sprintf(`// Code generated by Fabrica. DO NOT EDIT manually.
-// This is a stub file created during init to prevent import errors.
-// It will be replaced when Ent generates the real schema code.
+			pkgStubContent := fmt.Sprintf(`// Code generated by Fabrica. This file will be replaced by Ent.
+// SPDX-FileCopyrightText: Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+// SPDX-License-Identifier: MIT
+//
+// This is a temporary stub created during 'fabrica init' to prevent import errors.
+// Run 'fabrica generate --storage' and Ent will replace this with real schema code.
 
 package %s
 

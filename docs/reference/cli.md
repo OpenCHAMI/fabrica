@@ -18,14 +18,16 @@ SPDX-License-Identifier: MIT
   - [fabrica add version](#fabrica-add-version)
   - [fabrica generate](#fabrica-generate)
   - [fabrica ent generate](#fabrica-ent-generate)
+  - [fabrica mcp](#fabrica-mcp)
   - [fabrica version](#fabrica-version)
+- [Dedicated MCP Docs](mcp.md)
 - [Configuration Files](#configuration-files)
 - [Environment Variables](#environment-variables)
 - [Examples](#examples)
 
 ## Overview
 
-The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, and managing API versions. All commands support both interactive and non-interactive modes.
+The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
 
 **Installation:**
 ```bash
@@ -90,7 +92,7 @@ fabrica init [project-name] [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth` | bool | false | Enable authentication scaffolding |
-| `--storage` | bool | true | Enable storage backend |
+| `--storage` | bool | true | Enable storage backend. Must remain enabled for generated CRUD APIs |
 | `--metrics` | bool | false | Enable metrics/monitoring |
 | `--events` | bool | false | Enable CloudEvents integration |
 | `--reconcile` | bool | false | Enable reconciliation framework |
@@ -104,7 +106,7 @@ fabrica init [project-name] [flags]
 #### Event Options
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--events-bus <type>` | string | `memory` | Event bus type: `memory`, `nats`, `kafka` |
+| `--events-bus <type>` | string | `memory` | Event bus type: `memory` |
 
 #### Reconciliation Options
 | Flag | Type | Default | Description |
@@ -279,11 +281,11 @@ fabrica generate [flags]
 **Flags:**
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--handlers` | bool | true | Generate HTTP handlers |
-| `--storage` | bool | true | Generate storage layer |
-| `--client` | bool | true | Generate HTTP client |
-| `--openapi` | bool | true | Generate OpenAPI spec |
-| `--all` | bool | true | Generate everything (default) |
+| `--handlers` | bool | false | Generate handlers plus routes, models, and middleware |
+| `--storage` | bool | false | Generate storage layer |
+| `--client` | bool | false | Generate HTTP client and CLI client |
+| `--openapi` | bool | false | Generate OpenAPI spec plus request/response models |
+| no artifact flags | - | - | Generate everything |
 | `--debug` | bool | false | Show detailed generation steps |
 | `--force` | bool | false | Overwrite existing files without prompting |
 
@@ -293,8 +295,8 @@ fabrica generate [flags]
 # Generate everything (default)
 fabrica generate
 
-# Generate only handlers and storage
-fabrica generate --handlers --storage --client=false --openapi=false
+# Generate handlers and storage
+fabrica generate --handlers --storage
 
 # Debug mode
 fabrica generate --debug
@@ -311,7 +313,8 @@ Generated Files:
 │   ├── *_handlers_generated.go     # CRUD handlers (per resource)
 │   ├── models_generated.go         # Request/response models
 │   ├── routes_generated.go         # Route registration
-│   ├── openapi_generated.go        # OpenAPI spec
+│   ├── openapi_generated.go        # OpenAPI spec (Fabrica-managed routes)
+│   ├── openapi_extensions.go       # ✅ User-editable: add custom routes to the spec
 │   ├── export.go                   # Export command
 │   └── import.go                   # Import command
 ├── internal/
@@ -357,7 +360,8 @@ Generated Files:
 
 **Important:**
 - Always run `go mod tidy` after generation
-- Files ending in `_generated.go` are completely overwritten
+- Files ending in `_generated.go` are completely overwritten on every `fabrica generate`
+- **Create-once files** (e.g., `openapi_extensions.go`, `authz_classifier.go`) are written only when they do not yet exist — safe to edit freely
 - Your resource definitions (`*_types.go`) are never modified
 - Run from project root directory
 - Versioned APIs require `pkg/apiversion/registry_generated.go` for apiVersion validation
@@ -396,12 +400,53 @@ Display Fabrica version information.
 fabrica version
 ```
 
-**Output:**
+**Output (release build):**
 ```
-Fabrica version v0.4.0
+Fabrica version v0.4.5
+```
+
+**Output (build from source or CI with VCS metadata):**
+```
+Fabrica version v0.4.5
   commit: abc123def456
-  built: 2025-01-14T10:00:00Z
+  built:  2026-05-07T10:00:00Z
 ```
+
+---
+
+### fabrica mcp
+
+Run Fabrica as an MCP server over stdio for local workspace automation.
+
+For full MCP method, tool, error-schema, and safety details, see [Fabrica MCP Mode Reference](mcp.md).
+
+**Usage:**
+```bash
+fabrica mcp [flags]
+```
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--workspace <path>` | string | `.` | Workspace root for all MCP operations |
+
+**Supported MCP methods:**
+- `initialize`
+- `tools/list`
+- `tools/call`
+
+**Current tool set:**
+- `inspect_project`
+- `validate_project`
+- `create_service`
+- `add_resource`
+- `add_version`
+- `generate_code`
+- `sync_dependencies`
+
+**Notes:**
+- Mutating tools support `mode` values `dry_run` and `execute`
+- Tool paths are constrained to the configured workspace root
 
 ---
 
@@ -436,7 +481,7 @@ features:
 
   events:
     enabled: true
-    bus_type: memory          # memory | nats | kafka
+    bus_type: memory          # memory
     lifecycle_events: true
     condition_events: true
 
@@ -625,6 +670,96 @@ cd my-api
 fabrica add resource Device
 fabrica generate
 DATABASE_URL="postgres://user:pass@localhost/mydb" go run ./cmd/server/
+```
+
+---
+
+## Generated Client CLI
+
+After running `fabrica generate`, your project includes a fully functional CLI client in `cmd/client/main.go`. The client provides commands for all CRUD operations on your resources.
+
+### Client Global Flags
+
+The generated client supports these global flags:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--server` | `-s` | string | `http://localhost:8080` | API server URL |
+| `--timeout` | `-t` | duration | `30s` | Request timeout |
+| `--output` | `-o` | string | `table` | Output format: `table`, `json`, `yaml` |
+| `--log-level` | `-l` | string | `warning` | Log verbosity: `debug`, `info`, `warning` |
+| `--token` | | string | | JWT bearer token for authentication |
+| `--version` | `-v` | string | | API version to request (e.g., `v1`, `v2beta1`) |
+
+### Log Levels
+
+The `--log-level` flag controls the verbosity of client logging:
+
+- **`warning`** (default) - Only shows warnings and errors
+- **`info`** - Shows informational messages plus warnings/errors
+- **`debug`** - Shows detailed HTTP request/response information including:
+  - HTTP method and URL
+  - Request and response headers
+  - Request and response bodies
+  - Error details
+
+**Examples:**
+
+```bash
+# Default (warning level)
+go run ./cmd/client/ device list
+
+# Debug mode for troubleshooting
+go run ./cmd/client/ --log-level debug device list
+
+# Using shorthand
+go run ./cmd/client/ -l debug device create --spec '{"name":"test"}'
+
+# Redirect debug logs separately from output
+go run ./cmd/client/ -l debug device list -o json > output.json 2> debug.log
+```
+
+### Tab Completion
+
+The generated client supports shell completion for the `--log-level` flag:
+
+```bash
+# Bash
+source <(go run ./cmd/client/ completion bash)
+
+# Zsh
+go run ./cmd/client/ completion zsh > "${fpath[1]}/_client"
+
+# Then tab complete:
+go run ./cmd/client/ --log-level <TAB>
+# Shows: debug info warning
+```
+
+### Resource Commands
+
+For each resource in your API, the client generates subcommands:
+
+```bash
+# List resources
+go run ./cmd/client/ device list
+
+# Get specific resource
+go run ./cmd/client/ device get <uid>
+
+# Create resource
+go run ./cmd/client/ device create --spec '{"name":"device-01"}'
+
+# Update resource
+go run ./cmd/client/ device update <uid> --spec '{"name":"updated"}'
+
+# Patch resource
+go run ./cmd/client/ device patch <uid> --spec '{"name":"patched"}'
+
+# Delete resource
+go run ./cmd/client/ device delete <uid>
+
+# Update status (if status subresource is enabled)
+go run ./cmd/client/ device update-status <uid> --spec '{"ready":true}'
 ```
 
 ---

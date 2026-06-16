@@ -605,10 +605,10 @@ The basic example above works without authentication. To add custom authenticati
 
 ### Option 2: Add TokenSmith for Authentication
 
-1. Install TokenSmith middleware: `go get github.com/OpenCHAMI/tokensmith/middleware`
+1. Install TokenSmith: `go get github.com/openchami/tokensmith@v0.0.2`
 2. Configure JWKS endpoint and issuer
-3. Add middleware to validate JWT tokens
-4. See [TokenSmith documentation](https://github.com/OpenCHAMI/tokensmith/tree/main/middleware)
+3. Add AuthN middleware using `github.com/openchami/tokensmith/pkg/authn`
+4. See [TokenSmith getting started](https://github.com/openchami/tokensmith/tree/main/docs/getting-started.md)
 
 These features require manual integration and are beyond the scope of this basic example.
 

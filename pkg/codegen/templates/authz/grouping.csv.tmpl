@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+# Starter grouping policy for Fabrica-generated services.
+#
+# TokenSmith's authorizer evaluates role subjects directly (role:<name>).
+# Use grouping for role inheritance so broader roles automatically include the
+# permissions of narrower roles.
+
+g, role:editor, role:viewer
+g, role:admin, role:editor

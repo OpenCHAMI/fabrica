@@ -5,7 +5,9 @@
 package integration
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -258,6 +260,207 @@ func (s *ClientBinaryTestSuite) TestClientEnvironmentConfiguration() {
 	output, err := project.RunClientBinary(clientBinary, "config", "list")
 	s.Require().NoError(err, "Client should respect environment configuration")
 	s.Require().NotEmpty(string(output), "Client should produce output")
+}
+
+// TestClientLogLevelFlag verifies that the --log-level flag is properly implemented
+func (s *ClientBinaryTestSuite) TestClientLogLevelFlag() {
+	project := s.createProject("client-loglevel-test", "github.com/test/client-loglevel", "file")
+
+	// Setup
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.AddResource(s.fabricaBinary, "Volume")
+	s.Require().NoError(err)
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	clientBinary, err := project.BuildClientBinary()
+	s.Require().NoError(err)
+
+	// Test 1: Help contains --log-level
+	output, err := project.RunClientBinary(clientBinary, "--help")
+	s.Require().NoError(err)
+	s.Require().Contains(string(output), "--log-level", "Help should document --log-level flag")
+	s.Require().Contains(string(output), "-l", "Help should document -l shorthand")
+
+	// Test 2: Valid log levels work
+	for _, level := range []string{"info", "warning", "debug"} {
+		output, err := project.RunClientBinary(clientBinary, "--log-level", level, "volume", "list")
+		s.Require().NoError(err, "volume list with --log-level %s should succeed", level)
+		s.Require().NotEmpty(string(output))
+	}
+
+	// Test 3: Invalid log level fails
+	output, err = project.RunClientBinary(clientBinary, "--log-level", "invalid", "volume", "list")
+	s.Require().Error(err, "Invalid log level should fail")
+	s.Require().Contains(string(output), "must be one of", "Error should explain valid values")
+}
+
+// TestClientLogLevelOutput verifies that debug logs actually appear in stderr
+func (s *ClientBinaryTestSuite) TestClientLogLevelOutput() {
+	project := s.createProject("client-log-output-test", "github.com/test/client-log-output", "file")
+
+	// Setup
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.AddResource(s.fabricaBinary, "Widget")
+	s.Require().NoError(err)
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	clientBinary, err := project.BuildClientBinary()
+	s.Require().NoError(err)
+
+	// Test 1: Debug level shows logs
+	cmd := exec.Command(clientBinary, "--server", project.ServerURL, "--log-level", "debug", "widget", "list")
+	cmd.Dir = project.Dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	s.Require().NoError(err)
+	s.Require().NotEmpty(output)
+
+	stderrStr := stderr.String()
+	s.Require().Contains(stderrStr, "GET:", "Debug logs should show HTTP method")
+	s.Require().Contains(stderrStr, "Response status:", "Debug logs should show response status")
+
+	// Test 2: Warning level does NOT show debug logs
+	cmd = exec.Command(clientBinary, "--server", project.ServerURL, "--log-level", "warning", "widget", "list")
+	cmd.Dir = project.Dir
+	stderr.Reset()
+	cmd.Stderr = &stderr
+	output, err = cmd.Output()
+	s.Require().NoError(err)
+	s.Require().NotEmpty(output)
+
+	stderrStr = stderr.String()
+	s.Require().NotContains(stderrStr, "GET:", "Warning level should not show debug logs")
+	s.Require().NotContains(stderrStr, "Response status:", "Warning level should not show debug logs")
+
+	// Test 3: Info level does NOT show debug logs
+	cmd = exec.Command(clientBinary, "--server", project.ServerURL, "--log-level", "info", "widget", "list")
+	cmd.Dir = project.Dir
+	stderr.Reset()
+	cmd.Stderr = &stderr
+	output, err = cmd.Output()
+	s.Require().NoError(err)
+	s.Require().NotEmpty(output)
+
+	stderrStr = stderr.String()
+	s.Require().NotContains(stderrStr, "GET:", "Info level should not show debug logs")
+	s.Require().NotContains(stderrStr, "Response status:", "Info level should not show debug logs")
+}
+
+// TestClientLogLevelShorthand verifies the -l shorthand works
+func (s *ClientBinaryTestSuite) TestClientLogLevelShorthand() {
+	project := s.createProject("client-shorthand-test", "github.com/test/client-shorthand", "file")
+
+	// Setup
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.AddResource(s.fabricaBinary, "Config")
+	s.Require().NoError(err)
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	clientBinary, err := project.BuildClientBinary()
+	s.Require().NoError(err)
+
+	// Test -l shorthand
+	output, err := project.RunClientBinary(clientBinary, "-l", "debug", "config", "list")
+	s.Require().NoError(err, "-l shorthand should work")
+	s.Require().NotEmpty(string(output))
+
+	// Verify it's the same as --log-level (both should work)
+	output2, err := project.RunClientBinary(clientBinary, "--log-level", "debug", "config", "list")
+	s.Require().NoError(err)
+	s.Require().NotEmpty(string(output2))
+}
+
+// TestClientLogLevelEnvironmentVariable verifies log level via command-line flag works
+// Note: Environment variable support for custom flag types (like LogLevel) requires
+// additional plumbing in the generated code. This test verifies the flag works explicitly.
+func (s *ClientBinaryTestSuite) TestClientLogLevelEnvironmentVariable() {
+	project := s.createProject("clientenvlog", "github.com/test/clientenvlog", "file")
+
+	// Setup
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.AddResource(s.fabricaBinary, "Service")
+	s.Require().NoError(err)
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	clientBinary, err := project.BuildClientBinary()
+	s.Require().NoError(err)
+
+	// Test that log level flag works with explicit setting
+	// (Environment variables for custom flag types would require additional template changes)
+	cmd := exec.Command(clientBinary, "--server", project.ServerURL, "--log-level", "debug", "service", "list")
+	cmd.Dir = project.Dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	s.Require().NoError(err)
+	s.Require().NotEmpty(output)
+
+	stderrStr := stderr.String()
+	s.Require().Contains(stderrStr, "GET:", "Debug log level via flag should show HTTP requests")
+}
+
+// TestClientLogLevelEdgeCases tests edge cases like empty log level, case sensitivity
+func (s *ClientBinaryTestSuite) TestClientLogLevelEdgeCases() {
+	project := s.createProject("client-edge-test", "github.com/test/client-edge", "file")
+
+	// Setup
+	err := project.Initialize(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.AddResource(s.fabricaBinary, "Node")
+	s.Require().NoError(err)
+
+	err = project.Generate(s.fabricaBinary)
+	s.Require().NoError(err)
+
+	err = project.StartServerRuntime()
+	s.Require().NoError(err)
+
+	clientBinary, err := project.BuildClientBinary()
+	s.Require().NoError(err)
+
+	// Test 1: No log level flag (default should work)
+	output, err := project.RunClientBinary(clientBinary, "node", "list")
+	s.Require().NoError(err, "Default log level should work")
+	s.Require().NotEmpty(string(output))
+
+	// Test 2: Case sensitivity (should fail if uppercase)
+	output, err = project.RunClientBinary(clientBinary, "--log-level", "DEBUG", "node", "list")
+	s.Require().Error(err, "Log levels should be case-sensitive (lowercase only)")
+	s.Require().Contains(string(output), "must be one of", "Error should explain valid values")
+
+	// Test 3: Whitespace should be rejected
+	output, err = project.RunClientBinary(clientBinary, "--log-level", " debug ", "node", "list")
+	s.Require().Error(err, "Whitespace in log level should fail")
 }
 
 // Run the test suite

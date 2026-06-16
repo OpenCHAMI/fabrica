@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/openchami/fabrica/internal/config"
 )
 
 type versionOptions struct {
@@ -58,7 +60,7 @@ func runAddVersion(newVersion string, opts *versionOptions) error {
 		return fmt.Errorf("not a fabrica project (no .fabrica.yaml found)")
 	}
 
-	apisConfig, err := LoadAPIsConfig("")
+	apisConfig, err := config.LoadAPIsConfig("")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("apis.yaml not found; run 'fabrica init' to create it")
@@ -66,7 +68,7 @@ func runAddVersion(newVersion string, opts *versionOptions) error {
 		return fmt.Errorf("failed to load apis.yaml: %w", err)
 	}
 
-	group, err := apisConfig.primaryGroup()
+	group, err := apisConfig.PrimaryGroup()
 	if err != nil {
 		return err
 	}
@@ -153,7 +155,7 @@ func runAddVersion(newVersion string, opts *versionOptions) error {
 
 	// Update config to add new version
 	group.Versions = append(group.Versions, newVersion)
-	if err := SaveAPIsConfig("", apisConfig); err != nil {
+	if err := config.SaveAPIsConfig("", apisConfig); err != nil {
 		return fmt.Errorf("failed to update apis.yaml: %w", err)
 	}
 

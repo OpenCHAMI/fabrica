@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	configpkg "github.com/openchami/fabrica/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -84,7 +85,7 @@ Example:
 
 // isFabricaProject checks if the current directory is a fabrica project
 func isFabricaProject() bool {
-	_, err := os.Stat(ConfigFileName)
+	_, err := os.Stat(configpkg.ConfigFileName)
 	return err == nil
 }
 
@@ -106,12 +107,12 @@ func runAddResource(resourceName string, opts *addOptions) error {
 	}
 
 	// Load config to determine if this is a versioned project
-	config, err := LoadConfig("")
+	cfg, err := configpkg.LoadConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	apisConfig, err := LoadAPIsConfig("")
+	apisConfig, err := configpkg.LoadAPIsConfig("")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("apis.yaml not found; run 'fabrica init' to create it")
@@ -119,7 +120,7 @@ func runAddResource(resourceName string, opts *addOptions) error {
 		return fmt.Errorf("failed to load apis.yaml: %w", err)
 	}
 
-	group, err := apisConfig.primaryGroup()
+	group, err := apisConfig.PrimaryGroup()
 	if err != nil {
 		return err
 	}
@@ -168,14 +169,14 @@ func runAddResource(resourceName string, opts *addOptions) error {
 		resourceFile = filepath.Join(targetDir, opts.packageName+".go")
 	}
 
-	if err := generateResourceFile(resourceFile, resourceName, isVersioned, opts, config.Project.Module, group.StorageVersion, group.Name); err != nil {
+	if err := generateResourceFile(resourceFile, resourceName, isVersioned, opts, cfg.Project.Module, group.StorageVersion, group.Name); err != nil {
 		return err
 	}
 
 	// Update apis.yaml to include the resource
 	if isVersioned {
-		apisConfig.addResource(resourceName)
-		if err := SaveAPIsConfig("", apisConfig); err != nil {
+		apisConfig.AddResource(resourceName)
+		if err := configpkg.SaveAPIsConfig("", apisConfig); err != nil {
 			return fmt.Errorf("failed to update apis.yaml: %w", err)
 		}
 		fmt.Printf("  ✓ Added %s to apis.yaml\n", resourceName)
@@ -223,7 +224,7 @@ func generateResourceFile(filePath, resourceName string, isVersioned bool, opts 
 package %s
 
 import (
-	"context"`, time.Now().Year(), packageName)
+	"context"`, time.Now().UTC().Year(), packageName)
 
 	if isVersioned {
 		// Versioned types use flattened envelope

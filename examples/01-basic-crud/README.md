@@ -621,13 +621,20 @@ go build ./cmd/server
 
 ### Working with Local Fabrica Source
 
-If developing Fabrica itself, add a replace directive to your test project's `go.mod`:
+If developing Fabrica itself, use the local-source generate override instead of changing your test project's `go.mod`:
 
-```go
-replace github.com/openchami/fabrica => /path/to/local/fabrica
+```bash
+fabrica generate --fabrica-source /path/to/local/fabrica
 ```
 
-This ensures `fabrica generate` uses your local templates instead of the published version.
+Or set it once for your shell session:
+
+```bash
+export FABRICA_SOURCE_PATH=/path/to/local/fabrica
+fabrica generate
+```
+
+This ensures `fabrica generate` uses your local templates without leaving a `replace` directive behind.
 
 ### Regenerating After Resource Changes
 

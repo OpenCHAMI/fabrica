@@ -105,24 +105,57 @@ func NewFileBackend(baseDir string) (*FileBackend, error) {
 
 // resourceTypeToDir maps resource type names to directory names
 func (f *FileBackend) resourceTypeToDir(resourceType string) string {
-	// Convert to lowercase and pluralize by adding 's' if not already plural
+	// Security: Validate resourceType to prevent path traversal attacks
+	// Check for empty string
+	if resourceType == "" {
+		return ""
+	}
+
+	// Only allow alphanumeric characters, hyphens, and underscores
+	for _, ch := range resourceType {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') &&
+			(ch < '0' || ch > '9') && ch != '-' && ch != '_' {
+			// Return empty string for invalid characters - caller will handle error
+			return ""
+		}
+	}
+
+	// Additional check: ensure the result doesn't escape the base directory
 	dir := strings.ToLower(resourceType)
 	if !strings.HasSuffix(dir, "s") {
 		dir = dir + "s"
 	}
+
+	// Verify the resulting path is safe (no "..", ".", or path separators)
+	if strings.Contains(dir, "..") || strings.Contains(dir, string(filepath.Separator)) || dir == "." {
+		return ""
+	}
+
 	return dir
 }
 
 // getFilePath returns the file path for a specific resource
-func (f *FileBackend) getFilePath(resourceType, uid string) string {
+func (f *FileBackend) getFilePath(resourceType, uid string) (string, error) {
 	dir := f.resourceTypeToDir(resourceType)
-	return filepath.Join(f.baseDir, dir, uid+".json")
+	if dir == "" {
+		return "", fmt.Errorf("invalid resource type: contains illegal characters or path traversal attempt")
+	}
+
+	// Validate UID to prevent path traversal
+	if strings.Contains(uid, "..") || strings.Contains(uid, string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid UID: contains illegal path characters")
+	}
+
+	return filepath.Join(f.baseDir, dir, uid+".json"), nil
 }
 
 // getDirPath returns the directory path for a resource type
-func (f *FileBackend) getDirPath(resourceType string) string {
+func (f *FileBackend) getDirPath(resourceType string) (string, error) {
 	dir := f.resourceTypeToDir(resourceType)
-	return filepath.Join(f.baseDir, dir)
+	if dir == "" {
+		return "", fmt.Errorf("invalid resource type: contains illegal characters or path traversal attempt")
+	}
+	return filepath.Join(f.baseDir, dir), nil
 }
 
 // checkClosed returns an error if the backend has been closed
@@ -142,7 +175,10 @@ func (f *FileBackend) LoadAll(ctx context.Context, resourceType string) ([]json.
 		return nil, err
 	}
 
-	dirPath := f.getDirPath(resourceType)
+	dirPath, err := f.getDirPath(resourceType)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check if context is cancelled before starting
 	select {
@@ -207,7 +243,10 @@ func (f *FileBackend) Load(ctx context.Context, resourceType, uid string) (json.
 	default:
 	}
 
-	filePath := f.getFilePath(resourceType, uid)
+	filePath, err := f.getFilePath(resourceType, uid)
+	if err != nil {
+		return nil, err
+	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -246,7 +285,10 @@ func (f *FileBackend) Save(ctx context.Context, resourceType, uid string, data j
 		return fmt.Errorf("invalid JSON data: %w", ErrInvalidData)
 	}
 
-	filePath := f.getFilePath(resourceType, uid)
+	filePath, err := f.getFilePath(resourceType, uid)
+	if err != nil {
+		return err
+	}
 
 	// Ensure directory exists
 	dirPath := filepath.Dir(filePath)
@@ -286,7 +328,10 @@ func (f *FileBackend) Delete(ctx context.Context, resourceType, uid string) erro
 	default:
 	}
 
-	filePath := f.getFilePath(resourceType, uid)
+	filePath, err := f.getFilePath(resourceType, uid)
+	if err != nil {
+		return err
+	}
 
 	// Check if file exists
 	if _, err := os.Stat(filePath); err != nil {
@@ -319,9 +364,12 @@ func (f *FileBackend) Exists(ctx context.Context, resourceType, uid string) (boo
 	default:
 	}
 
-	filePath := f.getFilePath(resourceType, uid)
+	filePath, err := f.getFilePath(resourceType, uid)
+	if err != nil {
+		return false, err
+	}
 
-	_, err := os.Stat(filePath)
+	_, err = os.Stat(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -341,7 +389,10 @@ func (f *FileBackend) List(ctx context.Context, resourceType string) ([]string, 
 		return nil, err
 	}
 
-	dirPath := f.getDirPath(resourceType)
+	dirPath, err := f.getDirPath(resourceType)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check if context is cancelled
 	select {

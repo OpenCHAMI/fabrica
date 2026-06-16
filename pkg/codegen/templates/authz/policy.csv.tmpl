@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+# Starter policy for Fabrica-generated services.
+#
+# TokenSmith evaluates the caller's normalized roles using Casbin subjects in the
+# form role:<name>. Start simple, then tailor these tuples for your deployment.
+
+{{range .Resources}}# {{.Name}}
+p, role:viewer, {{.URLPath}}, GET
+p, role:viewer, {{.URLPath}}/{uid}, GET
+
+p, role:editor, {{.URLPath}}, GET
+p, role:editor, {{.URLPath}}/{uid}, GET
+p, role:editor, {{.URLPath}}, POST
+p, role:editor, {{.URLPath}}/{uid}, PUT
+p, role:editor, {{.URLPath}}/{uid}, PATCH
+p, role:editor, {{.URLPath}}/{uid}/status, PUT
+p, role:editor, {{.URLPath}}/{uid}/status, PATCH
+
+p, role:admin, {{.URLPath}}, GET
+p, role:admin, {{.URLPath}}/{uid}, GET
+p, role:admin, {{.URLPath}}, POST
+p, role:admin, {{.URLPath}}/{uid}, PUT
+p, role:admin, {{.URLPath}}/{uid}, PATCH
+p, role:admin, {{.URLPath}}/{uid}, DELETE
+p, role:admin, {{.URLPath}}/{uid}/status, PUT
+p, role:admin, {{.URLPath}}/{uid}/status, PATCH
+
+{{end}}# Add deployment-specific tuples below.

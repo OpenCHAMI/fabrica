@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+# Starter Casbin model for Fabrica-generated services.
+#
+# This model matches the default AuthZ classifier output:
+#   sub = normalized role subject (TokenSmith enforces with role:<name>)
+#   obj = stable chi route pattern (for example /sensors/{uid})
+#   act = HTTP method (GET, POST, PUT, PATCH, DELETE)
+
+[request_definition]
+r = sub, obj, act
+
+[policy_definition]
+p = sub, obj, act
+
+[role_definition]
+g = _, _
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
