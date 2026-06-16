@@ -87,6 +87,7 @@ The CLI provides commands for:
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
 	rootCmd.AddCommand(newEntCommand())
+	rootCmd.AddCommand(newMigrateCommand())
 	rootCmd.AddCommand(mcp.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 

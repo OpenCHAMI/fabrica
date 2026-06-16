@@ -277,13 +277,13 @@ func NewStorageClient() *StorageClient {
 
 // {{.Name}}VersionSnapshot represents a stored version of a {{.Name}}'s spec
 type {{.Name}}VersionSnapshot struct {
-	VersionID string                 `json:"versionId"`
-	CreatedAt time.Time              `json:"createdAt"`
-	UID       string                 `json:"uid"`
-	Name      string                 `json:"name"`
-	Labels    map[string]string      `json:"labels,omitempty"`
-	Annotations map[string]string    `json:"annotations,omitempty"`
-	Spec      {{.SpecType}}          `json:"spec"`
+	VersionID   string                 `json:"versionId" yaml:"versionId"`
+	CreatedAt   time.Time              `json:"createdAt" yaml:"createdAt"`
+	UID         string                 `json:"uid" yaml:"uid"`
+	Name        string                 `json:"name" yaml:"name"`
+	Labels      map[string]string      `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Annotations map[string]string      `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Spec        {{.SpecType}}          `json:"spec" yaml:"spec"`
 }
 
 func versionsBaseDir() string {
