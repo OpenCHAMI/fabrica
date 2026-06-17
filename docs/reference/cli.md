@@ -17,6 +17,7 @@ SPDX-License-Identifier: MIT
   - [fabrica add resource](#fabrica-add-resource)
   - [fabrica add version](#fabrica-add-version)
   - [fabrica generate](#fabrica-generate)
+  - [fabrica migrate yaml-tags](#fabrica-migrate-yaml-tags)
   - [fabrica ent generate](#fabrica-ent-generate)
   - [fabrica mcp](#fabrica-mcp)
   - [fabrica version](#fabrica-version)
@@ -27,7 +28,7 @@ SPDX-License-Identifier: MIT
 
 ## Overview
 
-The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
+The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, migrating existing project sources, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
 
 **Installation:**
 ```bash
@@ -205,11 +206,11 @@ package v1
 import "github.com/openchami/fabrica/pkg/fabrica"
 
 type Device struct {
-    APIVersion string           `json:"apiVersion"`
-    Kind       string           `json:"kind"`
-    Metadata   fabrica.Metadata `json:"metadata"`
-    Spec       DeviceSpec       `json:"spec"`
-    Status     DeviceStatus     `json:"status,omitempty"`
+    APIVersion string           `json:"apiVersion" yaml:"apiVersion"`
+    Kind       string           `json:"kind" yaml:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata" yaml:"metadata"`
+    Spec       DeviceSpec       `json:"spec" yaml:"spec"`
+    Status     DeviceStatus     `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 type DeviceSpec struct {
@@ -365,6 +366,54 @@ Generated Files:
 - Your resource definitions (`*_types.go`) are never modified
 - Run from project root directory
 - Versioned APIs require `pkg/apiversion/registry_generated.go` for apiVersion validation
+
+---
+
+### fabrica migrate yaml-tags
+
+Add missing YAML struct tags to existing resource type files.
+
+**Usage:**
+```bash
+fabrica migrate yaml-tags [flags]
+```
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dry-run` | bool | false | Report files and tags that would change without writing files |
+| `--dir <path>` | string | current directory | Fabrica project directory |
+
+**Examples:**
+
+```bash
+# Preview migration changes
+fabrica migrate yaml-tags --dry-run
+
+# Apply migration in the current project
+fabrica migrate yaml-tags
+
+# Apply migration to another project directory
+fabrica migrate yaml-tags --dir ../my-service
+```
+
+**What It Does:**
+1. Reads `apis.yaml` to find configured API groups and versions
+2. Scans `apis/<group>/<version>/*_types.go` resource files
+3. Adds `yaml` tags matching existing `json` tags when missing
+4. Preserves existing `yaml`, `validate`, and other custom tags
+5. Skips fields with `json:"-"`
+6. Formats changed files with `gofmt`
+
+**Migration Workflow:**
+
+```bash
+fabrica migrate yaml-tags --dry-run
+fabrica migrate yaml-tags
+fabrica generate
+```
+
+Run this migration for services created before Fabrica emitted YAML tags in resource templates. For details and the current migration list, see [Fabrica Migrations](../guides/migrations.md).
 
 ---
 

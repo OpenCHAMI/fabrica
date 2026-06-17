@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"strings"
@@ -244,10 +245,10 @@ import (
 
 // ` + resourceName + ` represents a ` + strings.ToLower(resourceName) + ` resource
 type ` + resourceName + ` struct {
-	APIVersion string           ` + "`json:\"apiVersion\"`" + `
-	Kind       string           ` + "`json:\"kind\"`" + `
-	Metadata   fabrica.Metadata ` + "`json:\"metadata\"`" + `
-	Spec       ` + resourceName + `Spec   ` + "`json:\"spec\""
+	APIVersion string           ` + "`json:\"apiVersion\" yaml:\"apiVersion\"`" + `
+	Kind       string           ` + "`json:\"kind\" yaml:\"kind\"`" + `
+	Metadata   fabrica.Metadata ` + "`json:\"metadata\" yaml:\"metadata\"`" + `
+	Spec       ` + resourceName + `Spec   ` + "`json:\"spec\" yaml:\"spec\""
 
 		if opts.withValidation {
 			content += ` validate:"required"`
@@ -255,7 +256,7 @@ type ` + resourceName + ` struct {
 		content += "`\n"
 
 		if opts.withStatus {
-			content += fmt.Sprintf(`	Status     %sStatus `+"`json:\"status,omitempty\"`\n", resourceName)
+			content += fmt.Sprintf(`	Status     %sStatus `+"`json:\"status,omitempty\" yaml:\"status,omitempty\"`\n", resourceName)
 		}
 		content += `}
 
@@ -269,7 +270,7 @@ type ` + resourceName + ` struct {
 // ` + resourceName + ` represents a ` + resourceName + ` resource
 type ` + resourceName + ` struct {
 	resource.Resource
-	Spec   ` + resourceName + `Spec   ` + "`json:\"spec\""
+	Spec   ` + resourceName + `Spec   ` + "`json:\"spec\" yaml:\"spec\""
 
 		if opts.withValidation {
 			content += ` validate:"required"`
@@ -278,7 +279,7 @@ type ` + resourceName + ` struct {
 		content += "`\n"
 
 		if opts.withStatus {
-			content += fmt.Sprintf(`	Status %sStatus `+"`json:\"status,omitempty\"`\n", resourceName)
+			content += fmt.Sprintf(`	Status %sStatus `+"`json:\"status,omitempty\" yaml:\"status,omitempty\"`\n", resourceName)
 		}
 
 		content += `}
@@ -292,10 +293,10 @@ type %sSpec struct {`, resourceName, resourceName, resourceName)
 
 	if opts.withValidation {
 		content += `
-	Description string ` + "`json:\"description,omitempty\" validate:\"max=200\"`"
+	Description string ` + "`json:\"description,omitempty\" yaml:\"description,omitempty\" validate:\"max=200\"`"
 	} else {
 		content += `
-	Description string ` + "`json:\"description,omitempty\"`"
+	Description string ` + "`json:\"description,omitempty\" yaml:\"description,omitempty\"`"
 	}
 
 	content += `
@@ -308,14 +309,14 @@ type %sSpec struct {`, resourceName, resourceName, resourceName)
 		content += fmt.Sprintf(`
 // %sStatus defines the observed state of %s
 type %sStatus struct {
-	Phase      string `+"`json:\"phase,omitempty\"`"+`
-	Message    string `+"`json:\"message,omitempty\"`"+`
-	Ready      bool   `+"`json:\"ready\"`"+`
+	Phase      string `+"`json:\"phase,omitempty\" yaml:\"phase,omitempty\"`"+`
+	Message    string `+"`json:\"message,omitempty\" yaml:\"message,omitempty\"`"+`
+	Ready      bool   `+"`json:\"ready\" yaml:\"ready\"`"+`
 	`, resourceName, resourceName, resourceName)
 
 		if opts.withVersioning {
 			content += `	// Version is the current spec version identifier (server-managed)
-	Version   string ` + "`json:\"version,omitempty\"`" + `
+	Version   string ` + "`json:\"version,omitempty\" yaml:\"version,omitempty\"`" + `
 `
 		}
 
@@ -448,5 +449,10 @@ func init() {
 		content = "// +fabrica:resource-versioning=enabled\n" + content
 	}
 
-	return os.WriteFile(filePath, []byte(content), 0644)
+	formatted, err := format.Source([]byte(content))
+	if err != nil {
+		return fmt.Errorf("failed to format resource file: %w", err)
+	}
+
+	return os.WriteFile(filePath, formatted, 0644)
 }
