@@ -51,17 +51,17 @@ func resolveVersionInfo(currentVersion, currentCommit, currentDate string, build
 	return resolvedVersion, resolvedCommit, resolvedDate
 }
 
-func resolveBuildVersionInfo() {
-	if version != "dev" && commit != "none" && date != "unknown" {
-		return
+func versionString() string {
+	if commit == "none" && date == "unknown" {
+		return version
 	}
-
-	buildInfo, ok := debug.ReadBuildInfo()
-	if !ok {
-		return
+	if commit == "none" {
+		return fmt.Sprintf("%s (built: %s)", version, date)
 	}
-
-	version, commit, date = resolveVersionInfo(version, commit, date, buildInfo)
+	if date == "unknown" {
+		return fmt.Sprintf("%s (commit: %s)", version, commit)
+	}
+	return fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date)
 }
 
 func versionString() string {
@@ -78,7 +78,6 @@ func versionString() string {
 }
 
 func main() {
-	resolveBuildVersionInfo()
 	mcp.Version = version
 
 	rootCmd := &cobra.Command{
@@ -101,6 +100,7 @@ The CLI provides commands for:
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
 	rootCmd.AddCommand(newEntCommand())
+	rootCmd.AddCommand(newMigrateCommand())
 	rootCmd.AddCommand(mcp.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 

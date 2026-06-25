@@ -45,6 +45,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 - **🌐 Cloud-Native Ready** - [Hub/spoke API versioning](docs/guides/versioning.md), conditional requests (ETags), event-driven patterns
 - **🔄 API Versioning (Hub/Spoke)** - Kubebuilder-style versioning with automatic conversion between versions
 - **🏗️ Production Patterns** - Consistent API structure, error handling, and middleware
+- **🔍 Built-in Client Debugging** - Generated CLI with configurable log levels for easy troubleshooting
 
 ## 🎯 Perfect For
 
@@ -55,12 +56,12 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 
 ## 📦 Installation
 
-### Latest Release (v0.4.4)
+### Latest Release (v0.4.5)
 
 **macOS/Linux:**
 ```bash
 # Direct download and install
-curl -L https://github.com/openchami/fabrica/releases/download/v0.4.4/fabrica-$(uname -s)-$(uname -m) -o fabrica
+curl -L https://github.com/openchami/fabrica/releases/download/v0.4.5/fabrica-$(uname -s)-$(uname -m) -o fabrica
 chmod +x fabrica
 sudo mv fabrica /usr/local/bin/
 
@@ -70,7 +71,7 @@ fabrica version
 
 **Using Go:**
 ```bash
-go install github.com/openchami/fabrica/cmd/fabrica@v0.4.4
+go install github.com/openchami/fabrica/cmd/fabrica@v0.4.5
 ```
 
 ### Development Version
@@ -200,18 +201,22 @@ Fabrica follows clean architecture principles and generates well-structured proj
 > - `apis/<group>/<version>/*_types.go` - Your resource definitions (spec/status structs)
 > - `apis.yaml` - API group and version configuration
 > - `.fabrica.yaml` - Feature flags and project settings
-> - `cmd/server/main.go` - Server customizations (before first `// Generated` comment)
+> - `pkg/reconcilers/*_reconciler.go` (without `_generated`) - Custom reconciliation logic
+> - `cmd/server/authz_classifier.go` - Authorization tuple mapping (create-once)
+> - `cmd/server/openapi_extensions.go` - Custom OpenAPI routes (if you create it)
+>
+> **⚠️ LIMITED EDITING:**
+> - `cmd/server/main.go` - Mostly generated; prefer adding custom code via helper files
 >
 > **❌ NEVER EDIT:**
 > - **Any file ending in `_generated.go`** - These are completely regenerated on each `fabrica generate`
-> - Files in generated directories after running `fabrica generate`
 >
 > **🔄 Regeneration Command:**
 > ```bash
 > fabrica generate  # Safely regenerates all *_generated.go files
 > ```
 >
-> Your custom code in resource definitions and main.go will be preserved, but all generated files will be completely rewritten.
+> Your custom code in resource definitions, reconcilers, and classifier files will be preserved. All `*_generated.go` files will be completely rewritten.
 
 ## 📦 Resource Structure
 
@@ -342,7 +347,7 @@ We welcome contributions from the community! Here's how to get involved:
 
 ## 🏷️ Releases & Roadmap
 
-**Current Version:** [v0.4.4](https://github.com/openchami/fabrica/releases/tag/v0.4.4)
+**Current Version:** [v0.4.5](https://github.com/openchami/fabrica/releases/tag/v0.4.5)
 
 **📅 Recent Updates:**
 - ✅ Hub/Spoke API versioning with automatic conversion

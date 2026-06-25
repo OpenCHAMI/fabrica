@@ -52,7 +52,7 @@ Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.4.4
+# Output: fabrica version v0.4.5
 ```
 
 ## Step 1: Initialize Your Project
@@ -541,6 +541,10 @@ When you're ready to explore more of Fabrica's capabilities:
   - Struct tag validation
   - Custom validators
   - Detailed error responses
+
+- **[Migrations Guide](./migrations.md)**
+  - Source migrations for existing Fabrica projects
+  - YAML tag migration for resource type files
 
 - **[Events Guide](./events.md)**
   - CloudEvents integration

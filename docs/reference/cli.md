@@ -17,6 +17,7 @@ SPDX-License-Identifier: MIT
   - [fabrica add resource](#fabrica-add-resource)
   - [fabrica add version](#fabrica-add-version)
   - [fabrica generate](#fabrica-generate)
+  - [fabrica migrate yaml-tags](#fabrica-migrate-yaml-tags)
   - [fabrica ent generate](#fabrica-ent-generate)
   - [fabrica mcp](#fabrica-mcp)
   - [fabrica version](#fabrica-version)
@@ -27,7 +28,7 @@ SPDX-License-Identifier: MIT
 
 ## Overview
 
-The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
+The `fabrica` CLI provides commands for initializing projects, adding resources, generating code, migrating existing project sources, managing API versions, and running an MCP server for local agent workflows. All commands support both interactive and non-interactive modes.
 
 **Installation:**
 ```bash
@@ -205,11 +206,11 @@ package v1
 import "github.com/openchami/fabrica/pkg/fabrica"
 
 type Device struct {
-    APIVersion string           `json:"apiVersion"`
-    Kind       string           `json:"kind"`
-    Metadata   fabrica.Metadata `json:"metadata"`
-    Spec       DeviceSpec       `json:"spec"`
-    Status     DeviceStatus     `json:"status,omitempty"`
+    APIVersion string           `json:"apiVersion" yaml:"apiVersion"`
+    Kind       string           `json:"kind" yaml:"kind"`
+    Metadata   fabrica.Metadata `json:"metadata" yaml:"metadata"`
+    Spec       DeviceSpec       `json:"spec" yaml:"spec"`
+    Status     DeviceStatus     `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 type DeviceSpec struct {
@@ -368,6 +369,54 @@ Generated Files:
 
 ---
 
+### fabrica migrate yaml-tags
+
+Add missing YAML struct tags to existing resource type files.
+
+**Usage:**
+```bash
+fabrica migrate yaml-tags [flags]
+```
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dry-run` | bool | false | Report files and tags that would change without writing files |
+| `--dir <path>` | string | current directory | Fabrica project directory |
+
+**Examples:**
+
+```bash
+# Preview migration changes
+fabrica migrate yaml-tags --dry-run
+
+# Apply migration in the current project
+fabrica migrate yaml-tags
+
+# Apply migration to another project directory
+fabrica migrate yaml-tags --dir ../my-service
+```
+
+**What It Does:**
+1. Reads `apis.yaml` to find configured API groups and versions
+2. Scans `apis/<group>/<version>/*_types.go` resource files
+3. Adds `yaml` tags matching existing `json` tags when missing
+4. Preserves existing `yaml`, `validate`, and other custom tags
+5. Skips fields with `json:"-"`
+6. Formats changed files with `gofmt`
+
+**Migration Workflow:**
+
+```bash
+fabrica migrate yaml-tags --dry-run
+fabrica migrate yaml-tags
+fabrica generate
+```
+
+Run this migration for services created before Fabrica emitted YAML tags in resource templates. For details and the current migration list, see [Fabrica Migrations](../guides/migrations.md).
+
+---
+
 ### fabrica ent generate
 
 **Deprecated:** Ent code generation is now automatic during `fabrica generate`.
@@ -402,12 +451,12 @@ fabrica version
 
 **Output (release build):**
 ```
-Fabrica version v0.4.4
+Fabrica version v0.4.5
 ```
 
 **Output (build from source or CI with VCS metadata):**
 ```
-Fabrica version v0.4.4
+Fabrica version v0.4.5
   commit: abc123def456
   built:  2026-05-07T10:00:00Z
 ```
@@ -670,6 +719,96 @@ cd my-api
 fabrica add resource Device
 fabrica generate
 DATABASE_URL="postgres://user:pass@localhost/mydb" go run ./cmd/server/
+```
+
+---
+
+## Generated Client CLI
+
+After running `fabrica generate`, your project includes a fully functional CLI client in `cmd/client/main.go`. The client provides commands for all CRUD operations on your resources.
+
+### Client Global Flags
+
+The generated client supports these global flags:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--server` | `-s` | string | `http://localhost:8080` | API server URL |
+| `--timeout` | `-t` | duration | `30s` | Request timeout |
+| `--output` | `-o` | string | `table` | Output format: `table`, `json`, `yaml` |
+| `--log-level` | `-l` | string | `warning` | Log verbosity: `debug`, `info`, `warning` |
+| `--token` | | string | | JWT bearer token for authentication |
+| `--version` | `-v` | string | | API version to request (e.g., `v1`, `v2beta1`) |
+
+### Log Levels
+
+The `--log-level` flag controls the verbosity of client logging:
+
+- **`warning`** (default) - Only shows warnings and errors
+- **`info`** - Shows informational messages plus warnings/errors
+- **`debug`** - Shows detailed HTTP request/response information including:
+  - HTTP method and URL
+  - Request and response headers
+  - Request and response bodies
+  - Error details
+
+**Examples:**
+
+```bash
+# Default (warning level)
+go run ./cmd/client/ device list
+
+# Debug mode for troubleshooting
+go run ./cmd/client/ --log-level debug device list
+
+# Using shorthand
+go run ./cmd/client/ -l debug device create --spec '{"name":"test"}'
+
+# Redirect debug logs separately from output
+go run ./cmd/client/ -l debug device list -o json > output.json 2> debug.log
+```
+
+### Tab Completion
+
+The generated client supports shell completion for the `--log-level` flag:
+
+```bash
+# Bash
+source <(go run ./cmd/client/ completion bash)
+
+# Zsh
+go run ./cmd/client/ completion zsh > "${fpath[1]}/_client"
+
+# Then tab complete:
+go run ./cmd/client/ --log-level <TAB>
+# Shows: debug info warning
+```
+
+### Resource Commands
+
+For each resource in your API, the client generates subcommands:
+
+```bash
+# List resources
+go run ./cmd/client/ device list
+
+# Get specific resource
+go run ./cmd/client/ device get <uid>
+
+# Create resource
+go run ./cmd/client/ device create --spec '{"name":"device-01"}'
+
+# Update resource
+go run ./cmd/client/ device update <uid> --spec '{"name":"updated"}'
+
+# Patch resource
+go run ./cmd/client/ device patch <uid> --spec '{"name":"patched"}'
+
+# Delete resource
+go run ./cmd/client/ device delete <uid>
+
+# Update status (if status subresource is enabled)
+go run ./cmd/client/ device update-status <uid> --spec '{"ready":true}'
 ```
 
 ---

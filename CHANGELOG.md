@@ -12,6 +12,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.4.7] - 2026-06-01
+
+### Fixed
+- `client.With*()` functions coppy logger object correctly
+
+## [v0.4.6] - 2026-05-27
+
+### Added
+- Client log levels: Generated clients now support `--log-level` flag with `debug`, `info`, and `warning` levels for controlling output verbosity
+- Debug logging in client library shows HTTP requests, responses, headers, and bodies for troubleshooting
+- Shell completion for `--log-level` flag in generated clients
+- Comprehensive test coverage for client log level functionality including unit and integration tests
+
+## [v0.4.5] - 2026-05-12
+
+### Added
+- Generated servers now expose a health check endpoint, and generated clients/CLI gain a matching health command for service status checks.
+- Added regression coverage for health endpoint OpenAPI parity, version parsing, and generation compatibility checks.
+
+### Changed
+- Improved version reporting so release builds, git-describe builds, and build-metadata suffixes are handled consistently across generation and CLI output.
+- OpenAPI generation now includes the generated `/openapi.json` and `/docs` endpoints alongside the health operation.
+
+### Fixed
+- Stabilized OpenAPI generation and parity checks to validate endpoint semantics instead of fragile helper-function shapes.
+- Updated generated file metadata handling and client templates to include the new health functionality cleanly.
+
+### Security
+- Upgrade Go from 1.26.2 to 1.26.3 across modules and CI to address standard-library vulnerabilities reported by `govulncheck`.
+
+### Documentation
+- Updated release documentation, install/version examples, and blog post notes for the `v0.4.5` release.
+
+## [v0.4.4] - 2026-05-07
+
+### Added
+- Regression tests for version string formatting and build metadata resolution in `cmd/fabrica/main_version_test.go`.
+
+### Changed
+- `fabrica version` and Cobra's built-in version output now fall back to Go build metadata when linker-provided version fields are unset.
+  - Resolves the module version from `debug.ReadBuildInfo()`.
+  - Fills commit and build time from VCS settings when available.
+
+### Documentation
+- Updated installation, CLI, release, and version examples for the `v0.4.4` release.
+
+## [v0.4.3] - 2026-05-05
+
+### Added
+- `fabrica init --dir` (`-d`) to create or target a working directory explicitly, improving automation and MCP-driven project setup.
+
+### Fixed
+- `fabrica generate` no longer rewrites generated files when the only differences are generated headers or timestamps.
+  - Reduces no-op diffs in generated projects.
+  - Suppresses misleading "generated" output for unchanged files.
+
+### Changed
+- Project initialization now derives the project base name from the final path component when creating nested target directories.
+
+## [v0.4.2] - 2026-05-03
+
+### Added
+- Built-in `fabrica mcp` server support, implemented on top of the upstream MCP SDK.
+  - Supports project inspection, validation, initialization, resource/schema definition, API version management, code generation, dependency sync, build, test, and smoke-test workflows.
+  - Adds protocol negotiation and stdio handling for MCP clients, including `Content-Length` framed I/O.
+- Comprehensive MCP test coverage for initialization, tool listing, tool validation, schema updates, dry-run behavior, and protocol handling.
+- Generated OpenAPI extensions support, including a template stub and a dedicated guide for customizing generated OpenAPI output.
+
+### Changed
+- Event bus startup now only calls `Start` when the configured bus implements that interface.
+- Event-enabled scaffolding currently validates against the in-memory event bus implementation.
+
+### Documentation
+- Added the MCP command reference in `docs/reference/mcp.md`.
+- Added the OpenAPI extensions guide in `docs/guides/openapi-extensions.md`.
+- Updated CLI references and release docs for MCP and OpenAPI extension workflows.
+
 ## [v0.4.1] - 2026-04-26
 
 ### Changed
@@ -287,7 +364,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Storage system architecture documentation
 - Getting started guide
 
-[Unreleased]: https://github.com/openchami/fabrica/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/openchami/fabrica/compare/v0.4.5...HEAD
+[v0.4.5]: https://github.com/openchami/fabrica/compare/v0.4.4...v0.4.5
 [v0.4.4]: https://github.com/openchami/fabrica/compare/v0.4.3...v0.4.4
 [v0.4.3]: https://github.com/openchami/fabrica/compare/v0.4.2...v0.4.3
 [v0.4.2]: https://github.com/openchami/fabrica/compare/v0.4.1...v0.4.2
