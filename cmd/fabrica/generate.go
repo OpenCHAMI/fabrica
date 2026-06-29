@@ -580,6 +580,12 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to load templates: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 
+		// Always generate the backend-agnostic storage interface (plugins.Store)
+		// so server code can compile against it regardless of which generators run.
+		generationCalls.WriteString("\tif err := gen.GeneratePlugins(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate storage plugins interface: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+
 		if handlers {
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")

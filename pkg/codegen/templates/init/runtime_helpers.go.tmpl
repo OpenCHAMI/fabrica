@@ -24,6 +24,7 @@ import (
 	"log"
 	{{if .WithStorage}}
 	storage "{{.ModulePath}}/internal/storage"
+	plugins "{{.ModulePath}}/internal/storage/plugins"
 	{{end}}
 	{{if eq .StorageType "ent"}}
 	"{{.ModulePath}}/internal/storage/ent"
@@ -55,6 +56,8 @@ func initializeStorage(config *Config) (func(), error) {
 	if err := storage.InitFileBackend(config.DataDir); err != nil {
 		return nil, fmt.Errorf("failed to initialize file storage: %w", err)
 	}
+	// Wire the file-based implementation into the global storage interface.
+	plugins.Store = &storage.{{.StorageImpl}}{}
 	log.Printf("File storage initialized in %s", config.DataDir)
 	return func() {}, nil
 	{{else if eq .StorageType "ent"}}
@@ -75,6 +78,8 @@ func initializeStorage(config *Config) (func(), error) {
 	log.Println("Database schema migrated successfully")
 
 	storage.SetEntClient(client)
+	// Wire the Ent-based implementation into the global storage interface.
+	plugins.Store = &storage.{{.StorageImpl}}{}
 	log.Printf("Ent storage initialized with {{.DBDriver}} database")
 
 	return func() {

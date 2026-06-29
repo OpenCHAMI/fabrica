@@ -56,7 +56,7 @@ import (
 	{{range .UniqueImports -}}
 	{{.Alias}} "{{.Path}}"
 	{{end}}
-	storage "{{.ModulePath}}/internal/storage"
+	plugins "{{.ModulePath}}/internal/storage/plugins"
 )
 
 // Get{{.Name}}s returns all {{.Name}} resources
@@ -64,7 +64,7 @@ func Get{{.Name}}s(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware in routes.go or implement checks here
 	// Example: if !authorized(r) { respondError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized")); return }
 
-	{{camelCase .PluralName}}, err := storage.LoadAll{{.StorageName}}s(r.Context())
+	{{camelCase .PluralName}}, err := plugins.Store.LoadAll{{.StorageName}}s(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to load {{.PluralName}}: %w", err))
 		return
@@ -88,7 +88,7 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware in routes.go or implement checks here
 	// Example: if !authorized(r) { respondError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized")); return }
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{camelCase .Name}}, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -191,18 +191,18 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
     {{end}}
 
 	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
-	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+	if err := plugins.Store.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create initial version snapshot (Spec + metadata only) and persist version into status
-	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
+	if verID, err := plugins.Store.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
 		fmt.Printf("Warning: failed to create initial version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	} else {
 		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		if err := plugins.Store.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
@@ -232,7 +232,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{camelCase .Name}}, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -296,18 +296,18 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+	if err := plugins.Store.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create version snapshot after spec update and persist version into status
-	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
+	if verID, err := plugins.Store.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
 		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	} else {
 		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		if err := plugins.Store.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
@@ -340,7 +340,7 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{camelCase .Name}}, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -394,18 +394,18 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save the patched resource
-	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+	if err := plugins.Store.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}}: %w", err))
 		return
 	}
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Create version snapshot after spec patch and persist version into status
-	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
+	if verID, err := plugins.Store.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
 		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	} else {
 		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		if err := plugins.Store.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
 			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
@@ -446,7 +446,7 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status update authorization
 	// Status updates can have different permissions than spec updates
 
-	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	res, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -477,7 +477,7 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
+	if err := plugins.Store.Save{{.StorageName}}(r.Context(), res); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}} status: %w", err))
 		return
 	}
@@ -514,7 +514,7 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status patch authorization
 	// Status patches can have different permissions than spec patches
 
-	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	res, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
@@ -554,7 +554,7 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Ensure server-managed version field is preserved after patch
 	// Reload current to get authoritative version and copy it back
-	if current, err := storage.Load{{.StorageName}}(r.Context(), uid); err == nil {
+	if current, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid); err == nil {
 		res.Status.Version = current.Status.Version
 	}
 	{{- end }}{{- end }}
@@ -571,7 +571,7 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
+	if err := plugins.Store.Save{{.StorageName}}(r.Context(), res); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}} status: %w", err))
 		return
 	}
@@ -603,7 +603,7 @@ func List{{.Name}}Versions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	versions, err := storage.List{{.Name}}Versions(r.Context(), uid)
+	versions, err := plugins.Store.List{{.Name}}Versions(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to list versions: %w", err))
 		return
@@ -620,7 +620,7 @@ func Get{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	version, err := storage.Get{{.Name}}Version(r.Context(), uid, versionID)
+	version, err := plugins.Store.Get{{.Name}}Version(r.Context(), uid, versionID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("version not found: %w", err))
 		return
@@ -637,7 +637,7 @@ func Delete{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := storage.Delete{{.Name}}Version(r.Context(), uid, versionID); err != nil {
+	if err := plugins.Store.Delete{{.Name}}Version(r.Context(), uid, versionID); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete version: %w", err))
 		return
 	}
@@ -654,13 +654,13 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load resource before deletion for event publishing
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{camelCase .Name}}, err := plugins.Store.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
 
-	if err := storage.Delete{{.StorageName}}(r.Context(), uid); err != nil {
+	if err := plugins.Store.Delete{{.StorageName}}(r.Context(), uid); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete {{.Name}}: %w", err))
 		return
 	}

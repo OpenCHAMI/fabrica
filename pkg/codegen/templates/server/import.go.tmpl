@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	storage "{{.ModulePath}}/internal/storage"
+	plugins "{{.ModulePath}}/internal/storage/plugins"
 	{{- range .UniqueImports}}
 	{{.Alias}} "{{.Path}}"
 	{{- end}}
@@ -183,7 +183,7 @@ func importFile(ctx context.Context, path string, mode string, dryRun bool) (imp
 		}
 
 		// Check if resource exists
-		existing, err := storage.Get{{.Name}}ByUID(ctx, res.Metadata.UID)
+		existing, err := plugins.Store.Get{{.Name}}ByUID(ctx, res.Metadata.UID)
 		if err == nil && existing != nil {
 			// Resource exists
 			if mode == "skip" {
@@ -196,7 +196,7 @@ func importFile(ctx context.Context, path string, mode string, dryRun bool) (imp
 		}
 
 		if !dryRun {
-			if err := storage.Save{{.StorageName}}(ctx, res); err != nil {
+			if err := plugins.Store.Save{{.StorageName}}(ctx, res); err != nil {
 				return 0, 0, fmt.Errorf("failed to save {{.Name}}: %w", err)
 			}
 		}
@@ -210,12 +210,12 @@ func importFile(ctx context.Context, path string, mode string, dryRun bool) (imp
 func deleteAllResources(ctx context.Context) error {
 	{{- range .Resources}}
 	// Delete all {{.PluralName}}
-	{{.Name | toLower}}Items, err := storage.Query{{.PluralName}}(ctx).All(ctx)
+	{{.Name | toLower}}Items, err := plugins.Store.LoadAll{{.StorageName}}s(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to query {{.PluralName}}: %w", err)
+		return fmt.Errorf("failed to load {{.PluralName}}: %w", err)
 	}
 	for _, item := range {{.Name | toLower}}Items {
-		if err := storage.Delete{{.StorageName}}(ctx, item.UID); err != nil {
+		if err := plugins.Store.Delete{{.StorageName}}(ctx, item.Metadata.UID); err != nil {
 			return fmt.Errorf("failed to delete {{.Name}}: %w", err)
 		}
 	}

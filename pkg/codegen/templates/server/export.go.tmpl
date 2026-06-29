@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	storage "{{.ModulePath}}/internal/storage"
+	plugins "{{.ModulePath}}/internal/storage/plugins"
 )
 
 func newExportCommand() *cobra.Command {
@@ -99,16 +99,16 @@ func runExport(ctx context.Context, format, output string, kinds []string, perTy
 }
 
 func exportResourceKind(ctx context.Context, kind, output, format string, perType bool) (int, error) {
-	// Query all resources of this kind using storage query builder
+	// Load all resources of this kind through the storage interface
 	var resources []interface{}
 	var err error
 
 	switch kind {
 	{{- range .Resources}}
 	case "{{.Name}}":
-		items, e := storage.Query{{.PluralName}}(ctx).All(ctx)
+		items, e := plugins.Store.LoadAll{{.StorageName}}s(ctx)
 		if e != nil {
-			return 0, fmt.Errorf("failed to query {{.PluralName}}: %w", e)
+			return 0, fmt.Errorf("failed to load {{.PluralName}}: %w", e)
 		}
 		for _, item := range items {
 			resources = append(resources, item)

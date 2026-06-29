@@ -33,6 +33,8 @@ import (
 
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
+
+	"{{.ModulePath}}/internal/storage/plugins"
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{- end}}
@@ -275,16 +277,8 @@ func NewStorageClient() *StorageClient {
 // --- Version snapshot helpers (file backend only) ---
 {{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
 
-// {{.Name}}VersionSnapshot represents a stored version of a {{.Name}}'s spec
-type {{.Name}}VersionSnapshot struct {
-	VersionID   string                 `json:"versionId" yaml:"versionId"`
-	CreatedAt   time.Time              `json:"createdAt" yaml:"createdAt"`
-	UID         string                 `json:"uid" yaml:"uid"`
-	Name        string                 `json:"name" yaml:"name"`
-	Labels      map[string]string      `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Annotations map[string]string      `json:"annotations,omitempty" yaml:"annotations,omitempty"`
-	Spec        {{.SpecType}}          `json:"spec" yaml:"spec"`
-}
+// {{.Name}}VersionSnapshot is defined in the plugins package so it can be shared
+// across the storage interface and its consumers. See plugins.{{.Name}}VersionSnapshot.
 
 func versionsBaseDir() string {
 	// Attempt to derive file backend base dir by introspection isn't available here;
@@ -306,7 +300,7 @@ func delete{{.Name}}VersionsDir(uid string) error {
 // Create{{.Name}}VersionSnapshot saves a new version snapshot for the given resource and returns the new VersionID
 func Create{{.Name}}VersionSnapshot(ctx context.Context, res {{.TypeName}}) (string, error) {
 	// Build snapshot (no status)
-	snap := {{.Name}}VersionSnapshot{
+	snap := plugins.{{.Name}}VersionSnapshot{
 		VersionID: generateULID(),
 		CreatedAt: time.Now().UTC(),
 		UID:       res.Metadata.UID,
@@ -345,17 +339,17 @@ func Create{{.Name}}VersionSnapshot(ctx context.Context, res {{.TypeName}}) (str
 }
 
 // List{{.Name}}Versions lists version snapshots (metadata) for a resource
-func List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionSnapshot, error) {
+func List{{.Name}}Versions(ctx context.Context, uid string) ([]plugins.{{.Name}}VersionSnapshot, error) {
 	dir := filepath.Join({{toLower .Name}}VersionsDir(), uid)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []{{.Name}}VersionSnapshot{}, nil
+			return []plugins.{{.Name}}VersionSnapshot{}, nil
 		}
 		return nil, fmt.Errorf("failed to read versions dir: %w", err)
 	}
 
-	var out []{{.Name}}VersionSnapshot
+	var out []plugins.{{.Name}}VersionSnapshot
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -364,7 +358,7 @@ func List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionS
 		if err != nil {
 			continue
 		}
-		var snap {{.Name}}VersionSnapshot
+		var snap plugins.{{.Name}}VersionSnapshot
 		if err := json.Unmarshal(b, &snap); err != nil {
 			continue
 		}
@@ -374,7 +368,7 @@ func List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionS
 }
 
 // Get{{.Name}}Version loads a specific version snapshot
-func Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}VersionSnapshot, error) {
+func Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*plugins.{{.Name}}VersionSnapshot, error) {
 	path := filepath.Join({{toLower .Name}}VersionsDir(), uid, versionID+".json")
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -383,7 +377,7 @@ func Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}
 		}
 		return nil, fmt.Errorf("failed to read version: %w", err)
 	}
-	var snap {{.Name}}VersionSnapshot
+	var snap plugins.{{.Name}}VersionSnapshot
 	if err := json.Unmarshal(b, &snap); err != nil {
 		return nil, fmt.Errorf("failed to parse version: %w", err)
 	}
@@ -569,3 +563,66 @@ func (c *StorageClient) Create(ctx context.Context, resource interface{}) error 
 func (c *StorageClient) Delete(ctx context.Context, kind, uid string) error {
 	return c.backend.Delete(ctx, kind, uid)
 }
+
+// FileStorage implements the plugins.Storage interface using the file-based
+// backend. It delegates to the package-level storage functions above.
+//
+// Wire it into the global store in main.go:
+//
+//	plugins.Store = &{{.StoragePackage}}.FileStorage{}
+type FileStorage struct{}
+
+// Compile-time assertion that FileStorage satisfies plugins.Storage.
+var _ plugins.Storage = (*FileStorage)(nil)
+
+{{range .Resources}}
+func (s *FileStorage) LoadAll{{.StorageName}}s(ctx context.Context) ([]{{.TypeName}}, error) {
+	return LoadAll{{.StorageName}}s(ctx)
+}
+
+func (s *FileStorage) Load{{.StorageName}}(ctx context.Context, uid string) ({{.TypeName}}, error) {
+	return Load{{.StorageName}}(ctx, uid)
+}
+
+func (s *FileStorage) Save{{.StorageName}}(ctx context.Context, resource {{.TypeName}}) error {
+	return Save{{.StorageName}}(ctx, resource)
+}
+
+func (s *FileStorage) Update{{.StorageName}}(ctx context.Context, resource {{.TypeName}}) error {
+	return Update{{.StorageName}}(ctx, resource)
+}
+
+func (s *FileStorage) Delete{{.StorageName}}(ctx context.Context, uid string) error {
+	return Delete{{.StorageName}}(ctx, uid)
+}
+
+func (s *FileStorage) Exists{{.StorageName}}(ctx context.Context, uid string) (bool, error) {
+	return Exists{{.StorageName}}(ctx, uid)
+}
+
+func (s *FileStorage) List{{.StorageName}}UIDs(ctx context.Context) ([]string, error) {
+	return List{{.StorageName}}UIDs(ctx)
+}
+
+func (s *FileStorage) Get{{.Name}}ByUID(ctx context.Context, uid string) ({{.TypeName}}, error) {
+	return Load{{.StorageName}}(ctx, uid)
+}
+{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+
+func (s *FileStorage) Create{{.Name}}VersionSnapshot(ctx context.Context, resource {{.TypeName}}) (string, error) {
+	return Create{{.Name}}VersionSnapshot(ctx, resource)
+}
+
+func (s *FileStorage) List{{.Name}}Versions(ctx context.Context, uid string) ([]plugins.{{.Name}}VersionSnapshot, error) {
+	return List{{.Name}}Versions(ctx, uid)
+}
+
+func (s *FileStorage) Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*plugins.{{.Name}}VersionSnapshot, error) {
+	return Get{{.Name}}Version(ctx, uid, versionID)
+}
+
+func (s *FileStorage) Delete{{.Name}}Version(ctx context.Context, uid, versionID string) error {
+	return Delete{{.Name}}Version(ctx, uid, versionID)
+}
+{{- end }}{{- end }}
+{{end}}

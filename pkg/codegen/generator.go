@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"go/format"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -215,6 +216,37 @@ func (g *Generator) storagePackageName() string {
 	return StoragePackageName(g.StorageType, g.DBDriver)
 }
 
+// StorageImplTypeName returns the exported Go struct name that implements the
+// plugins.Storage interface for the given storage backend and database driver.
+//
+// Examples:
+//
+//	file                 -> FileStorage
+//	ent + postgres       -> EntPostgresStorage
+//	ent + sqlite/sqlite3 -> EntSqliteStorage
+//	ent + mysql          -> EntMysqlStorage
+func StorageImplTypeName(storageType, dbDriver string) string {
+	if strings.EqualFold(strings.TrimSpace(storageType), "ent") {
+		driver := strings.ToLower(strings.TrimSpace(dbDriver))
+		switch driver {
+		case "", "sqlite3":
+			driver = "sqlite"
+		}
+		titled := driver
+		if len(titled) > 0 {
+			titled = strings.ToUpper(titled[:1]) + titled[1:]
+		}
+		return "Ent" + titled + "Storage"
+	}
+	return "FileStorage"
+}
+
+// storageImplTypeName returns the storage implementation struct name for this
+// generator's configured storage backend.
+func (g *Generator) storageImplTypeName() string {
+	return StorageImplTypeName(g.StorageType, g.DBDriver)
+}
+
 // SetAuthEnabled maps auth enablement onto all auth-related generator toggles.
 // This provides a stable API for callers and avoids direct mutation of config internals.
 func (g *Generator) SetAuthEnabled(enabled bool) {
@@ -361,6 +393,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
 		"StoragePackage":        g.storagePackageName(),
+		"StorageImpl":           g.storageImplTypeName(),
 	})
 }
 
@@ -392,6 +425,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"StorageType":          g.StorageType,
 		"DBDriver":             g.DBDriver,
 		"StoragePackage":       g.storagePackageName(),
+		"StorageImpl":          g.storageImplTypeName(),
 		"Config":               g.Config,
 		"WithAuth":             g.Config.WithAuth,
 	})
@@ -643,6 +677,12 @@ func (g *Generator) GenerateAll() error {
 	case "main":
 		// Server code - handlers, routes, models, storage, and openapi
 
+		// Generate the backend-agnostic storage interface (plugins.Store) first
+		// so that handlers and other server code can compile against it.
+		if err := g.GeneratePlugins(); err != nil {
+			return err
+		}
+
 		// Generate Ent schemas first if using Ent storage
 		if g.StorageType == "ent" {
 			if err := g.GenerateEntSchemas(); err != nil {
@@ -719,9 +759,48 @@ func (g *Generator) GenerateAll() error {
 	return nil
 }
 
+// GeneratePlugins generates the backend-agnostic Storage interface and the
+// global Store variable into internal/storage/plugins/plugins.go.
+//
+// This file is generated for every server build regardless of storage backend
+// because handlers and other server code access persistence exclusively through
+// the plugins.Store interface.
+func (g *Generator) GeneratePlugins() error {
+	fmt.Printf("🔌 Generating storage plugins interface...\n")
+
+	var buf bytes.Buffer
+	data := g.globalTemplateData("storage/plugins.go.tmpl")
+
+	if err := g.Templates["plugins"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute plugins template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated plugins code: %w", err)
+	}
+
+	pluginsDir := filepath.Join("internal", "storage", "plugins")
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create plugins directory: %w", err)
+	}
+
+	filename := filepath.Join(pluginsDir, "plugins_generated.go")
+	written, err := writeGeneratedFile(filename, formatted)
+	if err != nil {
+		return fmt.Errorf("failed to write plugins file: %w", err)
+	}
+	if written {
+		fmt.Printf("  ✓ Generated %s\n", filename)
+	}
+
+	return nil
+}
+
 // GenerateStorage generates storage operations for server
 func (g *Generator) GenerateStorage() error {
 	fmt.Printf("📁 Generating storage layer (%s)...\n", g.StorageType)
+
 	var buf bytes.Buffer
 
 	// Use appropriate template based on storage type
@@ -910,6 +989,7 @@ func (g *Generator) LoadTemplates() error {
 		"generate":        "storage/generate.go.tmpl",
 		"entQueries":      "storage/ent_queries.go.tmpl",
 		"entTransactions": "storage/ent_transactions.go.tmpl",
+		"plugins":         "storage/plugins.go.tmpl",
 
 		// Ent schema templates
 		"entSchemaResource":   "ent/schema/resource.go.tmpl",
@@ -936,7 +1016,9 @@ func (g *Generator) LoadTemplates() error {
 
 	g.Templates = make(map[string]*template.Template)
 	for name, filename := range templateFiles {
-		templatePath := filepath.Join("templates", filename)
+		// embed.FS always uses forward slashes, so use path.Join (not filepath.Join)
+		// to avoid backslash paths on Windows that ReadFile cannot resolve.
+		templatePath := path.Join("templates", filename)
 
 		// Read template content from embedded filesystem
 		content, err := embeddedTemplates.ReadFile(templatePath)

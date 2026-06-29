@@ -18,6 +18,7 @@ import (
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
 
+	"{{.ModulePath}}/internal/storage/plugins"
 	"{{.ModulePath}}/internal/storage/ent"
 	entresource "{{.ModulePath}}/internal/storage/ent/resource"
 	{{range .UniqueImports}}
@@ -422,3 +423,70 @@ func extractUID(raw json.RawMessage) (string, error) {
 	}
 	return wrapper.Metadata.UID, nil
 }
+
+// {{.StorageImpl}} implements the plugins.Storage interface using the Ent
+// backend. It delegates to the package-level storage functions above.
+//
+// Wire it into the global store in main.go:
+//
+//	plugins.Store = &{{.StoragePackage}}.{{.StorageImpl}}{}
+//
+// Version snapshot methods are not supported by the Ent backend and return
+// plugins.ErrNotImplemented; the underlying database schema is unchanged.
+type {{.StorageImpl}} struct{}
+
+// Compile-time assertion that {{.StorageImpl}} satisfies plugins.Storage.
+var _ plugins.Storage = (*{{.StorageImpl}})(nil)
+
+{{range .Resources}}
+func (s *{{$.StorageImpl}}) LoadAll{{.StorageName}}s(ctx context.Context) ([]*{{.PackageAlias}}.{{.Name}}, error) {
+	return LoadAll{{.StorageName}}s(ctx)
+}
+
+func (s *{{$.StorageImpl}}) Load{{.StorageName}}(ctx context.Context, uid string) (*{{.PackageAlias}}.{{.Name}}, error) {
+	return Load{{.StorageName}}(ctx, uid)
+}
+
+func (s *{{$.StorageImpl}}) Save{{.StorageName}}(ctx context.Context, resource *{{.PackageAlias}}.{{.Name}}) error {
+	return Save{{.StorageName}}(ctx, resource)
+}
+
+func (s *{{$.StorageImpl}}) Update{{.StorageName}}(ctx context.Context, resource *{{.PackageAlias}}.{{.Name}}) error {
+	// Ent uses an upsert in Save, so Update and Save are equivalent.
+	return Save{{.StorageName}}(ctx, resource)
+}
+
+func (s *{{$.StorageImpl}}) Delete{{.StorageName}}(ctx context.Context, uid string) error {
+	return Delete{{.StorageName}}(ctx, uid)
+}
+
+func (s *{{$.StorageImpl}}) Exists{{.StorageName}}(ctx context.Context, uid string) (bool, error) {
+	return Backend.Exists(ctx, "{{.Name}}", uid)
+}
+
+func (s *{{$.StorageImpl}}) List{{.StorageName}}UIDs(ctx context.Context) ([]string, error) {
+	return Backend.List(ctx, "{{.Name}}")
+}
+
+func (s *{{$.StorageImpl}}) Get{{.Name}}ByUID(ctx context.Context, uid string) (*{{.PackageAlias}}.{{.Name}}, error) {
+	return Get{{.Name}}ByUID(ctx, uid)
+}
+{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+
+func (s *{{$.StorageImpl}}) Create{{.Name}}VersionSnapshot(ctx context.Context, resource *{{.PackageAlias}}.{{.Name}}) (string, error) {
+	return "", plugins.ErrNotImplemented
+}
+
+func (s *{{$.StorageImpl}}) List{{.Name}}Versions(ctx context.Context, uid string) ([]plugins.{{.Name}}VersionSnapshot, error) {
+	return nil, plugins.ErrNotImplemented
+}
+
+func (s *{{$.StorageImpl}}) Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*plugins.{{.Name}}VersionSnapshot, error) {
+	return nil, plugins.ErrNotImplemented
+}
+
+func (s *{{$.StorageImpl}}) Delete{{.Name}}Version(ctx context.Context, uid, versionID string) error {
+	return plugins.ErrNotImplemented
+}
+{{- end }}{{- end }}
+{{end}}

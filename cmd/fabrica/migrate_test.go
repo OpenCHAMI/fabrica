@@ -181,7 +181,7 @@ func TestResourceTemplatesEmitYAMLTags(t *testing.T) {
 			"`json:\"versionId\" yaml:\"versionId\"`",
 			"`json:\"spec\" yaml:\"spec\"`",
 		},
-		"pkg/codegen/templates/storage/file.go.tmpl": {
+		"pkg/codegen/templates/storage/plugins.go.tmpl": {
 			"`json:\"versionId\" yaml:\"versionId\"`",
 			"`json:\"spec\" yaml:\"spec\"`",
 		},
