@@ -23,7 +23,7 @@ import (
 	{{end}}
 	"log"
 	{{if .WithStorage}}
-	"{{.ModulePath}}/internal/storage"
+	storage "{{.ModulePath}}/internal/storage"
 	{{end}}
 	{{if eq .StorageType "ent"}}
 	"{{.ModulePath}}/internal/storage/ent"

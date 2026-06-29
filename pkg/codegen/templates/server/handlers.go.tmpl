@@ -56,7 +56,7 @@ import (
 	{{range .UniqueImports -}}
 	{{.Alias}} "{{.Path}}"
 	{{end}}
-	"{{.ModulePath}}/internal/storage"
+	storage "{{.ModulePath}}/internal/storage"
 )
 
 // Get{{.Name}}s returns all {{.Name}} resources

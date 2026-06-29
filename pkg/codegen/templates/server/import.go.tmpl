@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"{{.ModulePath}}/internal/storage"
+	storage "{{.ModulePath}}/internal/storage"
 	{{- range .UniqueImports}}
 	{{.Alias}} "{{.Path}}"
 	{{- end}}

@@ -14,7 +14,7 @@
 //   1. Call storage.Init() with a different backend in main.go
 //   2. Options: FileBackend, EntBackend (database), or custom backend
 //
-package storage
+package {{.StoragePackage}}
 
 {{/* Determine if any resource has versioning enabled to gate extra imports */}}
 {{$hasVersioning := false}}

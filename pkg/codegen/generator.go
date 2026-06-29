@@ -188,6 +188,33 @@ func (g *Generator) SetDBDriver(driver string) {
 	g.DBDriver = driver
 }
 
+// StoragePackageName returns the Go package name used for generated storage
+// code, derived from the storage backend type and database driver.
+//
+// Examples:
+//
+//	file                 -> storage_file
+//	ent + postgres       -> storage_ent_postgres
+//	ent + sqlite/sqlite3 -> storage_ent_sqlite
+//	ent + mysql          -> storage_ent_mysql
+func StoragePackageName(storageType, dbDriver string) string {
+	if strings.EqualFold(strings.TrimSpace(storageType), "ent") {
+		driver := strings.ToLower(strings.TrimSpace(dbDriver))
+		switch driver {
+		case "", "sqlite3":
+			driver = "sqlite"
+		}
+		return "storage_ent_" + driver
+	}
+	return "storage_file"
+}
+
+// storagePackageName returns the storage package name for this generator's
+// configured storage backend.
+func (g *Generator) storagePackageName() string {
+	return StoragePackageName(g.StorageType, g.DBDriver)
+}
+
 // SetAuthEnabled maps auth enablement onto all auth-related generator toggles.
 // This provides a stable API for callers and avoids direct mutation of config internals.
 func (g *Generator) SetAuthEnabled(enabled bool) {
@@ -333,6 +360,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"APIGroupVersion":       resource.APIGroupVersion,
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
+		"StoragePackage":        g.storagePackageName(),
 	})
 }
 
@@ -363,6 +391,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"ProjectName":          g.extractProjectName(),
 		"StorageType":          g.StorageType,
 		"DBDriver":             g.DBDriver,
+		"StoragePackage":       g.storagePackageName(),
 		"Config":               g.Config,
 		"WithAuth":             g.Config.WithAuth,
 	})
@@ -1322,7 +1351,7 @@ func (g *Generator) GenerateEntAdapter() error {
 	}
 
 	// Generate generate.go for Ent code generation
-	if err := g.executeTemplate("generate", filepath.Join("internal", "storage", "generate.go"), nil); err != nil {
+	if err := g.executeTemplate("generate", filepath.Join("internal", "storage", "generate.go"), g.globalTemplateData("storage/generate.go.tmpl")); err != nil {
 		return fmt.Errorf("failed to generate generate.go: %w", err)
 	}
 
