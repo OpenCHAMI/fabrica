@@ -7,6 +7,8 @@ package annotations
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
+	"go/token"
 	"strings"
 )
 
@@ -354,4 +356,97 @@ func parseDefaultAnnotation(result *FieldAnnotations, parts []string, _ string) 
 
 	result.Default = value
 	return nil
+}
+
+// ParseFileAnnotations parses annotations from a Go source file with caching
+//
+// This function parses a Go source file and extracts Fabrica annotations.
+// Results are cached based on file modification time for performance.
+//
+// Example:
+//
+//	annotations, err := ParseFileAnnotations("apis/v1/user_types.go")
+//	if err != nil {
+//	    return err
+//	}
+//	for fieldName, ann := range annotations {
+//	    fmt.Printf("%s: %+v\n", fieldName, ann)
+//	}
+func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, error) {
+	// Check cache first
+	if cached, ok := globalCache.Get(filename); ok {
+		// Convert cached FieldAnnotations to ResourceAnnotations
+		result := make(map[string]*ResourceAnnotations)
+		for typeName, fields := range groupFieldsByType(cached) {
+			resAnn := NewResourceAnnotations()
+			resAnn.Fields = fields
+			result[typeName] = resAnn
+		}
+		return result, nil
+	}
+
+	// Parse file
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse file: %w", err)
+	}
+
+	result := make(map[string]*ResourceAnnotations)
+
+	// Walk declarations
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			annotations, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
+			if err != nil {
+				return nil, err
+			}
+
+			result[typeSpec.Name.Name] = annotations
+		}
+	}
+
+	// Cache result (flatten for caching)
+	cached := make(map[string]*FieldAnnotations)
+	for typeName, resAnn := range result {
+		for fieldName, fieldAnn := range resAnn.Fields {
+			key := typeName + "." + fieldName
+			cached[key] = fieldAnn
+		}
+	}
+	globalCache.Set(filename, cached)
+
+	return result, nil
+}
+
+// groupFieldsByType groups flat cached fields back into per-type maps
+func groupFieldsByType(flat map[string]*FieldAnnotations) map[string]map[string]*FieldAnnotations {
+	result := make(map[string]map[string]*FieldAnnotations)
+
+	for key, ann := range flat {
+		parts := strings.SplitN(key, ".", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		typeName := parts[0]
+		fieldName := parts[1]
+
+		if result[typeName] == nil {
+			result[typeName] = make(map[string]*FieldAnnotations)
+		}
+		result[typeName][fieldName] = ann
+	}
+
+	return result
 }

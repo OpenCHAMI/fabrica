@@ -20,7 +20,11 @@ func TestGenerateEntAdapterDedicated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get working directory: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	}()
 
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("change to temp directory: %v", err)
@@ -120,7 +124,11 @@ func TestGenerateEntAdapterGenericOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get working directory: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	}()
 
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("change to temp directory: %v", err)

@@ -189,14 +189,40 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("failed to parse annotation %q: %s", e.Line, e.Message)
 }
 
-// ValidationError represents an annotation validation error
+// ValidationError represents an annotation validation error with context
 type ValidationError struct {
+	File       string // Source file path
+	Line       int    // Line number in source
+	Field      string // Field name
 	Annotation string // The annotation that failed validation
 	Message    string // Error message
+	Severity   string // "error" or "warning"
 }
 
 func (e *ValidationError) Error() string {
-	return fmt.Sprintf("invalid annotation %q: %s", e.Annotation, e.Message)
+	// If we have file/line context, use it
+	if e.File != "" && e.Line > 0 {
+		if e.Severity == "warning" {
+			return fmt.Sprintf("%s:%d: warning: %s: %s", e.File, e.Line, e.Field, e.Message)
+		}
+		return fmt.Sprintf("%s:%d: %s: %s", e.File, e.Line, e.Field, e.Message)
+	}
+
+	// Fallback to old format for backward compatibility
+	if e.Annotation != "" {
+		return fmt.Sprintf("invalid annotation %q: %s", e.Annotation, e.Message)
+	}
+
+	if e.Field != "" {
+		return fmt.Sprintf("%s: %s", e.Field, e.Message)
+	}
+
+	return e.Message
+}
+
+// IsError returns true if this is an error (not a warning)
+func (e *ValidationError) IsError() bool {
+	return e.Severity != "warning"
 }
 
 // ParseAnnotationValue extracts key-value pairs from annotation string
