@@ -340,6 +340,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"APIGroupVersion":       resource.APIGroupVersion,
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
+		"Annotations":           resource.Annotations,
 	})
 }
 
@@ -999,9 +1000,10 @@ func (g *Generator) LoadTemplates() error {
 		"entTransactions": "storage/ent_transactions.go.tmpl",
 
 		// Ent schema templates
-		"entSchemaResource":   "ent/schema/resource.go.tmpl",
-		"entSchemaLabel":      "ent/schema/label.go.tmpl",
-		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
+		"entSchemaResource":          "ent/schema/resource.go.tmpl",
+		"entSchemaResourceDedicated": "ent/schema/resource_dedicated.go.tmpl",
+		"entSchemaLabel":             "ent/schema/label.go.tmpl",
+		"entSchemaAnnotation":        "ent/schema/annotation.go.tmpl",
 
 		// Middleware templates
 		"middlewareValidation":  "middleware/validation.go.tmpl",
@@ -1375,33 +1377,47 @@ func (g *Generator) GenerateOpenAPI() error {
 	return nil
 }
 
-// GenerateEntSchemas generates Ent schema files for generic resource storage
+// GenerateEntSchemas generates Ent schema files for resource storage
+//
+// This generates:
+//   - Generic resource.go schema (for resources without annotations)
+//   - Dedicated per-resource schemas (for resources with storage=dedicated)
+//   - Label and Annotation schemas (for metadata)
 func (g *Generator) GenerateEntSchemas() error {
 	if g.StorageType != "ent" {
-		return nil // Skip if not using Ent
+		return nil
 	}
 
 	fmt.Printf("🗄️  Generating Ent schemas...\n")
 
-	// Create schema directory
 	schemaDir := filepath.Join("internal", "storage", "ent", "schema")
 	if err := os.MkdirAll(schemaDir, 0755); err != nil {
 		return fmt.Errorf("failed to create ent schema directory: %w", err)
 	}
 
-	// Generate resource.go
 	if err := g.executeTemplate("entSchemaResource", filepath.Join(schemaDir, "resource.go"), nil); err != nil {
 		return err
 	}
 
-	// Generate label.go
 	if err := g.executeTemplate("entSchemaLabel", filepath.Join(schemaDir, "label.go"), nil); err != nil {
 		return err
 	}
 
-	// Generate annotation.go
 	if err := g.executeTemplate("entSchemaAnnotation", filepath.Join(schemaDir, "annotation.go"), nil); err != nil {
 		return err
+	}
+
+	for _, resource := range g.Resources {
+		if resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated {
+			data := g.templateData(resource, "ent/schema/resource_dedicated.go.tmpl")
+			schemaFile := filepath.Join(schemaDir, strings.ToLower(resource.Name)+".go")
+
+			if err := g.executeTemplate("entSchemaResourceDedicated", schemaFile, data); err != nil {
+				return fmt.Errorf("generate dedicated schema for %s: %w", resource.Name, err)
+			}
+
+			fmt.Printf("  ✓ Generated dedicated schema for %s\n", resource.Name)
+		}
 	}
 
 	return nil
