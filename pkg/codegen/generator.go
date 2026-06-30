@@ -992,12 +992,13 @@ func (g *Generator) LoadTemplates() error {
 		"clientCmd":    "client/cmd.go.tmpl",
 
 		// Storage templates
-		"storage":         "storage/file.go.tmpl",
-		"storageEnt":      "storage/ent.go.tmpl",
-		"entAdapter":      "storage/adapter.go.tmpl",
-		"generate":        "storage/generate.go.tmpl",
-		"entQueries":      "storage/ent_queries.go.tmpl",
-		"entTransactions": "storage/ent_transactions.go.tmpl",
+		"storage":             "storage/file.go.tmpl",
+		"storageEnt":          "storage/ent.go.tmpl",
+		"entAdapter":          "storage/adapter.go.tmpl",
+		"entAdapterDedicated": "storage/adapter_dedicated.go.tmpl",
+		"generate":            "storage/generate.go.tmpl",
+		"entQueries":          "storage/ent_queries.go.tmpl",
+		"entTransactions":     "storage/ent_transactions.go.tmpl",
 
 		// Ent schema templates
 		"entSchemaResource":          "ent/schema/resource.go.tmpl",
@@ -1424,12 +1425,21 @@ func (g *Generator) GenerateEntSchemas() error {
 }
 
 // GenerateEntAdapter generates the adapter layer between Fabrica resources and Ent entities
+//
+// This generates:
+//   - Generic adapter (ent_adapter.go) for resources without dedicated storage
+//   - Per-resource dedicated adapters (ent_adapter_token.go) for resources with storage=dedicated
 func (g *Generator) GenerateEntAdapter() error {
 	if g.StorageType != "ent" {
 		return nil
 	}
 
-	fmt.Printf("🔗 Generating Ent adapter...\n")
+	fmt.Printf("🔗 Generating Ent adapters...\n")
+
+	storageDir := filepath.Join("internal", "storage")
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		return fmt.Errorf("failed to create storage directory: %w", err)
+	}
 
 	var buf bytes.Buffer
 	data := g.globalTemplateData("storage/adapter.go.tmpl")
@@ -1443,7 +1453,7 @@ func (g *Generator) GenerateEntAdapter() error {
 		return fmt.Errorf("failed to format generated ent adapter code: %w", err)
 	}
 
-	adapterPath := filepath.Join("internal", "storage", "ent_adapter.go")
+	adapterPath := filepath.Join(storageDir, "ent_adapter.go")
 	written, err := writeGeneratedFile(adapterPath, formatted)
 	if err != nil {
 		return fmt.Errorf("failed to write ent adapter file: %w", err)
@@ -1453,9 +1463,43 @@ func (g *Generator) GenerateEntAdapter() error {
 		fmt.Printf("  ✓ Generated %s\n", adapterPath)
 	}
 
-	// Generate generate.go for Ent code generation
-	if err := g.executeTemplate("generate", filepath.Join("internal", "storage", "generate.go"), nil); err != nil {
+	for _, resource := range g.Resources {
+		if resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated {
+			if err := g.generateDedicatedAdapter(resource); err != nil {
+				return fmt.Errorf("generate dedicated adapter for %s: %w", resource.Name, err)
+			}
+		}
+	}
+
+	if err := g.executeTemplate("generate", filepath.Join(storageDir, "generate.go"), nil); err != nil {
 		return fmt.Errorf("failed to generate generate.go: %w", err)
+	}
+
+	return nil
+}
+
+// generateDedicatedAdapter generates a dedicated adapter for a single resource
+func (g *Generator) generateDedicatedAdapter(resource ResourceMetadata) error {
+	var buf bytes.Buffer
+	data := g.templateData(resource, "storage/adapter_dedicated.go.tmpl")
+
+	if err := g.Templates["entAdapterDedicated"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("execute template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("format code: %w", err)
+	}
+
+	adapterPath := filepath.Join("internal", "storage", fmt.Sprintf("ent_adapter_%s.go", strings.ToLower(resource.Name)))
+	written, err := writeGeneratedFile(adapterPath, formatted)
+	if err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+
+	if written {
+		fmt.Printf("  ✓ Generated dedicated adapter for %s\n", resource.Name)
 	}
 
 	return nil
