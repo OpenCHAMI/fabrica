@@ -1,7 +1,7 @@
 # Fabrica Annotations Package
 
-**Package:** `github.com/openchami/fabrica/pkg/annotations`  
-**Status:** Phase 1 Complete  
+**Package:** `github.com/openchami/fabrica/pkg/annotations`
+**Status:** Phase 1 Complete
 **Version:** 1.0.0
 
 ## Overview
@@ -81,7 +81,7 @@ package v1
 type Token struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
-    
+
     Spec   TokenSpec   `json:"spec,omitempty"`
     Status TokenStatus `json:"status,omitempty"`
 }
@@ -91,11 +91,11 @@ type TokenSpec struct {
     // +fabrica:field:sensitive
     // +fabrica:field:immutable
     Value string `json:"value"`
-    
+
     // +fabrica:field:index
     // +fabrica:field:unique
     Name string `json:"name"`
-    
+
     // +fabrica:field:default=false
     Revoked bool `json:"revoked"`
 }
@@ -470,15 +470,15 @@ type TokenSpec struct {
     // +fabrica:field:sensitive
     // +fabrica:field:immutable
     Value string `json:"value"`
-    
+
     // Indexed for fast lookup
     // +fabrica:field:index
     // +fabrica:field:unique
     Name string `json:"name"`
-    
+
     // Optional description
     Description string `json:"description,omitempty"`
-    
+
     // Revocation status (default: false)
     // +fabrica:field:default=false
     Revoked bool `json:"revoked"`
@@ -519,15 +519,15 @@ type UserSpec struct {
     // +fabrica:field:index
     // +fabrica:field:unique
     Email string `json:"email"`
-    
+
     // +fabrica:field:storage=hashed:bcrypt:cost=14
     // +fabrica:field:sensitive
     Password string `json:"password"`
-    
+
     // +fabrica:field:storage=encrypted:aes256:key=vault
     // +fabrica:field:sensitive
     SSN string `json:"ssn"`
-    
+
     // +fabrica:field:default=false
     EmailVerified bool `json:"emailVerified"`
 }
@@ -548,11 +548,11 @@ type Document struct {
 
 type DocumentSpec struct {
     Title string `json:"title"`
-    
+
     // Full-text search on content
     // +fabrica:field:index=gin
     Content string `json:"content"`
-    
+
     // JSON search on tags
     // +fabrica:field:index=gin
     Tags []string `json:"tags"`
@@ -597,24 +597,24 @@ func (g *Generator) processResourceType(typeSpec *ast.TypeSpec, genDecl *ast.Gen
     if err != nil {
         return fmt.Errorf("parse annotations for %s: %w", typeSpec.Name.Name, err)
     }
-    
+
     // Validate
     if err := annotations.Validate(annots); err != nil {
         return fmt.Errorf("invalid annotations on %s: %w", typeSpec.Name.Name, err)
     }
-    
+
     // Database-specific validation
     if err := annotations.ValidateForDatabase(annots, g.config.Database); err != nil {
         return fmt.Errorf("annotations incompatible with %s: %w", g.config.Database, err)
     }
-    
+
     // Extend metadata with annotations
     meta := &ResourceMetadata{
         Name:             typeSpec.Name.Name,
         StorageMode:      annots.StorageMode,
         FieldAnnotations: annots.Fields,
     }
-    
+
     // Generate schema based on storage mode
     if meta.StorageMode == annotations.StorageModeDedicated {
         return g.generateDedicatedSchema(meta)

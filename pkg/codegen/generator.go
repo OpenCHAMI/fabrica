@@ -38,7 +38,10 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,6 +51,7 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/internal/constants"
+	"github.com/openchami/fabrica/pkg/annotations"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -102,6 +106,9 @@ type ResourceMetadata struct {
 	Versions        []SchemaVersion // Multiple schema versions
 	DefaultVersion  string          // Default schema version
 	APIGroupVersion string          // API group version (e.g., "v2")
+
+	// Annotations support (Phase 2: Issue #62)
+	Annotations *annotations.ResourceAnnotations // Fabrica annotations from +fabrica: comments
 }
 
 // GeneratorConfig holds configuration values for code generation
@@ -380,6 +387,92 @@ func (g *Generator) middlewareData(templateName string) map[string]interface{} {
 	})
 }
 
+// ParseResourceAnnotations parses Fabrica annotations from a Go source file
+//
+// This function scans a Go source file for resource type definitions and extracts
+// Fabrica annotations (+fabrica: directives) from comments. For Fabrica resources,
+// this parses both the resource type (for +fabrica:resource, +fabrica:storage) and
+// the Spec type (for field-level annotations).
+//
+// Parameters:
+//   - filePath: Path to the Go source file containing resource definitions
+//   - resourceName: Name of the resource type to parse annotations for
+//
+// Returns:
+//   - *annotations.ResourceAnnotations: Parsed annotations, or nil if not found
+//   - error: Parse or validation error
+//
+// Example:
+//
+//	annots, err := g.ParseResourceAnnotations("apis/v1/token_types.go", "Token")
+//	if err != nil {
+//	    return err
+//	}
+func (g *Generator) ParseResourceAnnotations(filePath, resourceName string) (*annotations.ResourceAnnotations, error) {
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse file %s: %w", filePath, err)
+	}
+
+	var resourceAnnotations *annotations.ResourceAnnotations
+	specTypeName := resourceName + "Spec"
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		gd, ok := n.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			return true
+		}
+
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			switch ts.Name.Name {
+			case resourceName:
+				annots, err := annotations.ParseResourceAnnotations(ts, gd.Doc)
+				if err != nil {
+					return true
+				}
+				resourceAnnotations = annots
+			case specTypeName:
+				if resourceAnnotations == nil {
+					resourceAnnotations = annotations.NewResourceAnnotations()
+				}
+
+				specAnnots, err := annotations.ParseResourceAnnotations(ts, gd.Doc)
+				if err != nil {
+					return true
+				}
+
+				for fieldName, fieldAnnots := range specAnnots.Fields {
+					resourceAnnotations.Fields[fieldName] = fieldAnnots
+				}
+			}
+		}
+
+		return true
+	})
+
+	if resourceAnnotations == nil {
+		return annotations.NewResourceAnnotations(), nil
+	}
+
+	if err := annotations.Validate(resourceAnnotations); err != nil {
+		return nil, fmt.Errorf("validate annotations for %s: %w", resourceName, err)
+	}
+
+	if g.DBDriver != "" {
+		if err := annotations.ValidateForDatabase(resourceAnnotations, g.DBDriver); err != nil {
+			return nil, fmt.Errorf("annotations incompatible with %s: %w", g.DBDriver, err)
+		}
+	}
+
+	return resourceAnnotations, nil
+}
+
 // RegisterResource adds a resource type for code generation
 func (g *Generator) RegisterResource(resourceType interface{}) error {
 	t := reflect.TypeOf(resourceType)
@@ -457,6 +550,29 @@ func (g *Generator) SetResourceTag(resourceName, key, value string) {
 				g.Resources[i].Tags = make(map[string]string)
 			}
 			g.Resources[i].Tags[key] = value
+			return
+		}
+	}
+}
+
+// SetResourceAnnotations sets Fabrica annotations on a registered resource
+//
+// This allows setting annotations after a resource has been registered via RegisterResource.
+// Useful when annotation parsing happens separately from resource registration.
+//
+// Parameters:
+//   - resourceName: Name of the resource to set annotations on
+//   - annots: Parsed annotations to attach to the resource
+//
+// Example:
+//
+//	g.RegisterResource(&v1.Token{})
+//	annots, _ := g.ParseResourceAnnotations("apis/v1/token_types.go", "Token")
+//	g.SetResourceAnnotations("Token", annots)
+func (g *Generator) SetResourceAnnotations(resourceName string, annots *annotations.ResourceAnnotations) {
+	for i := range g.Resources {
+		if g.Resources[i].Name == resourceName {
+			g.Resources[i].Annotations = annots
 			return
 		}
 	}
