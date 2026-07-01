@@ -162,6 +162,78 @@ r.Use(AuthMiddleware)  // Check identity first
 r.Use(ValidationMiddleware)  // Then validate for authorized user
 ```
 
+## How Middleware Inheritance Works
+
+**Important:** Fabrica uses Chi router groups to separate public and protected routes. Understanding how middleware flows through these groups is critical for security.
+
+### Correct Pattern (Used by Fabrica)
+
+The generated `main.go` creates separate router groups for public and protected endpoints:
+
+```go
+// cmd/server/main.go (generated)
+func main() {
+    r := chi.NewRouter()
+
+    // Global middleware (applies to all routes)
+    r.Use(middleware.Logger)
+    r.Use(middleware.Recoverer)
+
+    // Public endpoints (no auth required)
+    r.Group(func(public chi.Router) {
+        public.Get("/health", healthHandler)
+        public.Get("/openapi.json", ServeOpenAPISpec)
+    })
+
+    // Protected endpoints (auth required)
+    r.Group(func(protected chi.Router) {
+        if config.AuthEnabled {
+            protected.Use(authnMiddleware)  // Apply auth middleware
+            protected.Use(authzMiddleware)
+        }
+
+        // Register generated routes - they inherit middleware
+        RegisterGeneratedRoutes(protected)  // ← Middleware flows here
+    })
+}
+```
+
+### Route Registration (Fixed in v0.4.6+)
+
+The `RegisterGeneratedRoutes` function receives a router with middleware already applied:
+
+```go
+// cmd/server/routes_generated.go
+func RegisterGeneratedRoutes(r chi.Router) {
+    // Routes inherit middleware from the router passed by main.go
+    r.Route("/devices", func(resource chi.Router) {
+        resource.Get("/", GetDevices)
+        resource.Post("/", CreateDevice)
+        // ... more routes
+    })
+}
+```
+
+**Key Point:** Routes are registered directly on the parameter router `r`, which already has auth middleware applied in `main.go`. This ensures all protected routes enforce authentication.
+
+### Common Mistake (Fixed in v0.4.6)
+
+Prior to v0.4.6, the template incorrectly created a nested group that shadowed the router parameter:
+
+```go
+// ❌ WRONG (old template - do not use)
+func RegisterGeneratedRoutes(r chi.Router) {
+    r.Group(func(protected chi.Router) {  // ← Creates NEW router
+        // Routes registered here LOSE middleware from 'r' parameter
+        protected.Route("/devices", ...)  // ← No auth enforced!
+    })
+}
+```
+
+**Problem:** The nested `r.Group()` creates a new router instance, and the inner `protected` variable shadows the parameter, causing middleware to be lost.
+
+**If you see this pattern in your generated code, regenerate with `fabrica generate` using v0.4.6 or later.**
+
 ## Adding Custom Middleware
 
 ### Method 1: Global Middleware (Recommended)
