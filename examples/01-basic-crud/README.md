@@ -302,6 +302,157 @@ curl http://localhost:8080/devices
 # Get, update, and delete work the same way
 ```
 
+## Client API: Simple vs Advanced
+
+The generated client provides **two ways** to create and update resources:
+
+### Simple API (Recommended for Most Use Cases)
+
+The simple API requires only a name and spec - the client handles the envelope automatically:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/user/device-inventory/pkg/client"
+    v1 "github.com/user/device-inventory/apis/example.fabrica.dev/v1"
+)
+
+func main() {
+    ctx := context.Background()
+    c, _ := client.NewClient("http://localhost:8080", nil, client.DefaultLogger())
+
+    // Create with simple API - just name + spec
+    spec := v1.DeviceSpec{
+        Description: "Core network switch",
+        IPAddr:      "192.168.1.10",
+        Location:    "DataCenter A",
+        Rack:        "R42",
+    }
+
+    device, err := c.CreateDeviceSimple(ctx, "switch-01", spec)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Update with simple API - just uid + new spec
+    updatedSpec := v1.DeviceSpec{
+        Description: "Updated description",
+        IPAddr:      "192.168.1.20",
+        Location:    "DataCenter B",
+    }
+
+    device, err = c.UpdateDeviceSimple(ctx, device.Metadata.UID, updatedSpec)
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+**When to use the simple API:**
+- ✅ You only need to set the resource name and spec
+- ✅ You don't need custom labels or annotations
+- ✅ You want the simplest possible code
+
+### Advanced API (For Full Control)
+
+The advanced API provides full control over the resource envelope:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/openchami/fabrica/pkg/fabrica"
+    "github.com/user/device-inventory/pkg/client"
+    v1 "github.com/user/device-inventory/apis/example.fabrica.dev/v1"
+)
+
+func main() {
+    ctx := context.Background()
+    c, _ := client.NewClient("http://localhost:8080", nil, client.DefaultLogger())
+
+    // Create with advanced API - full control over metadata
+    req := client.CreateDeviceRequest{
+        Metadata: fabrica.Metadata{
+            Name: "switch-01",
+        },
+        Spec: v1.DeviceSpec{
+            Description: "Core network switch",
+            IPAddr:      "192.168.1.10",
+            Location:    "DataCenter A",
+            Rack:        "R42",
+        },
+        Labels: map[string]string{
+            "environment": "production",
+            "datacenter":  "us-west-2",
+        },
+        Annotations: map[string]string{
+            "deployment.notes": "Deployed during maintenance window",
+        },
+    }
+
+    device, err := c.CreateDevice(ctx, req)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Update with advanced API - update labels too
+    updateReq := client.UpdateDeviceRequest{
+        Spec: v1.DeviceSpec{
+            Description: "Updated description",
+            IPAddr:      "192.168.1.20",
+        },
+        Labels: map[string]string{
+            "environment": "staging", // Change environment label
+        },
+    }
+
+    device, err = c.UpdateDevice(ctx, device.Metadata.UID, updateReq)
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+**When to use the advanced API:**
+- ✅ You need to set labels or annotations
+- ✅ You need full control over metadata fields
+- ✅ You're migrating from code that already constructs requests
+
+### API Comparison
+
+| Feature | Simple API | Advanced API |
+|---------|-----------|--------------|
+| **Method signature** | `CreateDeviceSimple(ctx, name, spec)` | `CreateDevice(ctx, request)` |
+| **Name** | ✅ Parameter | ✅ In `request.Metadata.Name` |
+| **Spec** | ✅ Parameter | ✅ In `request.Spec` |
+| **Labels** | ❌ Not supported | ✅ In `request.Labels` |
+| **Annotations** | ❌ Not supported | ✅ In `request.Annotations` |
+| **Boilerplate** | Minimal | More verbose |
+| **Use case** | 90% of operations | Advanced metadata control |
+
+### Migration Path
+
+Existing code using the advanced API continues to work - no breaking changes. You can gradually migrate to the simple API where appropriate:
+
+```go
+// Before (still works)
+req := client.CreateDeviceRequest{
+    Metadata: fabrica.Metadata{Name: "device-001"},
+    Spec: spec,
+}
+device, err := c.CreateDevice(ctx, req)
+
+// After (simpler)
+device, err := c.CreateDeviceSimple(ctx, "device-001", spec)
+```
+
 ## Understanding the Generated Code
 
 ### Middleware (`internal/middleware/`)

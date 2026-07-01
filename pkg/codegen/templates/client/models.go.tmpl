@@ -43,7 +43,9 @@ import (
 )
 
 {{range .Resources}}
-// Create{{.Name}}Request represents a request to create a {{.Name}}
+// Create{{.Name}}Request represents a request to create a {{.Name}} (Advanced API)
+// Use this when you need full control over metadata fields (labels, annotations).
+// For simpler usage, see Create{{.Name}}Simple in the client.
 type Create{{.Name}}Request struct {
 	Metadata    fabrica.Metadata  `json:"metadata" yaml:"metadata" validate:"required"`
 	Spec        {{.SpecType}}     `json:"spec" yaml:"spec" validate:"required"`
@@ -51,7 +53,9 @@ type Create{{.Name}}Request struct {
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 }
 
-// Update{{.Name}}Request represents a request to update a {{.Name}}
+// Update{{.Name}}Request represents a request to update a {{.Name}} (Advanced API)
+// Use this when you need to update metadata fields along with the spec.
+// For simpler usage, see Update{{.Name}}Simple in the client.
 type Update{{.Name}}Request struct {
 	Metadata    fabrica.Metadata  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Spec        {{.SpecType}}     `json:"spec,omitempty" yaml:"spec,omitempty" validate:"omitempty"`
