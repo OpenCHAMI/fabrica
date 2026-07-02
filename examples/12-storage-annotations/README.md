@@ -55,7 +55,7 @@ Annotate your resource types with `+fabrica:` directives to generate:
 
 ```bash
 cd /tmp
-fabrica init user-service --storage=ent
+fabrica init user-service --storage-type=ent
 cd user-service
 ```
 
