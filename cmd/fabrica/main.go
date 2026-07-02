@@ -64,19 +64,6 @@ func versionString() string {
 	return fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date)
 }
 
-func versionString() string {
-	if commit == "none" && date == "unknown" {
-		return version
-	}
-	if commit == "none" {
-		return fmt.Sprintf("%s (built: %s)", version, date)
-	}
-	if date == "unknown" {
-		return fmt.Sprintf("%s (commit: %s)", version, commit)
-	}
-	return fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date)
-}
-
 func main() {
 	mcp.Version = version
 
