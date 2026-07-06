@@ -250,6 +250,65 @@ Mutating tools support:
 
 If omitted, `mode` defaults to `dry_run`.
 
+## The Dry-Run Pattern
+
+Fabrica MCP implements a safety-first workflow for all filesystem mutations. To prevent accidental data loss or incorrect project structuring, mutating tools default to `dry_run` mode.
+
+### The Safety Philosophy
+
+Agents should never "blindly" execute mutations. By defaulting to `dry_run`, the server ensures that there is always a conscious transition from *predicting* a change to *applying* it. This prevents common agent errors such as target path drift or unintended file overwrites.
+
+### Understanding the Output
+
+The primary difference between the two modes is the nature of the returned metadata:
+
+- **Dry-Run**: Returns `planned_files` and `planned_steps`. These are predictions of what the server *intends* to do.
+- **Execute**: Returns `updated_files`. These are the files that were *actually* modified on disk.
+
+**Example Comparison (`add_resource`):**
+
+*Dry-Run Response (The Plan):*
+```json
+{
+  "status": "dry_run",
+  "planned_files": [
+    "projects/net-api/apis/net.fabrica.dev/v1/networkswitch_types.go",
+    "projects/net-api/apis.yaml"
+  ],
+  "planned_steps": [
+    "Create resource type file for NetworkSwitch",
+    "Update apis.yaml with new resource"
+  ]
+}
+```
+
+*Execute Response (The Result):*
+```json
+{
+  "status": "ok",
+  "updated_files": [
+    "projects/net-api/apis/net.fabrica.dev/v1/networkswitch_types.go",
+    "projects/net-api/apis.yaml"
+  ]
+}
+```
+
+### Required Workflow
+
+Agents must follow this sequence for every mutating operation:
+
+1. **Predict**: Invoke the tool (defaults to `dry_run`).
+2. **Audit**: Review the `planned_files` list. If any file looks incorrect, adjust arguments and repeat step 1.
+3. **Commit**: Invoke the tool again with `mode: "execute"`.
+
+### Decision Matrix
+
+| Scenario | Recommended Mode | Goal |
+|----------|------------------|------|
+| First attempt at a change | `dry_run` | Verify the target paths and impact |
+| Testing new arguments | `dry_run` | See how argument changes affect the plan |
+| Final application of change | `execute` | Commit verified changes to the filesystem |
+
 ## Workspace Safety
 
 All tool paths are resolved relative to `--workspace`.
@@ -301,6 +360,182 @@ Typical agent workflow:
 8. Optionally call `smoke_test_api` with `start_server: true`.
 
 Agents can also call `describe_workflow` first and follow the returned `workflow` entries directly.
+
+## Practical Examples
+
+### 1. Dry-Run First (Safety)
+Call a mutating tool with `mode: "dry_run"` (default) to inspect the impact before applying changes.
+
+**Tool Call:**
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "add_resource",
+    "arguments": {
+      "resource_name": "NetworkSwitch",
+      "project_path": "projects/net-api"
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "status": "dry_run",
+  "planned_files": [
+    "projects/net-api/apis/net.fabrica.dev/v1/networkswitch_types.go",
+    "projects/net-api/apis.yaml"
+  ],
+  "planned_steps": [
+    "Create resource type file for NetworkSwitch",
+    "Update apis.yaml with new resource"
+  ]
+}
+```
+
+**Explanation:** Use this pattern to verify exactly which files will be modified. Only proceed to execution after auditing `planned_files`.
+
+### 2. Execute After Verification
+Once the dry-run results are verified, call the same tool with `mode: "execute"` to apply the changes to the filesystem.
+
+**Tool Call:**
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "add_resource",
+    "arguments": {
+      "resource_name": "NetworkSwitch",
+      "project_path": "projects/net-api",
+      "mode": "execute"
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "status": "ok",
+  "updated_files": [
+    "projects/net-api/apis/net.fabrica.dev/v1/networkswitch_types.go",
+    "projects/net-api/apis.yaml"
+  ]
+}
+```
+
+**Explanation:** Explicitly passing `mode: "execute"` signals the server to perform the actual filesystem mutations.
+
+### 3. Complex Schema Definition
+Use `define_resource_schema` to move beyond basic structs and define strict validation and JSON naming for API fields.
+
+**Tool Call:**
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "define_resource_schema",
+    "arguments": {
+      "resource_name": "NetworkSwitch",
+      "spec_fields": [
+        {
+          "name": "IPAddress",
+          "type": "string",
+          "json_name": "ipAddress",
+          "required": true,
+          "validation": "required,ip",
+          "description": "Management IP of the switch"
+        },
+        {
+          "name": "PortCount",
+          "type": "int",
+          "json_name": "portCount",
+          "required": false,
+          "validation": "min=1,max=48",
+          "description": "Number of physical ports"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "status": "dry_run",
+  "updated_content": "// ... updated Go struct with validation tags ..."
+}
+```
+
+**Explanation:** Call this to ensure your API contract is strictly typed and validated. The `validation` string is passed directly to the generator's validation logic.
+
+### 4. Guided Workflow Discovery
+When unsure of the sequence for a complex task, call `describe_workflow` to get the exact tool chain.
+
+**Tool Call:**
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "describe_workflow",
+    "arguments": {
+      "goal": "new_crud_api"
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "workflow": [
+    { "step": 1, "tool": "create_service", "description": "Initialize the project" },
+    { "step": 2, "tool": "add_resource", "description": "Define your API resources" },
+    { "step": 3, "tool": "define_resource_schema", "description": "Set structured fields" },
+    { "step": 4, "tool": "generate_code", "description": "Generate handlers and storage" }
+  ]
+}
+```
+
+**Explanation:** Call this to discover the canonical order of operations. Follow the returned `workflow` sequence to avoid configuration gaps.
+
+### 5. Error Remediation
+Handle structured errors by reading the `remediation` field to fix the issue without guessing.
+
+**Tool Call (causing error):**
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "add_resource",
+    "arguments": {
+      "resource_name": "Device",
+      "project_path": "/etc/shadow"
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "isError": true,
+  "structuredContent": {
+    "status": "error",
+    "error": {
+      "code": "workspace_violation",
+      "message": "Path escapes workspace root",
+      "remediation": "Ensure project_path is relative to the --workspace root provided at server startup."
+    }
+  }
+}
+```
+
+**Explanation:** When `isError` is true, prioritize the `remediation` string. It provides the direct fix required to resolve the specific error code.
+
 
 ## Related Docs
 

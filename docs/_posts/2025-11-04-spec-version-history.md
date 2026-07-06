@@ -11,6 +11,8 @@ description: "How updating Fabrica and regenerating code lets you grow existing 
 author: "Alex Lovell-Troy"
 ---
 
+> 📚 **Want the complete technical guide?** See [Spec Version History](../guides/spec-versioning.md) for full API reference, configuration options, and production patterns.
+
 > **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
 
 APIs live for a long time. They grow as your product grows. The hard part is adding features without breaking what you already shipped. Fabrica is built for this kind of steady change. You keep your resource definitions as the source of truth. The generator keeps the rest in sync.

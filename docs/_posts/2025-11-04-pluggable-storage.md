@@ -11,6 +11,8 @@ description: "How the storage contract lets you swap file and database backends 
 author: "Alex Lovell-Troy"
 ---
 
+> 📚 **Want the complete technical guide?** See [Storage](../guides/storage.md) for full API reference, configuration options, and production patterns.
+
 > **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
 
 Fabrica generates REST services from Kubernetes‑style resources. The shape is always the same: APIVersion, Kind, Metadata, Spec, and Status. Handlers, routes, models, and the client are generated from templates. What you store those resources in is up to you. The storage layer is pluggable, so you can start with files and move to a database later without rewriting your API.

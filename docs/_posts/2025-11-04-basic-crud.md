@@ -11,6 +11,8 @@ description: "How the CLI and Go library help you use your API the same way ever
 author: "Alex Lovell-Troy"
 ---
 
+> 📚 **Want the complete technical guide?** See [Quick Start](../guides/quickstart.md) for full API reference, configuration options, and production patterns.
+
 > **Updated for v0.5.6:** This post has been updated to document the new client log level feature for debugging API interactions.
 
 > **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.

@@ -51,7 +51,14 @@ Technical reference and in-depth explanations:
 - **[Code Generation](reference/codegen.md)** - How templates work and customization
 - **[Framework Comparison](reference/comparison.md)** - Fabrica vs other Go frameworks
 - **[Releasing](reference/releasing.md)** - Release process and versioning
-- **[Status Subresources](status-subresource.md)** - Kubernetes-style status management
+- **[API Configuration](reference/apis-yaml.md)** - apis.yaml structure and workflows
+
+### Developer Reference (`dev/`)
+
+Internal development notes and roadmaps:
+
+- **[MCP Reliability Roadmap](dev/mcp-reliability-roadmap.md)** - MCP server reliability improvements
+- **[TokenSmith Security](dev/verify-tokensmith-security.md)** - Security verification for TokenSmith
 
 ## 🎯 Learning Paths
 

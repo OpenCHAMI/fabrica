@@ -11,6 +11,8 @@ description: "A tour of the server you get from Fabrica and how it helps you shi
 author: "Alex Lovell-Troy"
 ---
 
+> 📚 **Want the complete technical guide?** See [Getting Started Guide](../guides/getting-started.md) for full API reference, configuration options, and production patterns.
+
 > **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
 
 ## Context

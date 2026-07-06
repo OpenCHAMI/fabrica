@@ -542,8 +542,6 @@ This means Ent client code hasn't been generated yet:
 ```bash
 # Ent generation happens automatically during fabrica generate
 fabrica generate
-
-# Note: 'fabrica ent generate' is deprecated but still works for backward compatibility
 ```
 
 ### Connection Issues
