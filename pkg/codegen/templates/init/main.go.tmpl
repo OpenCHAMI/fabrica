@@ -252,7 +252,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	{{if .WithMetrics}}
 	// Initialize metrics
-	metrics := appmiddleware.NewMetrics("{{.ProjectName}}")
+	metrics := initializeMetrics(config)
 	r.Use(metrics.Middleware)
 	{{end}}
 

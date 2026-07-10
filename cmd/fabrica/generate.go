@@ -588,6 +588,12 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\tif err := gen.GenerateMiddleware(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate middleware: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
+			// Generate metrics if enabled
+			generationCalls.WriteString("\tif gen.Config.MetricsEnabled {\n")
+			generationCalls.WriteString("\t\tif err := gen.GenerateMetrics(); err != nil {\n")
+			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate metrics: %v\", err)\n")
+			generationCalls.WriteString("\t\t}\n")
+			generationCalls.WriteString("\t}\n")
 		}
 
 		if storage {

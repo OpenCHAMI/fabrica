@@ -1029,6 +1029,9 @@ func (g *Generator) LoadTemplates() error {
 		"eventBus":              "middleware/event-bus.go.tmpl",
 		"metrics":               "middleware/metrics.go.tmpl",
 
+		// Init templates (for regeneration)
+		"init/metrics_helpers.go.tmpl": "init/metrics_helpers.go.tmpl",
+
 		// Reconciliation templates
 		"reconciler":             "reconciliation/reconciler.go.tmpl",
 		"reconcilerStub":         "reconciliation/stub.go.tmpl",
@@ -1148,6 +1151,14 @@ func (g *Generator) GenerateMetrics() error {
 			}
 			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", metricsFile)
 		}
+
+		helpersFile := filepath.Join("cmd", "server", "metrics_helpers_generated.go")
+		if _, err := os.Stat(helpersFile); err == nil {
+			if err := os.Remove(helpersFile); err != nil {
+				return fmt.Errorf("failed to remove metrics helpers file: %w", err)
+			}
+			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", helpersFile)
+		}
 		return nil
 	}
 
@@ -1163,6 +1174,48 @@ func (g *Generator) GenerateMetrics() error {
 		return err
 	}
 
+	serverDir := filepath.Join("cmd", "server")
+	if err := os.MkdirAll(serverDir, 0755); err != nil {
+		return fmt.Errorf("failed to create server directory: %w", err)
+	}
+
+	helpersData := map[string]interface{}{
+		"FabricaVersion": g.Version,
+		"GeneratedAt":    time.Now().UTC().Format(time.RFC3339),
+		"CopyrightYear":  time.Now().Year(),
+		"ModulePath":     g.ModulePath,
+		"ProjectName":    g.PackageName,
+	}
+
+	if err := g.generateMetricsHelpers(serverDir, helpersData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (g *Generator) generateMetricsHelpers(outputDir string, data interface{}) error {
+	tmpl, ok := g.Templates["init/metrics_helpers.go.tmpl"]
+	if !ok {
+		return fmt.Errorf("metrics helpers template not found")
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute metrics helpers template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format metrics helpers code: %w", err)
+	}
+
+	outputPath := filepath.Join(outputDir, "metrics_helpers_generated.go")
+	if _, err := writeGeneratedFile(outputPath, formatted); err != nil {
+		return fmt.Errorf("failed to write metrics helpers file: %w", err)
+	}
+
+	fmt.Printf("  ✓ Generated %s\n", outputPath)
 	return nil
 }
 
