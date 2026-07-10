@@ -130,6 +130,9 @@ type GeneratorConfig struct {
 	EventsEnabled bool
 	EventBusType  string // memory, nats, kafka
 
+	// Metrics configuration
+	MetricsEnabled bool
+
 	// Storage configuration
 	StorageType string // file, ent
 	DBDriver    string // postgres, mysql, sqlite
@@ -757,6 +760,9 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateMiddleware(); err != nil {
 			return err
 		}
+		if err := g.GenerateMetrics(); err != nil {
+			return err
+		}
 		if err := g.GenerateRoutes(); err != nil {
 			return err
 		}
@@ -1021,6 +1027,7 @@ func (g *Generator) LoadTemplates() error {
 		"middlewareConditional": "middleware/conditional.go.tmpl",
 		"middlewareVersioning":  "middleware/versioning.go.tmpl",
 		"eventBus":              "middleware/event-bus.go.tmpl",
+		"metrics":               "middleware/metrics.go.tmpl",
 
 		// Reconciliation templates
 		"reconciler":             "reconciliation/reconciler.go.tmpl",
@@ -1125,6 +1132,35 @@ func (g *Generator) GenerateMiddleware() error {
 		if err := g.generateMiddlewareFile("eventBus", "event_bus_generated.go", middlewareDir, data); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// GenerateMetrics generates Prometheus metrics instrumentation if enabled
+func (g *Generator) GenerateMetrics() error {
+	if !g.Config.MetricsEnabled {
+		middlewareDir := filepath.Join("internal", "middleware")
+		metricsFile := filepath.Join(middlewareDir, "metrics_generated.go")
+		if _, err := os.Stat(metricsFile); err == nil {
+			if err := os.Remove(metricsFile); err != nil {
+				return fmt.Errorf("failed to remove metrics file: %w", err)
+			}
+			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", metricsFile)
+		}
+		return nil
+	}
+
+	fmt.Printf("📊 Generating metrics instrumentation...\n")
+
+	middlewareDir := filepath.Join("internal", "middleware")
+	if err := os.MkdirAll(middlewareDir, 0755); err != nil {
+		return fmt.Errorf("failed to create middleware directory: %w", err)
+	}
+
+	data := g.middlewareData("middleware/metrics.go.tmpl")
+	if err := g.generateMiddlewareFile("metrics", "metrics_generated.go", middlewareDir, data); err != nil {
+		return err
 	}
 
 	return nil

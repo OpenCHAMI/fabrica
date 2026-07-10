@@ -509,11 +509,6 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
-	// Generate metrics helpers from template
-	if err := generateFromTemplate("init/metrics_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/metrics_helpers_generated.go"), data); err != nil {
-		return err
-	}
-
 	// Create go.mod from template
 	if err := generateFromTemplate("init/go.mod.tmpl", filepath.Join(targetDir, "go.mod"), data); err != nil {
 		return err

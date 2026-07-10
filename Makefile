@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-.PHONY: help build test lint clean install install-release run docker-build docker-run
+.PHONY: help build test test-integration test-all lint clean install install-release run docker-build docker-run
 
 # Variables
 BINARY_NAME=fabrica
@@ -36,6 +36,11 @@ build: ## Build the application
 
 test: ## Run tests
 	$(GO) test $(GOFLAGS) -race -coverprofile=coverage.out -covermode=atomic $$(go list ./... 2>/dev/null | grep -v /examples/)
+
+test-integration: ## Run integration tests
+	cd test/integration && $(GO) test $(GOFLAGS) ./...
+
+test-all: test test-integration ## Run all tests (unit + integration)
 
 test-coverage: test ## Run tests with coverage report
 	$(GO) tool cover -html=coverage.out -o coverage.html

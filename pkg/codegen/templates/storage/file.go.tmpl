@@ -36,6 +36,10 @@ import (
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{- end}}
+{{if .WithMetrics}}
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+{{end}}
 )
 
 // Backend is the storage backend used by all storage operations.
@@ -48,6 +52,26 @@ import (
 //   }
 //   storage.Init(backend)
 var Backend fabricaStorage.StorageBackend
+
+{{if .WithMetrics}}
+var (
+	storageOperationDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "{{.ProjectName}}_storage_operation_duration_seconds",
+			Help: "Storage operation latency in seconds.",
+			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+		},
+		[]string{"operation", "resource_type"},
+	)
+	storageOperationTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "{{.ProjectName}}_storage_operation_total",
+			Help: "Total storage operations.",
+		},
+		[]string{"operation", "resource_type", "status"},
+	)
+)
+{{end}}
 
 // Init initializes the storage backend.
 // This must be called before using any storage functions.
@@ -87,22 +111,31 @@ func ensureBackend() {
 //   - error: Any error that occurred during loading
 func LoadAll{{.StorageName}}s(ctx context.Context) ([]{{.TypeName}}, error) {
 	ensureBackend()
+{{if $.WithMetrics}}
+	start := time.Now()
+	defer func() {
+		storageOperationDuration.WithLabelValues("load_all", "{{.Name}}").Observe(time.Since(start).Seconds())
+	}()
+{{end}}
 
 	rawData, err := Backend.LoadAll(ctx, "{{.Name}}")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load all {{.PluralName}}: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("load_all", "{{.Name}}", "error").Inc()
+{{end}}		return nil, fmt.Errorf("failed to load all {{.PluralName}}: %w", err)
 	}
 
 	{{camelCase .PluralName}} := make([]{{.TypeName}}, 0, len(rawData))
 	for _, raw := range rawData {
 		{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{}
 		if err := json.Unmarshal(raw, {{camelCase .Name}}); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+{{if $.WithMetrics}}			storageOperationTotal.WithLabelValues("load_all", "{{.Name}}", "error").Inc()
+{{end}}			return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
 		}
 		{{camelCase .PluralName}} = append({{camelCase .PluralName}}, {{camelCase .Name}})
 	}
 
-	return {{camelCase .PluralName}}, nil
+{{if $.WithMetrics}}	storageOperationTotal.WithLabelValues("load_all", "{{.Name}}", "success").Inc()
+{{end}}	return {{camelCase .PluralName}}, nil
 }
 
 // Load{{.StorageName}} retrieves a single {{.Name}} resource by UID.
@@ -116,18 +149,27 @@ func LoadAll{{.StorageName}}s(ctx context.Context) ([]{{.TypeName}}, error) {
 //   - error: fabricaStorage.ErrNotFound if resource doesn't exist, other errors for failures
 func Load{{.StorageName}}(ctx context.Context, uid string) ({{.TypeName}}, error) {
 	ensureBackend()
+{{if $.WithMetrics}}
+	start := time.Now()
+	defer func() {
+		storageOperationDuration.WithLabelValues("load", "{{.Name}}").Observe(time.Since(start).Seconds())
+	}()
+{{end}}
 
 	rawData, err := Backend.Load(ctx, "{{.Name}}", uid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("load", "{{.Name}}", "error").Inc()
+{{end}}		return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
 	}
 
 	{{camelCase .Name}} := &{{.PackageAlias}}.{{.Name}}{}
 	if err := json.Unmarshal(rawData, {{camelCase .Name}}); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("load", "{{.Name}}", "error").Inc()
+{{end}}		return nil, fmt.Errorf("failed to unmarshal {{.Name}}: %w", err)
 	}
 
-	return {{camelCase .Name}}, nil
+{{if $.WithMetrics}}	storageOperationTotal.WithLabelValues("load", "{{.Name}}", "success").Inc()
+{{end}}	return {{camelCase .Name}}, nil
 }
 
 // Save{{.StorageName}} stores a {{.Name}} resource.
@@ -140,17 +182,26 @@ func Load{{.StorageName}}(ctx context.Context, uid string) ({{.TypeName}}, error
 //   - error: Any error that occurred during saving
 func Save{{.StorageName}}(ctx context.Context, {{camelCase .Name}} {{.TypeName}}) error {
 	ensureBackend()
+{{if $.WithMetrics}}
+	start := time.Now()
+	defer func() {
+		storageOperationDuration.WithLabelValues("save", "{{.Name}}").Observe(time.Since(start).Seconds())
+	}()
+{{end}}
 
 	data, err := json.Marshal({{camelCase .Name}})
 	if err != nil {
-		return fmt.Errorf("failed to marshal {{.Name}}: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("save", "{{.Name}}", "error").Inc()
+{{end}}		return fmt.Errorf("failed to marshal {{.Name}}: %w", err)
 	}
 
 	if err := Backend.Save(ctx, "{{.Name}}", {{camelCase .Name}}.Metadata.UID, data); err != nil {
-		return fmt.Errorf("failed to save {{.Name}}: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("save", "{{.Name}}", "error").Inc()
+{{end}}		return fmt.Errorf("failed to save {{.Name}}: %w", err)
 	}
 
-	return nil
+{{if $.WithMetrics}}	storageOperationTotal.WithLabelValues("save", "{{.Name}}", "success").Inc()
+{{end}}	return nil
 }
 
 // Update{{.StorageName}} updates an existing {{.Name}} resource.
@@ -163,26 +214,36 @@ func Save{{.StorageName}}(ctx context.Context, {{camelCase .Name}} {{.TypeName}}
 //   - error: fabricaStorage.ErrNotFound if resource doesn't exist, other errors for failures
 func Update{{.StorageName}}(ctx context.Context, {{camelCase .Name}} {{.TypeName}}) error {
 	ensureBackend()
+{{if $.WithMetrics}}
+	start := time.Now()
+	defer func() {
+		storageOperationDuration.WithLabelValues("update", "{{.Name}}").Observe(time.Since(start).Seconds())
+	}()
+{{end}}
 
-	// Check if resource exists first
 	exists, err := Backend.Exists(ctx, "{{.Name}}", {{camelCase .Name}}.Metadata.UID)
 	if err != nil {
-		return fmt.Errorf("failed to check {{.Name}} existence: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("update", "{{.Name}}", "error").Inc()
+{{end}}		return fmt.Errorf("failed to check {{.Name}} existence: %w", err)
 	}
 	if !exists {
-		return fabricaStorage.ErrNotFound
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("update", "{{.Name}}", "not_found").Inc()
+{{end}}		return fabricaStorage.ErrNotFound
 	}
 
 	data, err := json.Marshal({{camelCase .Name}})
 	if err != nil {
-		return fmt.Errorf("failed to marshal {{.Name}}: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("update", "{{.Name}}", "error").Inc()
+{{end}}		return fmt.Errorf("failed to marshal {{.Name}}: %w", err)
 	}
 
 	if err := Backend.Save(ctx, "{{.Name}}", {{camelCase .Name}}.Metadata.UID, data); err != nil {
-		return fmt.Errorf("failed to update {{.Name}}: %w", err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("update", "{{.Name}}", "error").Inc()
+{{end}}		return fmt.Errorf("failed to update {{.Name}}: %w", err)
 	}
 
-	return nil
+{{if $.WithMetrics}}	storageOperationTotal.WithLabelValues("update", "{{.Name}}", "success").Inc()
+{{end}}	return nil
 }
 
 // Delete{{.StorageName}} removes a {{.Name}} resource by UID.
@@ -195,17 +256,24 @@ func Update{{.StorageName}}(ctx context.Context, {{camelCase .Name}} {{.TypeName
 //   - error: fabricaStorage.ErrNotFound if resource doesn't exist, other errors for failures
 func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 	ensureBackend()
+{{if $.WithMetrics}}
+	start := time.Now()
+	defer func() {
+		storageOperationDuration.WithLabelValues("delete", "{{.Name}}").Observe(time.Since(start).Seconds())
+	}()
+{{end}}
 
 	if err := Backend.Delete(ctx, "{{.Name}}", uid); err != nil {
-		return fmt.Errorf("failed to delete {{.Name}} %s: %w", uid, err)
+{{if $.WithMetrics}}		storageOperationTotal.WithLabelValues("delete", "{{.Name}}", "error").Inc()
+{{end}}		return fmt.Errorf("failed to delete {{.Name}} %s: %w", uid, err)
 	}
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
-	// Best-effort: remove versions directory for this resource
 	_ = delete{{.Name}}VersionsDir(uid)
 	{{- end }}{{- end }}
 
-	return nil
+{{if $.WithMetrics}}	storageOperationTotal.WithLabelValues("delete", "{{.Name}}", "success").Inc()
+{{end}}	return nil
 }
 
 // Exists{{.StorageName}} checks if a {{.Name}} resource exists.
