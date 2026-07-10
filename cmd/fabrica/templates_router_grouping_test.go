@@ -21,15 +21,15 @@ func TestTemplate_RouterGrouping_PublicAndProtected(t *testing.T) {
 		t.Fatalf("routes template should not register /docs directly")
 	}
 
-	// Protected group should exist and resource routes should be under it.
-	if !strings.Contains(got, "// Protected endpoints (resource APIs)") {
-		t.Fatalf("routes template missing protected endpoints grouping comment")
+	// Routes should inherit middleware from the parameter router (no nested group).
+	if !strings.Contains(got, "// Routes inherit middleware from the router passed by main.go") {
+		t.Fatalf("routes template missing middleware inheritance comment")
 	}
-	if !strings.Contains(got, "r.Group(func(protected chi.Router)") {
-		t.Fatalf("routes template missing protected chi group")
+	if strings.Contains(got, "r.Group(func(protected chi.Router)") {
+		t.Fatalf("routes template must NOT use nested r.Group() - causes middleware shadowing bug")
 	}
-	if !strings.Contains(got, "protected.Route(\"{{.URLPath}}\"") {
-		t.Fatalf("resource routes should be mounted using protected.Route")
+	if !strings.Contains(got, "r.Route(\"{{.URLPath}}\"") {
+		t.Fatalf("resource routes should be mounted using r.Route (parameter router, not nested group)")
 	}
 
 	// Ensure we did not accidentally duplicate or add global OPTIONS handling.

@@ -49,39 +49,37 @@ func registerResourcePrefixes() error {
 }
 
 // RegisterGeneratedRoutes registers all generated resource routes.
-// Note: Middleware should be applied in main.go before calling this function.
+// The router passed to this function should already have middleware applied in main.go.
 // Public service routes such as /health, /openapi.json, and /docs are registered
 // in cmd/server/main.go so they remain outside auth middleware.
 func RegisterGeneratedRoutes(r chi.Router) {
-	// Protected endpoints (resource APIs)
-	r.Group(func(protected chi.Router) {
+	// Routes inherit middleware from the router passed by main.go
 {{range .Resources}}
-		// {{.Name}} routes
-		protected.Route("{{.URLPath}}", func(r chi.Router) {
-		r.Get("/", Get{{.Name}}s)
-		r.Post("/", Create{{.Name}})
-		r.Route("/{uid}", func(r chi.Router) {
-			r.Get("/", Get{{.Name}})
-			r.Put("/", Update{{.Name}})
-			r.Patch("/", Patch{{.Name}})
-			r.Delete("/", Delete{{.Name}})
+	// {{.Name}} routes
+	r.Route("{{.URLPath}}", func(resource chi.Router) {
+		resource.Get("/", Get{{.Name}}s)
+		resource.Post("/", Create{{.Name}})
+		resource.Route("/{uid}", func(item chi.Router) {
+			item.Get("/", Get{{.Name}})
+			item.Put("/", Update{{.Name}})
+			item.Patch("/", Patch{{.Name}})
+			item.Delete("/", Delete{{.Name}})
 
 			// Status subresource
-			r.Route("/status", func(r chi.Router) {
-				r.Put("/", Update{{.Name}}Status)
-				r.Patch("/", Patch{{.Name}}Status)
+			item.Route("/status", func(status chi.Router) {
+				status.Put("/", Update{{.Name}}Status)
+				status.Patch("/", Patch{{.Name}}Status)
 			})
 
 			{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 			// Versions subresource
-			r.Route("/versions", func(r chi.Router) {
-				r.Get("/", List{{.Name}}Versions)
-				r.Get("/{versionID}", Get{{.Name}}Version)
-				r.Delete("/{versionID}", Delete{{.Name}}Version)
+			item.Route("/versions", func(versions chi.Router) {
+				versions.Get("/", List{{.Name}}Versions)
+				versions.Get("/{versionID}", Get{{.Name}}Version)
+				versions.Delete("/{versionID}", Delete{{.Name}}Version)
 			})
 			{{- end }}{{- end }}
 		})
 	})
 {{end}}
-	})
 }
