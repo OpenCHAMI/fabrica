@@ -134,6 +134,7 @@ func init() {
 
 	// Add resource commands
 	rootCmd.AddCommand(healthCmd)
+	rootCmd.AddCommand(NewVersionCommand())
 	{{range .Resources}}rootCmd.AddCommand({{toLower .Name}}Cmd)
 	{{end}}
 }

@@ -534,6 +534,16 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
+	// Create Makefile from template
+	if err := generateFromTemplate("init/makefile.tmpl", filepath.Join(targetDir, "Makefile"), data); err != nil {
+		return err
+	}
+
+	// Create .goreleaser.yaml from template
+	if err := generateFromTemplate("init/goreleaser.tmpl", filepath.Join(targetDir, ".goreleaser.yaml"), data); err != nil {
+		return err
+	}
+
 	// Create Fabrica configuration file
 	if err := createFabricaConfig(targetDir, opts); err != nil {
 		return err

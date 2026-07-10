@@ -664,12 +664,18 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateOpenAPI(); err != nil {
 			return err
 		}
+		if err := g.GenerateServerVersion(); err != nil {
+			return err
+		}
 	case "client":
 		// Client code - client and models only
 		if err := g.GenerateClient(); err != nil {
 			return err
 		}
 		if err := g.GenerateClientModels(); err != nil {
+			return err
+		}
+		if err := g.GenerateClientVersion(); err != nil {
 			return err
 		}
 	case "reconcile":
@@ -870,9 +876,13 @@ func (g *Generator) LoadTemplates() error {
 		"authzGrouping":             "authz/grouping.csv.tmpl",
 
 		// Client templates
-		"client":       "client/client.go.tmpl",
-		"clientModels": "client/models.go.tmpl",
-		"clientCmd":    "client/cmd.go.tmpl",
+		"client":        "client/client.go.tmpl",
+		"clientModels":  "client/models.go.tmpl",
+		"clientCmd":     "client/cmd.go.tmpl",
+		"clientVersion": "client/version.go.tmpl",
+
+		// Server version template
+		"serverVersion": "server/version.go.tmpl",
 
 		// Storage templates
 		"storage":         "storage/file.go.tmpl",
@@ -1206,6 +1216,67 @@ func (g *Generator) GenerateClientCmd() error {
 	}
 
 	// Always show client generation output (not just in verbose mode)
+	if written {
+		fmt.Printf("  ✓ Generated %s\n", filename)
+	}
+
+	return nil
+}
+
+// GenerateServerVersion generates the server version command
+func (g *Generator) GenerateServerVersion() error {
+	var buf bytes.Buffer
+	data := g.globalTemplateData("server/version.go.tmpl")
+	data["PackageName"] = "main"
+
+	if err := g.Templates["serverVersion"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute server-version template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated server-version code: %w", err)
+	}
+
+	filename := filepath.Join(g.OutputDir, "version_generated.go")
+	written, err := writeGeneratedFile(filename, formatted)
+	if err != nil {
+		return fmt.Errorf("failed to write server-version file: %w", err)
+	}
+
+	if written {
+		fmt.Printf("  ✓ Generated %s\n", filename)
+	}
+
+	return nil
+}
+
+// GenerateClientVersion generates the client version command
+func (g *Generator) GenerateClientVersion() error {
+	var buf bytes.Buffer
+	data := g.globalTemplateData("client/version.go.tmpl")
+	data["PackageName"] = "main"
+
+	if err := g.Templates["clientVersion"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute client-version template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated client-version code: %w", err)
+	}
+
+	cliDir := filepath.Join("cmd", "client")
+	if err := os.MkdirAll(cliDir, 0755); err != nil {
+		return fmt.Errorf("failed to create CLI directory: %w", err)
+	}
+
+	filename := filepath.Join(cliDir, "version_generated.go")
+	written, err := writeGeneratedFile(filename, formatted)
+	if err != nil {
+		return fmt.Errorf("failed to write client-version file: %w", err)
+	}
+
 	if written {
 		fmt.Printf("  ✓ Generated %s\n", filename)
 	}
