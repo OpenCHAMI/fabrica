@@ -68,6 +68,7 @@ import (
 	"path"
 {{if $hasVersioning}}	"time"{{end}}
 
+	"github.com/openchami/fabrica/pkg/fabrica"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 {{if .UniqueImports}}
@@ -353,7 +354,50 @@ func (c *Client) Get{{.Name}}(ctx context.Context, uid string) ({{.TypeName}}, e
 	return &result, nil
 }
 
-// Create{{.Name}} creates a new {{.Name}}
+// Create{{.Name}}Simple creates a new {{.Name}} with minimal boilerplate (Simple API)
+//
+// This is the recommended method for most use cases. It only requires a name and spec,
+// and the client automatically handles the resource envelope (APIVersion, Kind, Metadata).
+//
+// Use this when:
+//   - You only need to set the resource name and spec
+//   - You don't need custom labels or annotations
+//   - You want the simplest possible API
+//
+// For advanced use cases (labels, annotations, custom metadata), use Create{{.Name}} instead.
+//
+// Example:
+//   spec := v1.{{.Name}}Spec{
+//       // ... your spec fields
+//   }
+//   resource, err := client.Create{{.Name}}Simple(ctx, "my-resource", spec)
+func (c *Client) Create{{.Name}}Simple(ctx context.Context, name string, spec {{.SpecType}}) ({{.TypeName}}, error) {
+	req := Create{{.Name}}Request{
+		Metadata: fabrica.Metadata{
+			Name: name,
+		},
+		Spec: spec,
+	}
+	return c.Create{{.Name}}(ctx, req)
+}
+
+// Create{{.Name}} creates a new {{.Name}} (Advanced API)
+//
+// This method provides full control over the resource envelope, including labels and annotations.
+// Most users should use Create{{.Name}}Simple instead.
+//
+// Use this when:
+//   - You need to set labels or annotations
+//   - You need full control over metadata fields
+//   - You're migrating from code that already constructs requests
+//
+// Example:
+//   req := Create{{.Name}}Request{
+//       Metadata: fabrica.Metadata{Name: "my-resource"},
+//       Spec: spec,
+//       Labels: map[string]string{"env": "prod"},
+//   }
+//   resource, err := client.Create{{.Name}}(ctx, req)
 func (c *Client) Create{{.Name}}(ctx context.Context, req Create{{.Name}}Request) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
 	if err := c.doRequest(ctx, "POST", "{{.URLPath}}", req, &result); err != nil {
@@ -362,7 +406,46 @@ func (c *Client) Create{{.Name}}(ctx context.Context, req Create{{.Name}}Request
 	return &result, nil
 }
 
-// Update{{.Name}} updates an existing {{.Name}}
+// Update{{.Name}}Simple updates an existing {{.Name}}'s spec (Simple API)
+//
+// This is the recommended method for most update operations. It only requires the UID
+// and the new spec, preserving all existing metadata.
+//
+// Use this when:
+//   - You only need to update the spec
+//   - You want to preserve existing labels and annotations
+//   - You want the simplest possible API
+//
+// For advanced use cases (updating labels/annotations), use Update{{.Name}} instead.
+//
+// Example:
+//   spec := v1.{{.Name}}Spec{
+//       // ... updated spec fields
+//   }
+//   resource, err := client.Update{{.Name}}Simple(ctx, uid, spec)
+func (c *Client) Update{{.Name}}Simple(ctx context.Context, uid string, spec {{.SpecType}}) ({{.TypeName}}, error) {
+	req := Update{{.Name}}Request{
+		Spec: spec,
+	}
+	return c.Update{{.Name}}(ctx, uid, req)
+}
+
+// Update{{.Name}} updates an existing {{.Name}} (Advanced API)
+//
+// This method provides full control over what gets updated, including metadata fields.
+// Most users should use Update{{.Name}}Simple instead.
+//
+// Use this when:
+//   - You need to update labels or annotations
+//   - You need to update the resource name
+//   - You need full control over what fields get updated
+//
+// Example:
+//   req := Update{{.Name}}Request{
+//       Spec: spec,
+//       Labels: map[string]string{"env": "staging"},
+//   }
+//   resource, err := client.Update{{.Name}}(ctx, uid, req)
 func (c *Client) Update{{.Name}}(ctx context.Context, uid string, req Update{{.Name}}Request) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
 	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
