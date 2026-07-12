@@ -552,9 +552,13 @@ Attempts to patch metadata or status fields will be ignored.`,
 }
 
 var {{toLower .Name}}DeleteCmd = &cobra.Command{
-	Use:   "delete [uid]",
-	Short: "Delete a {{.Name}}",
-	Args:  cobra.ExactArgs(1),
+	Use:   "delete [uid...]",
+	Short: "Delete one or more {{.Name}} resources",
+	Long: `Deletes one or more {{.Name}} resources. 
+
+You can provide multiple UIDs separated by spaces to delete them all in a single command. 
+Each UID is processed one by one as an individual, atomic delete operation. If any deletion fails, the command will still attempt to delete the remaining UIDs and report the errors at the end.`,
+	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := getClient()
 		if err != nil {
@@ -564,11 +568,22 @@ var {{toLower .Name}}DeleteCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		if err := c.Delete{{.Name}}(ctx, args[0]); err != nil {
-			return fmt.Errorf("failed to delete {{.Name}}: %w", err)
+		var errs []error
+		for _, uid := range args {
+			if err := c.Delete{{.Name}}(ctx, uid); err != nil {
+				errs = append(errs, fmt.Errorf("failed to delete {{.Name}} %q: %w", uid, err))
+				continue
+			}
+			fmt.Printf("{{.Name}} %s deleted successfully\n", uid)
 		}
-
-		fmt.Printf("{{.Name}} %s deleted successfully\n", args[0])
+		
+		if len(errs) > 0 {
+			var errMsgs []string
+			for _, e := range errs {
+				errMsgs = append(errMsgs, e.Error())
+			}
+			return fmt.Errorf("encountered %d error(s) during deletion:\n%s", len(errs), strings.Join(errMsgs, "\n"))
+		}
 		return nil
 	},
 }

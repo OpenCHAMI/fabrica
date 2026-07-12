@@ -505,6 +505,39 @@ func (s *RuntimeTestSuite) TestEntSQLiteReconciliationClientFlow() {
 	var nodesAfter []map[string]interface{}
 	s.Require().NoError(json.Unmarshal(nodeListAfter, &nodesAfter))
 	s.Require().Len(nodesAfter, 0, "node list should be empty after deletion")
+
+	// Check help text
+	helpOut, err := project.RunClientBinary(clientBinary, "node", "delete", "--help")
+	s.Require().NoError(err)
+	s.Require().Contains(string(helpOut), "delete [uid...]", "help text should show variadic uid support")
+
+	// Test bulk delete
+	// Create extra test nodes
+	bulkNode1Payload := `{"metadata":{"name":"bulk-node-1"},"spec":{"description":"bulk node 1"}}`
+	bulkNode1Out, err := project.RunClientBinary(clientBinary, "node", "create", "--spec", bulkNode1Payload, "--output", "json")
+	s.Require().NoError(err)
+	var createdBulkNode1 map[string]interface{}
+	s.Require().NoError(json.Unmarshal(bulkNode1Out, &createdBulkNode1))
+	bulkNode1UID := createdBulkNode1["metadata"].(map[string]interface{})["uid"].(string)
+
+	bulkNode2Payload := `{"metadata":{"name":"bulk-node-2"},"spec":{"description":"bulk node 2"}}`
+	bulkNode2Out, err := project.RunClientBinary(clientBinary, "node", "create", "--spec", bulkNode2Payload, "--output", "json")
+	s.Require().NoError(err)
+	var createdBulkNode2 map[string]interface{}
+	s.Require().NoError(json.Unmarshal(bulkNode2Out, &createdBulkNode2))
+	bulkNode2UID := createdBulkNode2["metadata"].(map[string]interface{})["uid"].(string)
+
+	// Delete valid and invalid IDs together
+	_, err = project.RunClientBinary(clientBinary, "node", "delete", bulkNode1UID, "invalid-uid", bulkNode2UID)
+	s.Require().Error(err, "bulk delete with invalid uid should return error")
+	s.Require().Contains(err.Error(), "invalid-uid", "error should mention the invalid uid")
+
+	// Verify valid nodes are deleted
+	bulkNodeListAfter, err := project.RunClientBinary(clientBinary, "node", "list", "--output", "json")
+	s.Require().NoError(err)
+	var bulkNodesAfter []map[string]interface{}
+	s.Require().NoError(json.Unmarshal(bulkNodeListAfter, &bulkNodesAfter))
+	s.Require().Len(bulkNodesAfter, 0, "all valid nodes should be deleted in bulk delete")
 }
 
 // TestValidationWithInlinedSpecFields verifies validation on the flattened envelope pattern
