@@ -140,7 +140,7 @@ func resourceTypeFiles(projectDir string, apisConfig *configpkg.APIsConfig) ([]s
 		for _, version := range group.Versions {
 			versionDir := filepath.Join(projectDir, "apis", group.Name, version)
 			for _, resource := range group.Resources {
-				addFile(filepath.Join(versionDir, strings.ToLower(resource)+"_types.go"))
+				addFile(filepath.Join(versionDir, strings.ToLower(resource.Name)+"_types.go"))
 			}
 
 			entries, err := os.ReadDir(versionDir)

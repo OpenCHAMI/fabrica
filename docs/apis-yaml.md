@@ -36,8 +36,71 @@ Fields:
 - `name`: fully qualified group name.
 - `storageVersion`: hub version used for storage and conversions.
 - `versions`: ordered list of all versions (hub + spokes). The hub must be included.
-- `resources`: maintained by CLI commands; reflects resources under the hub directory.
+- `resources`: maintained by CLI commands; reflects resources under the hub directory. Accepts either list syntax or configured map syntax.
 - `imports`: optional remote type imports exposed to generated APIs.
+
+## Resource generation control
+
+Use list syntax when a resource should use the default path and full generated operation set:
+
+```yaml
+groups:
+  - name: infra.example.io
+    storageVersion: v1
+    versions:
+      - v1
+    resources:
+      - Device
+      - Rack
+```
+
+Use map syntax when a resource needs a custom collection path or a restricted operation set:
+
+```yaml
+groups:
+  - name: remote-console.openchami.io
+    storageVersion: v1
+    versions:
+      - v1
+    resources:
+      Console:
+        path: /remote-console/consoles
+        operations:
+          - list
+          - get
+```
+
+If `path` is omitted, Fabrica uses the default `/<lowercase-resource>s` path. If `operations` is omitted, Fabrica generates the default CRUD plus status surface. When present, `operations` must contain at least one operation; an empty list is rejected. Resource configuration accepts only `path` and `operations`; unknown fields are rejected.
+
+Supported operation values are grouped by the API surface they generate. In the routes below, `<path>` is the configured resource path and `{uid}` identifies one resource.
+
+Read operations:
+
+- `list` generates `GET <path>` to return the resource collection.
+- `get` generates `GET <path>/{uid}` to return one resource.
+
+Write operations:
+
+- `create` generates `POST <path>` to create a resource.
+- `update` or `put` generates `PUT <path>/{uid}` to replace a resource.
+- `patch` generates `PATCH <path>/{uid}` to partially update a resource.
+- `delete` generates `DELETE <path>/{uid}` to delete a resource.
+
+Status operations:
+
+- Each of `update-status`, `status-update`, `put-status`, and `updatestatus` generates `PUT <path>/{uid}/status` to replace the resource status.
+- Each of `patch-status`, `status-patch`, and `patchstatus` generates `PATCH <path>/{uid}/status` to partially update the resource status.
+
+Operation groups:
+
+- `read` enables `list` and `get`.
+- `write` enables `create`, `update`, `patch`, and `delete`.
+- `status` enables both status operations.
+- `all` or `crud` enables the complete default surface: read, write, and status operations.
+
+Custom paths must be canonical absolute paths without surrounding whitespace, a trailing slash, empty segments, or `.` and `..` segments. Each segment may contain ASCII letters, digits, `.`, `_`, `~`, and `-`. Paths cannot collide with another resource's collection, item, or status routes, or with built-in endpoints such as `/health`, `/openapi.json`, and `/docs`.
+
+Storage can be disabled for generated handlers when the project supplies persistence through create-once persistence hooks. Generated handlers delegate resource access to hooks such as `List<Resource>Resources`, `Get<Resource>Resource`, `Save<Resource>Resource`, and `Delete<Resource>Resource`. When storage generation is enabled, Fabrica creates default hook implementations backed by `internal/storage`; when storage generation is disabled, Fabrica creates stubs that compile but must be implemented by the project.
 
 ## Initial workflow
 
@@ -56,7 +119,11 @@ Fields:
 - **Add a new version**: `fabrica add version v1beta2 [--from v1beta1]` copies types from the source spoke into `apis/<group>/v1beta2/` and appends the version to `apis.yaml`.
 - **Promote hub**: change `storageVersion` to the new hub, keep the old hub listed in `versions`, and add conversion logic between hub and spokes.
 - **Deprecate/remove**: remove the version from `versions` (and associated directories) once clients have migrated.
-- **Partial features per version**: encode per-version status subresource or flags in future extensions of `apis.yaml`; avoid putting per-version knobs in `.fabrica.yaml`.
+- **Partial generated operations**: use configured `resources` entries to limit generated routes, handlers, OpenAPI operations, client methods, CLI commands, and starter AuthZ policies for a resource.
+
+## Regeneration behavior
+
+Most generated files are overwritten by `fabrica generate`. A few starter files are intentionally create-once and safe to edit, including starter AuthZ policy files and per-resource persistence hook files. If you change resource paths or operations later, review those create-once files manually because Fabrica will not overwrite local edits.
 
 ## Command expectations
 

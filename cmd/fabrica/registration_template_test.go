@@ -51,3 +51,29 @@ func TestRegistrationGeneratorsProduceGofmtStableOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistrationUsesTypedResourceConfiguration(t *testing.T) {
+	apisConfig := configpkg.DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
+	apisConfig.Groups[0].Resources = configpkg.APIResources{
+		{
+			Name:       "Device",
+			Path:       "/hardware/devices",
+			Operations: []string{"read", "status"},
+		},
+	}
+
+	content := generateVersionedRegistrationCode("example.com/test", apisConfig, []string{"Device"})
+
+	for _, expected := range []string{
+		`gen.ConfigureResource("Device", codegen.ResourceConfig{`,
+		`URLPath: "/hardware/devices",`,
+		`Operations: codegen.ResourceOperationsFromNames([]string{"read", "status"}),`,
+	} {
+		if !strings.Contains(content, expected) {
+			t.Errorf("versioned registration missing %q", expected)
+		}
+	}
+	if strings.Contains(content, `reflect`) || strings.Contains(content, `func configureResource`) {
+		t.Error("versioned registration should not contain the compatibility reflection helper")
+	}
+}

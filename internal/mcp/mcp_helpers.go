@@ -418,7 +418,7 @@ func resourceFileMap(projectDir string, group *configpkg.APIGroup) map[string]st
 		return files
 	}
 	for _, resource := range group.Resources {
-		files[resource] = filepath.ToSlash(filepath.Join(projectDir, "apis", group.Name, group.StorageVersion, strings.ToLower(resource)+"_types.go"))
+		files[resource.Name] = filepath.ToSlash(filepath.Join(projectDir, "apis", group.Name, group.StorageVersion, strings.ToLower(resource.Name)+"_types.go"))
 	}
 	return files
 }

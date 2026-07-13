@@ -8,7 +8,10 @@ package config
 import (
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -35,12 +38,206 @@ type APIsConfig struct {
 // Currently, only a single API group per project is supported. Multiple
 // groups may be added in future versions.
 type APIGroup struct {
-	Name           string      `yaml:"name"`
-	StorageVersion string      `yaml:"storageVersion"`
-	Versions       []string    `yaml:"versions"`
-	Resources      []string    `yaml:"resources,omitempty"`
-	Imports        []APIImport `yaml:"imports,omitempty"`
+	Name           string       `yaml:"name"`
+	StorageVersion string       `yaml:"storageVersion"`
+	Versions       []string     `yaml:"versions"`
+	Resources      APIResources `yaml:"resources,omitempty"`
+	Imports        []APIImport  `yaml:"imports,omitempty"`
 }
+
+// APIResource controls generated output for a resource listed in an API group.
+type APIResource struct {
+	Name       string   `yaml:"-"`
+	Path       string   `yaml:"path,omitempty"`
+	Operations []string `yaml:"operations,omitempty"`
+}
+
+// Configured reports whether this resource has explicit generation settings.
+func (r APIResource) Configured() bool {
+	return r.Path != "" || len(r.Operations) > 0
+}
+
+// APIResources is the apis.yaml resource inventory. It accepts both the
+// historical list form and the configured map form:
+//
+//	resources:
+//	  - Device
+//
+//	resources:
+//	  Device:
+//	    path: /devices
+//	    operations: [list, get]
+type APIResources []APIResource
+
+// Names returns the configured resource names in declaration order.
+func (r APIResources) Names() []string {
+	names := make([]string, 0, len(r))
+	for _, resource := range r {
+		names = append(names, resource.Name)
+	}
+
+	return names
+}
+
+// Get returns a resource by name.
+func (r APIResources) Get(name string) (APIResource, bool) {
+	for _, resource := range r {
+		if resource.Name == name {
+			return resource, true
+		}
+	}
+
+	return APIResource{}, false
+}
+
+// Contains reports whether a resource name is present.
+func (r APIResources) Contains(name string) bool {
+	_, ok := r.Get(name)
+	return ok
+}
+
+// UnmarshalYAML supports both list and map syntax for resources.
+func (r *APIResources) UnmarshalYAML(value *yaml.Node) error {
+	var resources APIResources
+	switch value.Kind {
+	// List syntax: resources: [Device, Network]
+	case yaml.SequenceNode:
+		for _, item := range value.Content {
+			if item.Kind != yaml.ScalarNode {
+				return fmt.Errorf("resources list entries must be resource name strings; use map syntax for resource configuration")
+			}
+			resources = append(resources, APIResource{Name: item.Value})
+		}
+	// Map syntax: resources: {Device: {path: /devices, operations: [list, get]}}
+	case yaml.MappingNode:
+		for i := 0; i < len(value.Content); i += 2 {
+			key := value.Content[i]
+			val := value.Content[i+1]
+			if err := validateResourceSettingsNode(key.Value, val); err != nil {
+				return err
+			}
+			var resource APIResource
+			if val.Kind != yaml.ScalarNode || val.Value != "" {
+				if err := val.Decode(&resource); err != nil {
+					return err
+				}
+			}
+			resource.Name = key.Value
+			resources = append(resources, resource)
+		}
+	default:
+		return fmt.Errorf("resources must be a list or map")
+	}
+	*r = resources
+
+	return nil
+}
+
+// validateResourceSettingsNode rejects unknown resource settings and
+// distinguishes an omitted operations field, which selects Fabrica's defaults,
+// from an explicitly empty operations list.
+func validateResourceSettingsNode(resourceName string, value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	for i := 0; i < len(value.Content); i += 2 {
+		field := value.Content[i].Value
+		switch field {
+		case "path":
+			continue
+		case "operations":
+			var operations []string
+			if err := value.Content[i+1].Decode(&operations); err != nil {
+				return err
+			}
+			if len(operations) == 0 {
+				return fmt.Errorf("resources.%s.operations must contain at least one operation", resourceName)
+			}
+			continue
+		}
+		return fmt.Errorf("resources.%s contains unsupported field %q", resourceName, field)
+	}
+
+	return nil
+}
+
+// MarshalYAML writes compact list syntax when no resources have explicit
+// configuration, and map syntax once path/operation settings are present.
+func (r APIResources) MarshalYAML() (interface{}, error) {
+	hasConfig := false
+	for _, resource := range r {
+		if resource.Configured() {
+			hasConfig = true
+			break
+		}
+	}
+	if !hasConfig {
+		return r.Names(), nil
+	}
+
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	for _, resource := range r {
+		key := &yaml.Node{Kind: yaml.ScalarNode, Value: resource.Name}
+		value := &yaml.Node{Kind: yaml.MappingNode}
+		if resource.Path != "" {
+			value.Content = append(value.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: "path"},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: resource.Path},
+			)
+		}
+		if len(resource.Operations) > 0 {
+			operations := &yaml.Node{Kind: yaml.SequenceNode}
+			for _, operation := range resource.Operations {
+				operations.Content = append(operations.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: operation})
+			}
+			value.Content = append(value.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: "operations"},
+				operations,
+			)
+		}
+		node.Content = append(node.Content, key, value)
+	}
+
+	return node, nil
+}
+
+var validResourceOperations = map[string]struct{}{
+	"list":          {},
+	"get":           {},
+	"create":        {},
+	"update":        {},
+	"put":           {},
+	"patch":         {},
+	"delete":        {},
+	"updatestatus":  {},
+	"update-status": {},
+	"status-update": {},
+	"put-status":    {},
+	"patchstatus":   {},
+	"patch-status":  {},
+	"status-patch":  {},
+	"read":          {},
+	"write":         {},
+	"status":        {},
+	"all":           {},
+	"crud":          {},
+}
+
+const (
+	builtInHealthPath  = "/health"
+	builtInOpenAPIPath = "/openapi.json"
+	builtInDocsPath    = "/docs"
+)
+
+var (
+	reservedResourcePaths = map[string]struct{}{
+		builtInHealthPath:  {},
+		builtInOpenAPIPath: {},
+		builtInDocsPath:    {},
+	}
+	resourcePathSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+)
 
 // APIImport exposes external types for reuse in generated APIs.
 // This allows projects to import Spec and Status types from other Go modules
@@ -188,7 +385,7 @@ func DefaultAPIsConfig(group, storageVersion string, versions []string) *APIsCon
 				Name:           resolvedGroup,
 				StorageVersion: resolvedStorage,
 				Versions:       resolvedVersions,
-				Resources:      []string{},
+				Resources:      APIResources{},
 			},
 		},
 	}
@@ -233,9 +430,96 @@ func (c *APIsConfig) Validate() error {
 		if !found {
 			return fmt.Errorf("storageVersion %s must appear in versions for group %s", g.StorageVersion, g.Name)
 		}
+
+		resources := make(map[string]struct{}, len(g.Resources))
+		paths := make(map[string]string, len(g.Resources))
+		for _, resource := range g.Resources {
+			name := strings.TrimSpace(resource.Name)
+			if name == "" {
+				return fmt.Errorf("apis.yaml group %s contains a resource with an empty name", g.Name)
+			}
+			if _, ok := resources[name]; ok {
+				return fmt.Errorf("apis.yaml group %s lists resource %s more than once", g.Name, name)
+			}
+			resources[name] = struct{}{}
+			path := resource.Path
+			if path == "" {
+				path = "/" + strings.ToLower(name) + "s"
+			}
+			normalizedPath, err := validateResourcePath(name, path)
+			if err != nil {
+				return err
+			}
+			if existing, ok := paths[normalizedPath]; ok {
+				return fmt.Errorf("resources.%s.path duplicates path %s already used by resource %s", name, normalizedPath, existing)
+			}
+			for existingPath, existingName := range paths {
+				if resourcePathsOverlap(existingPath, normalizedPath) {
+					return fmt.Errorf("resources.%s.path %s conflicts with generated routes for resource %s at %s", name, normalizedPath, existingName, existingPath)
+				}
+			}
+			paths[normalizedPath] = name
+			for _, operation := range resource.Operations {
+				if _, ok := validResourceOperations[strings.ToLower(strings.TrimSpace(operation))]; !ok {
+					return fmt.Errorf("resources.%s.operations contains unsupported operation %q", name, operation)
+				}
+			}
+		}
 	}
 
 	return nil
+}
+
+func validateResourcePath(resourceName, path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("resources.%s.path must not be empty", resourceName)
+	}
+	if path != strings.TrimSpace(path) {
+		return "", fmt.Errorf("resources.%s.path must not contain surrounding whitespace", resourceName)
+	}
+	if !strings.HasPrefix(path, "/") {
+		return "", fmt.Errorf("resources.%s.path must start with /", resourceName)
+	}
+	if path == "/" {
+		return "", fmt.Errorf("resources.%s.path must not be /", resourceName)
+	}
+	if strings.HasSuffix(path, "/") {
+		return "", fmt.Errorf("resources.%s.path must not end with /", resourceName)
+	}
+	if strings.Contains(path, "//") {
+		return "", fmt.Errorf("resources.%s.path must not contain empty path segments", resourceName)
+	}
+	if pathpkg.Clean(path) != path {
+		return "", fmt.Errorf("resources.%s.path must not contain . or .. segments", resourceName)
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
+		if !resourcePathSegmentPattern.MatchString(segment) {
+			return "", fmt.Errorf("resources.%s.path segment %q contains unsupported characters", resourceName, segment)
+		}
+	}
+	if _, ok := reservedResourcePaths[path]; ok {
+		return "", fmt.Errorf("resources.%s.path conflicts with built-in endpoint %s", resourceName, path)
+	}
+	if strings.HasPrefix(path, builtInDocsPath+"/") {
+		return "", fmt.Errorf("resources.%s.path conflicts with built-in endpoint %s", resourceName, builtInDocsPath)
+	}
+	return path, nil
+}
+
+// resourcePathsOverlap reports whether either collection path can be consumed
+// by the other resource's generated /{uid} or /{uid}/status routes.
+func resourcePathsOverlap(first, second string) bool {
+	return matchesGeneratedResourceRoute(first, second) || matchesGeneratedResourceRoute(second, first)
+}
+
+func matchesGeneratedResourceRoute(collectionPath, candidatePath string) bool {
+	prefix := collectionPath + "/"
+	if !strings.HasPrefix(candidatePath, prefix) {
+		return false
+	}
+
+	segments := strings.Split(strings.TrimPrefix(candidatePath, prefix), "/")
+	return len(segments) == 1 || (len(segments) == 2 && segments[1] == "status")
 }
 
 // PrimaryGroup returns the first (and currently only supported) API group.
@@ -268,10 +552,8 @@ func (c *APIsConfig) AddResource(name string) {
 	if err != nil {
 		return
 	}
-	for _, existing := range group.Resources {
-		if existing == name {
-			return
-		}
+	if group.Resources.Contains(name) {
+		return
 	}
-	group.Resources = append(group.Resources, name)
+	group.Resources = append(group.Resources, APIResource{Name: name})
 }

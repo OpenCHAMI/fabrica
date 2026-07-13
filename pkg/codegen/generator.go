@@ -47,10 +47,10 @@ import (
 	"text/template"
 	"time"
 
+	configpkg "github.com/openchami/fabrica/internal/config"
 	"github.com/openchami/fabrica/internal/constants"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-	"gopkg.in/yaml.v3"
 )
 
 //go:embed templates/**
@@ -84,24 +84,106 @@ type SpecField struct {
 	ExampleValue string // Example value for documentation
 }
 
+// ResourceOperations controls which REST operations are generated for a resource.
+type ResourceOperations struct {
+	List         bool
+	Get          bool
+	Create       bool
+	Update       bool
+	Patch        bool
+	Delete       bool
+	UpdateStatus bool
+	PatchStatus  bool
+}
+
 // ResourceMetadata holds metadata about a resource type for code generation
 type ResourceMetadata struct {
-	Name         string            // e.g., "User"
-	PluralName   string            // e.g., "users"
-	Package      string            // e.g., "github.com/example/app/pkg/resources/user"
-	PackageAlias string            // e.g., "user"
-	TypeName     string            // e.g., "*user.User"
-	SpecType     string            // e.g., "user.UserSpec"
-	StatusType   string            // e.g., "user.UserStatus"
-	URLPath      string            // e.g., "/users"
-	StorageName  string            // e.g., "User" for storage function names
-	Tags         map[string]string // Additional metadata
-	SpecFields   []SpecField       // Fields in the Spec struct
+	Name         string             // e.g., "User"
+	PluralName   string             // e.g., "users"
+	Package      string             // e.g., "github.com/example/app/pkg/resources/user"
+	PackageAlias string             // e.g., "user"
+	TypeName     string             // e.g., "*user.User"
+	SpecType     string             // e.g., "user.UserSpec"
+	StatusType   string             // e.g., "user.UserStatus"
+	URLPath      string             // e.g., "/users"
+	StorageName  string             // e.g., "User" for storage function names
+	Tags         map[string]string  // Additional metadata
+	Operations   ResourceOperations // Which REST operations to generate
+	SpecFields   []SpecField        // Fields in the Spec struct
 
 	// Multi-version support
 	Versions        []SchemaVersion // Multiple schema versions
 	DefaultVersion  string          // Default schema version
 	APIGroupVersion string          // API group version (e.g., "v2")
+}
+
+// NeedsPersistenceHooks reports whether generated handlers require a
+// user-editable persistence hook file. Hook files are generated only when absent.
+func (ops ResourceOperations) NeedsPersistenceHooks() bool {
+	return ops.List || ops.Get || ops.Create || ops.Update || ops.Patch || ops.Delete || ops.UpdateStatus || ops.PatchStatus
+}
+
+// ResourceConfig controls generation details for a registered resource.
+type ResourceConfig struct {
+	URLPath    string
+	Operations ResourceOperations
+}
+
+// DefaultResourceOperations returns default CRUD plus status surface.
+func DefaultResourceOperations() ResourceOperations {
+	return ResourceOperations{
+		List:         true,
+		Get:          true,
+		Create:       true,
+		Update:       true,
+		Patch:        true,
+		Delete:       true,
+		UpdateStatus: true,
+		PatchStatus:  true,
+	}
+}
+
+// ResourceOperationsFromNames builds operation flags from a list of operation names.
+func ResourceOperationsFromNames(names []string) ResourceOperations {
+	if len(names) == 0 {
+		return DefaultResourceOperations()
+	}
+
+	var ops ResourceOperations
+	for _, name := range names {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "list":
+			ops.List = true
+		case "get":
+			ops.Get = true
+		case "create":
+			ops.Create = true
+		case "update", "put":
+			ops.Update = true
+		case "patch":
+			ops.Patch = true
+		case "delete":
+			ops.Delete = true
+		case "updatestatus", "update-status", "status-update", "put-status":
+			ops.UpdateStatus = true
+		case "patchstatus", "patch-status", "status-patch":
+			ops.PatchStatus = true
+		case "read":
+			ops.List = true
+			ops.Get = true
+		case "write":
+			ops.Create = true
+			ops.Update = true
+			ops.Patch = true
+			ops.Delete = true
+		case "status":
+			ops.UpdateStatus = true
+			ops.PatchStatus = true
+		case "all", "crud":
+			ops = DefaultResourceOperations()
+		}
+	}
+	return ops
 }
 
 // GeneratorConfig holds configuration values for code generation
@@ -124,8 +206,9 @@ type GeneratorConfig struct {
 	EventBusType  string // memory, nats, kafka
 
 	// Storage configuration
-	StorageType string // file, ent
-	DBDriver    string // postgres, mysql, sqlite
+	StorageEnabled bool   // Whether to generate storage code
+	StorageType    string // file, ent
+	DBDriver       string // postgres, mysql, sqlite
 
 	// TokenSmith-first Security generation toggles.
 	//
@@ -170,6 +253,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			VersionStrategy:      "header",
 			EventsEnabled:        false,
 			EventBusType:         "memory",
+			StorageEnabled:       true,
 			StorageType:          "file",
 			DBDriver:             "sqlite",
 			WithAuth:             false,
@@ -325,6 +409,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"URLPath":               resource.URLPath,
 		"StorageName":           resource.StorageName,
 		"Tags":                  resource.Tags,
+		"Operations":            resource.Operations,
 		"PerResourceVersioning": perResVersioning,
 		"IsVersioned":           isVersioned,
 		"SpecFields":            resource.SpecFields,
@@ -333,6 +418,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"APIGroupVersion":       resource.APIGroupVersion,
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
+		"StorageEnabled":        g.Config.StorageEnabled,
 	})
 }
 
@@ -362,6 +448,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"UniqueImports":        uniqueImports,
 		"ProjectName":          g.extractProjectName(),
 		"StorageType":          g.StorageType,
+		"StorageEnabled":       g.Config.StorageEnabled,
 		"DBDriver":             g.DBDriver,
 		"Config":               g.Config,
 		"WithAuth":             g.Config.WithAuth,
@@ -438,6 +525,7 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 		URLPath:         fmt.Sprintf("/%s", pluralName),
 		StorageName:     storageName,
 		Tags:            make(map[string]string),
+		Operations:      DefaultResourceOperations(),
 		SpecFields:      specFields,
 		Versions:        []SchemaVersion{defaultVersion},
 		DefaultVersion:  "v1",
@@ -446,6 +534,22 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 
 	g.Resources = append(g.Resources, metadata)
 	return nil
+}
+
+// ConfigureResource applies generation configuration to a registered resource.
+func (g *Generator) ConfigureResource(resourceName string, config ResourceConfig) {
+	for i := range g.Resources {
+		if g.Resources[i].Name != resourceName {
+			continue
+		}
+		if config.URLPath != "" {
+			g.Resources[i].URLPath = config.URLPath
+		}
+		if config.Operations != (ResourceOperations{}) {
+			g.Resources[i].Operations = config.Operations
+		}
+		return
+	}
 }
 
 // SetResourceTag sets a tag key/value on a registered resource by name.
@@ -857,6 +961,7 @@ func (g *Generator) LoadTemplates() error {
 	templateFiles := map[string]string{
 		// Server templates
 		"handlers":                  "server/handlers.go.tmpl",
+		"persistenceHooks":          "server/persistence_hooks.go.tmpl",
 		"routes":                    "server/routes.go.tmpl",
 		"models":                    "server/models.go.tmpl",
 		"openapi":                   "server/openapi.go.tmpl",
@@ -950,6 +1055,28 @@ func (g *Generator) GenerateHandlers() error {
 
 		if written {
 			fmt.Printf("  ✓ Generated %s\n", filename)
+		}
+
+		if resource.Operations.NeedsPersistenceHooks() {
+			var hookBuf bytes.Buffer
+			hookData := g.templateData(resource, "server/persistence_hooks.go.tmpl")
+			if err := g.Templates["persistenceHooks"].Execute(&hookBuf, hookData); err != nil {
+				return fmt.Errorf("failed to execute persistence hook template for %s: %w", resource.Name, err)
+			}
+
+			hookFormatted, err := format.Source(hookBuf.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to format generated persistence hook for %s: %w", resource.Name, err)
+			}
+
+			hookFilename := filepath.Join(g.OutputDir, fmt.Sprintf("%s_persistence_hooks.go", strings.ToLower(resource.Name)))
+			if _, err := os.Stat(hookFilename); os.IsNotExist(err) {
+				if _, err := writeGeneratedFile(hookFilename, hookFormatted); err != nil {
+					return fmt.Errorf("failed to write persistence hook file for %s: %w", resource.Name, err)
+				}
+			} else if err != nil {
+				return fmt.Errorf("failed to inspect persistence hook file for %s: %w", resource.Name, err)
+			}
 		}
 	}
 
@@ -1437,26 +1564,9 @@ func (g *Generator) GenerateAPIVersions() error {
 		return nil // Optional feature - skip if not configured
 	}
 
-	// Parse apis.yaml for groups and versions
-	data, err := os.ReadFile("apis.yaml")
+	cfg, err := configpkg.LoadAPIsConfig("")
 	if err != nil {
-		return fmt.Errorf("failed to read apis.yaml: %w", err)
-	}
-
-	// Minimal schema for apis.yaml used by codegen
-	type apisGroup struct {
-		Name           string   `yaml:"name"`
-		StorageVersion string   `yaml:"storageVersion"`
-		Versions       []string `yaml:"versions"`
-		Resources      []string `yaml:"resources"`
-	}
-	type apisConfig struct {
-		Groups []apisGroup `yaml:"groups"`
-	}
-
-	var cfg apisConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("failed to parse apis.yaml: %w", err)
+		return err
 	}
 
 	if len(cfg.Groups) == 0 {
@@ -1478,7 +1588,7 @@ func (g *Generator) GenerateAPIVersions() error {
 			Name:           g.Name,
 			StorageVersion: g.StorageVersion,
 			Spokes:         g.Versions,
-			Resources:      g.Resources,
+			Resources:      g.Resources.Names(),
 		})
 	}
 
@@ -1615,5 +1725,30 @@ var templateFuncs = template.FuncMap{
 			parts = append(parts, fmt.Sprintf(`    "%s": %s`, f.JSONName, value))
 		}
 		return "{\n" + strings.Join(parts, ",\n") + "\n  }"
+	},
+	"operationList": func(ops ResourceOperations) string {
+		var names []string
+		if ops.List {
+			names = append(names, "list")
+		}
+		if ops.Get {
+			names = append(names, "get")
+		}
+		if ops.Create {
+			names = append(names, "create")
+		}
+		if ops.Update {
+			names = append(names, "update")
+		}
+		if ops.Patch {
+			names = append(names, "patch")
+		}
+		if ops.Delete {
+			names = append(names, "delete")
+		}
+		if len(names) == 0 {
+			return "none"
+		}
+		return strings.Join(names, "|")
 	},
 }

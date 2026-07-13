@@ -22,12 +22,12 @@ func TestValidateConfig_AuthZRequiresAuthN(t *testing.T) {
 	}
 }
 
-func TestValidateConfig_RequiresStorage(t *testing.T) {
+func TestValidateConfig_AllowsDisabledStorage(t *testing.T) {
 	cfg := config.NewDefaultConfig("test", "example.com/test")
 	cfg.Features.Storage.Enabled = false
 
-	if err := config.ValidateConfig(cfg); err == nil {
-		t.Fatalf("expected storage-disabled config to be rejected")
+	if err := config.ValidateConfig(cfg); err != nil {
+		t.Fatalf("expected storage-disabled config to be valid: %v", err)
 	}
 }
 
