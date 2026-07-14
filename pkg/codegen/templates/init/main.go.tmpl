@@ -29,9 +29,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	_ "{{.ModulePath}}/pkg/apiversion"
 	"github.com/openchami/fabrica/pkg/versioning"
-	{{if .WithMetrics}}
-	appmiddleware "{{.ModulePath}}/internal/middleware"
-	{{end}}
 )
 
 {{if .WithReconcile}}

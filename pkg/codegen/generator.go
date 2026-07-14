@@ -1142,9 +1142,11 @@ func (g *Generator) GenerateMiddleware() error {
 
 // GenerateMetrics generates Prometheus metrics instrumentation if enabled
 func (g *Generator) GenerateMetrics() error {
+	serverDir := filepath.Join("cmd", "server")
+	metricsFile := filepath.Join(serverDir, "metrics_generated.go")
+	helpersFile := filepath.Join(serverDir, "metrics_helpers_generated.go")
+
 	if !g.Config.MetricsEnabled {
-		middlewareDir := filepath.Join("internal", "middleware")
-		metricsFile := filepath.Join(middlewareDir, "metrics_generated.go")
 		if _, err := os.Stat(metricsFile); err == nil {
 			if err := os.Remove(metricsFile); err != nil {
 				return fmt.Errorf("failed to remove metrics file: %w", err)
@@ -1152,7 +1154,6 @@ func (g *Generator) GenerateMetrics() error {
 			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", metricsFile)
 		}
 
-		helpersFile := filepath.Join("cmd", "server", "metrics_helpers_generated.go")
 		if _, err := os.Stat(helpersFile); err == nil {
 			if err := os.Remove(helpersFile); err != nil {
 				return fmt.Errorf("failed to remove metrics helpers file: %w", err)
@@ -1164,19 +1165,13 @@ func (g *Generator) GenerateMetrics() error {
 
 	fmt.Printf("📊 Generating metrics instrumentation...\n")
 
-	middlewareDir := filepath.Join("internal", "middleware")
-	if err := os.MkdirAll(middlewareDir, 0755); err != nil {
-		return fmt.Errorf("failed to create middleware directory: %w", err)
+	if err := os.MkdirAll(serverDir, 0755); err != nil {
+		return fmt.Errorf("failed to create server directory: %w", err)
 	}
 
 	data := g.middlewareData("middleware/metrics.go.tmpl")
-	if err := g.generateMiddlewareFile("metrics", "metrics_generated.go", middlewareDir, data); err != nil {
+	if err := g.generateMiddlewareFile("metrics", "metrics_generated.go", serverDir, data); err != nil {
 		return err
-	}
-
-	serverDir := filepath.Join("cmd", "server")
-	if err := os.MkdirAll(serverDir, 0755); err != nil {
-		return fmt.Errorf("failed to create server directory: %w", err)
 	}
 
 	helpersData := map[string]interface{}{

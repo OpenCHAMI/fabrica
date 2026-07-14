@@ -87,32 +87,18 @@ go run ./cmd/server/
 curl http://localhost:8080/metrics
 ```
 
-You should see output like:
+You should see Prometheus-format metrics including HTTP request counters, latency histograms, in-flight requests, and Go runtime metrics.
 
-```
-# HELP sensor_api_http_request_duration_seconds HTTP request latency in seconds.
-# TYPE sensor_api_http_request_duration_seconds histogram
-sensor_api_http_request_duration_seconds_bucket{code="200",handler="/sensors",method="GET",le="0.005"} 1
-sensor_api_http_request_duration_seconds_bucket{code="200",handler="/sensors",method="GET",le="0.01"} 1
-...
+## Metrics Reference
 
-# HELP sensor_api_http_request_total Total HTTP requests.
-# TYPE sensor_api_http_request_total counter
-sensor_api_http_request_total{code="200",handler="/sensors",method="GET"} 1
+For complete metrics documentation, see the **[Prometheus Metrics Guide](../../docs/guides/metrics.md)**, which includes:
 
-# HELP sensor_api_http_requests_in_flight Current in-flight HTTP requests.
-# TYPE sensor_api_http_requests_in_flight gauge
-sensor_api_http_requests_in_flight 0
-
-# HELP sensor_api_storage_operation_duration_seconds Storage operation latency in seconds.
-# TYPE sensor_api_storage_operation_duration_seconds histogram
-sensor_api_storage_operation_duration_seconds_bucket{operation="save",resource_type="Sensor",le="0.001"} 1
-...
-
-# HELP sensor_api_events_published_total Total events published to the event bus.
-# TYPE sensor_api_events_published_total counter
-sensor_api_events_published_total{event_type="com.fabrica.Sensor.created",status="success"} 1
-```
+- **Complete metrics table** - All available metrics with descriptions
+- **PromQL query examples** - Request rate, P99 latency, error rate, and more
+- **Prometheus/Grafana configuration** - Production monitoring setup
+- **Best practices** - Label cardinality, histogram buckets, aggregation
+- **Troubleshooting** - Common issues and solutions
+- **Migration guide** - Upgrading from previous versions
 
 ## Testing the API
 
@@ -155,116 +141,12 @@ curl http://localhost:8080/metrics | grep sensor_api_http_request_total
 
 You should see counters incremented for your requests.
 
-## Available Metrics
-
-### HTTP Metrics
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `sensor_api_http_request_duration_seconds` | Histogram | method, handler, code | Request latency |
-| `sensor_api_http_request_total` | Counter | method, handler, code | Total requests |
-| `sensor_api_http_requests_in_flight` | Gauge | - | Current requests |
-
-### Storage Metrics
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `sensor_api_storage_operation_duration_seconds` | Histogram | operation, resource_type | Storage latency |
-| `sensor_api_storage_operation_total` | Counter | operation, resource_type, status | Total operations |
-
-Operations: `load`, `load_all`, `save`, `update`, `delete`
-
-### Event Metrics
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `sensor_api_events_published_total` | Counter | event_type, status | Events published |
-| `sensor_api_event_subscribers` | Gauge | - | Active subscribers |
-
-### Go Runtime Metrics
-
-Standard metrics automatically included:
-- `go_goroutines` - Current goroutines
-- `go_memstats_alloc_bytes` - Allocated memory
-- `go_gc_duration_seconds` - GC pause duration
-- `process_cpu_seconds_total` - CPU time
-- `process_resident_memory_bytes` - RSS memory
-
-## Prometheus Configuration
-
-Create `prometheus.yml`:
-
-```yaml
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-
-scrape_configs:
-  - job_name: 'sensor-api'
-    static_configs:
-      - targets: ['localhost:8080']
-    metrics_path: /metrics
-```
-
-Run Prometheus:
-
-```bash
-prometheus --config.file=prometheus.yml
-```
-
-Access Prometheus UI: http://localhost:9090
-
-## Example Queries
-
-### Request Rate (QPS)
-
-```promql
-rate(sensor_api_http_request_total[5m])
-```
-
-### P99 Latency
-
-```promql
-histogram_quantile(0.99,
-  rate(sensor_api_http_request_duration_seconds_bucket[5m])
-)
-```
-
-### Error Rate
-
-```promql
-sum(rate(sensor_api_http_request_total{code=~"5.."}[5m]))
-/
-sum(rate(sensor_api_http_request_total[5m]))
-```
-
-### Storage Operation Breakdown
-
-```promql
-rate(sensor_api_storage_operation_total[5m])
-```
-
-### Event Publishing Rate
-
-```promql
-rate(sensor_api_events_published_total{status="success"}[5m])
-```
-
-### Current Load
-
-```promql
-sensor_api_http_requests_in_flight
-```
-
 ## Grafana Dashboard
 
-Import the pre-built dashboard:
-
-1. Install Grafana
-2. Add Prometheus as data source (http://localhost:9090)
-3. Import dashboard JSON (see `dashboard.json` in this directory)
-
-Or create panels manually with the queries above.
+See the [Metrics Guide](../../docs/guides/metrics.md#grafana-setup) for:
+- Dashboard configuration
+- Pre-built panel examples
+- Prometheus data source setup
 
 ## Load Testing
 
@@ -286,51 +168,7 @@ watch -n 1 'curl -s http://localhost:8080/metrics | grep -E "(request_total|requ
 
 ## Custom Metrics
 
-To add custom business metrics, create `cmd/server/custom_metrics.go`:
-
-```go
-package main
-
-import (
-    "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promauto"
-)
-
-var (
-    sensorReadingsTotal = promauto.NewCounter(prometheus.CounterOpts{
-        Name: "sensor_api_readings_total",
-        Help: "Total sensor readings processed",
-    })
-
-    sensorTemperatureGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
-        Name: "sensor_api_current_temperature",
-        Help: "Current temperature by sensor",
-    }, []string{"sensor_name"})
-)
-
-// Call in your handlers
-func recordReading(sensorName string, temp float64) {
-    sensorReadingsTotal.Inc()
-    sensorTemperatureGauge.WithLabelValues(sensorName).Set(temp)
-}
-```
-
-## Best Practices
-
-### DO
-
-- Keep label cardinality low (< 1000 unique combinations)
-- Use histograms for latency (not summaries)
-- Set histogram buckets based on SLOs
-- Export metrics on the main port (easier for Kubernetes)
-- Monitor both success and error rates
-
-### DON'T
-
-- Add user IDs or request IDs as labels (too high cardinality)
-- Use summaries for request latency (can't aggregate)
-- Expose sensitive data in metric labels
-- Create unbounded label values
+See the [Metrics Guide](../../docs/guides/metrics.md#custom-metrics) for how to add custom business metrics to your handlers.
 
 ## Disabling Metrics
 
@@ -352,25 +190,7 @@ The `/metrics` endpoint and instrumentation will be removed.
 
 ## Troubleshooting
 
-### Metrics endpoint returns 404
-
-Metrics are disabled. Check `.fabrica.yaml` and regenerate.
-
-### Missing custom metrics
-
-Use `promauto` for automatic registration. Custom metrics defined with `promauto.NewCounter()` etc. will appear automatically.
-
-### High memory usage
-
-Check for label cardinality explosion:
-
-```promql
-# Count unique series
-count({__name__=~"sensor_api_.*"})
-
-# By metric
-count by (__name__) ({__name__=~"sensor_api_.*"})
-```
+For common issues and solutions, see the [Metrics Guide Troubleshooting section](../../docs/guides/metrics.md#troubleshooting).
 
 ## See Also
 
