@@ -584,13 +584,11 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
-			// Always generate middleware when generating handlers
 			generationCalls.WriteString("\tif err := gen.GenerateMiddleware(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate middleware: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
-			// Generate metrics if enabled
-			generationCalls.WriteString("\tif gen.Config.MetricsEnabled {\n")
-			generationCalls.WriteString("\t\tif err := gen.GenerateMetrics(); err != nil {\n")
+			generationCalls.WriteString("\tif metricsEnabled {\n")
+			generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateMetrics\"); err != nil {\n")
 			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate metrics: %v\", err)\n")
 			generationCalls.WriteString("\t\t}\n")
 			generationCalls.WriteString("\t}\n")
@@ -824,6 +822,7 @@ func main() {
 
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	authEnabled := false
+	metricsEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
 	gen.Commit = "%s" // Fabrica git commit SHA used for generation
@@ -843,7 +842,7 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
-		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
+		metricsEnabled = config.Features.Metrics.Enabled
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {

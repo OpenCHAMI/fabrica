@@ -38,14 +38,14 @@ features:
 fabrica generate
 ```
 
-This creates `internal/middleware/metrics_generated.go` with full instrumentation.
+This creates `cmd/server/metrics_generated.go` with full instrumentation.
 
 ### Access Metrics
 
 Start your server and access the metrics endpoint:
 
 ```bash
-./server serve
+go run ./cmd/server/
 curl http://localhost:8080/metrics
 ```
 
