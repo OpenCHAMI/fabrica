@@ -581,6 +581,10 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t}\n")
 
 		if handlers {
+			generationCalls.WriteString("\tmetricsEnabled := false\n")
+			generationCalls.WriteString("\tif config, err := loadConfig(); err == nil {\n")
+			generationCalls.WriteString("\t\tmetricsEnabled = config.Features.Metrics.Enabled\n")
+			generationCalls.WriteString("\t}\n\n")
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
@@ -822,7 +826,6 @@ func main() {
 
 	gen := codegen.NewGenerator("%s", "%s", "%s")
 	authEnabled := false
-	metricsEnabled := false
 	gen.Verbose = %s
 	gen.Version = "%s" // Fabrica version used for generation
 	gen.Commit = "%s" // Fabrica git commit SHA used for generation
@@ -842,7 +845,6 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
-		metricsEnabled = config.Features.Metrics.Enabled
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {
