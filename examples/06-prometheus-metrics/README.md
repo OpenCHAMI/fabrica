@@ -53,6 +53,8 @@ fabrica add resource Sensor
 
 Edit `apis/example.fabrica.dev/v1/sensor_types.go`:
 
+**Note:** Make sure to add `import "time"` at the top of the file since `SensorStatus` uses `time.Time`.
+
 ```go
 type SensorSpec struct {
     Location    string  `json:"location" validate:"required"`
@@ -62,7 +64,7 @@ type SensorSpec struct {
 }
 
 type SensorStatus struct {
-    LastReading time.Time `json:"lastReading"`
+    LastReading time.Time `json:"lastReading"` // Requires: import "time"
     Health      string    `json:"health" validate:"oneof=healthy degraded failed"`
     ErrorCount  int       `json:"errorCount"`
 }
