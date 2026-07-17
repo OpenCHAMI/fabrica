@@ -63,11 +63,15 @@ log_info "Test 1: Creating a temperature sensor"
 SENSOR_RESPONSE=$(curl -s -X POST "$API_URL/sensors" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "temp-sensor-01",
-    "description": "Office temperature sensor for CloudEvents demo",
-    "sensorType": "temperature",
-    "location": "Building A, Floor 2, Room 201",
-    "threshold": 75.0
+    "metadata": {
+      "name": "temp-sensor-01"
+    },
+    "spec": {
+      "description": "Office temperature sensor for CloudEvents demo",
+      "sensorType": "temperature",
+      "location": "Building A, Floor 2, Room 201",
+      "threshold": 75.0
+    }
   }' || echo "ERROR")
 
 if echo "$SENSOR_RESPONSE" | grep -q '"kind":"Sensor"'; then
@@ -89,12 +93,16 @@ log_info "Test 2: Updating the sensor"
 UPDATE_RESPONSE=$(curl -s -X PUT "$API_URL/sensors/$SENSOR_UID" \
   -H "Content-Type: application/json" \
   -d '{
-      "name": "temp-sensor-01",
-      "description": "Updated office temperature sensor with higher threshold",
-      "sensorType": "temperature",
-      "location": "Building A, Floor 2, Room 201",
-      "threshold": 80.0
-  }' || echo "ERROR")
+      "metadata": {
+        "name": "temp-sensor-01"
+      },
+      "spec": {
+        "description": "Updated office temperature sensor with higher threshold",
+        "sensorType": "temperature",
+        "location": "Building A, Floor 2, Room 201",
+        "threshold": 80.0
+      }
+    }' || echo "ERROR")
 
 if echo "$UPDATE_RESPONSE" | grep -q '"threshold":80'; then
     log_success "Sensor updated successfully"
@@ -171,11 +179,15 @@ log_info "Test 6: Creating a humidity sensor"
 HUMIDITY_RESPONSE=$(curl -s -X POST "$API_URL/sensors" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "humidity-sensor-01",
-    "description": "Office humidity sensor",
-    "sensorType": "humidity",
-    "location": "Building A, Floor 2, Room 202",
-    "threshold": 60.0
+    "metadata": {
+      "name": "humidity-sensor-01"
+    },
+    "spec": {
+      "description": "Office humidity sensor",
+      "sensorType": "humidity",
+      "location": "Building A, Floor 2, Room 202",
+      "threshold": 60.0
+    }
   }' || echo "ERROR")
 
 if echo "$HUMIDITY_RESPONSE" | grep -q '"sensorType":"humidity"'; then
