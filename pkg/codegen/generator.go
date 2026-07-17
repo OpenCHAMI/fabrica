@@ -38,7 +38,10 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,6 +51,7 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/internal/constants"
+	"github.com/openchami/fabrica/pkg/annotations"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -102,6 +106,9 @@ type ResourceMetadata struct {
 	Versions        []SchemaVersion // Multiple schema versions
 	DefaultVersion  string          // Default schema version
 	APIGroupVersion string          // API group version (e.g., "v2")
+
+	// Annotations support (Phase 2: Issue #62)
+	Annotations *annotations.ResourceAnnotations // Fabrica annotations from +fabrica: comments
 }
 
 // GeneratorConfig holds configuration values for code generation
@@ -333,6 +340,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"APIGroupVersion":       resource.APIGroupVersion,
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
+		"Annotations":           resource.Annotations,
 	})
 }
 
@@ -378,6 +386,92 @@ func (g *Generator) middlewareData(templateName string) map[string]interface{} {
 		"EventBusType":      g.Config.EventBusType,
 		"EventsEnabled":     g.Config.EventsEnabled,
 	})
+}
+
+// ParseResourceAnnotations parses Fabrica annotations from a Go source file
+//
+// This function scans a Go source file for resource type definitions and extracts
+// Fabrica annotations (+fabrica: directives) from comments. For Fabrica resources,
+// this parses both the resource type (for +fabrica:resource, +fabrica:storage) and
+// the Spec type (for field-level annotations).
+//
+// Parameters:
+//   - filePath: Path to the Go source file containing resource definitions
+//   - resourceName: Name of the resource type to parse annotations for
+//
+// Returns:
+//   - *annotations.ResourceAnnotations: Parsed annotations, or nil if not found
+//   - error: Parse or validation error
+//
+// Example:
+//
+//	annots, err := g.ParseResourceAnnotations("apis/v1/token_types.go", "Token")
+//	if err != nil {
+//	    return err
+//	}
+func (g *Generator) ParseResourceAnnotations(filePath, resourceName string) (*annotations.ResourceAnnotations, error) {
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse file %s: %w", filePath, err)
+	}
+
+	var resourceAnnotations *annotations.ResourceAnnotations
+	specTypeName := resourceName + "Spec"
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		gd, ok := n.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			return true
+		}
+
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			switch ts.Name.Name {
+			case resourceName:
+				annots, err := annotations.ParseResourceAnnotations(ts, gd.Doc)
+				if err != nil {
+					return true
+				}
+				resourceAnnotations = annots
+			case specTypeName:
+				if resourceAnnotations == nil {
+					resourceAnnotations = annotations.NewResourceAnnotations()
+				}
+
+				specAnnots, err := annotations.ParseResourceAnnotations(ts, gd.Doc)
+				if err != nil {
+					return true
+				}
+
+				for fieldName, fieldAnnots := range specAnnots.Fields {
+					resourceAnnotations.Fields[fieldName] = fieldAnnots
+				}
+			}
+		}
+
+		return true
+	})
+
+	if resourceAnnotations == nil {
+		return annotations.NewResourceAnnotations(), nil
+	}
+
+	if err := annotations.Validate(resourceAnnotations); err != nil {
+		return nil, fmt.Errorf("validate annotations for %s: %w", resourceName, err)
+	}
+
+	if g.DBDriver != "" {
+		if err := annotations.ValidateForDatabase(resourceAnnotations, g.DBDriver); err != nil {
+			return nil, fmt.Errorf("annotations incompatible with %s: %w", g.DBDriver, err)
+		}
+	}
+
+	return resourceAnnotations, nil
 }
 
 // RegisterResource adds a resource type for code generation
@@ -457,6 +551,29 @@ func (g *Generator) SetResourceTag(resourceName, key, value string) {
 				g.Resources[i].Tags = make(map[string]string)
 			}
 			g.Resources[i].Tags[key] = value
+			return
+		}
+	}
+}
+
+// SetResourceAnnotations sets Fabrica annotations on a registered resource
+//
+// This allows setting annotations after a resource has been registered via RegisterResource.
+// Useful when annotation parsing happens separately from resource registration.
+//
+// Parameters:
+//   - resourceName: Name of the resource to set annotations on
+//   - annots: Parsed annotations to attach to the resource
+//
+// Example:
+//
+//	g.RegisterResource(&v1.Token{})
+//	annots, _ := g.ParseResourceAnnotations("apis/v1/token_types.go", "Token")
+//	g.SetResourceAnnotations("Token", annots)
+func (g *Generator) SetResourceAnnotations(resourceName string, annots *annotations.ResourceAnnotations) {
+	for i := range g.Resources {
+		if g.Resources[i].Name == resourceName {
+			g.Resources[i].Annotations = annots
 			return
 		}
 	}
@@ -885,17 +1002,19 @@ func (g *Generator) LoadTemplates() error {
 		"serverVersion": "server/version.go.tmpl",
 
 		// Storage templates
-		"storage":         "storage/file.go.tmpl",
-		"storageEnt":      "storage/ent.go.tmpl",
-		"entAdapter":      "storage/adapter.go.tmpl",
-		"generate":        "storage/generate.go.tmpl",
-		"entQueries":      "storage/ent_queries.go.tmpl",
-		"entTransactions": "storage/ent_transactions.go.tmpl",
+		"storage":             "storage/file.go.tmpl",
+		"storageEnt":          "storage/ent.go.tmpl",
+		"entAdapter":          "storage/adapter.go.tmpl",
+		"entAdapterDedicated": "storage/adapter_dedicated.go.tmpl",
+		"generate":            "storage/generate.go.tmpl",
+		"entQueries":          "storage/ent_queries.go.tmpl",
+		"entTransactions":     "storage/ent_transactions.go.tmpl",
 
 		// Ent schema templates
-		"entSchemaResource":   "ent/schema/resource.go.tmpl",
-		"entSchemaLabel":      "ent/schema/label.go.tmpl",
-		"entSchemaAnnotation": "ent/schema/annotation.go.tmpl",
+		"entSchemaResource":          "ent/schema/resource.go.tmpl",
+		"entSchemaResourceDedicated": "ent/schema/resource_dedicated.go.tmpl",
+		"entSchemaLabel":             "ent/schema/label.go.tmpl",
+		"entSchemaAnnotation":        "ent/schema/annotation.go.tmpl",
 
 		// Middleware templates
 		"middlewareValidation":  "middleware/validation.go.tmpl",
@@ -1330,45 +1449,68 @@ func (g *Generator) GenerateOpenAPI() error {
 	return nil
 }
 
-// GenerateEntSchemas generates Ent schema files for generic resource storage
+// GenerateEntSchemas generates Ent schema files for resource storage
+//
+// This generates:
+//   - Generic resource.go schema (for resources without annotations)
+//   - Dedicated per-resource schemas (for resources with storage=dedicated)
+//   - Label and Annotation schemas (for metadata)
 func (g *Generator) GenerateEntSchemas() error {
 	if g.StorageType != "ent" {
-		return nil // Skip if not using Ent
+		return nil
 	}
 
 	fmt.Printf("🗄️  Generating Ent schemas...\n")
 
-	// Create schema directory
 	schemaDir := filepath.Join("internal", "storage", "ent", "schema")
 	if err := os.MkdirAll(schemaDir, 0755); err != nil {
 		return fmt.Errorf("failed to create ent schema directory: %w", err)
 	}
 
-	// Generate resource.go
 	if err := g.executeTemplate("entSchemaResource", filepath.Join(schemaDir, "resource.go"), nil); err != nil {
 		return err
 	}
 
-	// Generate label.go
 	if err := g.executeTemplate("entSchemaLabel", filepath.Join(schemaDir, "label.go"), nil); err != nil {
 		return err
 	}
 
-	// Generate annotation.go
 	if err := g.executeTemplate("entSchemaAnnotation", filepath.Join(schemaDir, "annotation.go"), nil); err != nil {
 		return err
+	}
+
+	for _, resource := range g.Resources {
+		if resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated {
+			data := g.templateData(resource, "ent/schema/resource_dedicated.go.tmpl")
+			schemaFile := filepath.Join(schemaDir, strings.ToLower(resource.Name)+".go")
+
+			if err := g.executeTemplate("entSchemaResourceDedicated", schemaFile, data); err != nil {
+				return fmt.Errorf("generate dedicated schema for %s: %w", resource.Name, err)
+			}
+
+			fmt.Printf("  ✓ Generated dedicated schema for %s\n", resource.Name)
+		}
 	}
 
 	return nil
 }
 
 // GenerateEntAdapter generates the adapter layer between Fabrica resources and Ent entities
+//
+// This generates:
+//   - Generic adapter (ent_adapter.go) for resources without dedicated storage
+//   - Per-resource dedicated adapters (ent_adapter_token.go) for resources with storage=dedicated
 func (g *Generator) GenerateEntAdapter() error {
 	if g.StorageType != "ent" {
 		return nil
 	}
 
-	fmt.Printf("🔗 Generating Ent adapter...\n")
+	fmt.Printf("🔗 Generating Ent adapters...\n")
+
+	storageDir := filepath.Join("internal", "storage")
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		return fmt.Errorf("failed to create storage directory: %w", err)
+	}
 
 	var buf bytes.Buffer
 	data := g.globalTemplateData("storage/adapter.go.tmpl")
@@ -1382,7 +1524,7 @@ func (g *Generator) GenerateEntAdapter() error {
 		return fmt.Errorf("failed to format generated ent adapter code: %w", err)
 	}
 
-	adapterPath := filepath.Join("internal", "storage", "ent_adapter.go")
+	adapterPath := filepath.Join(storageDir, "ent_adapter.go")
 	written, err := writeGeneratedFile(adapterPath, formatted)
 	if err != nil {
 		return fmt.Errorf("failed to write ent adapter file: %w", err)
@@ -1392,9 +1534,43 @@ func (g *Generator) GenerateEntAdapter() error {
 		fmt.Printf("  ✓ Generated %s\n", adapterPath)
 	}
 
-	// Generate generate.go for Ent code generation
-	if err := g.executeTemplate("generate", filepath.Join("internal", "storage", "generate.go"), nil); err != nil {
+	for _, resource := range g.Resources {
+		if resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated {
+			if err := g.generateDedicatedAdapter(resource); err != nil {
+				return fmt.Errorf("generate dedicated adapter for %s: %w", resource.Name, err)
+			}
+		}
+	}
+
+	if err := g.executeTemplate("generate", filepath.Join(storageDir, "generate.go"), nil); err != nil {
 		return fmt.Errorf("failed to generate generate.go: %w", err)
+	}
+
+	return nil
+}
+
+// generateDedicatedAdapter generates a dedicated adapter for a single resource
+func (g *Generator) generateDedicatedAdapter(resource ResourceMetadata) error {
+	var buf bytes.Buffer
+	data := g.templateData(resource, "storage/adapter_dedicated.go.tmpl")
+
+	if err := g.Templates["entAdapterDedicated"].Execute(&buf, data); err != nil {
+		return fmt.Errorf("execute template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("format code: %w", err)
+	}
+
+	adapterPath := filepath.Join("internal", "storage", fmt.Sprintf("ent_adapter_%s.go", strings.ToLower(resource.Name)))
+	written, err := writeGeneratedFile(adapterPath, formatted)
+	if err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+
+	if written {
+		fmt.Printf("  ✓ Generated dedicated adapter for %s\n", resource.Name)
 	}
 
 	return nil

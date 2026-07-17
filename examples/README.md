@@ -328,7 +328,7 @@ go run ./cmd/server/
 ### Switching Storage Backends
 
 ```bash
-fabrica init myapi --storage=postgres
+fabrica init myapi --storage-type=ent --db=postgres
 # Or edit after init
 fabrica generate
 go mod tidy  # Update dependencies
