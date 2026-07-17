@@ -581,20 +581,15 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t}\n")
 
 		if handlers {
-			generationCalls.WriteString("\tmetricsEnabled := false\n")
-			generationCalls.WriteString("\tif config, err := loadConfig(); err == nil {\n")
-			generationCalls.WriteString("\t\tmetricsEnabled = config.Features.Metrics.Enabled\n")
-			generationCalls.WriteString("\t}\n\n")
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
 			generationCalls.WriteString("\tif err := gen.GenerateMiddleware(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate middleware: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
-			generationCalls.WriteString("\tif metricsEnabled {\n")
-			generationCalls.WriteString("\t\tif err := callOptionalGenerator(gen, \"GenerateMetrics\"); err != nil {\n")
-			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate metrics: %v\", err)\n")
-			generationCalls.WriteString("\t\t}\n")
+			// Always generate metrics (will create stub if disabled)
+			generationCalls.WriteString("\tif err := gen.GenerateMetrics(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate metrics: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
 		}
 

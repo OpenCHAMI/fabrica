@@ -247,11 +247,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 
-	{{if .WithMetrics}}
-	// Initialize metrics
+	// Initialize metrics (returns nil if disabled in .fabrica.yaml)
 	metrics := initializeMetrics(config)
-	r.Use(metrics.Middleware)
-	{{end}}
+	if metrics != nil {
+		r.Use(metrics.Middleware)
+	}
 
 	// Version negotiation (Accept header `version=` or URL strategy)
 	// Initialize and use global version registry when versioning is enabled.
@@ -276,10 +276,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 		public.Get("/health", healthHandler)
 		public.Get("/openapi.json", ServeOpenAPISpec)
 		public.Get("/docs", ServeSwaggerUI)
-		{{if .WithMetrics}}
-		// Metrics endpoint (public for monitoring)
-		public.Handle("/metrics", metrics.Handler())
-		{{end}}
+		// Metrics endpoint (available when metrics enabled in .fabrica.yaml)
+		if metrics != nil {
+			public.Handle("/metrics", metrics.Handler())
+		}
 		{{if .WithAuth}}
 		if config.AuthEnabled {
 			// Allow CORS preflight without auth.

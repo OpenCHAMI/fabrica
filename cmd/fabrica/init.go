@@ -684,7 +684,8 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 				DBDriver: dbDriver,
 			},
 			Metrics: configpkg.MetricsConfig{
-				Enabled: opts.withMetrics,
+				Enabled:  opts.withMetrics,
+				Provider: "prometheus", // Default (and currently only) provider, always set for consistency
 			},
 			Reconciliation: configpkg.ReconciliationConfig{
 				Enabled:      opts.withReconcile,

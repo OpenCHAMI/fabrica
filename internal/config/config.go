@@ -54,7 +54,7 @@ type FeaturesConfig struct {
 	Conditional    ConditionalConfig    `yaml:"conditional"`
 	Auth           AuthConfig           `yaml:"auth"`
 	Storage        StorageConfig        `yaml:"storage"`
-	Metrics        MetricsConfig        `yaml:"metrics,omitempty"`
+	Metrics        MetricsConfig        `yaml:"metrics"`
 	Reconciliation ReconciliationConfig `yaml:"reconciliation,omitempty"`
 
 	// Security controls TokenSmith-first AuthN/AuthZ generation.
@@ -336,7 +336,8 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 				Type:    "file",
 			},
 			Metrics: MetricsConfig{
-				Enabled: false,
+				Enabled:  false,
+				Provider: "prometheus", // Default provider
 			},
 		},
 		Generation: GenerationConfig{

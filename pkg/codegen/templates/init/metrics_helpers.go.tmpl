@@ -13,8 +13,41 @@ SPDX-License-Identifier: MIT
 
 package main
 
+{{/* During init, .WithMetrics is set. During generate, .MetricsEnabled is set. */}}
+{{if .WithMetrics}}{{/* Init context */}}
 // initializeMetrics creates and configures the metrics system.
 // Returns the metrics instance for use in middleware and the /metrics handler.
 func initializeMetrics(config *Config) *Metrics {
 	return NewMetrics("{{.ProjectName}}")
 }
+{{else if .MetricsEnabled}}{{/* Generate context, enabled */}}
+// initializeMetrics creates and configures the metrics system.
+// Returns the metrics instance for use in middleware and the /metrics handler.
+func initializeMetrics(config *Config) *Metrics {
+	return NewMetrics("{{.ProjectName}}")
+}
+{{else}}{{/* Generate context, disabled */}}
+import "net/http"
+
+// Metrics is a stub type when metrics are disabled.
+type Metrics struct{}
+
+// Middleware is a no-op stub when metrics are disabled.
+func (m *Metrics) Middleware(next http.Handler) http.Handler {
+	return next
+}
+
+// Handler is a no-op stub when metrics are disabled.
+func (m *Metrics) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+}
+
+// initializeMetrics returns nil when metrics are disabled.
+// This allows main.go to conditionally enable metrics at runtime
+// based on the .fabrica.yaml configuration.
+func initializeMetrics(config *Config) *Metrics {
+	return nil
+}
+{{end}}

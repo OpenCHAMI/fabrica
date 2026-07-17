@@ -360,6 +360,66 @@ type Metrics struct {
    # Should see real Prometheus metrics
    ```
 
+### Enabling/Disabling Metrics After Initialization
+
+As of Fabrica v0.5.0+, you can toggle metrics on and off by editing `.fabrica.yaml` and running `fabrica generate`. The `cmd/server/main.go` file uses runtime detection to check if metrics are available.
+
+#### Enable Metrics (After Init Without --metrics)
+
+If you initialized your project without the `--metrics` flag and want to enable metrics:
+
+1. **Edit `.fabrica.yaml`**:
+   ```yaml
+   features:
+     metrics:
+       enabled: true  # Change from false
+       provider: prometheus
+   ```
+
+2. **Regenerate code**:
+   ```bash
+   fabrica generate
+   go mod tidy
+   ```
+
+3. **Verify**:
+   ```bash
+   go run ./cmd/server &
+   curl http://localhost:8080/metrics
+   # Should see Prometheus metrics
+   ```
+
+#### Disable Metrics (After Init With --metrics)
+
+If you want to disable metrics:
+
+1. **Edit `.fabrica.yaml`**:
+   ```yaml
+   features:
+     metrics:
+       enabled: false  # Change from true
+       provider: prometheus
+   ```
+
+2. **Regenerate code**:
+   ```bash
+   fabrica generate
+   go mod tidy
+   ```
+
+3. **Verify**:
+   ```bash
+   go run ./cmd/server &
+   curl http://localhost:8080/metrics
+   # Should return 404 Not Found
+   ```
+
+**How It Works**: The generator creates `cmd/server/metrics_helpers_generated.go` with either:
+- Real implementation (when enabled) - calls `NewMetrics()` from `metrics_generated.go`
+- Stub implementation (when disabled) - returns `nil` and provides no-op methods
+
+The `main.go` file checks for `nil` and conditionally registers the metrics middleware and `/metrics` endpoint.
+
 ### Breaking Changes
 
 - **Location**: Metrics moved from `cmd/server/metrics_helpers_generated.go` to `internal/middleware/metrics_generated.go`

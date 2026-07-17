@@ -1144,9 +1144,9 @@ func (g *Generator) GenerateMiddleware() error {
 func (g *Generator) GenerateMetrics() error {
 	serverDir := filepath.Join("cmd", "server")
 	metricsFile := filepath.Join(serverDir, "metrics_generated.go")
-	helpersFile := filepath.Join(serverDir, "metrics_helpers_generated.go")
 
 	if !g.Config.MetricsEnabled {
+		// Remove metrics_generated.go (contains Metrics type and implementation)
 		if _, err := os.Stat(metricsFile); err == nil {
 			if err := os.Remove(metricsFile); err != nil {
 				return fmt.Errorf("failed to remove metrics file: %w", err)
@@ -1154,12 +1154,26 @@ func (g *Generator) GenerateMetrics() error {
 			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", metricsFile)
 		}
 
-		if _, err := os.Stat(helpersFile); err == nil {
-			if err := os.Remove(helpersFile); err != nil {
-				return fmt.Errorf("failed to remove metrics helpers file: %w", err)
-			}
-			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", helpersFile)
+		// Generate stub metrics_helpers_generated.go that returns nil
+		fmt.Printf("📊 Generating metrics stub (metrics disabled)...\n")
+
+		if err := os.MkdirAll(serverDir, 0755); err != nil {
+			return fmt.Errorf("failed to create server directory: %w", err)
 		}
+
+		helpersData := map[string]interface{}{
+			"FabricaVersion": g.Version,
+			"GeneratedAt":    time.Now().UTC().Format(time.RFC3339),
+			"CopyrightYear":  time.Now().Year(),
+			"ModulePath":     g.ModulePath,
+			"ProjectName":    g.PackageName,
+			"MetricsEnabled": false, // Pass to template for stub generation
+		}
+
+		if err := g.generateMetricsHelpers(serverDir, helpersData); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
@@ -1180,6 +1194,7 @@ func (g *Generator) GenerateMetrics() error {
 		"CopyrightYear":  time.Now().Year(),
 		"ModulePath":     g.ModulePath,
 		"ProjectName":    g.PackageName,
+		"MetricsEnabled": true, // Pass to template for real implementation
 	}
 
 	if err := g.generateMetricsHelpers(serverDir, helpersData); err != nil {
