@@ -613,6 +613,11 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\t}\n")
 		}
 
+		// Always generate version command for server
+		generationCalls.WriteString("\tif err := gen.GenerateServerVersion(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate server version: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+
 		if handlers {
 			generationCalls.WriteString("\tif err := gen.GenerateRoutes(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate routes: %v\", err)\n")
@@ -684,6 +689,11 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		}
 		generationCalls.WriteString("\tif err := gen.GenerateClientCmd(); err != nil {\n")
 		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client CLI: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
+
+		// Always generate version command for client
+		generationCalls.WriteString("\tif err := gen.GenerateClientVersion(); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate client version: %v\", err)\n")
 		generationCalls.WriteString("\t}\n")
 	} else if packageName == "reconcile" {
 		// Reconciliation code generation
