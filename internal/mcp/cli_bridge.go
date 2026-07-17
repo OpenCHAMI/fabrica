@@ -78,7 +78,7 @@ func discoverResources(apisConfig *configpkg.APIsConfig) ([]string, error) {
 			return resources, nil
 		}
 	}
-	return append([]string(nil), group.Resources...), nil
+	return group.Resources.Names(), nil
 }
 
 func fabricaBinary() (string, error) {

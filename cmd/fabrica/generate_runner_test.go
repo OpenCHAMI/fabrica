@@ -55,6 +55,29 @@ func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 	}
 }
 
+func TestGenerateRunnerCode_DeclaresStorageEnabled(t *testing.T) {
+	runnerCode := generateRunnerCode(
+		"/tmp/project",
+		"github.com/example/project",
+		"cmd/server",
+		"main",
+		true,
+		false,
+		false,
+		false,
+		false,
+		"file",
+	)
+
+	if !strings.Contains(runnerCode, "Enabled  *bool  `yaml:\"enabled\"`") {
+		t.Fatalf("runner storage config must distinguish an omitted enabled field:\n%s", runnerCode)
+	}
+	if !strings.Contains(runnerCode, "if config.Features.Storage.Enabled != nil {") ||
+		!strings.Contains(runnerCode, "gen.Config.StorageEnabled = *config.Features.Storage.Enabled") {
+		t.Fatalf("runner must only override the storage default when enabled is present:\n%s", runnerCode)
+	}
+}
+
 func TestGenerateRunnerCode_StorageOnlyDoesNotRegenerateRoutesOrModels(t *testing.T) {
 	runnerCode := generateRunnerCode(
 		"/tmp/project",

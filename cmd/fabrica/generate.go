@@ -128,6 +128,25 @@ Examples:
 				return err
 			}
 
+			effectiveHandlers := handlers
+			effectiveStorage := storage
+			effectiveClient := client
+			effectiveOpenAPI := openapi
+			if all {
+				// Use config settings if present, otherwise default to true for all
+				if config != nil {
+					effectiveHandlers = config.Generation.Handlers
+					effectiveStorage = config.Generation.Storage
+					effectiveClient = config.Generation.Client
+					effectiveOpenAPI = config.Generation.OpenAPI
+				} else {
+					effectiveHandlers = true
+					effectiveStorage = true
+					effectiveClient = true
+					effectiveOpenAPI = true
+				}
+			}
+
 			if debug {
 				if apisConfig != nil {
 					fmt.Println("🔍 Discovering resources in apis/<group>/<version>/...")
@@ -203,17 +222,17 @@ Examples:
 			}
 
 			// Generate server code (handlers, storage, openapi)
-			if all || handlers || storage || openapi {
+			if effectiveHandlers || effectiveStorage || effectiveOpenAPI {
 				if debug {
 					fmt.Println("📦 Generating server code...")
 				}
-				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", effectiveHandlers, effectiveStorage, effectiveOpenAPI, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
 
 			// Generate client code
-			if all || client {
+			if effectiveClient {
 				fmt.Println("📦 Generating client code...")
 				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
@@ -230,7 +249,7 @@ Examples:
 
 			// Auto-generate Ent client code if using Ent storage
 			storageType := detectStorageType()
-			if storageType == "ent" && (all || storage) {
+			if storageType == "ent" && effectiveStorage {
 				fmt.Println("🔄 Generating Ent client code...")
 
 				if err := generateEntCode(debug); err != nil {
@@ -780,6 +799,7 @@ type EventsConfig struct {
 }
 
 type StorageConfig struct {
+	Enabled  *bool  `+"`yaml:\"enabled\"`"+`
 	Type     string `+"`yaml:\"type\"`"+`
 	DBDriver string `+"`yaml:\"db_driver\"`"+`
 }
@@ -832,6 +852,9 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
+		if config.Features.Storage.Enabled != nil {
+			gen.Config.StorageEnabled = *config.Features.Storage.Enabled
+		}
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {
@@ -926,7 +949,7 @@ func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error)
 
 	if _, err := os.Stat(hubDir); os.IsNotExist(err) {
 		// Hub directory doesn't exist yet, return resources listed in apis.yaml
-		return group.Resources, nil
+		return group.Resources.Names(), nil
 	}
 
 	var resources []string
@@ -1259,6 +1282,18 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *config.API
 		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
 		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
+		if resourceSettings, ok := group.Resources.Get(resource); ok && resourceSettings.Configured() {
+			registrations.WriteString("\tgen.ConfigureResource(" + strconv.Quote(resource) + ", codegen.ResourceConfig{\n")
+			registrations.WriteString("\t\tURLPath: " + strconv.Quote(resourceSettings.Path) + ",\n")
+			registrations.WriteString("\t\tOperations: codegen.ResourceOperationsFromNames([]string{")
+			for i, operation := range resourceSettings.Operations {
+				if i > 0 {
+					registrations.WriteString(", ")
+				}
+				registrations.WriteString(strconv.Quote(operation))
+			}
+			registrations.WriteString("}),\n\t})\n")
+		}
 	}
 
 	return fmt.Sprintf(`%spackage resources

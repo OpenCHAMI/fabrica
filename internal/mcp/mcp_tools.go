@@ -141,13 +141,14 @@ func (s *mcpServer) toolValidateProject(args map[string]interface{}) (map[string
 					storageResources[name] = struct{}{}
 				}
 
-				for _, resource := range group.Resources {
+				resourceNames := group.Resources.Names()
+				for _, resource := range resourceNames {
 					if _, ok := storageResources[resource]; !ok {
 						addIssue("warning", "resource_list_drift", fmt.Sprintf("resource %s listed in apis.yaml but not found in storage version dir", resource))
 					}
 				}
 				for _, resource := range storageResourceFiles {
-					if !contains(group.Resources, resource) {
+					if !contains(resourceNames, resource) {
 						addIssue("warning", "resource_list_drift", fmt.Sprintf("resource %s exists in storage version dir but is missing from apis.yaml resources", resource))
 					}
 				}

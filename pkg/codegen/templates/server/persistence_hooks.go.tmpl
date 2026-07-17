@@ -1,0 +1,68 @@
+{{/*
+SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+
+SPDX-License-Identifier: MIT
+*/}}
+// Copyright © {{.CopyrightYear}} OpenCHAMI a Series of LF Projects, LLC
+//
+// SPDX-License-Identifier: MIT
+//
+// This file contains create-once persistence hooks for {{.Name}} resources.
+// It is generated only if missing and is safe to edit.
+package main
+
+import (
+	"context"
+{{if not .StorageEnabled}}
+	"fmt"
+{{end}}
+
+	{{.PackageAlias}} "{{.Package}}"
+{{if .StorageEnabled}}
+	"{{.ModulePath}}/internal/storage"
+{{end}}
+)
+
+{{if .Operations.List}}
+// List{{.Name}}Resources supplies data for GET {{.URLPath}}.
+func List{{.Name}}Resources(ctx context.Context) ([]*{{.PackageAlias}}.{{.Name}}, error) {
+{{if .StorageEnabled}}
+	return storage.LoadAll{{.StorageName}}s(ctx)
+{{else}}
+	return nil, fmt.Errorf("List{{.Name}}Resources must be implemented when storage generation is disabled")
+{{end}}
+}
+{{end}}
+
+{{if or .Operations.Get .Operations.Update .Operations.Patch .Operations.Delete .Operations.UpdateStatus .Operations.PatchStatus}}
+// Get{{.Name}}Resource supplies data for operations that load one {{.Name}}.
+func Get{{.Name}}Resource(ctx context.Context, uid string) (*{{.PackageAlias}}.{{.Name}}, error) {
+{{if .StorageEnabled}}
+	return storage.Load{{.StorageName}}(ctx, uid)
+{{else}}
+	return nil, fmt.Errorf("Get{{.Name}}Resource must be implemented when storage generation is disabled")
+{{end}}
+}
+{{end}}
+
+{{if or .Operations.Create .Operations.Update .Operations.Patch .Operations.UpdateStatus .Operations.PatchStatus}}
+// Save{{.Name}}Resource persists a {{.Name}}.
+func Save{{.Name}}Resource(ctx context.Context, resource *{{.PackageAlias}}.{{.Name}}) error {
+{{if .StorageEnabled}}
+	return storage.Save{{.StorageName}}(ctx, resource)
+{{else}}
+	return fmt.Errorf("Save{{.Name}}Resource must be implemented when storage generation is disabled")
+{{end}}
+}
+{{end}}
+
+{{if .Operations.Delete}}
+// Delete{{.Name}}Resource deletes a {{.Name}} by UID.
+func Delete{{.Name}}Resource(ctx context.Context, uid string) error {
+{{if .StorageEnabled}}
+	return storage.Delete{{.StorageName}}(ctx, uid)
+{{else}}
+	return fmt.Errorf("Delete{{.Name}}Resource must be implemented when storage generation is disabled")
+{{end}}
+}
+{{end}}

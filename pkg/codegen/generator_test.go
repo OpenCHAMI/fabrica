@@ -51,6 +51,187 @@ func TestGlobalAndMiddlewareTemplateDataIncludeCopyrightYear(t *testing.T) {
 	}
 }
 
+func TestStorageDisabledHandlersUsePersistenceHooks(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+	gen.Version = "test"
+	gen.Config.StorageEnabled = false
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+
+	resource := ResourceMetadata{
+		Name:         "Node",
+		PluralName:   "nodes",
+		Package:      "example.com/test/pkg/resources/node",
+		PackageAlias: "node",
+		TypeName:     "*node.Node",
+		SpecType:     "node.NodeSpec",
+		StatusType:   "node.NodeStatus",
+		URLPath:      "/nodes",
+		StorageName:  "Node",
+		Operations: ResourceOperations{
+			Get:    true,
+			Create: true,
+			Delete: true,
+		},
+	}
+
+	data := gen.templateData(resource, "server/handlers.go.tmpl")
+	var handlers bytes.Buffer
+	if err := gen.Templates["handlers"].Execute(&handlers, data); err != nil {
+		t.Fatalf("execute handlers template: %v", err)
+	}
+	gotHandlers := handlers.String()
+	if strings.Contains(gotHandlers, "internal/storage") {
+		t.Fatalf("storage-disabled handlers should not import generated storage:\n%s", gotHandlers)
+	}
+	wantHandlerSummary := `// Generated handlers provide:
+//   - GET /nodes/{uid} (get specific Node)
+//   - POST /nodes (create new Node)
+//   - DELETE /nodes/{uid} (delete Node)`
+	if !strings.Contains(gotHandlers, wantHandlerSummary) {
+		t.Fatalf("generated handler summary is not compact and readable:\n%s", gotHandlers)
+	}
+	for _, want := range []string{"GetNodeResource(r.Context(), uid)", "SaveNodeResource(r.Context(), node)", "DeleteNodeResource(r.Context(), uid)"} {
+		if !strings.Contains(gotHandlers, want) {
+			t.Fatalf("handlers missing %q:\n%s", want, gotHandlers)
+		}
+	}
+
+	gen.Resources = []ResourceMetadata{resource}
+	var routes bytes.Buffer
+	if err := gen.Templates["routes"].Execute(&routes, gen.globalTemplateData("server/routes.go.tmpl")); err != nil {
+		t.Fatalf("execute routes template: %v", err)
+	}
+	wantRouteSummary := `// Route patterns:
+//   - GET    /nodes/{uid}        -> Get specific Node
+//   - POST   /nodes              -> Create new Node
+//   - DELETE /nodes/{uid}        -> Delete Node`
+	if !strings.Contains(routes.String(), wantRouteSummary) {
+		t.Fatalf("generated route summary is not compact and readable:\n%s", routes.String())
+	}
+	var openAPI bytes.Buffer
+	if err := gen.Templates["openapi"].Execute(&openAPI, gen.globalTemplateData("server/openapi.go.tmpl")); err != nil {
+		t.Fatalf("execute OpenAPI template: %v", err)
+	}
+
+	var hooks bytes.Buffer
+	if err := gen.Templates["persistenceHooks"].Execute(&hooks, data); err != nil {
+		t.Fatalf("execute persistence hooks template: %v", err)
+	}
+	gotHooks := hooks.String()
+	if strings.Contains(gotHooks, "internal/storage") {
+		t.Fatalf("storage-disabled hooks should not import generated storage:\n%s", gotHooks)
+	}
+	for _, want := range []string{
+		"GetNodeResource must be implemented when storage generation is disabled",
+		"SaveNodeResource must be implemented when storage generation is disabled",
+		"DeleteNodeResource must be implemented when storage generation is disabled",
+	} {
+		if !strings.Contains(gotHooks, want) {
+			t.Fatalf("hooks missing %q:\n%s", want, gotHooks)
+		}
+	}
+}
+
+func TestStorageEnabledPersistenceHooksUseGeneratedStorage(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+	gen.Version = "test"
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+
+	resource := ResourceMetadata{
+		Name:         "Node",
+		PluralName:   "nodes",
+		Package:      "example.com/test/pkg/resources/node",
+		PackageAlias: "node",
+		TypeName:     "*node.Node",
+		SpecType:     "node.NodeSpec",
+		StatusType:   "node.NodeStatus",
+		URLPath:      "/nodes",
+		StorageName:  "Node",
+		Operations: ResourceOperations{
+			List:   true,
+			Create: true,
+		},
+	}
+
+	var hooks bytes.Buffer
+	if err := gen.Templates["persistenceHooks"].Execute(
+		&hooks,
+		gen.templateData(resource, "server/persistence_hooks.go.tmpl"),
+	); err != nil {
+		t.Fatalf("execute persistence hooks template: %v", err)
+	}
+
+	got := hooks.String()
+	for _, want := range []string{
+		`"example.com/test/internal/storage"`,
+		"return storage.LoadAllNodes(ctx)",
+		"return storage.SaveNode(ctx, resource)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("storage-enabled persistence hooks missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "must be implemented when storage generation is disabled") {
+		t.Fatalf("storage-enabled persistence hooks contain disabled-storage stubs:\n%s", got)
+	}
+}
+
+func TestPersistenceHooksOnlyWhenAbsent(t *testing.T) {
+	outputDir := t.TempDir()
+	gen := NewGenerator(outputDir, "main", "example.com/test")
+	gen.Version = "test"
+	gen.Config.StorageEnabled = false
+	gen.Resources = []ResourceMetadata{
+		{
+			Name:         "Node",
+			PluralName:   "nodes",
+			Package:      "example.com/test/pkg/resources/node",
+			PackageAlias: "node",
+			TypeName:     "*node.Node",
+			SpecType:     "node.NodeSpec",
+			StatusType:   "node.NodeStatus",
+			URLPath:      "/nodes",
+			StorageName:  "Node",
+			Operations:   ResourceOperations{List: true},
+		},
+	}
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	if err := gen.GenerateHandlers(); err != nil {
+		t.Fatalf("GenerateHandlers: %v", err)
+	}
+
+	hookPath := filepath.Join(outputDir, "node_persistence_hooks.go")
+	generated, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read persistence hook file: %v", err)
+	}
+	if !strings.Contains(string(generated), "func ListNodeResources") {
+		t.Fatalf("persistence hook file missing list hook:\n%s", generated)
+	}
+
+	customized := append(generated, []byte("\n// project customization\n")...)
+	if err := os.WriteFile(hookPath, customized, 0644); err != nil {
+		t.Fatalf("customize persistence hook file: %v", err)
+	}
+	if err := gen.GenerateHandlers(); err != nil {
+		t.Fatalf("regenerate handlers: %v", err)
+	}
+
+	afterRegeneration, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read persistence hook file after regeneration: %v", err)
+	}
+	if !bytes.Equal(afterRegeneration, customized) {
+		t.Fatal("regeneration overwrote the project-owned persistence hook file")
+	}
+}
+
 func TestExecuteTemplateBackfillsCommonMetadata(t *testing.T) {
 	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
 	gen.Version = "test"

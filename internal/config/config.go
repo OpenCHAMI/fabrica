@@ -173,7 +173,13 @@ func LoadConfig(dir string) (*FabricaConfig, error) {
 		return nil, fmt.Errorf("failed to read %s: %w", ConfigFileName, err)
 	}
 
-	var config FabricaConfig
+	config := FabricaConfig{
+		Features: FeaturesConfig{
+			Storage: StorageConfig{Enabled: true},
+		},
+		Generation: DefaultGenerationConfig(),
+	}
+
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", ConfigFileName, err)
 	}
@@ -263,30 +269,41 @@ func ValidateConfig(config *FabricaConfig) error {
 	if config.Features.Security.AuthZ.Enabled && !config.Features.Security.AuthN.Enabled {
 		return fmt.Errorf("features.security.authz.enabled requires features.security.authn.enabled")
 	}
-	if !config.Features.Storage.Enabled {
-		return fmt.Errorf("features.storage.enabled must be true; generated CRUD APIs require storage")
-	}
 	if config.Features.Reconciliation.Enabled && !config.Features.Events.Enabled {
 		return fmt.Errorf("features.reconciliation.enabled requires features.events.enabled")
 	}
 
 	// Validate storage type
-	validTypes := map[string]bool{"file": true, "ent": true}
-	if !validTypes[config.Features.Storage.Type] {
-		return fmt.Errorf("invalid storage.type: %s (must be 'file' or 'ent')",
-			config.Features.Storage.Type)
-	}
+	if config.Features.Storage.Enabled {
+		validTypes := map[string]bool{"file": true, "ent": true}
+		if !validTypes[config.Features.Storage.Type] {
+			return fmt.Errorf("invalid storage.type: %s (must be 'file' or 'ent')",
+				config.Features.Storage.Type)
+		}
 
-	// Validate DB driver if using ent
-	if config.Features.Storage.Type == "ent" && config.Features.Storage.DBDriver != "" {
-		validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true, "sqlite3": true}
-		if !validDrivers[config.Features.Storage.DBDriver] {
-			return fmt.Errorf("invalid storage.db_driver: %s (must be 'postgres', 'mysql', 'sqlite', or 'sqlite3')",
-				config.Features.Storage.DBDriver)
+		// Validate DB driver if using ent
+		if config.Features.Storage.Type == "ent" && config.Features.Storage.DBDriver != "" {
+			validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true, "sqlite3": true}
+			if !validDrivers[config.Features.Storage.DBDriver] {
+				return fmt.Errorf("invalid storage.db_driver: %s (must be 'postgres', 'mysql', 'sqlite', or 'sqlite3')",
+					config.Features.Storage.DBDriver)
+			}
 		}
 	}
 
 	return nil
+}
+
+// DefaultGenerationConfig returns the default artifact generation settings.
+func DefaultGenerationConfig() GenerationConfig {
+	return GenerationConfig{
+		Handlers:   true,
+		Storage:    true,
+		Client:     true,
+		OpenAPI:    true,
+		Events:     false,
+		Middleware: true,
+	}
 }
 
 // NewDefaultConfig creates a new configuration with sensible defaults.
@@ -339,14 +356,7 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 				Enabled: false,
 			},
 		},
-		Generation: GenerationConfig{
-			Handlers:   true,
-			Storage:    true,
-			Client:     true,
-			OpenAPI:    true,
-			Events:     false,
-			Middleware: true,
-		},
+		Generation: DefaultGenerationConfig(),
 	}
 }
 

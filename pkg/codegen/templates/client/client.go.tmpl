@@ -335,7 +335,7 @@ type {{.Name}}VersionSnapshot struct {
 }
 {{- end}}{{- end}}
 
-// Get{{.Name}}s retrieves all {{.PluralName}}
+{{if .Operations.List}}// Get{{.Name}}s retrieves all {{.PluralName}}
 func (c *Client) Get{{.Name}}s(ctx context.Context) ([]{{.PackageAlias}}.{{.Name}}, error) {
 	var response []{{.PackageAlias}}.{{.Name}}
 	if err := c.doRequest(ctx, "GET", "{{.URLPath}}", nil, &response); err != nil {
@@ -343,8 +343,9 @@ func (c *Client) Get{{.Name}}s(ctx context.Context) ([]{{.PackageAlias}}.{{.Name
 	}
 	return response, nil
 }
+{{end}}
 
-// Get{{.Name}} retrieves a specific {{.Name}} by UID
+{{if .Operations.Get}}// Get{{.Name}} retrieves a specific {{.Name}} by UID
 func (c *Client) Get{{.Name}}(ctx context.Context, uid string) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
 	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
@@ -353,7 +354,9 @@ func (c *Client) Get{{.Name}}(ctx context.Context, uid string) ({{.TypeName}}, e
 	}
 	return &result, nil
 }
+{{end}}
 
+{{if .Operations.Create}}
 // Create{{.Name}}Simple creates a new {{.Name}} with minimal boilerplate (Simple API)
 //
 // This is the recommended method for most use cases. It only requires a name and spec,
@@ -405,7 +408,9 @@ func (c *Client) Create{{.Name}}(ctx context.Context, req Create{{.Name}}Request
 	}
 	return &result, nil
 }
+{{end}}
 
+{{if .Operations.Update}}
 // Update{{.Name}}Simple updates an existing {{.Name}}'s spec (Simple API)
 //
 // This is the recommended method for most update operations. It only requires the UID
@@ -454,8 +459,9 @@ func (c *Client) Update{{.Name}}(ctx context.Context, uid string, req Update{{.N
 	}
 	return &result, nil
 }
+{{end}}
 
-// Patch{{.Name}} patches an existing {{.Name}} spec with the specified patch data and content type
+{{if .Operations.Patch}}// Patch{{.Name}} patches an existing {{.Name}} spec with the specified patch data and content type
 func (c *Client) Patch{{.Name}}(ctx context.Context, uid string, patchData []byte, contentType string) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
 	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
@@ -464,8 +470,9 @@ func (c *Client) Patch{{.Name}}(ctx context.Context, uid string, patchData []byt
 	}
 	return &result, nil
 }
+{{end}}
 
-// Update{{.Name}}Status updates only the status of an existing {{.Name}}
+{{if .Operations.UpdateStatus}}// Update{{.Name}}Status updates only the status of an existing {{.Name}}
 // This method is intended for controllers, reconcilers, and monitoring systems.
 // It preserves the spec and only updates the status portion of the resource.
 func (c *Client) Update{{.Name}}Status(ctx context.Context, uid string, status {{.PackageAlias}}.{{.Name}}Status) ({{.TypeName}}, error) {
@@ -476,8 +483,9 @@ func (c *Client) Update{{.Name}}Status(ctx context.Context, uid string, status {
 	}
 	return &result, nil
 }
+{{end}}
 
-// Patch{{.Name}}Status patches only the status of an existing {{.Name}}
+{{if .Operations.PatchStatus}}// Patch{{.Name}}Status patches only the status of an existing {{.Name}}
 // Supports JSON Merge Patch by default. Use Patch{{.Name}}StatusWithType for other patch formats.
 func (c *Client) Patch{{.Name}}Status(ctx context.Context, uid string, patchData []byte) ({{.TypeName}}, error) {
 	return c.Patch{{.Name}}StatusWithType(ctx, uid, patchData, "application/merge-patch+json")
@@ -493,8 +501,9 @@ func (c *Client) Patch{{.Name}}StatusWithType(ctx context.Context, uid string, p
 	}
 	return &result, nil
 }
+{{end}}
 
-// Delete{{.Name}} deletes a {{.Name}} by UID
+{{if .Operations.Delete}}// Delete{{.Name}} deletes a {{.Name}} by UID
 func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
 	endpoint := fmt.Sprintf("{{.URLPath}}/%s", uid)
 	var response DeleteResponse
@@ -503,6 +512,7 @@ func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
 	}
 	return nil
 }
+{{end}}
 
 {{end}}
 

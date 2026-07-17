@@ -6,24 +6,58 @@
 # form role:<name>. Start simple, then tailor these tuples for your deployment.
 
 {{range .Resources}}# {{.Name}}
+{{- if .Operations.List }}
 p, role:viewer, {{.URLPath}}, GET
+{{- end }}
+{{- if .Operations.Get }}
 p, role:viewer, {{.URLPath}}/{uid}, GET
+{{- end }}
 
+{{- if .Operations.List }}
 p, role:editor, {{.URLPath}}, GET
+{{- end }}
+{{- if .Operations.Get }}
 p, role:editor, {{.URLPath}}/{uid}, GET
+{{- end }}
+{{- if .Operations.Create }}
 p, role:editor, {{.URLPath}}, POST
+{{- end }}
+{{- if .Operations.Update }}
 p, role:editor, {{.URLPath}}/{uid}, PUT
+{{- end }}
+{{- if .Operations.Patch }}
 p, role:editor, {{.URLPath}}/{uid}, PATCH
+{{- end }}
+{{- if .Operations.UpdateStatus }}
 p, role:editor, {{.URLPath}}/{uid}/status, PUT
+{{- end }}
+{{- if .Operations.PatchStatus }}
 p, role:editor, {{.URLPath}}/{uid}/status, PATCH
+{{- end }}
 
+{{- if .Operations.List }}
 p, role:admin, {{.URLPath}}, GET
+{{- end }}
+{{- if .Operations.Get }}
 p, role:admin, {{.URLPath}}/{uid}, GET
+{{- end }}
+{{- if .Operations.Create }}
 p, role:admin, {{.URLPath}}, POST
+{{- end }}
+{{- if .Operations.Update }}
 p, role:admin, {{.URLPath}}/{uid}, PUT
+{{- end }}
+{{- if .Operations.Patch }}
 p, role:admin, {{.URLPath}}/{uid}, PATCH
+{{- end }}
+{{- if .Operations.Delete }}
 p, role:admin, {{.URLPath}}/{uid}, DELETE
+{{- end }}
+{{- if .Operations.UpdateStatus }}
 p, role:admin, {{.URLPath}}/{uid}/status, PUT
+{{- end }}
+{{- if .Operations.PatchStatus }}
 p, role:admin, {{.URLPath}}/{uid}/status, PATCH
+{{- end }}
 
 {{end}}# Add deployment-specific tuples below.
