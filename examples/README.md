@@ -35,19 +35,7 @@ Learn the fundamentals:
 
 **What you'll build:** A device inventory API with full CRUD operations, generated in seconds.
 
-### 2. [Storage and Authentication](02-storage-auth/) - Essential Skills 🔐
-**Time: 20 minutes**
-
-Add production features:
-- Configuring different storage backends (file, memory, database)
-- Integrating JWT authentication with tokensmith middleware
-- Protecting endpoints with role-based access
-- Implementing custom validation
-- Working with metadata (labels, annotations)
-
-**What you'll build:** A secure device inventory with JWT authentication and persistent storage.
-
-### 3. [FRU Service](03-fru-service/) - Production Features 🔐
+### 2. [FRU Service](03-fru-service/) - Production Features 🔐
 **Time: 30 minutes**
 
 Master production features:
@@ -59,7 +47,7 @@ Master production features:
 
 **What you'll build:** A field replaceable unit tracking system with persistent storage.
 
-### 4. [CloudEvents Integration](05-cloud-events/) - Event Publishing 📡
+### 3. [CloudEvents Integration](05-cloud-events/) - Event Publishing 📡
 **Time: 15 minutes**
 
 Master event-driven patterns:
@@ -71,7 +59,7 @@ Master event-driven patterns:
 
 **What you'll build:** A sensor monitoring API with comprehensive event publishing and a real-time event subscriber.
 
-### 5. [Rack Reconciliation](04-rack-reconciliation/) - Event-Driven Architecture 🔄
+### 4. [Rack Reconciliation](04-rack-reconciliation/) - Event-Driven Architecture 🔄
 **Time: 45 minutes**
 
 Master declarative patterns:
@@ -83,7 +71,7 @@ Master declarative patterns:
 
 **What you'll build:** A data center rack inventory system that automatically provisions child resources (chassis, blades, nodes, BMCs) when a Rack is created.
 
-### 6. [Spec Version History](07-spec-versioning/) - Track Spec Changes 🕘
+### 5. [Spec Version History](07-spec-versioning/) - Track Spec Changes 🕘
 **Time: 15 minutes**
 
 Keep an immutable history of spec changes:
@@ -94,7 +82,7 @@ Keep an immutable history of spec changes:
 
 **What you'll build:** A small API with a versioned Sensor resource and a script to exercise version history.
 
-### 7. [Hub/Spoke API Versioning](08-api-versioning/) - Multi-Version APIs 🔄
+### 6. [Hub/Spoke API Versioning](08-api-versioning/) - Multi-Version APIs 🔄
 **Time: 20 minutes**
 
 Master Kubebuilder-style API versioning:
@@ -105,7 +93,7 @@ Master Kubebuilder-style API versioning:
 
 **What you'll build:** A device management API supporting v1alpha1, v1beta1, and v1 with automatic version conversion.
 
-### 8. [Advanced Ent Storage Features](09-ent-advanced/) - Production Storage 🚀
+### 7. [Advanced Ent Storage Features](09-ent-advanced/) - Production Storage 🚀
 **Time: 30-45 minutes**
 
 Unlock powerful Ent storage capabilities:
@@ -115,7 +103,7 @@ Unlock powerful Ent storage capabilities:
 - Building complex queries with Ent's fluent API
 - Real-world patterns for microservice storage
 
-**Prerequisites:** Understand Ent storage basics from Example 3
+**Prerequisites:** Understand Ent storage basics from Example 2
 
 **What you'll build:** A system management API with advanced querying, transactions, and data portability. Includes:
 - `QueryServers()`, `ListServersByLabels()`, `GetServerByUID()` patterns
@@ -131,20 +119,20 @@ Unlock powerful Ent storage capabilities:
 - Real-world patterns (filter, pagination, migration)
 - Troubleshooting guide and FAQ
 
-### 9. [Export / Import (Ent)](10-export-import/) - Backup & Migration 📦
+### 8. [Export / Import (Ent)](10-export-import/) - Backup & Migration 📦
 **Time:** 10-15 minutes
 
 Ship-ready backup workflows using generated server commands:
 - Generated `export` / `import` subcommands (no API server needed)
 - Offline backups with JSON/YAML output and per-type organization
 - Import modes: upsert / replace / skip with transactional safety
-- Works with any Ent-backed project; reuse Example 09 demo server
+- Works with any Ent-backed project; reuse Example 08 demo server
 
 **Prerequisites:** Ent storage basics
 
 **What you'll build:** A repeatable backup/restore flow with generated CLI commands and JSON/YAML artifacts.
 
-### 10. [Node Service Shim](11-node-service/) - Profiles & NodeSets 🧭
+### 9. [Node Service Shim](11-node-service/) - Profiles & NodeSets 🧭
 **Time:** 30-40 minutes
 
 Introduce profile-aware node composition:
@@ -159,24 +147,24 @@ Introduce profile-aware node composition:
 
 ### Example Comparison
 
-| Feature | Basic CRUD | Storage & Auth | FRU Service | CloudEvents | Rack Reconciliation | Ent Advanced | Export/Import |
-|---------|------------|----------------|-------------|-------------|---------------------|--------------|---------------|
-| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Storage Backends | File | File/DB | DB | File | File | Ent (DB) | Ent (DB) |
-| Authentication | ❌ | ✅ JWT | ✅ JWT | ❌ | ❌ | ❌ | ❌ |
-| Authorization | ❌ | ✅ RBAC | ✅ RBAC | ❌ | ❌ | ❌ | ❌ |
-| Validation | Basic | ✅ Custom | ✅ Custom | Basic | ✅ Custom | ✅ Custom | ✅ Custom |
-| Reconciliation | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| CloudEvents | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Event Monitoring | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Hierarchical Resources | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| State Machines | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Query Builders | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Type-safe queries | ✅ via storage |
-| Transactions | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Atomic ops | ✅ atomic imports |
-| Export/Import | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ server commands | ✅ server commands |
-| Label Filtering | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Production queries | ✅ via storage |
+| Feature | Basic CRUD | FRU Service | CloudEvents | Rack Reconciliation | Ent Advanced | Export/Import |
+|---------|------------|-------------|-------------|---------------------|--------------|---------------|
+| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Storage Backends | File | DB | File | File | Ent (DB) | Ent (DB) |
+| Authentication | ❌ | ✅ JWT | ❌ | ❌ | ❌ | ❌ |
+| Authorization | ❌ | ✅ RBAC | ❌ | ❌ | ❌ | ❌ |
+| Validation | Basic | ✅ Custom | Basic | ✅ Custom | ✅ Custom | ✅ Custom |
+| Reconciliation | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| CloudEvents | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Event Monitoring | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Hierarchical Resources | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| State Machines | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Query Builders | ❌ | ❌ | ❌ | ❌ | ✅ Type-safe queries | ✅ via storage |
+| Transactions | ❌ | ❌ | ❌ | ❌ | ✅ Atomic ops | ✅ atomic imports |
+| Export/Import | ❌ | ❌ | ❌ | ❌ | ✅ server commands | ✅ server commands |
+| Label Filtering | ❌ | ❌ | ❌ | ❌ | ✅ Production queries | ✅ via storage |
 
 ### Running Examples
 

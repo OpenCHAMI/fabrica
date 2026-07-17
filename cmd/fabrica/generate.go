@@ -845,6 +845,7 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
+		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {

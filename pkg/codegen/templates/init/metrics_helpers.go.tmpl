@@ -13,12 +13,8 @@ SPDX-License-Identifier: MIT
 
 package main
 
-import (
-	appmiddleware "{{.ModulePath}}/internal/middleware"
-)
-
 // initializeMetrics creates and configures the metrics system.
 // Returns the metrics instance for use in middleware and the /metrics handler.
-func initializeMetrics(config *Config) *appmiddleware.Metrics {
-	return appmiddleware.NewMetrics("{{.ProjectName}}")
+func initializeMetrics(config *Config) *Metrics {
+	return NewMetrics("{{.ProjectName}}")
 }

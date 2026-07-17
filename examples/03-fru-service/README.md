@@ -11,6 +11,8 @@ SPDX-License-Identifier: MIT
 **Prerequisites:** Go 1.23+, fabrica CLI installed, SQLite3
 
 > **About This Example:** This directory contains reference code that demonstrates Fabrica's Ent storage features. The `pkg/` directory includes example implementations marked with `//go:build ignore` to prevent them from being compiled as part of the Fabrica repository. When following this guide, you'll generate your own project with Fabrica, and these files serve as documentation and reference.
+>
+> **Note:** This example demonstrates configuring Ent/SQLite storage. By default, Fabrica generates file storage unless you explicitly configure Ent in `.fabrica.yaml`.
 
 ## What You'll Build
 
