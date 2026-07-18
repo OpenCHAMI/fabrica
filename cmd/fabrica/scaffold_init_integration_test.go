@@ -43,7 +43,6 @@ func TestInitScaffold_EmitsHelperBoundaries(t *testing.T) {
 		filepath.Join(root, "cmd/server/main.go"),
 		filepath.Join(root, "cmd/server/runtime_helpers_generated.go"),
 		filepath.Join(root, "cmd/server/auth_helpers_generated.go"),
-		filepath.Join(root, "cmd/server/metrics_helpers_generated.go"),
 	}
 	for _, file := range requiredFiles {
 		if _, err := os.Stat(file); err != nil {
@@ -62,7 +61,6 @@ func TestInitScaffold_EmitsHelperBoundaries(t *testing.T) {
 		"initializeStorage(config)",
 		"initializeEventingAndReconciliation(config)",
 		"initializeAuthMiddleware(config)",
-		"initializeMetricsServer(config)",
 		"logStartupConfiguration(config, addr)",
 	} {
 		if !strings.Contains(mainContent, marker) {
@@ -74,7 +72,6 @@ func TestInitScaffold_EmitsHelperBoundaries(t *testing.T) {
 		"storage.InitFileBackend(config.DataDir)",
 		"tokensmithauthn.Middleware(tokensmithauthn.Options{",
 		"events.NewInMemoryEventBus(1000, 10)",
-		"func startMetricsServer(",
 	} {
 		if strings.Contains(mainContent, marker) {
 			t.Fatalf("generated main.go should not contain feature implementation marker %q", marker)

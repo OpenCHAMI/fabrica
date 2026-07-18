@@ -584,9 +584,12 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
-			// Always generate middleware when generating handlers
 			generationCalls.WriteString("\tif err := gen.GenerateMiddleware(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate middleware: %v\", err)\n")
+			generationCalls.WriteString("\t}\n")
+			// Always generate metrics (will create stub if disabled)
+			generationCalls.WriteString("\tif err := gen.GenerateMetrics(); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate metrics: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
 		}
 
@@ -757,6 +760,7 @@ type FeaturesConfig struct {
 	Auth        AuthConfig        `+"`yaml:\"auth\"`"+`
 	Events      EventsConfig      `+"`yaml:\"events\"`"+`
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
+	Metrics     MetricsConfig     `+"`yaml:\"metrics\"`"+`
 	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
 }
 
@@ -782,6 +786,10 @@ type EventsConfig struct {
 type StorageConfig struct {
 	Type     string `+"`yaml:\"type\"`"+`
 	DBDriver string `+"`yaml:\"db_driver\"`"+`
+}
+
+type MetricsConfig struct {
+	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
 type SecurityConfig struct {
@@ -832,6 +840,7 @@ func main() {
 		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
+		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {

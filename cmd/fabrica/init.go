@@ -509,9 +509,11 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
-	// Generate metrics helpers from template
-	if err := generateFromTemplate("init/metrics_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/metrics_helpers_generated.go"), data); err != nil {
-		return err
+	// Generate metrics helpers from template (if metrics enabled)
+	if opts.withMetrics {
+		if err := generateFromTemplate("init/metrics_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/metrics_helpers_generated.go"), data); err != nil {
+			return err
+		}
 	}
 
 	// Create go.mod from template
@@ -682,7 +684,8 @@ func createFabricaConfig(targetDir string, opts *initOptions) error {
 				DBDriver: dbDriver,
 			},
 			Metrics: configpkg.MetricsConfig{
-				Enabled: opts.withMetrics,
+				Enabled:  opts.withMetrics,
+				Provider: "prometheus", // Default (and currently only) provider, always set for consistency
 			},
 			Reconciliation: configpkg.ReconciliationConfig{
 				Enabled:      opts.withReconcile,

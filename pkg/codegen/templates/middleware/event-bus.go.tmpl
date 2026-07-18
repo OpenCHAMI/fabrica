@@ -15,6 +15,10 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/pkg/events"
+{{if .WithMetrics}}
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+{{end}}
 )
 
 // EventBusType defines the event bus implementation
@@ -28,6 +32,21 @@ const EventsEnabled = {{.EventsEnabled}}
 var (
 	// GlobalEventBus is the singleton event bus instance
 	GlobalEventBus events.EventBus
+{{if .WithMetrics}}
+	eventBusPublished = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "{{.ProjectName}}_events_published_total",
+			Help: "Total events published to the event bus.",
+		},
+		[]string{"event_type", "status"},
+	)
+	eventBusSubscribers = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "{{.ProjectName}}_event_subscribers",
+			Help: "Current number of event subscribers.",
+		},
+	)
+{{end}}
 )
 
 // InitializeEventBus sets up the event bus based on configuration
@@ -67,13 +86,19 @@ func PublishEvent(ctx context.Context, eventType string, source string, data int
 		return fmt.Errorf("events are not enabled")
 	}
 
-	// Create events.Event using the events package
 	evt, err := events.NewEvent(eventType, source, data)
 	if err != nil {
-		return fmt.Errorf("failed to create event: %w", err)
+{{if .WithMetrics}}		eventBusPublished.WithLabelValues(eventType, "error").Inc()
+{{end}}		return fmt.Errorf("failed to create event: %w", err)
 	}
 
-	return GlobalEventBus.Publish(ctx, *evt)
+	if err := GlobalEventBus.Publish(ctx, *evt); err != nil {
+{{if .WithMetrics}}		eventBusPublished.WithLabelValues(eventType, "error").Inc()
+{{end}}		return err
+	}
+
+{{if .WithMetrics}}	eventBusPublished.WithLabelValues(eventType, "success").Inc()
+{{end}}	return nil
 }
 
 // PublishResourceEvent publishes a resource lifecycle event
@@ -99,7 +124,10 @@ func SubscribeToEvents(ctx context.Context, eventTypePattern string, handler fun
 	}
 
 	_, err := GlobalEventBus.Subscribe(eventTypePattern, handler)
-	return err
+{{if .WithMetrics}}	if err == nil {
+		eventBusSubscribers.Inc()
+	}
+{{end}}	return err
 }
 
 // CloseEventBus gracefully shuts down the event bus

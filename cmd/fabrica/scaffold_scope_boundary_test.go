@@ -16,7 +16,6 @@ func TestTemplate_InitMain_OrchestrationOnlyBoundaries(t *testing.T) {
 		"initializeStorage(config)",
 		"initializeEventingAndReconciliation(config)",
 		"initializeAuthMiddleware(config)",
-		"initializeMetricsServer(config)",
 		"logStartupConfiguration(config, addr)",
 	}
 
@@ -33,7 +32,6 @@ func TestTemplate_InitMain_OrchestrationOnlyBoundaries(t *testing.T) {
 		"tokensmithauthn.Middleware(tokensmithauthn.Options{",
 		"tokensmithauthz.NewMiddleware(",
 		"func logAuthZDecision(_ context.Context, rec tokensmithauthz.DecisionRecord)",
-		"func startMetricsServer(",
 	}
 
 	for _, marker := range forbiddenFeatureImplementationMarkers {

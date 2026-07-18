@@ -130,6 +130,9 @@ type GeneratorConfig struct {
 	EventsEnabled bool
 	EventBusType  string // memory, nats, kafka
 
+	// Metrics configuration
+	MetricsEnabled bool
+
 	// Storage configuration
 	StorageType string // file, ent
 	DBDriver    string // postgres, mysql, sqlite
@@ -757,6 +760,9 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateMiddleware(); err != nil {
 			return err
 		}
+		if err := g.GenerateMetrics(); err != nil {
+			return err
+		}
 		if err := g.GenerateRoutes(); err != nil {
 			return err
 		}
@@ -1021,6 +1027,10 @@ func (g *Generator) LoadTemplates() error {
 		"middlewareConditional": "middleware/conditional.go.tmpl",
 		"middlewareVersioning":  "middleware/versioning.go.tmpl",
 		"eventBus":              "middleware/event-bus.go.tmpl",
+		"metrics":               "middleware/metrics.go.tmpl",
+
+		// Init templates (for regeneration)
+		"init/metrics_helpers.go.tmpl": "init/metrics_helpers.go.tmpl",
 
 		// Reconciliation templates
 		"reconciler":             "reconciliation/reconciler.go.tmpl",
@@ -1127,6 +1137,95 @@ func (g *Generator) GenerateMiddleware() error {
 		}
 	}
 
+	return nil
+}
+
+// GenerateMetrics generates Prometheus metrics instrumentation if enabled
+func (g *Generator) GenerateMetrics() error {
+	serverDir := filepath.Join("cmd", "server")
+	metricsFile := filepath.Join(serverDir, "metrics_generated.go")
+
+	if !g.Config.MetricsEnabled {
+		// Remove metrics_generated.go (contains Metrics type and implementation)
+		if _, err := os.Stat(metricsFile); err == nil {
+			if err := os.Remove(metricsFile); err != nil {
+				return fmt.Errorf("failed to remove metrics file: %w", err)
+			}
+			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", metricsFile)
+		}
+
+		// Generate stub metrics_helpers_generated.go that returns nil
+		fmt.Printf("📊 Generating metrics stub (metrics disabled)...\n")
+
+		if err := os.MkdirAll(serverDir, 0755); err != nil {
+			return fmt.Errorf("failed to create server directory: %w", err)
+		}
+
+		helpersData := map[string]interface{}{
+			"FabricaVersion": g.Version,
+			"GeneratedAt":    time.Now().UTC().Format(time.RFC3339),
+			"CopyrightYear":  time.Now().Year(),
+			"ModulePath":     g.ModulePath,
+			"ProjectName":    g.PackageName,
+			"MetricsEnabled": false, // Pass to template for stub generation
+		}
+
+		if err := g.generateMetricsHelpers(serverDir, helpersData); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	fmt.Printf("📊 Generating metrics instrumentation...\n")
+
+	if err := os.MkdirAll(serverDir, 0755); err != nil {
+		return fmt.Errorf("failed to create server directory: %w", err)
+	}
+
+	data := g.middlewareData("middleware/metrics.go.tmpl")
+	if err := g.generateMiddlewareFile("metrics", "metrics_generated.go", serverDir, data); err != nil {
+		return err
+	}
+
+	helpersData := map[string]interface{}{
+		"FabricaVersion": g.Version,
+		"GeneratedAt":    time.Now().UTC().Format(time.RFC3339),
+		"CopyrightYear":  time.Now().Year(),
+		"ModulePath":     g.ModulePath,
+		"ProjectName":    g.PackageName,
+		"MetricsEnabled": true, // Pass to template for real implementation
+	}
+
+	if err := g.generateMetricsHelpers(serverDir, helpersData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (g *Generator) generateMetricsHelpers(outputDir string, data interface{}) error {
+	tmpl, ok := g.Templates["init/metrics_helpers.go.tmpl"]
+	if !ok {
+		return fmt.Errorf("metrics helpers template not found")
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute metrics helpers template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format metrics helpers code: %w", err)
+	}
+
+	outputPath := filepath.Join(outputDir, "metrics_helpers_generated.go")
+	if _, err := writeGeneratedFile(outputPath, formatted); err != nil {
+		return fmt.Errorf("failed to write metrics helpers file: %w", err)
+	}
+
+	fmt.Printf("  ✓ Generated %s\n", outputPath)
 	return nil
 }
 

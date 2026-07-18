@@ -13,38 +13,41 @@ SPDX-License-Identifier: MIT
 
 package main
 
-{{if .WithMetrics}}
-import (
-	"fmt"
-	"log"
-	"net/http"
-)
-{{end}}
+{{/* During init, .WithMetrics is set. During generate, .MetricsEnabled is set. */}}
+{{if .WithMetrics}}{{/* Init context */}}
+// initializeMetrics creates and configures the metrics system.
+// Returns the metrics instance for use in middleware and the /metrics handler.
+func initializeMetrics(config *Config) *Metrics {
+	return NewMetrics("{{.ProjectName}}")
+}
+{{else if .MetricsEnabled}}{{/* Generate context, enabled */}}
+// initializeMetrics creates and configures the metrics system.
+// Returns the metrics instance for use in middleware and the /metrics handler.
+func initializeMetrics(config *Config) *Metrics {
+	return NewMetrics("{{.ProjectName}}")
+}
+{{else}}{{/* Generate context, disabled */}}
+import "net/http"
 
-func initializeMetricsServer(config *Config) {
-	{{if .WithMetrics}}
-	if config.EnableMetrics {
-		go startMetricsServer(config)
-	}
-	{{end}}
+// Metrics is a stub type when metrics are disabled.
+type Metrics struct{}
+
+// Middleware is a no-op stub when metrics are disabled.
+func (m *Metrics) Middleware(next http.Handler) http.Handler {
+	return next
 }
 
-{{if .WithMetrics}}
-func startMetricsServer(config *Config) {
-	metricsAddr := fmt.Sprintf(":%d", config.MetricsPort)
-	log.Printf("Metrics server starting on %s", metricsAddr)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", metricsHandler)
-
-	if err := http.ListenAndServe(metricsAddr, mux); err != nil {
-		log.Printf("Metrics server error: %v", err)
-	}
+// Handler is a no-op stub when metrics are disabled.
+func (m *Metrics) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
 }
 
-func metricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("# Metrics would go here\n"))
+// initializeMetrics returns nil when metrics are disabled.
+// This allows main.go to conditionally enable metrics at runtime
+// based on the .fabrica.yaml configuration.
+func initializeMetrics(config *Config) *Metrics {
+	return nil
 }
 {{end}}

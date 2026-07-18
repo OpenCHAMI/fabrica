@@ -12,7 +12,6 @@ import (
 func TestTemplate_ScaffoldHelperOwnershipMarkers(t *testing.T) {
 	runtimeTmpl := mustReadFile(t, "pkg/codegen/templates/init/runtime_helpers.go.tmpl")
 	authTmpl := mustReadFile(t, "pkg/codegen/templates/init/auth_helpers.go.tmpl")
-	metricsTmpl := mustReadFile(t, "pkg/codegen/templates/init/metrics_helpers.go.tmpl")
 
 	for _, marker := range []string{
 		"func initializeStorage(config *Config)",
@@ -33,16 +32,6 @@ func TestTemplate_ScaffoldHelperOwnershipMarkers(t *testing.T) {
 	} {
 		if !strings.Contains(authTmpl, marker) {
 			t.Fatalf("auth helper template missing marker %q", marker)
-		}
-	}
-
-	for _, marker := range []string{
-		"func initializeMetricsServer(config *Config)",
-		"func startMetricsServer(config *Config)",
-		"func metricsHandler(w http.ResponseWriter, r *http.Request)",
-	} {
-		if !strings.Contains(metricsTmpl, marker) {
-			t.Fatalf("metrics helper template missing marker %q", marker)
 		}
 	}
 }
