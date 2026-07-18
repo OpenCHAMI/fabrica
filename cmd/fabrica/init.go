@@ -59,6 +59,7 @@ type initOptions struct {
 // initial files (main.go, go.mod, README, etc.) with appropriate settings.
 type templateData struct {
 	ProjectName          string
+	EnvPrefix            string
 	ModulePath           string
 	Description          string
 	WithAuth             bool
@@ -449,6 +450,7 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	// Template data
 	data := templateData{
 		ProjectName:          projectName,
+		EnvPrefix:            envPrefix(projectName),
 		ModulePath:           opts.modulePath,
 		Description:          opts.description,
 		WithAuth:             opts.withAuth,
@@ -565,6 +567,26 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 	}
 
 	return nil
+}
+
+// envPrefix converts a project name into a valid uppercase environment
+// variable prefix, replacing every non-alphanumeric character with an
+// underscore so "fru-tracker" yields "FRU_TRACKER" (read as FRU_TRACKER_*).
+// A plain strings.ToUpper is insufficient: it leaves hyphens in the prefix,
+// producing shell-hostile names like FRU-TRACKER_PORT.
+func envPrefix(projectName string) string {
+	upper := strings.ToUpper(projectName)
+	var b strings.Builder
+	b.Grow(len(upper))
+	for _, r := range upper {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 // generateFromTemplate executes a named template and writes the result to a file.
