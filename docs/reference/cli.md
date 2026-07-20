@@ -35,10 +35,8 @@ The `fabrica` CLI provides commands for initializing projects, adding resources,
 # Latest release
 go install github.com/openchami/fabrica/cmd/fabrica@latest
 
-# Or download binary
-curl -L https://github.com/openchami/fabrica/releases/latest/download/fabrica-$(uname -s)-$(uname -m) -o fabrica
-chmod +x fabrica
-sudo mv fabrica /usr/local/bin/
+# Or use the checksum-verifying release installer
+curl -fsSL https://github.com/openchami/fabrica/releases/latest/download/install.sh | sh
 ```
 
 **Quick Start:**

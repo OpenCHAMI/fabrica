@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-.PHONY: help build test test-integration test-all lint clean install install-release run docker-build docker-run
+.PHONY: help build test test-install-script test-integration test-all lint clean install install-release run docker-build docker-run
 
 # Variables
 BINARY_NAME=fabrica
@@ -13,7 +13,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
-LATEST_RELEASE ?= v0.4.7
+RELEASE_VERSION ?= latest
 ACT_GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' go.mod | cut -d. -f1,2)
 ACT_LOCAL_GO_VERSION ?= 1.25
 ACT_DOCKER_HOST ?= $(shell docker context inspect $${DOCKER_CONTEXT:-$$(docker context show 2>/dev/null)} 2>/dev/null | awk -F'"' '/"Host":/ {print $$4; exit}')
@@ -37,10 +37,13 @@ build: ## Build the application
 test: ## Run tests
 	$(GO) test $(GOFLAGS) -race -coverprofile=coverage.out -covermode=atomic $$(go list ./... 2>/dev/null | grep -v /examples/)
 
+test-install-script: ## Run deterministic offline tests for the POSIX release installer
+	sh scripts/test-install.sh
+
 test-integration: ## Run integration tests
 	cd test/integration && $(GO) test $(GOFLAGS) ./...
 
-test-all: test test-integration ## Run all tests (unit + integration)
+test-all: test test-install-script test-integration ## Run all tests (unit + installer + integration)
 
 test-coverage: test ## Run tests with coverage report
 	$(GO) tool cover -html=coverage.out -o coverage.html
@@ -60,8 +63,8 @@ install: ## Install dependencies
 	$(GO) mod download
 	$(GO) mod verify
 
-install-release: ## Install latest released Fabrica CLI
-	$(GO) install github.com/openchami/fabrica/cmd/fabrica@$(LATEST_RELEASE)
+install-release: ## Install Fabrica CLI at @latest (override with RELEASE_VERSION=vX.Y.Z)
+	$(GO) install github.com/openchami/fabrica/cmd/fabrica@$(RELEASE_VERSION)
 
 tidy: ## Tidy go.mod
 	$(GO) mod tidy
@@ -195,6 +198,6 @@ act-all: ## Run all testable workflows locally (build, test, lint, reuse, vuln)
 	@echo "\n=== Vulnerability Check Workflow ==="
 	$(call run_act,push -W .github/workflows/govulncheck.yaml --container-architecture linux/amd64 -j govulncheck) || true
 
-all: clean install lint test build ## Run all checks and build
+all: clean install lint test test-install-script build ## Run all checks and build
 
 .DEFAULT_GOAL := help

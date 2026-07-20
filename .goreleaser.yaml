@@ -124,12 +124,20 @@ release:
   draft: false
   prerelease: auto
   mode: append
+  extra_files:
+    - glob: ./scripts/install.sh
+      name_template: install.sh
   header: |
     ## Fabrica {{ .Version }}
 
     **Release Date:** {{ .Date }}
 
     ### Installation
+
+    #### Installer (Linux and macOS)
+    ```bash
+    curl -fsSL https://github.com/openchami/fabrica/releases/latest/download/install.sh | sh
+    ```
 
     #### Binaries
     Download the appropriate binary for your platform from the assets below.

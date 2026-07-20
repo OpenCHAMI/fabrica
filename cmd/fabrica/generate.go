@@ -182,6 +182,13 @@ Examples:
 				}
 			}
 
+			// Preflight: Check module compatibility before any generated-file mutations.
+			if !force {
+				if err := checkModuleCompatibility(version, debug); err != nil {
+					return err // Error message already formatted with actionable guidance
+				}
+			}
+
 			// Auto-generate registration file
 			fmt.Println()
 			fmt.Println("📝 Registration file not found, creating it...")
@@ -194,13 +201,6 @@ Examples:
 			// 1. Generated code may introduce new imports
 			// 2. The user should run it after generation completes
 			// This avoids circular dependency issues with code generators like Ent
-
-			// Preflight: Check module compatibility before code generation
-			if !force {
-				if err := checkModuleCompatibility(version, debug); err != nil {
-					return err // Error message already formatted with actionable guidance
-				}
-			}
 
 			// Generate server code (handlers, storage, openapi)
 			if all || handlers || storage || openapi {
@@ -302,7 +302,7 @@ func checkModuleCompatibility(cliVersion string, debug bool) error {
 
 	projectMod := projectVersion[0]
 	projectVer := projectVersion[1]
-	normalizedCLI := normalizeVersionForCompatibilityCheck(cliVersion)
+	normalizedCLI := normalizeCLIVersionForCompatibilityCheck(cliVersion)
 	normalizedProject := normalizeVersionForCompatibilityCheck(projectVer)
 
 	if debug {
@@ -314,7 +314,7 @@ func checkModuleCompatibility(cliVersion string, debug bool) error {
 	// Simple version comparison: if CLI is "dev" or versions are exactly equal, allow
 	// Otherwise, if they differ and neither is "dev", warn the user
 	// nolint:revive,staticcheck
-	if normalizedCLI != "dev" && normalizedProject != normalizedCLI && normalizedProject != "" {
+	if !moduleVersionsCompatible(cliVersion, projectVer) {
 		return fmt.Errorf(`
 ❌ Module version mismatch detected:
 
@@ -344,14 +344,58 @@ Or use --force to skip this check and proceed at your own risk.
 	return nil
 }
 
+func moduleVersionsCompatible(cliVersion, projectVersion string) bool {
+	normalizedCLI := normalizeCLIVersionForCompatibilityCheck(cliVersion)
+	normalizedProject := normalizeVersionForCompatibilityCheck(projectVersion)
+	return normalizedCLI == "dev" || normalizedProject == "" || normalizedProject == normalizedCLI
+}
+
+func normalizeCLIVersionForCompatibilityCheck(version string) string {
+	normalized := normalizeVersionForCompatibilityCheck(version)
+	parts := strings.Split(normalized, "-")
+	end := len(parts)
+	dirty := end > 1 && parts[end-1] == "dirty"
+	if dirty {
+		end--
+	}
+
+	if end >= 3 && strings.HasPrefix(parts[end-1], "g") {
+		count := parts[end-2]
+		if count == "" || count[0] < '1' || count[0] > '9' || parts[end-3] == "" {
+			return normalized
+		}
+		for index := 1; index < len(count); index++ {
+			if count[index] < '0' || count[index] > '9' {
+				return normalized
+			}
+		}
+
+		hash := strings.TrimPrefix(parts[end-1], "g")
+		if hash == "" {
+			return normalized
+		}
+		for _, digit := range hash {
+			if (digit < '0' || digit > '9') && (digit < 'a' || digit > 'f') && (digit < 'A' || digit > 'F') {
+				return normalized
+			}
+		}
+
+		return strings.Join(parts[:end-2], "-")
+	}
+
+	// Preserve the Makefile's git describe --tags --always --dirty exact-tag output.
+	if dirty {
+		return strings.Join(parts[:end], "-")
+	}
+	return normalized
+}
+
 func normalizeVersionForCompatibilityCheck(version string) string {
+	version = strings.TrimSpace(version)
 	if version == "" {
 		return version
 	}
-	if dash := strings.Index(version, "-"); dash > 0 {
-		return version[:dash]
-	}
-	return version
+	return strings.TrimPrefix(version, "v")
 }
 
 func resolveGenerateFabricaSource(flagValue string) (string, error) {

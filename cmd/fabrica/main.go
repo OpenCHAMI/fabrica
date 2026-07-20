@@ -67,6 +67,13 @@ func versionString() string {
 func main() {
 	mcp.Version = version
 
+	if err := newRootCommand().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func newRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "fabrica",
 		Short: "Fabrica - Resource-based REST API framework",
@@ -79,10 +86,11 @@ The CLI provides commands for:
   - Interactive wizards for guided setup
   - Example generation with progressive disclosure
   - Documentation generation`,
-		Version: versionString(),
+		Version:       versionString(),
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
 
-	// Add commands
 	rootCmd.AddCommand(newInitCommand())
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
@@ -91,10 +99,7 @@ The CLI provides commands for:
 	rootCmd.AddCommand(mcp.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
 func newVersionCommand() *cobra.Command {

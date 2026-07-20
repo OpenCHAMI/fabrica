@@ -42,6 +42,7 @@ When you push a tag matching `v*.*.*`, GitHub Actions automatically:
 1. ✅ Builds binaries for:
    - Linux AMD64
    - Linux ARM64
+   - Darwin (macOS) AMD64
    - Darwin (macOS) ARM64
 
 2. ✅ Creates Docker images for:
@@ -54,8 +55,12 @@ When you push a tag matching `v*.*.*`, GitHub Actions automatically:
    - `ghcr.io/openchami/fabrica:latest`
 
 4. ✅ Creates GitHub Release with:
-   - Binaries for all platforms
-   - Checksums
+   - `fabrica_<version>_linux_x86_64.tar.gz`
+   - `fabrica_<version>_linux_arm64.tar.gz`
+   - `fabrica_<version>_darwin_x86_64.tar.gz`
+   - `fabrica_<version>_darwin_arm64.tar.gz`
+   - `checksums.txt`
+   - The POSIX installer as `install.sh`
    - Auto-generated changelog
 
 ### 4. Verify the Release
@@ -87,6 +92,24 @@ tar xzf fabrica_1.0.0_darwin_arm64.tar.gz
 ./fabrica version
 ```
 
+#### Test the Installer Asset
+
+Download the published installer, syntax-check it, and install the tagged release into an isolated temporary directory:
+
+```bash
+VERSION=1.0.0
+VERIFY_DIR=$(mktemp -d)
+curl -fsSLo "$VERIFY_DIR/install.sh" \
+  "https://github.com/openchami/fabrica/releases/download/v${VERSION}/install.sh"
+sh -n "$VERIFY_DIR/install.sh"
+FABRICA_VERSION="$VERSION" FABRICA_INSTALL_DIR="$VERIFY_DIR/bin" \
+  sh "$VERIFY_DIR/install.sh"
+"$VERIFY_DIR/bin/fabrica" version
+rm -rf "$VERIFY_DIR"
+```
+
+This verifies that `install.sh` is attached to the release, resolves the documented archive name, validates `checksums.txt`, and can install without writing to the user's normal binary directories.
+
 #### Test Docker Images
 
 ```bash
@@ -107,6 +130,7 @@ The release process is configured in:
   - Binary builds for multiple platforms
   - Docker image builds
   - Archive creation
+  - Installer publication as the `install.sh` release asset
   - Changelog generation
 
 - **`.github/workflows/release.yaml`** - GitHub Actions workflow
@@ -127,6 +151,7 @@ The release process is configured in:
 |----------|-------------|---------|
 | Linux | AMD64 | `fabrica_*_linux_x86_64.tar.gz` |
 | Linux | ARM64 | `fabrica_*_linux_arm64.tar.gz` |
+| macOS | AMD64 | `fabrica_*_darwin_x86_64.tar.gz` |
 | macOS | ARM64 | `fabrica_*_darwin_arm64.tar.gz` |
 
 ### Docker Images
@@ -191,10 +216,11 @@ goreleaser release --clean
 
 After a successful release:
 
-1. ✅ Update documentation if needed
-2. ✅ Announce the release (Slack, Discord, etc.)
-3. ✅ Close related issues/PRs
-4. ✅ Update project roadmap
+1. ✅ Run the isolated installer verification above against the published `install.sh` asset
+2. ✅ Update documentation if needed
+3. ✅ Announce the release (Slack, Discord, etc.)
+4. ✅ Close related issues/PRs
+5. ✅ Update project roadmap
 
 ## Release Confidence Checklist
 
@@ -204,6 +230,7 @@ Before tagging a release, ensure the following readiness criteria are met:
 
 - [ ] **All integration tests pass** locally: `go test -v -timeout 10m ./test/integration`
 - [ ] **CI workflows pass** on main branch (lint, regression tests, govulncheck, REUSE)
+- [ ] **Offline installer tests pass** locally: `make test-install-script`
 - [ ] **CHANGELOG.md** is updated with all changes for this release
 - [ ] **Module compatibility checks** are working (preflight validation prevents version mismatches)
 - [ ] **Auth-enabled projects** generate and compile successfully
@@ -212,7 +239,7 @@ Before tagging a release, ensure the following readiness criteria are met:
 
 - [ ] **Previous version → current version upgrade** is tested:
   - Generate project with previous Fabrica version (e.g., v0.3.1)
-  - Run `fabrica generate` with current CLI version (v0.4.9)
+  - Run `fabrica generate` with the release candidate CLI version
   - Verify generated code compiles and basic operations work
 
 ### Binary Smoke Testing

@@ -94,6 +94,23 @@ func TestResolveVersionInfo_PreservesLdflagsValues(t *testing.T) {
 	}
 }
 
+func TestNewRootCommand_SilencesFrameworkErrorOutput(t *testing.T) {
+	// Given
+	cmd := newRootCommand()
+
+	// When
+	silenceErrors := cmd.SilenceErrors
+	silenceUsage := cmd.SilenceUsage
+
+	// Then
+	if !silenceErrors {
+		t.Fatal("expected root command to silence Cobra error rendering")
+	}
+	if !silenceUsage {
+		t.Fatal("expected root command to silence Cobra usage rendering on errors")
+	}
+}
+
 func TestBuiltCLI_VersionCommandRuns(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {

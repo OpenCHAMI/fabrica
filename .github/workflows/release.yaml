@@ -28,6 +28,12 @@ jobs:
         with:
           go-version: '1.26.5'
 
+      - name: Validate POSIX installer
+        run: |
+          sh -n scripts/install.sh
+          sh -n scripts/test-install.sh
+          sh scripts/test-install.sh
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 

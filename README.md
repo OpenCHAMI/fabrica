@@ -56,22 +56,43 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 
 ## 📦 Installation
 
-### Latest Release (v0.4.9)
+### Latest stable release
 
-**macOS/Linux:**
+Install on Linux or macOS with the POSIX installer:
+
 ```bash
-# Direct download and install
-curl -L https://github.com/openchami/fabrica/releases/download/v0.4.9/fabrica-$(uname -s)-$(uname -m) -o fabrica
-chmod +x fabrica
-sudo mv fabrica /usr/local/bin/
+curl -fsSL https://github.com/openchami/fabrica/releases/latest/download/install.sh | sh
+```
 
-# Verify installation
+The default destination is `${XDG_BIN_HOME:-$HOME/.local/bin}`. The installer is non-interactive, never invokes `sudo`, and does not modify shell startup files. To inspect it before running:
+
+```bash
+curl -fsSLo install.sh https://github.com/openchami/fabrica/releases/latest/download/install.sh
+less install.sh
+sh install.sh
+rm install.sh
+```
+
+Select a release (with or without a leading `v`) or destination through environment variables:
+
+```bash
+curl -fsSL https://github.com/openchami/fabrica/releases/latest/download/install.sh \
+  | FABRICA_VERSION=v1.2.3 FABRICA_INSTALL_DIR="$HOME/bin" sh
+
+XDG_BIN_HOME="$HOME/.local/bin" sh install.sh
+```
+
+The installer downloads the matching GoReleaser archive and `checksums.txt`, then verifies the archive's SHA-256 checksum before extraction. For higher assurance, use the inspect-before-run flow and review the release assets on GitHub.
+
+Verify the installation:
+
+```bash
 fabrica version
 ```
 
 **Using Go:**
 ```bash
-go install github.com/openchami/fabrica/cmd/fabrica@v0.4.9
+go install github.com/openchami/fabrica/cmd/fabrica@latest
 ```
 
 ### Development Version
@@ -347,7 +368,7 @@ We welcome contributions from the community! Here's how to get involved:
 
 ## 🏷️ Releases & Roadmap
 
-**Current Version:** [v0.4.9](https://github.com/openchami/fabrica/releases/tag/v0.4.9)
+**Current Version:** See the [latest Fabrica release](https://github.com/openchami/fabrica/releases/latest).
 
 **📅 Recent Updates:**
 - ✅ Prometheus metrics support and generated instrumentation
