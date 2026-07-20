@@ -11,7 +11,7 @@ description: "A gentle look at controllers that react to change and keep resourc
 author: "Alex Lovell-Troy"
 ---
 
-> **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
+> **Updated for v0.4.9:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning, generated metrics support, and flattened resource envelope behavior.
 
 Some jobs are better done by the system than by users clicking through steps. Reconciliation makes this possible. You declare what you want in Spec, and a controller reads that intent and works until the resource reaches a steady state. When things drift, the controller nudges them back.
 

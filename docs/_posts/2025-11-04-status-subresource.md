@@ -11,7 +11,7 @@ description: "Why encoding REST rules in generators leads to steadier, more supp
 author: "Alex Lovell-Troy"
 ---
 
-> **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
+> **Updated for v0.4.9:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning, generated metrics support, and flattened resource envelope behavior.
 
 Many API teams say they follow REST, but each team writes it a little differently. Over time, small differences pile up. One service wraps list results in an object, another returns an array. One updates status together with spec, another splits them. These choices matter to users, and they matter even more when you have to support the API for years.
 

@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.4.9] - 2026-07-20
+
+### Added
+- Prometheus metrics support and generated instrumentation.
+- Per-resource storage schemas driven by annotations.
+- Generated server and client version commands.
+- Bulk delete support in generated clients.
+
+### Changed
+- Normalized generated config keys and environment variables to use underscores, while generated CLI flags continue to use hyphens.
+- Upgraded Go to 1.26.5 across the module and release workflows.
+
+### Fixed
+- Enforced middleware inheritance in generated routes.
+
+### Documentation
+- Updated README install/version examples, release checklist references, and blog post freshness notes for the `v0.4.9` release.
+
 ## [v0.4.7] - 2026-06-01
 
 ### Fixed
@@ -364,7 +382,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Storage system architecture documentation
 - Getting started guide
 
-[Unreleased]: https://github.com/openchami/fabrica/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/openchami/fabrica/compare/v0.4.9...HEAD
+[v0.4.9]: https://github.com/openchami/fabrica/compare/v0.4.8...v0.4.9
+[v0.4.8]: https://github.com/openchami/fabrica/compare/v0.4.7...v0.4.8
+[v0.4.7]: https://github.com/openchami/fabrica/compare/v0.4.6...v0.4.7
+[v0.4.6]: https://github.com/openchami/fabrica/compare/v0.4.5...v0.4.6
 [v0.4.5]: https://github.com/openchami/fabrica/compare/v0.4.4...v0.4.5
 [v0.4.4]: https://github.com/openchami/fabrica/compare/v0.4.3...v0.4.4
 [v0.4.3]: https://github.com/openchami/fabrica/compare/v0.4.2...v0.4.3
