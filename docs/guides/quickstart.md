@@ -45,14 +45,14 @@ A simple REST API for managing products with these endpoints:
 ### Install Fabrica CLI
 
 ```bash
-go install github.com/openchami/fabrica/cmd/fabrica@latest
+go install github.com/openchami/fabrica/cmd/fabrica@v0.4.9
 ```
 
 Verify installation:
 
 ```bash
 fabrica --version
-# Output: fabrica version v0.4.5
+# Output: fabrica version v0.4.9
 ```
 
 ## Step 1: Initialize Your Project

@@ -11,7 +11,7 @@ description: "A tour of the server you get from Fabrica and how it helps you shi
 author: "Alex Lovell-Troy"
 ---
 
-> **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
+> **Updated for v0.4.9:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning, generated metrics support, and flattened resource envelope behavior.
 
 ## Context
 

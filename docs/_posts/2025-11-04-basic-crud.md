@@ -13,7 +13,7 @@ author: "Alex Lovell-Troy"
 
 > **Updated for v0.5.6:** This post has been updated to document the new client log level feature for debugging API interactions.
 
-> **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
+> **Updated for v0.4.9:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning, generated metrics support, and flattened resource envelope behavior.
 
 APIs are easier to use when the client is predictable. You should not have to remember custom flags or one‑off scripts. Fabrica generates two clients that match your server: a CLI and a Go library. They share patterns and types, so your shell steps and your code read the same way.
 

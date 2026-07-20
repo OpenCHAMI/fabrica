@@ -451,12 +451,12 @@ fabrica version
 
 **Output (release build):**
 ```
-Fabrica version v0.4.5
+Fabrica version v0.4.9
 ```
 
 **Output (build from source or CI with VCS metadata):**
 ```
-Fabrica version v0.4.5
+Fabrica version v0.4.9
   commit: abc123def456
   built:  2026-05-07T10:00:00Z
 ```

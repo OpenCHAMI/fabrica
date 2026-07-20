@@ -11,11 +11,11 @@ description: "How updating Fabrica and regenerating code lets you grow existing 
 author: "Alex Lovell-Troy"
 ---
 
-> **Updated for v0.4.5:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning and flattened resource envelope behavior.
+> **Updated for v0.4.9:** This post has been reviewed and refreshed for Fabrica's current hub/spoke API versioning, generated metrics support, and flattened resource envelope behavior.
 
 APIs live for a long time. They grow as your product grows. The hard part is adding features without breaking what you already shipped. Fabrica is built for this kind of steady change. You keep your resource definitions as the source of truth. The generator keeps the rest in sync.
 
-Here is how it works in practice on current Fabrica releases. Hub/spoke API versioning handles external API evolution, while spec version history remains an opt-in resource feature that records spec snapshots over time. Update Fabrica to v0.4.5, add the versioning marker to a resource, and run the generator again. The server, storage helpers, client library, and CLI pick up version endpoints and commands without changing your handwritten resource code.
+Here is how it works in practice on current Fabrica releases. Hub/spoke API versioning handles external API evolution, while spec version history remains an opt-in resource feature that records spec snapshots over time. Update Fabrica to v0.4.9, add the versioning marker to a resource, and run the generator again. The server, storage helpers, client library, and CLI pick up version endpoints and commands without changing your handwritten resource code.
 
 Under the hood, the CLI flag `--with-versioning` in `cmd/fabrica/add.go` emits a resource marker. The generator tags that resource (`pkg/codegen/generator.go`). Templates extend storage and handlers: snapshots and helpers come from `pkg/codegen/templates/storage/file.go.tmpl`; handlers that set `status.version` live in `pkg/codegen/templates/server/handlers.go.tmpl`. Client methods and CLI subcommands come from `pkg/codegen/templates/client/client.go.tmpl` and `client/cmd.go.tmpl`.
 
