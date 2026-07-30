@@ -19,6 +19,9 @@ func Validate(annotations *ResourceAnnotations) error {
 	if !annotations.IsResource {
 		return nil
 	}
+	if err := validateOperationAnnotations(annotations); err != nil {
+		return err
+	}
 
 	// Dedicated storage validation
 	if annotations.StorageMode == StorageModeDedicated {
@@ -35,6 +38,36 @@ func Validate(annotations *ResourceAnnotations) error {
 	}
 
 	return nil
+}
+
+func validateOperationAnnotations(annotations *ResourceAnnotations) error {
+	for _, special := range []OperationVerb{OperationAll, OperationNone} {
+		if len(annotations.Verbs) > 1 && containsOperation(annotations.Verbs, special) {
+			return &ValidationError{
+				Annotation: "+fabrica:verbs",
+				Message:    fmt.Sprintf("%s must appear alone", special),
+			}
+		}
+	}
+	if annotations.Exposure == ExposurePrivate && annotations.VerbsExplicit {
+		isExplicitNone := len(annotations.Verbs) == 1 && annotations.Verbs[0] == OperationNone
+		if !isExplicitNone {
+			return &ValidationError{
+				Annotation: "+fabrica:exposure=private",
+				Message:    "private exposure only permits explicit verbs=none",
+			}
+		}
+	}
+	return nil
+}
+
+func containsOperation(verbs []OperationVerb, target OperationVerb) bool {
+	for _, verb := range verbs {
+		if verb == target {
+			return true
+		}
+	}
+	return false
 }
 
 // validateDedicatedStorage checks dedicated storage requirements

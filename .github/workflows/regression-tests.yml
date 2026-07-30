@@ -37,14 +37,8 @@ jobs:
     - name: Build fabrica
       run: make build
 
-    - name: Verify executable storage annotation example
-      run: bash examples/12-storage-annotations/verify-example.sh
-
     - name: Run Go integration tests
-      run: |
-        cd test/integration
-        go mod tidy
-        go test -v -timeout 10m
+      run: make test-integration
 
     - name: Upload test artifacts
       if: failure()
@@ -85,7 +79,9 @@ jobs:
           go-version: '1.26.5'
           check-latest: true
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: |
+            go.sum
+            test/integration/go.sum
 
       - name: Create restricted PostgreSQL application role
         env:
@@ -110,6 +106,7 @@ jobs:
           set -euo pipefail
           output="$(mktemp)"
           trap 'rm -f "$output"' EXIT
-          go test -tags=integration -count=1 -v ./pkg/codegen -run '^TestGeneratedPostgres' | tee "$output"
+          cd test/integration
+          go test -tags=integration -count=1 -v ./... -run '^TestGeneratedPostgres' | tee "$output"
           grep -q -- '^--- PASS: TestGeneratedPostgres_connection_uses_restricted_role' "$output"
           grep -q -- '^--- PASS: TestGeneratedPostgres_acceptance' "$output"

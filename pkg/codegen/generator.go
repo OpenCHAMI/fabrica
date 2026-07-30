@@ -96,6 +96,7 @@ type ResourceMetadata struct {
 
 	// Annotations support (Phase 2: Issue #62)
 	Annotations *annotations.ResourceAnnotations // Fabrica annotations from +fabrica: comments
+	Operations  annotations.OperationPolicy      // Resolved generated HTTP operation policy
 	SourcePath  string                           // Go source used to resolve annotations
 }
 
@@ -288,6 +289,7 @@ func (g *Generator) mergeCommonTemplateData(templateName string, data map[string
 // templateData creates a standardized data structure for template execution
 // This ensures all templates have access to version, timestamp, and template name
 func (g *Generator) templateData(resource ResourceMetadata, templateName string) map[string]interface{} {
+	resource.Operations = resolvedResourceOperations(resource)
 	// Determine per-resource versioning flag from tags
 	perResVersioning := false
 	if resource.Tags != nil {
@@ -299,20 +301,6 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 	// Determine if this is a versioned project (uses apis/ directory structure)
 	// vs legacy mode (uses pkg/resources/ with embedded resource.Resource)
 	isVersioned := strings.Contains(resource.Package, "/apis/")
-
-	// Build unique imports for this resource + all resources
-	imports := make(map[string]string) // path -> alias
-	for _, r := range g.Resources {
-		imports[r.Package] = r.PackageAlias
-	}
-	type Import struct {
-		Path  string
-		Alias string
-	}
-	var uniqueImports []Import
-	for path, alias := range imports {
-		uniqueImports = append(uniqueImports, Import{Path: path, Alias: alias})
-	}
 
 	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
 		"Name":                  resource.Name,
@@ -331,42 +319,34 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"Versions":              resource.Versions,
 		"DefaultVersion":        resource.DefaultVersion,
 		"APIGroupVersion":       resource.APIGroupVersion,
-		"UniqueImports":         uniqueImports,
+		"UniqueImports":         importsForResources([]ResourceMetadata{resource}),
 		"ModulePath":            g.ModulePath,
 		"Annotations":           resource.Annotations,
+		"Operations":            resource.Operations,
 	})
 }
 
 // globalTemplateData creates template data for templates that process all resources at once
 // (e.g., models, routes, registration files)
 func (g *Generator) globalTemplateData(templateName string) map[string]interface{} {
-	// Deduplicate imports
-	imports := make(map[string]string) // path -> alias
-	for _, r := range g.Resources {
-		imports[r.Package] = r.PackageAlias
-	}
+	policyData := g.operationTemplateData()
 
-	type Import struct {
-		Path  string
-		Alias string
-	}
-	var uniqueImports []Import
-	for path, alias := range imports {
-		uniqueImports = append(uniqueImports, Import{Path: path, Alias: alias})
-	}
-
-	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
+	data := map[string]interface{}{
 		"PackageName":          g.PackageName,
 		"ModulePath":           g.ModulePath,
 		"TokenSmithModulePath": constants.TokenSmithModulePath,
 		"Resources":            g.Resources,
-		"UniqueImports":        uniqueImports,
+		"UniqueImports":        importsForResources(g.Resources),
 		"ProjectName":          g.extractProjectName(),
 		"StorageType":          g.StorageType,
 		"DBDriver":             g.DBDriver,
 		"Config":               g.Config,
 		"WithAuth":             g.Config.WithAuth,
-	})
+	}
+	for key, value := range policyData {
+		data[key] = value
+	}
+	return g.mergeCommonTemplateData(templateName, data)
 }
 
 // middlewareData creates template data for middleware templates
@@ -481,6 +461,7 @@ func (g *Generator) RegisterResource(resourceType interface{}) error {
 		DefaultVersion:  "v1",
 		APIGroupVersion: "v1", // Default API group version
 	}
+	metadata.Operations, _ = annotations.ResolveOperationPolicy(nil, false)
 
 	g.Resources = append(g.Resources, metadata)
 	return nil

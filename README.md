@@ -381,7 +381,7 @@ We welcome contributions from the community! Here's how to get involved:
 **💻 Code Contributions:**
 - Fork the repository and create a feature branch
 - Write tests for your changes
-- Ensure all tests pass: `make test integration`
+- Run the fast default suite with `make test`; run generated-project and runtime coverage explicitly with `make test-integration`, or run both with `make test-all`.
 - Submit a pull request with a clear description
 
 **💬 Community:**

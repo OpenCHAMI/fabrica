@@ -228,7 +228,8 @@ Before tagging a release, ensure the following readiness criteria are met:
 
 ### Pre-Release Validation
 
-- [ ] **All integration tests pass** locally: `go test -v -timeout 10m ./test/integration`
+- [ ] **Fast root tests pass** locally: `go test -count=1 ./...`
+- [ ] **All self-contained integration tests pass** locally: `make test-integration`
 - [ ] **CI workflows pass** on main branch (lint, regression tests, govulncheck, REUSE)
 - [ ] **Offline installer tests pass** locally: `make test-install-script`
 - [ ] **CHANGELOG.md** is updated with all changes for this release

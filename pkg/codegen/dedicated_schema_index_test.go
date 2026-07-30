@@ -5,14 +5,10 @@
 package codegen
 
 import (
-	"bytes"
-	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 type DedicatedIndexSpec struct {
@@ -46,36 +42,6 @@ func TestGeneratedDedicatedIndex_baseline_portable_btree_and_unique(t *testing.T
 	}
 	if strings.Contains(schema, `index.Fields("spec_slug")`) {
 		t.Fatalf("unique-only field has a redundant standalone index\n%s", schema)
-	}
-}
-
-func TestGeneratedDedicatedIndex_legacy_map_annotation_does_not_compile(t *testing.T) {
-	// Given
-	root := t.TempDir()
-	writeDedicatedIndexFixtureFile(t, filepath.Join(root, "go.mod"), "module example.com/invalid-index\n\ngo 1.24.0\n\nrequire entgo.io/ent v0.14.5\n")
-	writeDedicatedIndexFixtureFile(t, filepath.Join(root, "invalid_test.go"), legacyMapAnnotationSource)
-	runDedicatedSchemaCommand(t, root, "go", "mod", "tidy")
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	defer cancel()
-	var output bytes.Buffer
-	cmd := exec.CommandContext(ctx, "go", "test", "./...")
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "GOWORK=off")
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-
-	// When
-	err := cmd.Run()
-
-	// Then
-	if err == nil {
-		t.Fatalf("legacy map annotation compiled; expected schema.Annotation interface failure\n%s", output.String())
-	}
-	if ctx.Err() != nil {
-		t.Fatalf("legacy map annotation compile probe timed out: %v", ctx.Err())
-	}
-	if !strings.Contains(output.String(), "does not implement schema.Annotation") {
-		t.Fatalf("compile failure does not prove the annotation contract\n%s", output.String())
 	}
 }
 
@@ -213,19 +179,5 @@ type DedicatedIndexSpec struct {
 	// +fabrica:field:index=btree
 	// +fabrica:field:unique
 	Slug string ` + "`json:\"slug\" validate:\"required\"`" + `
-}
-`
-
-const legacyMapAnnotationSource = `package invalidindex
-
-import (
-	"entgo.io/ent"
-	"entgo.io/ent/schema/index"
-)
-
-func indexes() []ent.Index {
-	return []ent.Index{
-		index.Fields("tags").Annotations(map[string]interface{}{"gin": true}),
-	}
 }
 `

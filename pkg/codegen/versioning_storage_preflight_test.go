@@ -8,8 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -25,8 +23,8 @@ func TestPrepareResourceAnnotations_rejects_ent_version_snapshots_for_every_stor
 		name   string
 		source string
 	}{
-		{name: "unannotated generic", source: generatedUnannotatedTokenSource},
-		{name: "dedicated", source: validAnnotatedTokenSource},
+		{name: "unannotated generic", source: unannotatedTokenSource},
+		{name: "dedicated", source: dedicatedTokenSource},
 	}
 
 	for _, test := range tests {
@@ -95,46 +93,6 @@ func TestGenerateHandlers_rejects_ent_version_snapshots_before_rendering(t *test
 	}
 	if _, statErr := os.Stat(filepath.Join(outputDir, "token_handlers_generated.go")); !os.IsNotExist(statErr) {
 		t.Fatalf("handler output exists after preflight failure: %v", statErr)
-	}
-}
-
-func TestGeneratedAnnotationProject_ent_versioning_preflight_preserves_managed_output(t *testing.T) {
-	tests := []struct {
-		name   string
-		source string
-	}{
-		{name: "unannotated generic", source: generatedUnannotatedTokenSource},
-		{name: "dedicated", source: validAnnotatedTokenSource},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given
-			project := newGeneratedProject(t, "ent")
-			project.writeResourceSource(t, generatedUnannotatedTokenSource)
-			if result := project.generate(t); result.err != nil {
-				t.Fatalf("prepare baseline: %s", result.failureMessage())
-			}
-			project.writeResourceSource(t, versionedResourceSource(test.source))
-			before := snapshotGeneratedManagedTree(t, project.root)
-
-			// When
-			result := project.generate(t)
-
-			// Then
-			if result.err == nil {
-				t.Fatal("generation succeeded for unsupported Ent resource version snapshots")
-			}
-			for _, expected := range []string{"Token", "+fabrica:resource-versioning=enabled", "ent"} {
-				if !strings.Contains(result.stdout+result.stderr, expected) {
-					t.Errorf("failure missing %q\n%s", expected, result.failureMessage())
-				}
-			}
-			after := snapshotGeneratedManagedTree(t, project.root)
-			if !reflect.DeepEqual(before, after) {
-				t.Fatalf("preflight failure mutated managed output\nbefore: %#v\nafter: %#v", before, after)
-			}
-		})
 	}
 }
 

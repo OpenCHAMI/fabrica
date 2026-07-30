@@ -131,18 +131,20 @@ Tests use `findAvailablePort()` to dynamically allocate ports, enabling:
 
 ### All integration tests
 ```bash
-go test -v -timeout 10m ./test/integration
+make test-integration
 ```
+
+The command runs this nested module plus the small set of `pkg/codegen` white-box integration tests that require package-private generator helpers. Root `go test ./...` remains the fast default and does not traverse this module.
 
 ### Specific phase
 ```bash
-go test -v -run Phase2 ./test/integration  # Runtime tests only
-go test -v -run ClientBinary ./test/integration  # Client binary tests only
+(cd test/integration && go test -v -run Phase2 ./...)  # Runtime tests only
+(cd test/integration && go test -v -run ClientBinary ./...)  # Client binary tests only
 ```
 
 ### Single test
 ```bash
-go test -v -run TestServerStartupAndHealth ./test/integration
+(cd test/integration && go test -v -run TestServerStartupAndHealth ./...)
 ```
 
 ## Prerequisites

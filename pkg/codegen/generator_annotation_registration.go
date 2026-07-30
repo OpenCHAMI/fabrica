@@ -28,35 +28,53 @@ func (g *Generator) PrepareResourceAnnotations() error {
 	}
 
 	resolved := make([]*annotations.ResourceAnnotations, len(g.Resources))
+	policies := make([]annotations.OperationPolicy, len(g.Resources))
 	errs := make([]error, 0)
 	for resourceIndex := range g.Resources {
 		resource := g.Resources[resourceIndex]
-		if resource.SourcePath == "" {
+		resourceAnnotations := resource.Annotations
+		if resource.SourcePath != "" {
+			var err error
+			resourceAnnotations, err = g.ParseResourceAnnotations(resource.SourcePath, resource.Name)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("prepare annotations for %s from %s: %w", resource.Name, resource.SourcePath, err))
+				continue
+			}
+			if err := annotations.ValidateStorageEnforcement(resourceAnnotations, annotations.StorageValidationContext{
+				Filename: resource.SourcePath, ResourceName: resource.Name,
+				Backend: annotations.StorageBackend(g.StorageType), Mode: resourceAnnotations.StorageMode,
+			}); err != nil {
+				errs = append(errs, fmt.Errorf("prepare annotations for %s from %s: %w", resource.Name, resource.SourcePath, err))
+				continue
+			}
+		}
+		if resourceAnnotations == nil {
+			resourceAnnotations = annotations.NewResourceAnnotations()
+		}
+		if err := annotations.Validate(resourceAnnotations); err != nil {
+			errs = append(errs, fmt.Errorf("prepare annotations for %s: %w", resource.Name, err))
 			continue
 		}
-
-		resourceAnnotations, err := g.ParseResourceAnnotations(resource.SourcePath, resource.Name)
+		versioning, err := resourceVersioningEnabled(resource)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("prepare annotations for %s from %s: %w", resource.Name, resource.SourcePath, err))
+			errs = append(errs, fmt.Errorf("prepare operation policy for %s: %w", resource.Name, err))
 			continue
 		}
-		if err := annotations.ValidateStorageEnforcement(resourceAnnotations, annotations.StorageValidationContext{
-			Filename: resource.SourcePath, ResourceName: resource.Name,
-			Backend: annotations.StorageBackend(g.StorageType), Mode: resourceAnnotations.StorageMode,
-		}); err != nil {
-			errs = append(errs, fmt.Errorf("prepare annotations for %s from %s: %w", resource.Name, resource.SourcePath, err))
+		policy, err := annotations.ResolveOperationPolicy(resourceAnnotations, versioning)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("prepare operation policy for %s: %w", resource.Name, err))
 			continue
 		}
 		resolved[resourceIndex] = resourceAnnotations
+		policies[resourceIndex] = policy
 	}
 
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
 	for resourceIndex, resourceAnnotations := range resolved {
-		if resourceAnnotations != nil {
-			g.Resources[resourceIndex].Annotations = resourceAnnotations
-		}
+		g.Resources[resourceIndex].Annotations = resourceAnnotations
+		g.Resources[resourceIndex].Operations = policies[resourceIndex]
 	}
 	return nil
 }

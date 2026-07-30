@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-.PHONY: help build test test-install-script test-integration test-all lint clean install install-release run docker-build docker-run
+.PHONY: help build test test-install-script test-integration test-postgres test-all lint clean install install-release run docker-build docker-run
 
 # Variables
 BINARY_NAME=fabrica
@@ -41,7 +41,11 @@ test-install-script: ## Run deterministic offline tests for the POSIX release in
 	sh scripts/test-install.sh
 
 test-integration: ## Run integration tests
-	cd test/integration && $(GO) test $(GOFLAGS) ./...
+	cd test/integration && $(GO) test $(GOFLAGS) -count=1 -timeout 20m ./...
+	$(GO) test $(GOFLAGS) -tags=integration -count=1 ./pkg/codegen -run '^(TestGeneratedDedicatedSchema_passes_ent_codegen_and_build_by_dialect|TestGeneratedDedicatedIndex_codegen_build_descriptors_and_sqlite_ddl_by_dialect|TestGeneratedDedicatedIndex_legacy_map_annotation_does_not_compile|TestGeneratedDedicatedAdapter_non_versioned_shape_builds)$$'
+
+test-postgres: ## Run PostgreSQL generated-project integration tests (requires FABRICA_TEST_POSTGRES_DSN)
+	cd test/integration && $(GO) test $(GOFLAGS) -tags=integration -count=1 -run '^TestGeneratedPostgres' ./...
 
 test-all: test test-install-script test-integration ## Run all tests (unit + installer + integration)
 

@@ -190,7 +190,7 @@ func tableSeparator(cells []string) bool {
 func parseEvidenceTestSymbols(t *testing.T, root string) map[string]struct{} {
 	t.Helper()
 	symbols := make(map[string]struct{})
-	for _, directory := range []string{"pkg/annotations", "pkg/codegen"} {
+	for _, directory := range []string{"pkg/annotations", "pkg/codegen", "test/integration"} {
 		entries, err := os.ReadDir(filepath.Join(root, directory))
 		if err != nil {
 			t.Fatalf("read test directory %s: %v", directory, err)

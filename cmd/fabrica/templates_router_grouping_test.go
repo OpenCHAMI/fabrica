@@ -22,14 +22,20 @@ func TestTemplate_RouterGrouping_PublicAndProtected(t *testing.T) {
 	}
 
 	// Routes should inherit middleware from the parameter router (no nested group).
-	if !strings.Contains(got, "// Routes inherit middleware from the router passed by main.go") {
-		t.Fatalf("routes template missing middleware inheritance comment")
-	}
 	if strings.Contains(got, "r.Group(func(protected chi.Router)") {
 		t.Fatalf("routes template must NOT use nested r.Group() - causes middleware shadowing bug")
 	}
 	if !strings.Contains(got, "r.Route(\"{{.URLPath}}\"") {
 		t.Fatalf("resource routes should be mounted using r.Route (parameter router, not nested group)")
+	}
+	for _, registration := range []string{
+		"RegisterGeneratedPublicRoutes",
+		"RegisterGeneratedProtectedRoutes",
+		"RegisterGeneratedInternalRoutes",
+	} {
+		if !strings.Contains(got, registration) {
+			t.Fatalf("routes template missing %s", registration)
+		}
 	}
 
 	// Ensure we did not accidentally duplicate or add global OPTIONS handling.
@@ -51,5 +57,11 @@ func TestTemplate_MainRouterHasPublicProtectedGroups(t *testing.T) {
 	}
 	if !strings.Contains(got, "protected.Use(authnMiddleware)") {
 		t.Fatalf("main template should apply authn middleware on protected routes")
+	}
+	if !strings.Contains(got, "RegisterGeneratedPublicRoutes(public)") {
+		t.Fatalf("main template should mount public resource routes on the public group")
+	}
+	if !strings.Contains(got, "RegisterGeneratedProtectedRoutes(protected)") {
+		t.Fatalf("main template should mount protected/default resource routes on the protected group")
 	}
 }

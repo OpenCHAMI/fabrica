@@ -132,7 +132,7 @@ PostgreSQL is covered by the repository's real restricted-role integration job, 
 
 ```bash
 FABRICA_TEST_POSTGRES_DSN='postgres://fabrica_app:password@127.0.0.1:5432/fabrica_acceptance?sslmode=disable' \
-go test -tags=integration -count=1 -v ./pkg/codegen -run '^TestGeneratedPostgres'
+make test-postgres
 ```
 
 That suite owns PostgreSQL-specific migrations, restricted-role behavior, and dialect-specific index assertions.

@@ -25,8 +25,10 @@ import (
 	"net/http"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	{{if .OpenAPIResources}}
 	"github.com/getkin/kin-openapi/openapi3gen"
-{{range .UniqueImports}}	"{{.Path}}"
+	{{end}}
+{{range .OpenAPIImports}}	"{{.Path}}"
 {{end}})
 
 // ServeOpenAPISpec returns the OpenAPI 3.0 specification
@@ -105,7 +107,7 @@ func GenerateOpenAPISpec() *openapi3.T {
 	}
 
 	// Register all resource paths
-{{range .Resources}}	register{{.Name}}Paths(spec)
+{{range .OpenAPIResources}}	register{{.Name}}Paths(spec)
 {{end}}
 	// Register /health endpoint
 	healthOp := openapi3.NewOperation()
@@ -190,21 +192,24 @@ func GenerateOpenAPISpec() *openapi3.T {
 	return spec
 }
 
-{{range .Resources}}
+{{range .OpenAPIResources}}
 // register{{.Name}}Paths registers OpenAPI paths for {{.Name}} resources
 func register{{.Name}}Paths(spec *openapi3.T) {
 	// Generate schemas from Go types - NO ANNOTATIONS NEEDED
 	resourceSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.PackageAlias}}.{{.Name}}{}, spec.Components.Schemas)
 	spec.Components.Schemas["{{.Name}}"] = resourceSchema
 
-	createReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Create{{.Name}}Request{}, spec.Components.Schemas)
+	{{if .Operations.Create}}createReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Create{{.Name}}Request{}, spec.Components.Schemas)
 	spec.Components.Schemas["Create{{.Name}}Request"] = createReqSchema
+	{{end}}
 
-	updateReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Update{{.Name}}Request{}, spec.Components.Schemas)
+	{{if .Operations.Update}}updateReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Update{{.Name}}Request{}, spec.Components.Schemas)
 	spec.Components.Schemas["Update{{.Name}}Request"] = updateReqSchema
+	{{end}}
 
-	statusSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.PackageAlias}}.{{.Name}}Status{}, spec.Components.Schemas)
+	{{if .Operations.StatusUpdate}}statusSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.PackageAlias}}.{{.Name}}Status{}, spec.Components.Schemas)
 	spec.Components.Schemas["{{.Name}}Status"] = statusSchema
+	{{end}}
 
 	// Error response schema
 	if _, exists := spec.Components.Schemas["ErrorResponse"]; !exists {
@@ -215,11 +220,13 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	}
 
 	// DELETE response schema
-	if _, exists := spec.Components.Schemas["DeleteResponse"]; !exists {
+	{{if or .Operations.Delete .Operations.VersionDelete}}if _, exists := spec.Components.Schemas["DeleteResponse"]; !exists {
 		deleteSchema, _ := openapi3gen.NewSchemaRefForValue(&DeleteResponse{}, spec.Components.Schemas)
 		spec.Components.Schemas["DeleteResponse"] = deleteSchema
 	}
+	{{end}}
 
+	{{if .Operations.List}}
 	// List {{.Name}}s operation
 	listOp := openapi3.NewOperation()
 	listOp.OperationID = "list{{.Name}}s"
@@ -235,7 +242,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 			WithJSONSchemaRef(&openapi3.SchemaRef{Value: arraySchema}),
 	})
 	listOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.Create}}
 	// Create {{.Name}} operation
 	createOp := openapi3.NewOperation()
 	createOp.OperationID = "create{{.Name}}"
@@ -259,7 +268,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	})
 	createOp.Responses.Set("400", errorResponse())
 	createOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.Get}}
 	// Get {{.Name}} operation
 	getOp := openapi3.NewOperation()
 	getOp.OperationID = "get{{.Name}}"
@@ -276,7 +287,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	})
 	getOp.Responses.Set("404", errorResponse())
 	getOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.Update}}
 	// Update {{.Name}} operation
 	updateOp := openapi3.NewOperation()
 	updateOp.OperationID = "update{{.Name}}"
@@ -301,7 +314,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	updateOp.Responses.Set("400", errorResponse())
 	updateOp.Responses.Set("404", errorResponse())
 	updateOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.Patch}}
 	// Patch {{.Name}} operation
 	patchOp := openapi3.NewOperation()
 	patchOp.OperationID = "patch{{.Name}}"
@@ -321,7 +336,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	patchOp.Responses.Set("404", errorResponse())
 	patchOp.Responses.Set("422", errorResponse())
 	patchOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.StatusUpdate}}
 	// Update {{.Name}} status operation
 	updateStatusOp := openapi3.NewOperation()
 	updateStatusOp.OperationID = "update{{.Name}}Status"
@@ -342,7 +359,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	updateStatusOp.Responses.Set("400", errorResponse())
 	updateStatusOp.Responses.Set("404", errorResponse())
 	updateStatusOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.StatusPatch}}
 	// Patch {{.Name}} status operation
 	patchStatusOp := openapi3.NewOperation()
 	patchStatusOp.OperationID = "patch{{.Name}}Status"
@@ -360,7 +379,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	patchStatusOp.Responses.Set("404", errorResponse())
 	patchStatusOp.Responses.Set("422", errorResponse())
 	patchStatusOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if .Operations.Delete}}
 	// Delete {{.Name}} operation
 	deleteOp := openapi3.NewOperation()
 	deleteOp.OperationID = "delete{{.Name}}"
@@ -378,45 +399,52 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	deleteOp.Responses.Set("400", errorResponse())
 	deleteOp.Responses.Set("404", errorResponse())
 	deleteOp.Responses.Set("500", errorResponse())
+	{{end}}
 
+	{{if or .Operations.List .Operations.Create}}
 	// Create path items
 	collectionPath := &openapi3.PathItem{
-		Get:  listOp,
-		Post: createOp,
+		{{if .Operations.List}}Get: listOp,{{end}}
+		{{if .Operations.Create}}Post: createOp,{{end}}
 	}
+	spec.Paths.Set("{{.URLPath}}", collectionPath)
+	{{end}}
 
+	{{if or .Operations.Get .Operations.Update .Operations.Patch .Operations.Delete .Operations.StatusUpdate .Operations.StatusPatch .Operations.VersionList .Operations.VersionGet .Operations.VersionDelete}}
 	uidParam := openapi3.NewPathParameter("uid").
 		WithDescription("Unique identifier of the {{.Name}} resource").
 		WithRequired(true).
 		WithSchema(openapi3.NewStringSchema())
 
-	itemPath := &openapi3.PathItem{
-		Get:        getOp,
-		Put:        updateOp,
-		Patch:      patchOp,
-		Delete:     deleteOp,
+	{{if or .Operations.Get .Operations.Update .Operations.Patch .Operations.Delete}}itemPath := &openapi3.PathItem{
+		{{if .Operations.Get}}Get: getOp,{{end}}
+		{{if .Operations.Update}}Put: updateOp,{{end}}
+		{{if .Operations.Patch}}Patch: patchOp,{{end}}
+		{{if .Operations.Delete}}Delete: deleteOp,{{end}}
 		Parameters: []*openapi3.ParameterRef{
 			{Value: uidParam},
 		},
 	}
-
-	statusPath := &openapi3.PathItem{
-		Put:   updateStatusOp,
-		Patch: patchStatusOp,
-		Parameters: []*openapi3.ParameterRef{
-			{Value: uidParam},
-		},
-	}
-
-	// Add paths to spec
-	spec.Paths.Set("{{.URLPath}}", collectionPath)
 	spec.Paths.Set("{{.URLPath}}/{uid}", itemPath)
+	{{end}}
+
+	{{if or .Operations.StatusUpdate .Operations.StatusPatch}}statusPath := &openapi3.PathItem{
+		{{if .Operations.StatusUpdate}}Put: updateStatusOp,{{end}}
+		{{if .Operations.StatusPatch}}Patch: patchStatusOp,{{end}}
+		Parameters: []*openapi3.ParameterRef{
+			{Value: uidParam},
+		},
+	}
 	spec.Paths.Set("{{.URLPath}}/{uid}/status", statusPath)
+	{{end}}
 
-	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
+	{{if or .Operations.VersionList .Operations.VersionGet .Operations.VersionDelete}}
 	// Versions endpoints
+	{{if or .Operations.VersionGet .Operations.VersionDelete}}
 	versionIDParam := openapi3.NewPathParameter("versionID").WithRequired(true).WithSchema(openapi3.NewStringSchema())
+	{{end}}
 
+	{{if .Operations.VersionList}}
 	listVersionsOp := openapi3.NewOperation()
 	listVersionsOp.OperationID = "list{{.Name}}Versions"
 	listVersionsOp.Summary = "List {{.Name}} versions"
@@ -428,7 +456,11 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	versionsArray.Items = &openapi3.SchemaRef{Value: openapi3.NewObjectSchema()}
 	listVersionsOp.Responses = openapi3.NewResponses()
 	listVersionsOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("OK").WithJSONSchemaRef(&openapi3.SchemaRef{Value: versionsArray})})
+	versionsBase := &openapi3.PathItem{Get: listVersionsOp}
+	spec.Paths.Set("{{.URLPath}}/{uid}/versions", versionsBase)
+	{{end}}
 
+	{{if .Operations.VersionGet}}
 	getVersionOp := openapi3.NewOperation()
 	getVersionOp.OperationID = "get{{.Name}}Version"
 	getVersionOp.Summary = "Get a {{.Name}} version"
@@ -438,7 +470,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	getVersionOp.Parameters = append(getVersionOp.Parameters, &openapi3.ParameterRef{Value: versionIDParam})
 	getVersionOp.Responses = openapi3.NewResponses()
 	getVersionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("OK").WithJSONSchemaRef(&openapi3.SchemaRef{Value: openapi3.NewObjectSchema()})})
+	{{end}}
 
+	{{if .Operations.VersionDelete}}
 	deleteVersionOp := openapi3.NewOperation()
 	deleteVersionOp.OperationID = "delete{{.Name}}Version"
 	deleteVersionOp.Summary = "Delete a {{.Name}} version"
@@ -448,12 +482,16 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	deleteVersionOp.Parameters = append(deleteVersionOp.Parameters, &openapi3.ParameterRef{Value: versionIDParam})
 	deleteVersionOp.Responses = openapi3.NewResponses()
 	deleteVersionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("OK").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/DeleteResponse"})})
+	{{end}}
 
-	versionsBase := &openapi3.PathItem{Get: listVersionsOp}
-	versionItem := &openapi3.PathItem{Get: getVersionOp, Delete: deleteVersionOp}
-	spec.Paths.Set("{{.URLPath}}/{uid}/versions", versionsBase)
+	{{if or .Operations.VersionGet .Operations.VersionDelete}}versionItem := &openapi3.PathItem{
+		{{if .Operations.VersionGet}}Get: getVersionOp,{{end}}
+		{{if .Operations.VersionDelete}}Delete: deleteVersionOp,{{end}}
+	}
 	spec.Paths.Set("{{.URLPath}}/{uid}/versions/{versionID}", versionItem)
-	{{- end}}{{- end}}
+	{{end}}
+	{{end}}
+	{{end}}
 }
 {{end}}
 

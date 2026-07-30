@@ -36,13 +36,16 @@
 package client
 
 import (
+	{{if .ClientModelResources}}
 	"github.com/openchami/fabrica/pkg/fabrica"
-{{range .UniqueImports}}
+	{{end}}
+{{range .ClientModelImports}}
 	"{{.Path}}"
 {{end}}
 )
 
-{{range .Resources}}
+{{range .ClientModelResources}}
+{{if .Operations.Create}}
 // Create{{.Name}}Request represents a request to create a {{.Name}} (Advanced API)
 // Use this when you need full control over metadata fields (labels, annotations).
 // For simpler usage, see Create{{.Name}}Simple in the client.
@@ -52,7 +55,9 @@ type Create{{.Name}}Request struct {
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 }
+{{end}}
 
+{{if .Operations.Update}}
 // Update{{.Name}}Request represents a request to update a {{.Name}} (Advanced API)
 // Use this when you need to update metadata fields along with the spec.
 // For simpler usage, see Update{{.Name}}Simple in the client.
@@ -62,6 +67,7 @@ type Update{{.Name}}Request struct {
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 }
+{{end}}
 
 {{end}}
 

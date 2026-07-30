@@ -41,7 +41,7 @@ func TestTemplate_OpenAPIIncludesServiceHealthPath(t *testing.T) {
 func TestTemplate_OpenAPIIncludesPatchAndStatusSubresourcePaths(t *testing.T) {
 	got := mustReadFile(t, "pkg/codegen/templates/server/openapi.go.tmpl")
 
-	if !strings.Contains(got, "Patch:      patchOp") {
+	if !strings.Contains(got, "{{if .Operations.Patch}}Patch: patchOp") {
 		t.Fatalf("resource item path should include PATCH operation")
 	}
 	if !strings.Contains(got, "spec.Paths.Set(\"{{.URLPath}}/{uid}/status\", statusPath)") {

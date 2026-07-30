@@ -6,6 +6,7 @@ package annotations
 
 import (
 	"fmt"
+	"strings"
 )
 
 // parseResourceLevelAnnotation processes a single resource-level annotation
@@ -48,9 +49,68 @@ func parseResourceLevelAnnotation(
 			return parseError(parseSource{directive: annotation}, message, nil)
 		}
 		return nil
+	case "verbs":
+		if len(parts) != 1 {
+			return parseError(parseSource{directive: annotation}, "resource verbs directive has trailing parameters", nil)
+		}
+		name, value, hasValue := ParseKeyValue(parts[0])
+		if !hasValue || name != "verbs" || value == "" {
+			return parseError(parseSource{directive: annotation}, "expected format: verbs=<csv>", nil)
+		}
+		verbs, parseErr := parseOperationVerbs(value)
+		if parseErr != nil {
+			return parseError(parseSource{directive: annotation}, parseErr.Error(), parseErr)
+		}
+		result.Verbs = verbs
+		result.VerbsExplicit = true
+		return nil
+	case "exposure":
+		if len(parts) != 1 {
+			return parseError(parseSource{directive: annotation}, "resource exposure directive has trailing parameters", nil)
+		}
+		name, value, hasValue := ParseKeyValue(parts[0])
+		if !hasValue || name != "exposure" || value == "" {
+			return parseError(parseSource{directive: annotation}, "expected format: exposure=<value>", nil)
+		}
+		exposure := Exposure(value)
+		switch exposure {
+		case ExposureDefault, ExposurePublic, ExposureProtected, ExposureInternal, ExposurePrivate:
+			result.Exposure = exposure
+			return nil
+		default:
+			return parseError(parseSource{directive: annotation}, fmt.Sprintf("unknown exposure %q", value), nil)
+		}
 	default:
 		return unknownDirectiveError("resource", key, resourceDirectiveKeys, annotation)
 	}
+}
+
+func parseOperationVerbs(value string) ([]OperationVerb, error) {
+	members := strings.Split(value, ",")
+	verbs := make([]OperationVerb, 0, len(members))
+	seen := make(map[OperationVerb]struct{}, len(members))
+	for _, member := range members {
+		if member == "" || strings.TrimSpace(member) == "" {
+			return nil, fmt.Errorf("empty operation verb in verbs list")
+		}
+		if member != strings.TrimSpace(member) {
+			return nil, fmt.Errorf("operation verb %q contains whitespace", member)
+		}
+		verb := OperationVerb(member)
+		switch verb {
+		case OperationList, OperationGet, OperationCreate, OperationUpdate, OperationPatch, OperationDelete,
+			OperationStatusUpdate, OperationStatusPatch, OperationVersionList, OperationVersionGet,
+			OperationVersionDelete, OperationAll, OperationNone:
+		default:
+			return nil, fmt.Errorf("unknown operation verb %q", member)
+		}
+		if _, duplicate := seen[verb]; duplicate {
+			return nil, fmt.Errorf("duplicate operation verb %q", member)
+		}
+		seen[verb] = struct{}{}
+		verbs = append(verbs, verb)
+	}
+	return verbs, nil
 }
 
 // parseFieldLevelAnnotation processes a single field-level annotation

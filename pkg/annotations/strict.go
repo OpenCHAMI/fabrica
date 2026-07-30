@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var resourceDirectiveKeys = []string{"resource", "storage"}
+var resourceDirectiveKeys = []string{"resource", "storage", "verbs", "exposure"}
 var fieldDirectiveKeys = []string{"sensitive", "immutable", "unique", "storage", "index", "default"}
 
 func strictAnnotationParts(annotation string) ([]string, error) {

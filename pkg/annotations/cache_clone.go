@@ -22,6 +22,7 @@ func cloneResourceAnnotations(source *ResourceAnnotations) *ResourceAnnotations 
 		return nil
 	}
 	cloned := *source
+	cloned.Verbs = slices.Clone(source.Verbs)
 	cloned.Fields = cloneFieldAnnotationsMap(source.Fields)
 	cloned.RawAnnotations = slices.Clone(source.RawAnnotations)
 	return &cloned

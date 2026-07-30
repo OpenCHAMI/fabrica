@@ -77,6 +77,38 @@ const (
 	HashAlgorithmSHA256 HashAlgorithm = "sha256"
 )
 
+// OperationVerb identifies a generated HTTP operation.
+type OperationVerb string
+
+// Supported generated HTTP operations and compatibility aliases.
+const (
+	OperationList          OperationVerb = "list"
+	OperationGet           OperationVerb = "get"
+	OperationCreate        OperationVerb = "create"
+	OperationUpdate        OperationVerb = "update"
+	OperationPatch         OperationVerb = "patch"
+	OperationDelete        OperationVerb = "delete"
+	OperationStatusUpdate  OperationVerb = "statusUpdate"
+	OperationStatusPatch   OperationVerb = "statusPatch"
+	OperationVersionList   OperationVerb = "versionList"
+	OperationVersionGet    OperationVerb = "versionGet"
+	OperationVersionDelete OperationVerb = "versionDelete"
+	OperationAll           OperationVerb = "all"
+	OperationNone          OperationVerb = "none"
+)
+
+// Exposure classifies generated HTTP route registration and public artifacts.
+type Exposure string
+
+// Supported generated route exposure classifications.
+const (
+	ExposureDefault   Exposure = "default"
+	ExposurePublic    Exposure = "public"
+	ExposureProtected Exposure = "protected"
+	ExposureInternal  Exposure = "internal"
+	ExposurePrivate   Exposure = "private"
+)
+
 // ResourceAnnotations contains all annotations for a resource type
 type ResourceAnnotations struct {
 	// IsResource indicates this is a Fabrica resource (+fabrica:resource)
@@ -84,6 +116,15 @@ type ResourceAnnotations struct {
 
 	// StorageMode defines how the resource is persisted
 	StorageMode StorageMode
+
+	// Verbs contains the requested generated operations.
+	Verbs []OperationVerb
+
+	// VerbsExplicit distinguishes a verbs directive from the compatibility default.
+	VerbsExplicit bool
+
+	// Exposure classifies the generated HTTP surface.
+	Exposure Exposure
 
 	// Fields maps field names to their annotations
 	Fields map[string]*FieldAnnotations
@@ -97,6 +138,8 @@ func NewResourceAnnotations() *ResourceAnnotations {
 	return &ResourceAnnotations{
 		IsResource:  false,
 		StorageMode: StorageModeGeneric,
+		Verbs:       []OperationVerb{OperationAll},
+		Exposure:    ExposureDefault,
 		Fields:      make(map[string]*FieldAnnotations),
 	}
 }

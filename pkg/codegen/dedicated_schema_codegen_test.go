@@ -1,3 +1,5 @@
+//go:build integration
+
 // Copyright © 2026 OpenCHAMI Contributors
 //
 // SPDX-License-Identifier: MIT

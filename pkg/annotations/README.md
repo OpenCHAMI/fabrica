@@ -4,9 +4,56 @@ SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
 SPDX-License-Identifier: MIT
 -->
 
-# Fabrica Storage Annotations
+# Fabrica Annotations
 
-`github.com/openchami/fabrica/pkg/annotations` parses, resolves, and validates the closed annotation contract used by Fabrica's generated dedicated Ent storage. Generation fails before committing output when a directive is malformed, unknown, incompatible with its Go type, or unsupported by the selected database.
+`github.com/openchami/fabrica/pkg/annotations` parses, resolves, and validates Fabrica's closed resource, operation, exposure, and dedicated Ent storage annotation contracts. Generation fails before committing output when a directive is malformed, unknown, contradictory, incompatible with its Go type, or unsupported by the selected database.
+
+## Operation and exposure policy
+
+Use `+fabrica:verbs=<csv>` on a resource declaration to select generated HTTP operations. The exact supported values are:
+
+| Value | Generated operation |
+|---|---|
+| `list` | `GET /resources` |
+| `get` | `GET /resources/{uid}` |
+| `create` | `POST /resources` |
+| `update` | `PUT /resources/{uid}` |
+| `patch` | `PATCH /resources/{uid}` |
+| `delete` | `DELETE /resources/{uid}` |
+| `statusUpdate` | `PUT /resources/{uid}/status` |
+| `statusPatch` | `PATCH /resources/{uid}/status` |
+| `versionList` | `GET /resources/{uid}/versions` |
+| `versionGet` | `GET /resources/{uid}/versions/{versionID}` |
+| `versionDelete` | `DELETE /resources/{uid}/versions/{versionID}` |
+| `all` | Every operation supported by the resource; must appear alone |
+| `none` | No generated HTTP operation; must appear alone |
+
+Missing `+fabrica:verbs` is equivalent to `all` and preserves the existing generated surface. CSV members are case-sensitive and may not be empty, duplicated, unknown, or surrounded by whitespace. Version operations require `+fabrica:resource-versioning=enabled`; explicit version operations without versioning fail before output changes.
+
+Use `+fabrica:exposure=default|public|protected|internal|private` to classify generated routes:
+
+| Exposure | Behavior |
+|---|---|
+| `default` | Backward-compatible protected/default registration, public OpenAPI, and generated clients |
+| `public` | Registered by `RegisterGeneratedPublicRoutes`; included in public OpenAPI and clients |
+| `protected` | Registered by `RegisterGeneratedProtectedRoutes`; included in public OpenAPI and clients |
+| `internal` | Registered only by `RegisterGeneratedInternalRoutes`; omitted from public OpenAPI and clients |
+| `private` | No generated HTTP, OpenAPI, or client surface |
+
+Missing exposure is `default`. Private exposure without an explicit verbs directive resolves to `none`; explicit private exposure permits only `verbs=none`. Exposure classifies generated wiring but does not implement authentication or authorization.
+
+`RegisterGeneratedRoutes` remains a compatibility wrapper that mounts public plus protected/default resources. New project scaffolding mounts public and protected/default functions separately and does not mount internal routes automatically. Storage generation, resource registration, and API-version metadata continue to include internal/private resources.
+
+Examples:
+
+```go
+// +fabrica:verbs=list,get
+// +fabrica:exposure=protected
+type InventoryView struct { /* ... */ }
+
+// +fabrica:exposure=private
+type RefreshTokenFamily struct { /* ... */ }
+```
 
 ## Supported workflow
 
@@ -156,8 +203,8 @@ There is no compatibility mode that silently ignores these requests and no unsaf
 
 ```bash
 go test -race -shuffle=on -count=1 ./pkg/annotations ./pkg/codegen
-go test -tags=integration -count=1 -v ./pkg/codegen -run '^TestGeneratedPostgres'
-bash examples/12-storage-annotations/verify-example.sh
+make test-integration
+FABRICA_TEST_POSTGRES_DSN='postgres://fabrica_app:password@127.0.0.1:5432/fabrica_acceptance?sslmode=disable' make test-postgres
 ```
 
 Example 12 is the executable SQLite walkthrough. PostgreSQL behavior belongs to the restricted-role integration suite, not to claims inferred from SQLite.

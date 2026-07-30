@@ -40,17 +40,20 @@ These tests verify that Fabrica can successfully:
 
 ### Local Testing
 ```bash
-cd test/integration
+# From the repository root, run the fast default suite.
+go test -count=1 ./...
 
-# Run all integration tests
-go test -v -timeout 10m
+# Run the nested-module suite and tagged white-box codegen tests explicitly.
+make test-integration
 
-# Run specific test
-go test -v -timeout 5m -run TestFabricaTestSuite/TestBasicFileStorageGeneration
+# Run a specific nested-module test.
+(cd test/integration && go test -count=1 -timeout 5m -run TestGeneratedSQLite_acceptance ./...)
 
-# Run with more verbose output
-go test -v -timeout 10m -args -test.v
+# Run PostgreSQL tests after setting FABRICA_TEST_POSTGRES_DSN.
+make test-postgres
 ```
+
+The root module does not discover this nested module. Generated-project, generated-runtime, PostgreSQL, and example workflow tests therefore run only through the explicit integration commands.
 
 ### CI/CD Integration
 Tests run automatically on:
