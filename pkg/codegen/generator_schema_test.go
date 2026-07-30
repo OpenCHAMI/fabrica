@@ -9,95 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/openchami/fabrica/pkg/annotations"
 )
 
 func TestGenerateEntSchemasDedicated(t *testing.T) {
-	tmpDir := t.TempDir()
+	schemaStr := generateDedicatedShapeSchema(t, "postgres").content
 
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("get working directory: %v", err)
-	}
-	defer func() {
-		if err := os.Chdir(origDir); err != nil {
-			t.Errorf("restore working directory: %v", err)
-		}
-	}()
-
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("change to temp directory: %v", err)
+	if !strings.Contains(schemaStr, "type DedicatedShape struct") {
+		t.Error("expected dedicated schema type definition")
 	}
 
-	gen := NewGenerator(tmpDir, "test", "github.com/test/project")
-	gen.StorageType = "ent"
-	gen.DBDriver = "postgres"
-
-	if err := gen.LoadTemplates(); err != nil {
-		t.Fatalf("LoadTemplates failed: %v", err)
-	}
-
-	type TokenSpec struct {
-		Value string `json:"value"`
-		Name  string `json:"name"`
-	}
-
-	type Token struct {
-		Spec TokenSpec
-	}
-
-	if err := gen.RegisterResource(&Token{}); err != nil {
-		t.Fatalf("RegisterResource failed: %v", err)
-	}
-
-	annots := annotations.NewResourceAnnotations()
-	annots.IsResource = true
-	annots.StorageMode = annotations.StorageModeDedicated
-
-	valueAnnots := annotations.NewFieldAnnotations("Value")
-	valueAnnots.Storage = &annotations.StorageConfig{
-		Type: annotations.StorageTypeHashed,
-		Hash: &annotations.HashConfig{
-			Algorithm: annotations.HashAlgorithmBcrypt,
-			Cost:      12,
-		},
-	}
-	valueAnnots.Sensitive = true
-	valueAnnots.Immutable = true
-	annots.Fields["Value"] = valueAnnots
-
-	nameAnnots := annotations.NewFieldAnnotations("Name")
-	nameAnnots.Index = &annotations.IndexConfig{
-		Type: annotations.IndexTypeBTree,
-	}
-	nameAnnots.Unique = true
-	annots.Fields["Name"] = nameAnnots
-
-	gen.SetResourceAnnotations("Token", annots)
-
-	if err := gen.GenerateEntSchemas(); err != nil {
-		t.Fatalf("GenerateEntSchemas failed: %v", err)
-	}
-
-	schemaFile := filepath.Join("internal", "storage", "ent", "schema", "token.go")
-	if _, err := os.Stat(schemaFile); os.IsNotExist(err) {
-		t.Fatalf("expected dedicated schema file %s to exist", schemaFile)
-	}
-
-	content, err := os.ReadFile(schemaFile)
-	if err != nil {
-		t.Fatalf("read schema file: %v", err)
-	}
-
-	schemaStr := string(content)
-
-	if !strings.Contains(schemaStr, "type Token struct") {
-		t.Error("expected Token struct definition")
-	}
-
-	if !strings.Contains(schemaStr, "bcrypt") {
-		t.Error("expected bcrypt hash reference for Value field")
+	if strings.Contains(schemaStr, "bcrypt") {
+		t.Error("did not expect bcrypt implementation in schema")
 	}
 
 	if !strings.Contains(schemaStr, "Sensitive()") {
@@ -112,8 +34,8 @@ func TestGenerateEntSchemasDedicated(t *testing.T) {
 		t.Error("expected Unique() for Name field")
 	}
 
-	if !strings.Contains(schemaStr, "index.Fields(\"name\")") {
-		t.Error("expected index on Name field")
+	if strings.Contains(schemaStr, "index.Fields(\"spec_code\")") {
+		t.Error("did not expect redundant B-tree index on unique code field")
 	}
 }
 
@@ -209,7 +131,20 @@ func TestGenerateEntSchemasMixed(t *testing.T) {
 		Spec DeviceSpec
 	}
 
-	if err := gen.RegisterResource(&Token{}); err != nil {
+	sourcePath := filepath.Join(tmpDir, "token_types.go")
+	if err := os.WriteFile(sourcePath, []byte(`package fixture
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type Token struct { Spec TokenSpec }
+type TokenSpec struct {
+	// +fabrica:field:sensitive
+	Value string `+"`json:\"value\"`"+`
+}
+`), 0o644); err != nil {
+		t.Fatalf("write Token annotation source: %v", err)
+	}
+	if err := gen.RegisterResourceFromSource(&Token{}, sourcePath); err != nil {
 		t.Fatalf("RegisterResource Token failed: %v", err)
 	}
 
@@ -217,11 +152,9 @@ func TestGenerateEntSchemasMixed(t *testing.T) {
 		t.Fatalf("RegisterResource Device failed: %v", err)
 	}
 
-	tokenAnnots := annotations.NewResourceAnnotations()
-	tokenAnnots.IsResource = true
-	tokenAnnots.StorageMode = annotations.StorageModeDedicated
-	tokenAnnots.Fields["Value"] = annotations.NewFieldAnnotations("Value")
-	gen.SetResourceAnnotations("Token", tokenAnnots)
+	if err := gen.PrepareResourceAnnotations(); err != nil {
+		t.Fatalf("PrepareResourceAnnotations failed: %v", err)
+	}
 
 	if err := gen.GenerateEntSchemas(); err != nil {
 		t.Fatalf("GenerateEntSchemas failed: %v", err)

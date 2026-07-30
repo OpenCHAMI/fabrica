@@ -30,6 +30,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	_ "{{.ModulePath}}/pkg/apiversion"
+	"github.com/openchami/fabrica/pkg/httpbody"
 	"github.com/openchami/fabrica/pkg/versioning"
 )
 
@@ -49,6 +50,8 @@ type Config struct {
 	ReadTimeout  int    `mapstructure:"read_timeout"`
 	WriteTimeout int    `mapstructure:"write_timeout"`
 	IdleTimeout  int    `mapstructure:"idle_timeout"`
+	RequestBodyMaxBytes int64 `mapstructure:"request_body_max_bytes"`
+	RequestBodyMaxBytesByResource map[string]int64 `mapstructure:"request_body_max_bytes_by_resource"`
 
 	{{if .WithStorage}}
 	// Storage Configuration
@@ -83,6 +86,8 @@ func DefaultConfig() *Config {
 		ReadTimeout:  15,
 		WriteTimeout: 15,
 		IdleTimeout:  60,
+		RequestBodyMaxBytes: httpbody.DefaultMaxBytes,
+		RequestBodyMaxBytesByResource: map[string]int64{},
 		{{if .WithStorage}}
 		{{if eq .StorageType "file"}}
 		DataDir:      "./data",
@@ -155,6 +160,7 @@ func init() {
 	serveCmd.Flags().Int("read-timeout", 15, "Read timeout in seconds")
 	serveCmd.Flags().Int("write-timeout", 15, "Write timeout in seconds")
 	serveCmd.Flags().Int("idle-timeout", 60, "Idle timeout in seconds")
+	serveCmd.Flags().Int64("request-body-max-bytes", httpbody.DefaultMaxBytes, "Maximum request body size in bytes")
 
 	{{if .WithStorage}}
 	{{if eq .StorageType "file"}}
@@ -234,6 +240,10 @@ func initConfig() {
 
 func runServer(cmd *cobra.Command, args []string) error {
 	log.Printf("Starting {{.ProjectName}} server...")
+	bodyLimitMiddleware, err := newRequestBodyLimitMiddleware(config.RequestBodyMaxBytes, config.RequestBodyMaxBytesByResource)
+	if err != nil {
+		return fmt.Errorf("invalid request body limit configuration: %w", err)
+	}
 
 	storageCleanup, err := initializeStorage(config)
 	if err != nil {
@@ -264,6 +274,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r := chi.NewRouter()
 
 	// Add middleware
+	// Request limits must be outermost so body-reading middleware cannot buffer oversized payloads.
+	r.Use(bodyLimitMiddleware)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)

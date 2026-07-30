@@ -36,7 +36,7 @@ Fabrica is a powerful code generation tool that accelerates API development by t
 ## ✨ Key Features
 
 - **🚀 Zero-Config Generation** - Define resources as Go structs, get complete APIs instantly
-- **📊 Multiple Storage Backends** - Choose between file-based storage or SQL databases (SQLite, PostgreSQL, MySQL)
+- **📊 Multiple Storage Backends** - Choose between file-based storage or SQL databases. Annotation-driven dedicated schemas support SQLite and PostgreSQL; other Ent workflows may also use MySQL.
 - **🔒 Security Ready** - Flexible middleware system for custom authentication and authorization
 - **📋 OpenAPI Native** - Auto-generated specs with Swagger UI out of the box
 - **🎯 Smart Validation** - Request validation with detailed, structured error responses
@@ -177,6 +177,7 @@ Explore hands-on examples in the [`examples/`](examples/) directory:
 - **[CloudEvents Integration](examples/05-cloud-events/)** 📡 - Automatic event publishing for lifecycle and condition changes
 - **[Status Subresource](examples/06-status-subresource/)** 🛡️ - Separate spec and status updates
 - **[Export/Import](examples/10-export-import/)** 💾 - Offline backup and restore operations
+- **[Storage Annotations](examples/12-storage-annotations/)** 🗃️ - Executable dedicated-schema example with SQLite runtime verification
 
 ---
 
@@ -204,7 +205,27 @@ Fabrica follows clean architecture principles and generates well-structured proj
 
 **🏪 Storage Backends:**
 - **📁 File Backend** - JSON files with atomic operations, perfect for development and small datasets
-- **🗃️ Ent Backend** - Type-safe ORM supporting SQLite, PostgreSQL, MySQL for production workloads
+- **🗃️ Ent Backend** - Type-safe ORM with SQLite, PostgreSQL, and MySQL configuration options
+
+### Annotation-driven dedicated Ent storage
+
+The `+fabrica:storage=dedicated` contract is narrower than the general Ent backend. It supports PostgreSQL and SQLite; field directives require dedicated Ent storage, and dedicated mode with file storage is rejected before output. bcrypt is the only supported storage transform: required bcrypt values are enforced on create, while omitted or redacted zero values on update preserve the stored hash. Supported fields are `string`, `bool`, `int`, `int64`, `float64`, `time.Time`, and `[]string`, plus the documented scalar pointers. For sensitive updates, non-pointer sensitive zero values preserve storage; a supported non-nil pointer explicitly replaces storage, including with zero.
+
+Resource version snapshots are file-backend only. Every Ent resource with `+fabrica:resource-versioning=enabled` is rejected before output, whether it uses generic or dedicated Ent storage. Unknown Fabrica directives fail with source-located typed parse errors rather than being ignored.
+
+The historical annotation-layer proposal is non-authoritative and retained only as design history in [`docs/dev/ANNOTATION_LAYER_PROPOSAL.md`](docs/dev/ANNOTATION_LAYER_PROPOSAL.md). The tested package matrix, storage guides, examples, and CHANGELOG define current behavior.
+
+Dedicated routing is exclusive, preserves the complete resource envelope, and reloads persisted resources before redacting write responses. Every generated backend compiles with a backend-common typed conflict contract; Ent constraint failures map through it to HTTP 409, while file storage remains unconstrained. Dedicated migration cursors are commit-aware: a write cursor advances only after commit and resets to the input cursor with zero copied rows on rollback.
+
+Generated migration helpers are explicit and non-destructive: generation and server startup never invoke them, and they do not delete generic source rows. Encryption, Argon2, SHA-256, MySQL, GiST, and unsupported Go types are rejected for annotation-driven dedicated storage. See the [tested capability matrix](pkg/annotations/README.md) and [Executable Storage Annotations example](examples/12-storage-annotations/README.md).
+
+### Generated request-body and compatibility contract
+
+Generated servers apply an outer request-body limit before version negotiation, PATCH middleware, and handlers. The compatibility default is 16 MiB. Configure it globally with `--request-body-max-bytes`, the service-prefixed `*_REQUEST_BODY_MAX_BYTES` environment variable, or YAML `request_body_max_bytes`; use `request_body_max_bytes_by_resource` for a validated per-resource override keyed by the exact resource Kind. Nonpositive limits and unknown Kind keys fail startup before storage initialization.
+
+Oversized declared or streaming bodies return HTTP 413 with `{"error":"request body too large","code":413}` and do not write storage. Bounded JSON decoding accepts exactly one JSON value, consumes trailing whitespace to verify EOF, and rejects a second value or malformed trailing bytes. PATCH storage conflicts return HTTP 409 without mutation. Generic Ent updates preserve Namespace and ResourceVersion, including explicit zero values. Both API-layout and legacy embedded-resource projects compile with file and Ent storage.
+
+Executable evidence includes `TestGeneratedHandlers_bound_every_request_body_with_stable_413_contract`, `TestDedicatedSecurity_generated_adapter_runtime`, `TestGeneratedAnnotationProject_generic_storage_CRUD_and_queries_remain_compatible`, and `TestGeneratedLegacyHandlers_compile_for_file_and_ent_storage`.
 
 **⚡ Generated Features:**
 - ✅ REST handlers with proper HTTP methods, status codes, and content negotiation

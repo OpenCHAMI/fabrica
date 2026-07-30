@@ -1,928 +1,163 @@
-# Fabrica Annotations Package
+<!--
+SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
 
-**Package:** `github.com/openchami/fabrica/pkg/annotations`
-**Status:** Phase 1 Complete
-**Version:** 1.0.0
+SPDX-License-Identifier: MIT
+-->
 
-## Overview
+# Fabrica Storage Annotations
 
-The annotations package provides parsing and validation for Fabrica's `+fabrica:` code generation directives. These annotations allow developers to control how resources are stored in the database, including dedicated table schemas, field-level hashing, encryption, indexes, and constraints.
+`github.com/openchami/fabrica/pkg/annotations` parses, resolves, and validates the closed annotation contract used by Fabrica's generated dedicated Ent storage. Generation fails before committing output when a directive is malformed, unknown, incompatible with its Go type, or unsupported by the selected database.
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Annotation Reference](#annotation-reference)
-- [API Documentation](#api-documentation)
-- [Examples](#examples)
-- [Integration Guide](#integration-guide)
-- [Validation Rules](#validation-rules)
-- [Database Compatibility](#database-compatibility)
-- [Error Handling](#error-handling)
-
----
-
-## Quick Start
-
-### Basic Usage
-
-```go
-import (
-    "go/ast"
-    "go/parser"
-    "go/token"
-    "github.com/openchami/fabrica/pkg/annotations"
-)
-
-// Parse Go source file
-fset := token.NewFileSet()
-file, _ := parser.ParseFile(fset, "token_types.go", src, parser.ParseComments)
-
-// Find resource type and parse annotations
-var typeSpec *ast.TypeSpec
-var docComments *ast.CommentGroup
-
-ast.Inspect(file, func(n ast.Node) bool {
-    if gd, ok := n.(*ast.GenDecl); ok {
-        for _, spec := range gd.Specs {
-            if ts, ok := spec.(*ast.TypeSpec); ok {
-                typeSpec = ts
-                docComments = gd.Doc
-                return false
-            }
-        }
-    }
-    return true
-})
-
-// Parse annotations
-annots, err := annotations.ParseResourceAnnotations(typeSpec, docComments)
-if err != nil {
-    log.Fatalf("Parse error: %v", err)
-}
-
-// Validate
-if err := annotations.Validate(annots); err != nil {
-    log.Fatalf("Validation error: %v", err)
-}
-
-// Use annotations
-if annots.StorageMode == annotations.StorageModeDedicated {
-    fmt.Println("Using dedicated table storage")
-}
-```
-
-### Example Resource Definition
-
-```go
-package v1
-
-// +fabrica:resource
-// +fabrica:storage=dedicated
-type Token struct {
-    metav1.TypeMeta   `json:",inline"`
-    metav1.ObjectMeta `json:"metadata,omitempty"`
-
-    Spec   TokenSpec   `json:"spec,omitempty"`
-    Status TokenStatus `json:"status,omitempty"`
-}
-
-type TokenSpec struct {
-    // +fabrica:field:storage=hashed:bcrypt:cost=12
-    // +fabrica:field:sensitive
-    // +fabrica:field:immutable
-    Value string `json:"value"`
-
-    // +fabrica:field:index
-    // +fabrica:field:unique
-    Name string `json:"name"`
-
-    // +fabrica:field:default=false
-    Revoked bool `json:"revoked"`
-}
-```
-
----
-
-## Annotation Reference
-
-### Resource-Level Annotations
-
-#### `+fabrica:resource`
-
-Marks a type as a Fabrica resource. Required for code generation.
-
-**Example:**
-```go
-// +fabrica:resource
-type Token struct { ... }
-```
-
----
-
-#### `+fabrica:storage=<mode>`
-
-Defines how the resource is persisted in the database.
-
-**Values:**
-- `generic` (default) - All resources stored in one `resources` table with JSON `spec`/`status` columns
-- `dedicated` - Resource gets its own table with flattened field columns
-
-**Example:**
-```go
-// +fabrica:storage=dedicated
-type Token struct { ... }
-```
-
-**Validation:**
-- Dedicated storage requires at least one field annotation
-
----
-
-### Field-Level Annotations
-
-All field annotations start with `+fabrica:field:`.
-
-#### `+fabrica:field:storage=hashed:<algorithm>[:<params>]`
-
-Store a hashed version of the field value instead of plaintext.
-
-**Algorithms:**
-
-##### `bcrypt`
-```go
-// +fabrica:field:storage=hashed:bcrypt
-// +fabrica:field:storage=hashed:bcrypt:cost=12
-Value string
-```
-
-**Parameters:**
-- `cost=N` - Bcrypt cost factor (4-31, default: 12)
-
-**Validation:**
-- Cost must be 4-31
-- Field must be string type (enforced at generation time)
-
-##### `argon2`
-```go
-// +fabrica:field:storage=hashed:argon2
-// +fabrica:field:storage=hashed:argon2:memory=65536
-Password string
-```
-
-**Parameters:**
-- `memory=N` - Memory cost in KB (1024-1048576, default: 65536)
-
-**Validation:**
-- Memory must be 1024-1048576 KB
-- Field must be string type
-
-##### `sha256`
-```go
-// +fabrica:field:storage=hashed:sha256
-APIKey string
-```
-
-**Parameters:** None
-
----
-
-#### `+fabrica:field:storage=encrypted:<algorithm>[:<params>]`
-
-Store an encrypted version of the field value.
-
-**Algorithms:**
-- `aes128`, `aes192`, `aes256`
-
-**Parameters:**
-- `key=<source>` - Key source: `env` (default), `vault`, `kms`
-
-**Example:**
-```go
-// +fabrica:field:storage=encrypted:aes256:key=vault
-SSN string
-```
-
-**Validation:**
-- Algorithm must be aes128/192/256
-- Key source must be env/vault/kms
-- Field must be string or []byte
-
----
-
-#### `+fabrica:field:sensitive`
-
-Marks field as sensitive. Will be excluded from logs and debug output.
-
-**Example:**
-```go
-// +fabrica:field:sensitive
-Password string
-```
-
----
-
-#### `+fabrica:field:immutable`
-
-Prevents field updates after resource creation. Updates will return HTTP 422.
-
-**Example:**
-```go
-// +fabrica:field:immutable
-CreatedBy string
-```
-
-**Validation:**
-- Cannot combine with `default` (conflicting behaviors)
-
----
-
-#### `+fabrica:field:unique`
-
-Adds a unique constraint on the field. Duplicate values will fail with HTTP 409.
-
-**Example:**
-```go
-// +fabrica:field:unique
-Email string
-```
-
----
-
-#### `+fabrica:field:index[=<type>]`
-
-Creates a database index on the field for faster queries.
-
-**Index Types:**
-- `btree` (default) - Standard B-tree index
-- `gin` - PostgreSQL GIN index (full-text, JSON)
-- `gist` - PostgreSQL GiST index (spatial)
-- `hash` - Hash index
-
-**Examples:**
-```go
-// +fabrica:field:index
-Name string
-
-// +fabrica:field:index=gin
-Tags []string
-```
-
-**Database Compatibility:**
-| Database   | btree | gin | gist | hash |
-|------------|-------|-----|------|------|
-| PostgreSQL | ✅    | ✅  | ✅   | ✅   |
-| MySQL      | ✅    | ✅  | ❌   | ✅   |
-| SQLite     | ✅    | ❌  | ❌   | ❌   |
-
----
-
-#### `+fabrica:field:default=<value>`
-
-Sets a database-level default value for the field.
-
-**Example:**
-```go
-// +fabrica:field:default=true
-Enabled bool
-
-// +fabrica:field:default=0
-RetryCount int
-```
-
-**Validation:**
-- Cannot combine with `immutable`
-
----
-
-## API Documentation
-
-### Types
-
-#### `ResourceAnnotations`
-
-Container for all annotations on a resource type.
-
-```go
-type ResourceAnnotations struct {
-    IsResource     bool                          // Marked with +fabrica:resource
-    StorageMode    StorageMode                   // generic or dedicated
-    Fields         map[string]*FieldAnnotations  // Field name -> annotations
-    RawAnnotations []string                      // Original annotation lines
-}
-```
-
----
-
-#### `FieldAnnotations`
-
-Container for all annotations on a single field.
-
-```go
-type FieldAnnotations struct {
-    FieldName      string          // Go field name
-    Storage        *StorageConfig  // Storage transformation (hashed, encrypted)
-    Sensitive      bool            // Exclude from logs
-    Immutable      bool            // Prevent updates
-    Index          *IndexConfig    // Database index
-    Default        string          // Database default value
-    Unique         bool            // Unique constraint
-    RawAnnotations []string        // Original annotation lines
-}
-```
-
----
-
-#### `StorageConfig`
-
-Defines how a field value is transformed before storage.
-
-```go
-type StorageConfig struct {
-    Type       StorageType       // default, hashed, encrypted
-    Hash       *HashConfig       // Hash parameters (if Type == hashed)
-    Encryption *EncryptionConfig // Encryption parameters (if Type == encrypted)
-}
-```
-
----
-
-#### `HashConfig`
-
-Hash algorithm parameters.
-
-```go
-type HashConfig struct {
-    Algorithm HashAlgorithm  // bcrypt, argon2, sha256
-    Cost      int            // Algorithm-specific cost parameter
-}
-```
-
----
-
-#### `IndexConfig`
-
-Database index parameters.
-
-```go
-type IndexConfig struct {
-    Type   IndexType  // btree, gin, gist, hash
-    Unique bool       // Unique index
-    Name   string     // Optional custom index name
-}
-```
-
----
-
-### Functions
-
-#### `ParseResourceAnnotations(typeSpec, docComments) (*ResourceAnnotations, error)`
-
-Parses Fabrica annotations from a Go type declaration.
-
-**Parameters:**
-- `typeSpec` - `*ast.TypeSpec` from `go/ast` parsing
-- `docComments` - `*ast.CommentGroup` from parent `GenDecl.Doc` (or `typeSpec.Doc`)
-
-**Returns:**
-- `*ResourceAnnotations` - Parsed annotations
-- `error` - Parse error if annotation syntax is invalid
-
-**Important:** Type-level comments in Go are attached to `GenDecl.Doc`, not `TypeSpec.Doc`. Always pass `GenDecl.Doc` as the second parameter.
-
-**Example:**
-```go
-ast.Inspect(file, func(n ast.Node) bool {
-    if gd, ok := n.(*ast.GenDecl); ok {
-        for _, spec := range gd.Specs {
-            if ts, ok := spec.(*ast.TypeSpec); ok {
-                annots, err := ParseResourceAnnotations(ts, gd.Doc)
-                // ...
-            }
-        }
-    }
-    return true
-})
-```
-
----
-
-#### `Validate(annotations) error`
-
-Performs semantic validation on parsed annotations.
-
-**Checks:**
-- Dedicated storage requires field annotations
-- Hash/encryption parameters in valid ranges
-- No conflicting annotations (e.g., immutable + default)
-- Valid enum values
-
-**Returns:** `error` - Validation error or `nil` if valid
-
-**Example:**
-```go
-if err := annotations.Validate(annots); err != nil {
-    return fmt.Errorf("invalid annotations: %w", err)
-}
-```
-
----
-
-#### `ValidateForDatabase(annotations, dbDriver) error`
-
-Validates annotations against database-specific capabilities.
-
-**Parameters:**
-- `annotations` - Parsed annotations
-- `dbDriver` - Database driver name: `postgres`, `mysql`, `sqlite3`
-
-**Checks:**
-- Index type support (SQLite only supports btree)
-- Database-specific features
-
-**Returns:** `error` - Validation error or `nil` if compatible
-
-**Example:**
-```go
-if err := annotations.ValidateForDatabase(annots, "sqlite3"); err != nil {
-    return fmt.Errorf("annotations incompatible with SQLite: %w", err)
-}
-```
-
----
-
-## Examples
-
-### Token Service with Bcrypt Hashing
-
-```go
-// +fabrica:resource
-// +fabrica:storage=dedicated
-type Token struct {
-    metav1.TypeMeta   `json:",inline"`
-    metav1.ObjectMeta `json:"metadata,omitempty"`
-    Spec   TokenSpec   `json:"spec,omitempty"`
-    Status TokenStatus `json:"status,omitempty"`
-}
-
-type TokenSpec struct {
-    // Token value stored as bcrypt hash
-    // +fabrica:field:storage=hashed:bcrypt:cost=12
-    // +fabrica:field:sensitive
-    // +fabrica:field:immutable
-    Value string `json:"value"`
-
-    // Indexed for fast lookup
-    // +fabrica:field:index
-    // +fabrica:field:unique
-    Name string `json:"name"`
-
-    // Optional description
-    Description string `json:"description,omitempty"`
-
-    // Revocation status (default: false)
-    // +fabrica:field:default=false
-    Revoked bool `json:"revoked"`
-}
-```
-
-**Generated Storage:**
-```sql
-CREATE TABLE tokens (
-    id            UUID PRIMARY KEY,
-    name          TEXT NOT NULL,
-    namespace     TEXT NOT NULL,
-    value         TEXT NOT NULL,  -- bcrypt hash
-    description   TEXT,
-    revoked       BOOLEAN NOT NULL DEFAULT false,
-    created_at    TIMESTAMP NOT NULL,
-    updated_at    TIMESTAMP NOT NULL,
-    UNIQUE(name, namespace)
-);
-
-CREATE INDEX idx_tokens_name ON tokens(name);
-```
-
----
-
-### User Service with Encryption
+## Supported workflow
 
 ```go
 // +fabrica:resource
 // +fabrica:storage=dedicated
 type User struct {
-    metav1.TypeMeta   `json:",inline"`
-    metav1.ObjectMeta `json:"metadata,omitempty"`
-    Spec   UserSpec   `json:"spec,omitempty"`
+    APIVersion string
+    Kind       string
+    Metadata   fabrica.Metadata
+    Spec       UserSpec
+    Status     UserStatus
 }
 
 type UserSpec struct {
-    // +fabrica:field:index
     // +fabrica:field:unique
-    Email string `json:"email"`
+    // +fabrica:field:index=btree
+    Email string `json:"email" validate:"required"`
 
-    // +fabrica:field:storage=hashed:bcrypt:cost=14
-    // +fabrica:field:sensitive
-    Password string `json:"password"`
-
-    // +fabrica:field:storage=encrypted:aes256:key=vault
-    // +fabrica:field:sensitive
-    SSN string `json:"ssn"`
-
-    // +fabrica:field:default=false
-    EmailVerified bool `json:"emailVerified"`
-}
-```
-
----
-
-### Document Service with GIN Index
-
-```go
-// +fabrica:resource
-// +fabrica:storage=dedicated
-type Document struct {
-    metav1.TypeMeta   `json:",inline"`
-    metav1.ObjectMeta `json:"metadata,omitempty"`
-    Spec   DocumentSpec `json:"spec,omitempty"`
-}
-
-type DocumentSpec struct {
-    Title string `json:"title"`
-
-    // Full-text search on content
-    // +fabrica:field:index=gin
-    Content string `json:"content"`
-
-    // JSON search on tags
-    // +fabrica:field:index=gin
-    Tags []string `json:"tags"`
-}
-```
-
----
-
-## Integration Guide
-
-### Step 1: Define Resource with Annotations
-
-```go
-// examples/token-service/apis/v1/token_types.go
-
-// +fabrica:resource
-// +fabrica:storage=dedicated
-type Token struct {
-    metav1.TypeMeta   `json:",inline"`
-    metav1.ObjectMeta `json:"metadata,omitempty"`
-    Spec   TokenSpec   `json:"spec,omitempty"`
-}
-
-type TokenSpec struct {
     // +fabrica:field:storage=hashed:bcrypt:cost=12
-    Value string `json:"value"`
+    // +fabrica:field:sensitive
+    Password string `json:"password" validate:"required"`
+
+    // +fabrica:field:immutable
+    Username string `json:"username" validate:"required"`
 }
 ```
 
----
+The normal `fabrica generate` registration path discovers these comments, resolves them for the configured dialect, and selects one authoritative storage route per resource. Dedicated resources use only their dedicated Ent entity; generic resources use only the shared JSON resource entity. Routing is exclusive, not dual-write.
 
-### Step 2: Parse Annotations in Generator
+Field directives require dedicated Ent storage. Any field-level storage, SQL, constraint, default, sensitive, or immutable directive on a generic resource fails before managed output changes, whether the selected backend is Ent or file. Dedicated mode with file storage is rejected for the same reason: the backend cannot enforce the dedicated contract.
 
-```go
-// pkg/codegen/generator.go
+## Tested capability matrix
 
-import "github.com/openchami/fabrica/pkg/annotations"
+Every supported row names the executable test that proves it. A parser or template branch alone is not a supported capability.
 
-func (g *Generator) processResourceType(typeSpec *ast.TypeSpec, genDecl *ast.GenDecl) error {
-    // Parse annotations
-    annots, err := annotations.ParseResourceAnnotations(typeSpec, genDecl.Doc)
-    if err != nil {
-        return fmt.Errorf("parse annotations for %s: %w", typeSpec.Name.Name, err)
-    }
+| Capability | PostgreSQL | SQLite | Executable evidence |
+|---|---|---|---|
+| Fields: `string`, `bool`, `int`, `int64`, `float64`, `time.Time`, and `[]string` | Supported | Supported | `TestCapabilities_supports_closed_field_matrix` |
+| Nillable pointers: `*string`, `*bool`, `*int`, `*int64`, `*float64`, `*time.Time` | Supported | Supported | `TestCapabilities_supports_ent_nillable_scalar_pointers` |
+| Bcrypt on `string` and `*string` | Supported | Supported | `TestCapabilities_supports_bcrypt` |
+| Field directives require dedicated Ent storage | Fail closed | Fail closed | `TestPrepareResourceAnnotations_rejects_field_directives_when_storage_cannot_enforce_them` |
+| Dedicated mode with file storage | Rejected | Rejected | `TestPrepareResourceAnnotations_rejects_dedicated_mode_for_file_backend` |
+| File-backed resource version snapshots | File backend only | File backend only | `TestGeneratedFileVersioning_builds_and_runs_snapshot_runtime` |
+| Ent resource version snapshots | Rejected before output | Rejected before output | `TestPrepareResourceAnnotations_rejects_ent_version_snapshots_for_every_storage_mode` |
+| Required bcrypt create and omitted update | Supported | Supported | `TestDedicatedSecurity_generated_adapter_runtime` |
+| Sensitive zero-value update semantics | Supported | Supported | `TestDedicatedSecurity_generated_adapter_runtime` |
+| Persisted redacted write responses | Supported | Supported | `TestDedicatedSecurity_generated_adapter_runtime` |
+| Scalar defaults: string, bool, int, int64, float64 | Supported | Supported | `TestGeneratedDedicatedSchema_default_modifiers_match_pointer_shape` |
+| Unique constraints | Supported | Supported | `TestGeneratedDedicatedIndex_baseline_portable_btree_and_unique` |
+| Portable B-tree indexes | Supported | Supported | `TestGeneratedDedicatedIndex_baseline_portable_btree_and_unique` |
+| GIN index on `[]string` | Supported | Rejected | `TestGeneratedDedicatedIndex_postgresql_methods_use_ent_annotations` |
+| Hash index on scalar fields | Supported | Rejected | `TestGeneratedDedicatedIndex_postgresql_methods_use_ent_annotations` |
+| Complete resource envelope | Supported | Supported | `TestDedicatedEnvelope_schema_renders_complete_envelope` |
+| Exclusive generic/dedicated CRUD routing | Supported | Supported | `TestDedicatedStorageRouting_generated_helpers_have_authoritative_callers` |
+| Explicit non-destructive migration helpers | Supported | Supported | `TestGeneratedMigration_is_explicit_and_dedicated_only` |
+| Unique create/update conflict response | HTTP 409 | HTTP 409 | `TestGeneratedHandlers_map_create_and_update_storage_conflicts_to_stable_409` |
+| Backend-common typed conflict contract | Supported | Supported | `TestGeneratedStorageErrors_define_backend_independent_conflict_contract` |
+| Commit-aware migration continuation cursor | Supported | Supported | `TestDedicatedMigration_generated_SQLite_runtime` |
+| Generated project generation, vet, and build | Supported | Supported | `TestGeneratedProjectMatrix_passes_generation_vet_and_build` |
+| Generated SQLite runtime | N/A | Supported | `TestGeneratedSQLite_acceptance` |
+| Restricted-role PostgreSQL runtime | Supported | N/A | `TestGeneratedPostgres_acceptance` |
 
-    // Validate
-    if err := annotations.Validate(annots); err != nil {
-        return fmt.Errorf("invalid annotations on %s: %w", typeSpec.Name.Name, err)
-    }
+PostgreSQL and SQLite are the only supported dialects for annotation-driven dedicated storage.
 
-    // Database-specific validation
-    if err := annotations.ValidateForDatabase(annots, g.config.Database); err != nil {
-        return fmt.Errorf("annotations incompatible with %s: %w", g.config.Database, err)
-    }
+## Field contract
 
-    // Extend metadata with annotations
-    meta := &ResourceMetadata{
-        Name:             typeSpec.Name.Name,
-        StorageMode:      annots.StorageMode,
-        FieldAnnotations: annots.Fields,
-    }
+### Types and nullability
 
-    // Generate schema based on storage mode
-    if meta.StorageMode == annotations.StorageModeDedicated {
-        return g.generateDedicatedSchema(meta)
-    } else {
-        return g.generateGenericSchema(meta)
-    }
-}
-```
+The closed non-pointer set is `string`, `bool`, `int`, `int64`, `float64`, `time.Time`, and `[]string`. Supported pointers are `*string`, `*bool`, `*int`, `*int64`, `*float64`, and `*time.Time`. A pointer becomes an Ent `Optional().Nillable()` field and preserves absence separately from the scalar zero value. `*[]string`, maps, nested structs, named aliases, arbitrary slices, and other Go types are rejected with a typed capability error.
 
----
+### Defaults
 
-### Step 3: Generate Dedicated Schema (Phase 3)
+`+fabrica:field:default=<literal>` supports string, bool, int, int64, and finite float64 values. Defaults are parsed before rendering, so malformed, overflowing, NaN, and infinity literals fail generation with source context. A pointer may combine nullability with a database default. `time.Time`, `[]string`, and transformed fields do not support defaults. Defaults and `immutable` are mutually exclusive.
 
-```go
-// Template: pkg/codegen/templates/ent/schema/resource_dedicated.go.tmpl
+### Storage transform and sensitive output
 
-func ({{ .Name }}) Fields() []ent.Field {
-    return []ent.Field{
-        {{- range .Spec.Fields }}
-        {{- if .Annotations.Storage }}
-        {{- if eq .Annotations.Storage.Type "hashed" }}
-        field.String("{{ .JSONName }}").
-            Sensitive().
-            {{- if .Annotations.Immutable }}
-            Immutable().
-            {{- end }}
-            SchemaType(map[string]string{
-                dialect.Postgres: "varchar(60)",  // bcrypt hash length
-            }),
-        {{- end }}
-        {{- else }}
-        field.{{ .FieldType }}("{{ .JSONName }}")
-            {{- if .Annotations.Unique }}
-            .Unique()
-            {{- end }}
-            {{- if .Annotations.Default }}
-            .Default({{ .Annotations.Default }})
-            {{- end }},
-        {{- end }}
-        {{- end }}
-    }
-}
-```
+`+fabrica:field:storage=hashed:bcrypt[:cost=N]` is supported for `string` and `*string`; bcrypt is the only supported storage transform. Cost must be in bcrypt's 4–31 range. A required bcrypt value must be present and non-empty on create. On update, an omitted value or the redacted zero value preserves the stored hash; supplied nonzero plaintext replaces it with a new hash. An existing bcrypt value is not hashed a second time.
 
----
+`+fabrica:field:sensitive` zeroes the field at the API boundary. The JSON key remains present with the type's zero value; it is not omitted. Bcrypt and API zeroing are separate guarantees: the database stores a bcrypt hash, while API responses expose neither plaintext nor hash.
 
-## Validation Rules
+Dedicated updates interpret a redacted non-pointer zero value as omitted: empty strings, `false`, numeric zero, zero `time.Time`, and empty or nil `[]string` preserve the stored value. A nonzero value explicitly replaces it. When an explicit zero replacement is required, use the corresponding supported pointer type and send a non-nil pointer to zero; nil preserves the stored value. `[]string` has no supported pointer form, so an empty sensitive slice cannot explicitly clear storage.
 
-### Resource-Level
+After a successful dedicated create, PUT, or PATCH, the generated handler reloads the persisted entity and converts it through the redacting adapter before publishing or returning it. The response therefore reflects database defaults and immutable values while exposing neither submitted sensitive values nor stored hashes. Status handlers remain status-only writes.
 
-| Rule | Check | Error |
-|------|-------|-------|
-| Dedicated storage | Must have ≥1 field annotation | "requires at least one field annotation to justify separate table" |
-| Storage mode | Must be `generic` or `dedicated` | "unknown storage mode" |
+### Immutable, unique, and indexes
 
----
+- `+fabrica:field:immutable` preserves the stored value on update. It does not promise HTTP 422.
+- `+fabrica:field:unique` creates a database uniqueness constraint. Every generated backend compiles against the same backend-common typed conflict contract. Ent classifies constraint failures through that contract, and generated create and update handlers map them to HTTP 409 with a stable storage-conflict response. File storage does not invent uniqueness constraints.
+- `+fabrica:field:index` and `index=btree` are portable.
+- PostgreSQL additionally supports `index=gin` for `[]string` and `index=hash` for scalar fields.
+- SQLite rejects GIN and hash before rendering.
 
-### Field-Level
+## Complete envelope and routing
 
-| Annotation | Constraint | Valid Range | Error |
-|------------|------------|-------------|-------|
-| `bcrypt:cost` | Cost parameter | 4-31 | "bcrypt cost must be 4-31, got N" |
-| `argon2:memory` | Memory in KB | 1024-1048576 | "argon2 memory must be 1024-1048576 KB, got N" |
-| `encryption:algorithm` | Algorithm name | aes128, aes192, aes256 | "unknown encryption algorithm" |
-| `encryption:key` | Key source | env, vault, kms | "unknown key source" |
-| `index:type` | Index type | btree, gin, gist, hash | "unknown index type" |
-| `immutable` + `default` | Conflicting | N/A | "immutable fields should not have database defaults" |
+Dedicated storage preserves the complete resource envelope: API version, kind, identity, namespace, UID, labels, annotations, resource version, creation/update timestamps, Spec, and Status. Conversion errors stop the operation rather than dropping envelope state.
 
----
+Each resource has one storage authority. Dedicated CRUD and query helpers never fall through to the generic `ent.Resource` path. Regenerating a resource from dedicated to generic removes managed dedicated artifacts before Ent regeneration, preventing stale entities from remaining selectable.
 
-## Database Compatibility
+## Migration and cutover
 
-### Index Types
+Generation emits preview and migration helpers only for dedicated resources. Migration is explicit, opt-in, and non-destructive: it is never called by server startup or generation, and it does not delete source rows from the generic table. Operators must:
 
-| Database   | btree | gin | gist | hash | Notes |
-|------------|-------|-----|------|------|-------|
-| PostgreSQL | ✅    | ✅  | ✅   | ✅   | All types supported |
-| MySQL      | ✅    | ✅  | ❌   | ✅   | No GiST (spatial requires spatial index) |
-| SQLite     | ✅    | ❌  | ❌   | ❌   | Only B-tree indexes |
+Continuation cursors are commit-aware. Preview publishes its cursor only after a complete successful preview. A write batch advances its cursor only after the transaction commits; conversion, hashing, constraint, cancellation, or commit failures roll back and return the input `AfterID` with `Copied=0`, so retry starts from the last durable boundary.
 
-**Validation:** Call `ValidateForDatabase(annots, dbDriver)` to check compatibility.
+1. back up the database;
+2. preview and resolve conflicts;
+3. run the generated migration under the intended application role;
+4. verify counts and application reads;
+5. cut traffic to the dedicated route; and
+6. retain or remove generic rows only under a separate operator-controlled retention procedure.
 
----
+The generated managed-schema transaction stages output, uses a process/kernel lock, and restores the prior managed tree after an interrupted or failed replacement. These filesystem guarantees do not replace a database backup or an operator-approved cutover.
 
-### Hashing Algorithms
+## Strict diagnostics
 
-| Algorithm | PostgreSQL | MySQL | SQLite | Notes |
-|-----------|------------|-------|--------|-------|
-| bcrypt    | ✅         | ✅    | ✅     | Recommended (cost=12) |
-| argon2    | ✅         | ✅    | ✅     | Modern, memory-hard |
-| sha256    | ✅         | ✅    | ✅     | Fast, not for passwords |
-
----
-
-### Encryption
-
-Encryption is application-level (done before INSERT/after SELECT), so database compatibility is not an issue.
-
----
-
-## Error Handling
-
-### Error Types
-
-#### `ParseError`
-
-Syntax error in annotation.
+The supported public resolution entry points are:
 
 ```go
-type ParseError struct {
-    Line    string  // The annotation that failed
-    Message string  // Error description
-}
+resolved, err := annotations.ResolveStorageIntent(filename, "User", annotations.DialectPostgreSQL)
+resolved, err := annotations.ResolveStorageIntentFromReflect(resourceType, source, annotations.DialectSQLite)
 ```
 
-**Example:**
-```
-failed to parse annotation "+fabrica:storage=invalid": unknown storage mode "invalid", expected 'generic' or 'dedicated'
-```
+`CapabilityError`, `ParseError`, and `DefaultError` retain source location and semantic context, including filename, line, column, resource type, field, directive, and error category where applicable. Unknown or malformed Fabrica directives and unsupported security/integrity requests fail before generated output is committed. Cache hits clone complete resolved metadata and preserve the same diagnostics as cold parsing.
 
----
+`ParseResourceAnnotations` and `Validate` remain lower-level parsing APIs. Code generation should use the resolved storage intent rather than treating parse acceptance as capability support.
 
-#### `ValidationError`
+## Rejected capabilities
 
-Semantic error in annotation.
+Encryption, Argon2, SHA-256, MySQL, GiST, and unsupported Go types are rejected. Specifically:
 
-```go
-type ValidationError struct {
-    Annotation string  // The annotation that failed
-    Message    string  // Error description
-}
-```
+| Capability | Contract | Executable evidence |
+|---|---|---|
+| Encryption | Rejected before output; no encryption or key-management runtime | `TestUnsupportedCapabilities_return_typed_source_error` |
+| Argon2 | Rejected before output | `TestUnsupportedCapabilities_return_typed_source_error` |
+| SHA-256 storage hashing | Rejected before output | `TestUnsupportedCapabilities_return_typed_source_error` |
+| MySQL dedicated annotations | Rejected as an unsupported dialect | `TestUnsupportedCapabilities_rejects_mysql_dialect` |
+| GiST | Rejected for every supported dialect | `TestSecurityDialect_unsupported_crypto_types_and_indexes_return_capability_errors` |
+| Unsupported Go types | Rejected with a typed capability error | `TestUnsupportedCapabilities_return_typed_source_error` |
+| Unknown Fabrica directives | Rejected with a source-located typed parse error | `TestParseFileAnnotations_rejects_invalid_directives_with_source_context` |
 
-**Example:**
-```
-invalid annotation "field Value bcrypt cost": bcrypt cost must be 4-31, got 3
-```
+GIN on scalar fields, hash on `[]string`, bcrypt on non-string fields, unsupported pointers, maps, nested structs, named aliases, `[]byte`, and arbitrary slices are also rejected by the typed resolver.
 
----
+There is no compatibility mode that silently ignores these requests and no unsafe override.
 
-### Common Errors
+## Verification
 
-#### "requires at least one field annotation"
-
-```go
-// +fabrica:storage=dedicated  // ERROR: no field annotations
-type Token struct {
-    Name string
-}
+```bash
+go test -race -shuffle=on -count=1 ./pkg/annotations ./pkg/codegen
+go test -tags=integration -count=1 -v ./pkg/codegen -run '^TestGeneratedPostgres'
+bash examples/12-storage-annotations/verify-example.sh
 ```
 
-**Fix:** Add at least one field annotation or use `storage=generic`.
-
----
-
-#### "bcrypt cost must be 4-31"
-
-```go
-// +fabrica:field:storage=hashed:bcrypt:cost=32  // ERROR: too high
-Value string
-```
-
-**Fix:** Use cost between 4-31 (recommend 12-14).
-
----
-
-#### "immutable fields should not have database defaults"
-
-```go
-// +fabrica:field:immutable
-// +fabrica:field:default=pending  // ERROR: conflicting
-Status string
-```
-
-**Fix:** Remove `default` and set value in code.
-
----
-
-#### "SQLite only supports B-tree indexes"
-
-```go
-// +fabrica:field:index=gin  // ERROR: SQLite doesn't support GIN
-Content string
-```
-
-**Fix:** Use `index` (defaults to btree) or switch to PostgreSQL.
-
----
-
-## Best Practices
-
-### Security
-
-1. **Always use `sensitive` with hashed/encrypted fields**
-   ```go
-   // +fabrica:field:storage=hashed:bcrypt
-   // +fabrica:field:sensitive
-   Password string
-   ```
-
-2. **Use higher bcrypt cost for passwords**
-   ```go
-   // +fabrica:field:storage=hashed:bcrypt:cost=14
-   Password string
-   ```
-
-3. **Don't hash searchable fields**
-   - Hashing prevents lookups (can't find by hashed value)
-   - Use encryption instead if searchability needed
-
----
-
-### Performance
-
-1. **Index frequently queried fields**
-   ```go
-   // +fabrica:field:index
-   Email string
-   ```
-
-2. **Use GIN indexes for full-text search**
-   ```go
-   // +fabrica:field:index=gin
-   Content string
-   ```
-
-3. **Avoid over-indexing**
-   - Indexes slow down writes
-   - Only index fields used in WHERE clauses
-
----
-
-### Maintainability
-
-1. **Group related annotations**
-   ```go
-   // +fabrica:field:storage=hashed:bcrypt:cost=12
-   // +fabrica:field:sensitive
-   // +fabrica:field:immutable
-   Value string
-   ```
-
-2. **Document why annotations are needed**
-   ```go
-   // Token value must be hashed (PCI compliance)
-   // +fabrica:field:storage=hashed:bcrypt:cost=12
-   Value string
-   ```
-
-3. **Validate early in CI**
-   ```bash
-   go test ./pkg/annotations/...
-   ```
-
----
-
-## Future Enhancements (Phase 5+)
-
-### Planned Annotations
-
-- `+fabrica:field:ttl=duration` - Row expiration
-- `+fabrica:field:cascade=delete|null` - Foreign key behavior
-- `+fabrica:field:computed=expression` - Generated columns
-- `+fabrica:field:audit=true` - Automatic audit trail
-
----
-
-## Troubleshooting
-
-### "no type declaration found in source"
-
-**Cause:** Parser can't find the type.
-
-**Fix:** Ensure source is valid Go and use `parser.ParseComments`.
-
----
-
-### "expected IsResource=true"
-
-**Cause:** Missing `+fabrica:resource` annotation.
-
-**Fix:** Add `// +fabrica:resource` above type.
-
----
-
-### Tests fail with "expected X, got Y"
-
-**Cause:** Annotation parsing changed behavior.
-
-**Fix:** Check test source strings match annotation format.
-
----
-
-## Contributing
-
-When adding new annotations:
-
-1. Add enum constants to `types.go`
-2. Implement parsing in `parser.go`
-3. Add validation in `validator.go`
-4. Write tests in `*_test.go`
-5. Update this README
-6. Run `go test ./pkg/annotations/...`
-
----
-
-## License
-
-Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
-
-SPDX-License-Identifier: MIT
+Example 12 is the executable SQLite walkthrough. PostgreSQL behavior belongs to the restricted-role integration suite, not to claims inferred from SQLite.

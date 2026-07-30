@@ -54,10 +54,16 @@ func validateDedicatedStorage(annotations *ResourceAnnotations) error {
 // validateFieldAnnotations checks field-level annotations for conflicts
 func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) error {
 	// Immutable + default can conflict (default set on update attempt)
-	if annotations.Immutable && annotations.Default != "" {
+	if annotations.Immutable && hasRawDefault(annotations) {
 		return &ValidationError{
 			Annotation: fmt.Sprintf("field %s", fieldName),
 			Message:    "immutable fields should not have database defaults (set in code instead)",
+		}
+	}
+	if annotations.Storage != nil && annotations.Storage.Type != StorageTypeDefault && hasRawDefault(annotations) {
+		return &ValidationError{
+			Annotation: fmt.Sprintf("field %s", fieldName),
+			Message:    "transformed fields should not have database defaults",
 		}
 	}
 

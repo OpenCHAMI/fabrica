@@ -32,6 +32,7 @@ Step-by-step tutorials and how-tos for building with Fabrica:
 - **[Resource Model](guides/resource-model.md)** - Understanding Fabrica resources
 - **[Storage Systems](guides/storage.md)** - File and database backends
 - **[Ent Storage Integration](guides/storage-ent.md)** - Using Ent ORM with databases
+- **[Storage Annotation Contract](../pkg/annotations/README.md)** - Tested backend preflight, sensitive update/response, conflict, and commit-aware migration matrix
 - **[Validation](guides/validation.md)** - Request validation and error handling
 
 **Advanced Features:**

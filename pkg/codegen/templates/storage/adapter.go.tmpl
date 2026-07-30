@@ -25,7 +25,7 @@ import (
 // This function extracts the Resource fields and marshals Spec/Status to JSON.
 func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string]string, map[string]string, error) {
 	// Type assertion to get Resource fields
-	var apiVersion, kind, name, uid string
+	var apiVersion, kind, name, uid, namespace, resourceVersion string
 	var spec, status json.RawMessage
 	var labels, annotations map[string]string
 	var createdAt, updatedAt time.Time
@@ -37,6 +37,8 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 		kind = v.Kind
 		name = v.Metadata.Name
 		uid = v.Metadata.UID
+		namespace = v.Metadata.Namespace
+		resourceVersion = v.Metadata.ResourceVersion
 		labels = v.Metadata.Labels
 		annotations = v.Metadata.Annotations
 		createdAt = v.Metadata.CreatedAt
@@ -65,6 +67,8 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 		SetKind(kind).
 		SetResourceType(kind).
 		SetSpec(spec).
+		SetNamespace(namespace).
+		SetResourceVersion(resourceVersion).
 		SetCreatedAt(createdAt).
 		SetUpdatedAt(updatedAt)
 
@@ -89,6 +93,8 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 			Metadata: fabrica.Metadata{
 				Name:        entResource.Name,
 				UID:         entResource.UID,
+				Namespace: entResource.Namespace,
+				ResourceVersion: entResource.ResourceVersion,
 				CreatedAt:   entResource.CreatedAt,
 				UpdatedAt:   entResource.UpdatedAt,
 				Labels:      make(map[string]string),
@@ -101,6 +107,8 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 				Metadata: resource.Metadata{
 					Name:        entResource.Name,
 					UID:         entResource.UID,
+					Namespace: entResource.Namespace,
+					ResourceVersion: entResource.ResourceVersion,
 					CreatedAt:   entResource.CreatedAt,
 					UpdatedAt:   entResource.UpdatedAt,
 					Labels:      make(map[string]string),

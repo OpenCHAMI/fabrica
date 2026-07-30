@@ -3,185 +3,78 @@
 // SPDX-License-Identifier: MIT
 
 /*
-Package annotations provides parsing and validation for Fabrica code generation directives.
+Package annotations resolves Fabrica storage directives into a closed, typed
+contract for generated dedicated Ent storage.
 
-Fabrica uses Go comment annotations (similar to Kubernetes code generators) to configure
-how resources are stored in the database. Annotations control table schemas, field-level
-transformations (hashing, encryption), indexes, and constraints.
+The normal generation path recognizes resource storage selection and field
+directives for defaults, nullability, bcrypt, sensitivity, immutability,
+uniqueness, and indexes. Field directives require dedicated Ent storage;
+generic Ent/file resources and dedicated resources on the file backend fail
+closed before output. Annotation-driven dedicated storage supports PostgreSQL
+and SQLite. It uses exclusive routing: a dedicated resource uses its dedicated
+Ent entity, while a generic resource uses the shared JSON entity.
 
-# Overview
+Resource version snapshots are file-backend only. Generic and dedicated Ent
+resources with versioning enabled fail before output. Unknown Fabrica
+directives fail with a source-located typed parse error rather than being
+ignored.
 
-The package supports two storage modes:
+# Capability contract
 
-  - Generic (default): All resources in one table with JSON spec/status columns
-  - Dedicated: Per-resource table with flattened field columns
+Supported fields are string, bool, int, int64, float64, time.Time, and
+[]string. Supported pointers are *string, *bool, *int, *int64, *float64, and
+*time.Time. Pointer fields are optional and nillable. Scalar defaults support
+string, bool, int, int64, and finite float64 literals; time.Time, []string,
+and transformed defaults are rejected.
 
-Dedicated storage enables field-level control via annotations:
+Bcrypt is the only supported storage transform and accepts string or *string.
+A required bcrypt value must be non-empty on create; omission or a redacted
+zero on update preserves storage. Sensitive fields are zeroed at the API
+boundary without omitting their JSON keys. Non-pointer sensitive zeros
+preserve storage, while non-nil pointers explicitly replace it, including
+with zero. Dedicated writes reload persisted entities before producing
+redacted write responses. Immutable fields preserve their stored value.
 
-  - Hashing (bcrypt, argon2, sha256) for passwords and tokens
-  - Encryption (AES-128/192/256) for sensitive data
-  - Database indexes (btree, gin, gist, hash) for query performance
-  - Constraints (unique, immutable, default values)
+Every generated backend compiles against one backend-common conflict contract.
+Ent constraint causes map through it to HTTP 409; file storage remains
+unconstrained.
 
-# Quick Start
+Portable indexes use B-tree. PostgreSQL additionally supports GIN for
+[]string and hash for scalar fields. SQLite accepts only B-tree indexes.
 
-Define a resource with annotations:
+Dedicated conversion preserves the complete resource envelope, including
+identity, namespace, UID, labels, annotations, resource version, timestamps,
+Spec, and Status.
 
-	// +fabrica:resource
-	// +fabrica:storage=dedicated
-	type Token struct {
-	    metav1.TypeMeta   `json:",inline"`
-	    metav1.ObjectMeta `json:"metadata,omitempty"`
-	    Spec   TokenSpec   `json:"spec,omitempty"`
-	}
+# Unsupported requests
 
-	type TokenSpec struct {
-	    // +fabrica:field:storage=hashed:bcrypt:cost=12
-	    // +fabrica:field:sensitive
-	    // +fabrica:field:immutable
-	    Value string `json:"value"`
+Encryption, Argon2, SHA-256, MySQL, GiST, and unsupported Go types are rejected.
+There is no plaintext encryption fallback, algorithm downgrade, compatibility
+ignore mode, or unsafe override.
 
-	    // +fabrica:field:index
-	    // +fabrica:field:unique
-	    Name string `json:"name"`
-	}
+# Diagnostics
 
-Parse annotations from Go AST:
+ResolveStorageIntent and ResolveStorageIntentFromReflect return typed errors
+with source and semantic context. Malformed, unknown, or unsupported directives
+fail before generated output is committed. Parse acceptance alone does not
+establish backend support.
 
-	fset := token.NewFileSet()
-	file, _ := parser.ParseFile(fset, "types.go", src, parser.ParseComments)
+# Migration
 
-	var typeSpec *ast.TypeSpec
-	var docComments *ast.CommentGroup
-	ast.Inspect(file, func(n ast.Node) bool {
-	    if gd, ok := n.(*ast.GenDecl); ok {
-	        for _, spec := range gd.Specs {
-	            if ts, ok := spec.(*ast.TypeSpec); ok {
-	                typeSpec = ts
-	                docComments = gd.Doc
-	                return false
-	            }
-	        }
-	    }
-	    return true
-	})
+Generated migration helpers are explicit and non-destructive. They are not
+called by generation or server startup and do not delete generic source rows.
+Preview publishes a cursor only after successful completion. Write cursors
+advance only after commit; rollback returns the input cursor and zero copied
+rows.
+Operators own backup, preview, conflict resolution, verification, traffic
+cutover, and any later source-data retention action.
 
-	annots, err := annotations.ParseResourceAnnotations(typeSpec, docComments)
-	if err != nil {
-	    log.Fatal(err)
-	}
-
-	if err := annotations.Validate(annots); err != nil {
-	    log.Fatal(err)
-	}
-
-Use annotations in code generation:
-
-	if annots.StorageMode == annotations.StorageModeDedicated {
-	    for fieldName, fieldAnnots := range annots.Fields {
-	        if fieldAnnots.Storage != nil && fieldAnnots.Storage.Type == annotations.StorageTypeHashed {
-	            // Generate bcrypt hashing logic
-	        }
-	    }
-	}
-
-# Resource-Level Annotations
-
-	+fabrica:resource         - Mark type as Fabrica resource
-	+fabrica:storage=generic  - Use shared resources table (default)
-	+fabrica:storage=dedicated - Use dedicated table per resource
-
-# Field-Level Annotations
-
-Storage transformations:
-
-	+fabrica:field:storage=hashed:bcrypt[:cost=12]
-	+fabrica:field:storage=hashed:argon2[:memory=65536]
-	+fabrica:field:storage=hashed:sha256
-	+fabrica:field:storage=encrypted:aes256[:key=vault]
-
-Constraints:
-
-	+fabrica:field:sensitive    - Exclude from logs
-	+fabrica:field:immutable    - Prevent updates
-	+fabrica:field:unique       - Unique constraint
-	+fabrica:field:default=val  - Database default
-
-Indexes:
-
-	+fabrica:field:index        - B-tree index (default)
-	+fabrica:field:index=gin    - GIN index (full-text, PostgreSQL)
-	+fabrica:field:index=gist   - GiST index (spatial, PostgreSQL)
-	+fabrica:field:index=hash   - Hash index
-
-# Validation
-
-The package performs two levels of validation:
-
-1. Semantic validation (Validate): Checks parameter ranges, conflicting annotations
-
-2. Database-specific validation (ValidateForDatabase): Checks feature support per database
-
-Example:
-
-	if err := annotations.Validate(annots); err != nil {
-	    return fmt.Errorf("invalid annotations: %w", err)
-	}
-
-	if err := annotations.ValidateForDatabase(annots, "sqlite3"); err != nil {
-	    return fmt.Errorf("incompatible with SQLite: %w", err)
-	}
-
-# Error Types
-
-ParseError - Syntax error in annotation:
-
-	failed to parse annotation "+fabrica:storage=invalid": unknown storage mode
-
-ValidationError - Semantic error:
-
-	invalid annotation "field Value bcrypt cost": bcrypt cost must be 4-31, got 32
-
-# Database Compatibility
-
-Index types by database:
-
-	PostgreSQL: btree, gin, gist, hash (all supported)
-	MySQL:      btree, gin, hash (no gist)
-	SQLite:     btree only
-
-All hashing/encryption algorithms are supported on all databases (application-level).
-
-# Best Practices
-
-Security:
-
-  - Always mark hashed/encrypted fields as sensitive
-  - Use bcrypt cost ≥12 for passwords (14 recommended)
-  - Don't hash searchable fields (prevents lookups)
-
-Performance:
-
-  - Index frequently queried fields
-  - Use GIN indexes for full-text search
-  - Avoid over-indexing (slows writes)
-
-Maintainability:
-
-  - Group related annotations together
-  - Document why annotations are needed
-  - Validate in CI pipeline
-
-# Integration
-
-The annotations package is designed to integrate with Fabrica's code generator:
-
-1. Generator parses Go source files with go/ast
-2. Calls ParseResourceAnnotations for each type
-3. Validates annotations
-4. Uses annotations to select schema templates
-5. Generates dedicated Ent schemas for annotated resources
-
-See pkg/annotations/README.md for complete documentation.
+The Tested capability matrix and its evidence linkage are maintained in README.md. Its
+principal gates include TestCapabilities_supports_closed_field_matrix,
+TestCapabilities_supports_ent_nillable_scalar_pointers,
+TestCapabilities_supports_bcrypt,
+TestUnsupportedCapabilities_return_typed_source_error,
+TestGeneratedProjectMatrix_passes_generation_vet_and_build,
+TestGeneratedSQLite_acceptance, and TestGeneratedPostgres_acceptance.
 */
 package annotations

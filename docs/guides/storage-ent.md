@@ -13,11 +13,25 @@ This guide covers using [Ent](https://entgo.io) as the storage backend for Fabri
 Ent is a powerful entity framework for Go that provides:
 
 - **Type-safe database operations** - Compile-time safety for all queries
-- **Automatic migrations** - Schema changes handled automatically
+- **Schema migration support** - Migration policy depends on the selected storage mode
 - **Multiple databases** - PostgreSQL, MySQL, and SQLite support
 - **Complex queries** - Fluent API for joins, aggregations, and filtering
 - **Transactions** - Built-in transaction support
 - **Hooks** - Lifecycle hooks for custom logic
+
+### Annotation-driven dedicated schemas
+
+The general Ent backend can be configured for PostgreSQL, MySQL, or SQLite. The narrower `+fabrica:storage=dedicated` annotation contract supports PostgreSQL and SQLite only. Its exact field, pointer, default, index, bcrypt, sensitive, immutable, envelope, and HTTP 409 behavior is listed in the [tested capability matrix](../../pkg/annotations/README.md).
+
+Field directives are valid only for dedicated resources on the Ent backend. Generic Ent/file resources with field directives fail before managed output changes, and dedicated mode with the file backend is rejected. Required bcrypt values on create must be non-empty; omitted or redacted zero values on update preserve the stored hash. Sensitive non-pointer zeros preserve storage, while a supported non-nil pointer explicitly replaces storage, including with zero.
+
+Resource version snapshots are file-backend only: every generic or dedicated Ent resource with `+fabrica:resource-versioning=enabled` fails before output. Unknown Fabrica directives fail with source-located typed parse errors; they are not accepted as forward-compatible no-ops.
+
+After successful dedicated create, PUT, or PATCH persistence, the handler reloads the persisted entity before applying response redaction. Status writes remain status-only. All generated backends compile against the backend-common typed storage conflict contract; Ent constraint errors retain their cause and map to HTTP 409, while file storage remains unconstrained.
+
+POST, PUT, and PATCH storage conflicts return HTTP 409 without mutating the prior row. For the shared JSON entity, generic Ent updates persist Namespace and ResourceVersion, including explicit zero values and later changed values. `TestDedicatedSecurity_generated_adapter_runtime` covers the conflict behavior, and `TestGeneratedAnnotationProject_generic_storage_CRUD_and_queries_remain_compatible` covers generic metadata round trips.
+
+Dedicated migration is explicit and non-destructive. Generated preview/migration helpers are never called by generation or server startup and never delete generic source rows. A batch cursor advances only after its transaction commits; rollback returns the input cursor with zero copied rows. Back up, preview, migrate under the application role, verify, and cut traffic over deliberately. Encryption, Argon2, SHA-256, MySQL, GiST, and unsupported Go types are rejected for annotation-driven dedicated schemas.
 
 ## When to Use Ent Storage
 

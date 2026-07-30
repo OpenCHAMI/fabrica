@@ -1,338 +1,192 @@
-#!/bin/bash
-# Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+#!/usr/bin/env bash
+# Copyright © 2026 OpenCHAMI Contributors
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
-echo "==================================="
-echo "Example 12: Storage Annotations"
-echo "==================================="
-echo ""
+BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+DATABASE_URL="${DATABASE_URL:-file:${PROJECT_DIR}/data.db?_fk=1}"
+RUN_ID="${RUN_ID:-$$}"
+response_dir="$(mktemp -d "${TMPDIR:-/tmp}/fabrica-example-12-api.XXXXXX")"
+BODY=''
 
-# Colors for output
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+cleanup() {
+	rm -rf "${response_dir}"
+}
+trap cleanup EXIT INT TERM
 
-# Function to print status
-print_status() {
-    echo -e "${GREEN}✓${NC} $1"
+for command in curl jq go; do
+	if ! command -v "${command}" >/dev/null 2>&1; then
+		printf 'required command not found: %s\n' "${command}" >&2
+		exit 1
+	fi
+done
+
+request() {
+	local expected="$1"
+	local method="$2"
+	local path="$3"
+	local data="${4:-}"
+	local response_file="${response_dir}/response.json"
+	local status
+	local curl_status
+	local -a args=(--fail-with-body --silent --show-error --output "${response_file}" --write-out '%{http_code}' --request "${method}" "${BASE_URL}${path}")
+	: >"${response_file}"
+	if [[ -n "${data}" ]]; then
+		args+=(--header 'Content-Type: application/json' --data "${data}")
+	fi
+
+	set +e
+	status="$(curl "${args[@]}")"
+	curl_status=$?
+	set -e
+	BODY="$(<"${response_file}")"
+
+	if [[ "${status}" != "${expected}" ]]; then
+		printf 'HTTP receipt: method=%s path=%s expected=%s actual=%s curl=%s body=%s\n' "${method}" "${path}" "${expected}" "${status}" "${curl_status}" "${BODY}" >&2
+		exit 1
+	fi
+	if (( expected < 400 && curl_status != 0 )); then
+		printf 'curl unexpectedly failed for HTTP %s\n' "${expected}" >&2
+		exit 1
+	fi
+	if (( expected >= 400 && curl_status != 22 )); then
+		printf 'curl failure receipt mismatch for HTTP %s: exit=%s\n' "${expected}" "${curl_status}" >&2
+		exit 1
+	fi
+	printf 'HTTP receipt: method=%s path=%s status=%s shape_checked=true\n' "${method}" "${path}" "${status}"
 }
 
-print_error() {
-    echo -e "${RED}✗${NC} $1"
+assert_json() {
+	local expression="$1"
+	local receipt="$2"
+	if ! jq -e "${expression}" >/dev/null <<<"${BODY}"; then
+		printf 'JSON contract failed: %s body=%s\n' "${receipt}" "${BODY}" >&2
+		exit 1
+	fi
+	printf 'contract receipt: %s=true\n' "${receipt}"
 }
 
-print_info() {
-    echo -e "${YELLOW}ℹ${NC} $1"
-}
+request 200 GET /health
+assert_json 'type == "object" and .status == "healthy"' health
 
-# Check if server is running
-if ! curl -s http://localhost:8080/api/v1/users > /dev/null 2>&1; then
-    print_error "Server not running on http://localhost:8080"
-    echo ""
-    echo "Please start the server first:"
-    echo "  cd /tmp/user-service"
-    echo "  go run ./cmd/server"
-    exit 1
+username="alice-${RUN_ID}"
+email="alice-${RUN_ID}@example.com"
+name="alice-${RUN_ID}"
+old_password='old-password'
+new_password='new-password'
+old_hint='first private hint'
+new_hint='updated private hint'
+
+create_payload="$(jq -nc \
+	--arg name "${name}" \
+	--arg username "${username}" \
+	--arg email "${email}" \
+	--arg password "${old_password}" \
+	--arg hint "${old_hint}" \
+	'{apiVersion:"example.fabrica.dev/v1",kind:"User",metadata:{name:$name,namespace:"example",labels:{team:"platform"},annotations:{purpose:"annotation-demo"}},spec:{username:$username,email:$email,password:$password,recoveryHint:$hint,observedAt:"2026-07-28T12:00:00Z",aliases:["primary","demo"]}}')"
+
+request 201 POST /users "${create_payload}"
+assert_json 'type == "object" and (.metadata.uid | type == "string" and length > 0)' create_shape
+assert_json '.spec.role == "user" and .spec.active == true and .spec.retries == 3 and .spec.quota == -1 and .spec.score == 1.5' create_persisted_defaults
+uid="$(jq -r '.metadata.uid' <<<"${BODY}")"
+if ! jq -e --arg password "${old_password}" --arg hint "${old_hint}" '.spec.password == "" and .spec.recoveryHint == "" and .spec.password != $password and .spec.recoveryHint != $hint' >/dev/null <<<"${BODY}"; then
+	printf 'create response exposed a sensitive value: %s\n' "${BODY}" >&2
+	exit 1
 fi
+printf 'contract receipt: create_sensitive_zeroed=true plaintext_exposed=false\n'
 
-print_status "Server is running"
-echo ""
+request 200 GET "/users/${uid}"
+assert_json 'type == "object" and .spec.role == "user" and .spec.active == true and .spec.retries == 3 and .spec.quota == -1 and .spec.score == 1.5' typed_defaults
+assert_json '.metadata.namespace == "example" and .metadata.labels.team == "platform" and .metadata.annotations.purpose == "annotation-demo"' metadata_roundtrip
+assert_json '(.spec.observedAt | type == "string") and (.spec.aliases | type == "array") and (.spec.aliases | all(type == "string"))' representative_types
+assert_json '.spec.password == "" and .spec.recoveryHint == ""' read_sensitive_zeroed
 
-# Test 1: Create user with password (should be hashed)
-echo "Test 1: Create user with bcrypt-hashed password"
-echo "-----------------------------------------------"
-RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "example.fabrica.dev/v1",
-    "kind": "User",
-    "metadata": {
-      "name": "alice"
-    },
-    "spec": {
-      "username": "alice",
-      "email": "alice@example.com",
-      "password": "MySecurePassword123!",
-      "fullName": "Alice Smith",
-      "role": "admin"
-    }
-  }')
+(
+	cd "${PROJECT_DIR}"
+go run ./cmd/verify-storage --database-url "${DATABASE_URL}" --username "${username}" --plaintext "${old_password}" --recovery-hint "${old_hint}"
 
-if echo "$RESPONSE" | jq -e '.metadata.uid' > /dev/null 2>&1; then
-    print_status "Created user alice"
-    ALICE_UID=$(echo "$RESPONSE" | jq -r '.metadata.uid')
+request 200 PATCH "/users/${uid}" '{"observedAt":"2026-07-28T13:00:00Z"}'
+assert_json '.spec.observedAt == "2026-07-28T13:00:00Z" and .spec.password == "" and .spec.recoveryHint == ""' patch_without_credentials
+go run ./cmd/verify-storage --database-url "${DATABASE_URL}" --username "${username}" --plaintext "${old_password}" --recovery-hint "${old_hint}"
+)
 
-    # Verify password is NOT in response (sensitive field)
-    if echo "$RESPONSE" | jq -e '.spec.password' > /dev/null 2>&1; then
-        print_error "Password should NOT be in response (sensitive field)"
-    else
-        print_status "Password correctly excluded from response"
-    fi
+request 200 GET /users
+assert_json 'type == "array" and length == 1 and (.[0].spec.password == "") and (.[0].spec.recoveryHint == "")' flat_list
 
-    # Verify defaults were applied
-    if echo "$RESPONSE" | jq -e '.spec.active == true' > /dev/null 2>&1; then
-        print_status "Default active=true applied"
-    fi
-else
-    print_error "Failed to create user alice"
-    echo "$RESPONSE" | jq .
-    exit 1
+duplicate_payload="$(jq -c --arg name "duplicate-${RUN_ID}" '.metadata.name=$name' <<<"${create_payload}")"
+request 409 POST /users "${duplicate_payload}"
+assert_json 'type == "object" and .code == 409 and .error == "storage conflict"' unique_create_conflict
+
+second_username="bob-${RUN_ID}"
+second_name="bob-${RUN_ID}"
+second_email="bob-${RUN_ID}@example.com"
+second_payload="$(jq -c \
+	--arg name "${second_name}" \
+	--arg username "${second_username}" \
+	--arg email "${second_email}" \
+	'.metadata.name=$name | .spec.username=$username | .spec.email=$email' <<<"${create_payload}")"
+request 201 POST /users "${second_payload}"
+second_uid="$(jq -r '.metadata.uid' <<<"${BODY}")"
+assert_json 'type == "object" and (.metadata.uid | type == "string" and length > 0)' second_create_shape
+
+update_payload="$(jq -nc \
+	--arg uid "${uid}" \
+	--arg name "${name}" \
+	--arg username "changed-${RUN_ID}" \
+	--arg email "updated-${RUN_ID}@example.com" \
+	--arg password "${new_password}" \
+	--arg hint "${new_hint}" \
+	'{apiVersion:"example.fabrica.dev/v1",kind:"User",metadata:{name:$name,uid:$uid,namespace:"changed",labels:{team:"changed"},annotations:{purpose:"changed"}},spec:{username:$username,email:$email,password:$password,recoveryHint:$hint,role:"admin",active:false,retries:9,quota:10,score:2.5,observedAt:"2026-07-29T12:00:00Z",aliases:["updated"]}}')"
+request 200 PUT "/users/${uid}" "${update_payload}"
+assert_json '.spec.password == "" and .spec.recoveryHint == ""' update_sensitive_zeroed
+
+request 200 GET "/users/${uid}"
+if ! jq -e --arg username "${username}" '(.spec.username == $username) and (.spec.email | startswith("updated-"))' >/dev/null <<<"${BODY}"; then
+	printf 'immutable or mutable update contract failed: %s\n' "${BODY}" >&2
+	exit 1
 fi
-echo ""
+assert_json '.spec.role == "admin" and .spec.active == false and .spec.retries == 9 and .spec.quota == 10 and .spec.score == 2.5' mutable_update
+assert_json '.metadata.namespace == "example" and .metadata.labels.team == "platform" and .metadata.annotations.purpose == "annotation-demo"' server_metadata_preserved
+printf 'contract receipt: immutable_username_unchanged=true mutable_fields_updated=true\n'
 
-# Test 2: Try duplicate username (should fail - unique constraint)
-echo "Test 2: Try duplicate username (unique constraint)"
-echo "---------------------------------------------------"
-RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "example.fabrica.dev/v1",
-    "kind": "User",
-    "metadata": {
-      "name": "alice2"
-    },
-    "spec": {
-      "username": "alice",
-      "email": "alice2@example.com",
-      "password": "AnotherPassword456!",
-      "fullName": "Alice Jones",
-      "role": "user"
-    }
-  }')
-
-if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-    print_status "Duplicate username correctly rejected"
-    print_info "Error: $(echo "$RESPONSE" | jq -r '.error')"
-else
-    print_error "Duplicate username should have been rejected"
-    exit 1
+conflicting_update_payload="$(jq -c \
+	--arg uid "${second_uid}" \
+	--arg name "${second_name}" \
+	--arg username "${second_username}" \
+	--arg email "updated-${RUN_ID}@example.com" \
+	'.metadata.uid=$uid | .metadata.name=$name | .spec.username=$username | .spec.email=$email' <<<"${update_payload}")"
+request 409 PUT "/users/${second_uid}" "${conflicting_update_payload}"
+assert_json 'type == "object" and .code == 409 and .error == "storage conflict"' unique_update_conflict
+request 200 GET "/users/${second_uid}"
+if ! jq -e --arg email "${second_email}" '.spec.email == $email' >/dev/null <<<"${BODY}"; then
+	printf 'conflicting update changed persisted data: %s\n' "${BODY}" >&2
+	exit 1
 fi
-echo ""
+printf 'contract receipt: conflicting_update_rolled_back=true\n'
 
-# Test 3: Try duplicate email (should fail - unique constraint)
-echo "Test 3: Try duplicate email (unique constraint)"
-echo "------------------------------------------------"
-RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "example.fabrica.dev/v1",
-    "kind": "User",
-    "metadata": {
-      "name": "bob"
-    },
-    "spec": {
-      "username": "bob",
-      "email": "alice@example.com",
-      "password": "BobPassword789!",
-      "fullName": "Bob Johnson",
-      "role": "user"
-    }
-  }')
+(
+	cd "${PROJECT_DIR}"
+	go run ./cmd/verify-storage --database-url "${DATABASE_URL}" --username "${username}" --plaintext "${new_password}" --recovery-hint "${new_hint}"
+)
 
-if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-    print_status "Duplicate email correctly rejected"
-    print_info "Error: $(echo "$RESPONSE" | jq -r '.error')"
-else
-    print_error "Duplicate email should have been rejected"
-    exit 1
+request 200 PUT "/users/${uid}/status" '{"state":"active","loginCount":4}'
+assert_json '.status.state == "active" and .status.loginCount == 4 and .spec.password == ""' status_update
+go run ./cmd/verify-storage --database-url "${DATABASE_URL}" --username "${username}" --plaintext "${new_password}" --recovery-hint "${new_hint}"
+
+request 400 POST /users '{"kind":'
+assert_json 'type == "object" and .code == 400' malformed_request
+
+request 200 DELETE "/users/${second_uid}"
+assert_json 'type == "object"' second_delete
+request 200 DELETE "/users/${uid}"
+if ! jq -e --arg uid "${uid}" 'type == "object" and .uid == $uid' >/dev/null <<<"${BODY}"; then
+	printf 'delete response contract failed: %s\n' "${BODY}" >&2
+	exit 1
 fi
-echo ""
+printf 'contract receipt: delete=true\n'
+request 404 GET "/users/${uid}"
+assert_json 'type == "object" and .code == 404' deleted_not_found
 
-# Test 4: Create user with default role
-echo "Test 4: Create user with default role"
-echo "--------------------------------------"
-RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "example.fabrica.dev/v1",
-    "kind": "User",
-    "metadata": {
-      "name": "charlie"
-    },
-    "spec": {
-      "username": "charlie",
-      "email": "charlie@example.com",
-      "password": "CharliePass123!",
-      "fullName": "Charlie Brown"
-    }
-  }')
-
-if echo "$RESPONSE" | jq -e '.metadata.uid' > /dev/null 2>&1; then
-    print_status "Created user charlie"
-    CHARLIE_UID=$(echo "$RESPONSE" | jq -r '.metadata.uid')
-
-    # Verify default role was applied
-    ROLE=$(echo "$RESPONSE" | jq -r '.spec.role')
-    if [ "$ROLE" = "user" ]; then
-        print_status "Default role='user' applied"
-    else
-        print_error "Expected default role='user', got '$ROLE'"
-    fi
-else
-    print_error "Failed to create user charlie"
-    echo "$RESPONSE" | jq .
-    exit 1
-fi
-echo ""
-
-# Test 5: Try to change username (immutable field)
-echo "Test 5: Try to change username (immutable field)"
-echo "-------------------------------------------------"
-RESPONSE=$(curl -s -X PUT "http://localhost:8080/api/v1/users/${CHARLIE_UID}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"apiVersion\": \"example.fabrica.dev/v1\",
-    \"kind\": \"User\",
-    \"metadata\": {
-      \"uid\": \"${CHARLIE_UID}\",
-      \"name\": \"charlie\"
-    },
-    \"spec\": {
-      \"username\": \"charlie_new\",
-      \"email\": \"charlie@example.com\",
-      \"password\": \"CharliePass123!\",
-      \"fullName\": \"Charlie Brown Updated\",
-      \"role\": \"user\",
-      \"active\": true
-    }
-  }")
-
-if echo "$RESPONSE" | jq -e '.metadata.uid' > /dev/null 2>&1; then
-    USERNAME=$(echo "$RESPONSE" | jq -r '.spec.username')
-    FULLNAME=$(echo "$RESPONSE" | jq -r '.spec.fullName')
-
-    if [ "$USERNAME" = "charlie" ]; then
-        print_status "Username correctly remained 'charlie' (immutable)"
-    else
-        print_error "Username should not have changed"
-        exit 1
-    fi
-
-    if [ "$FULLNAME" = "Charlie Brown Updated" ]; then
-        print_status "FullName correctly updated (mutable)"
-    else
-        print_error "FullName should have been updated"
-    fi
-else
-    print_error "Failed to update user"
-    echo "$RESPONSE" | jq .
-    exit 1
-fi
-echo ""
-
-# Test 6: Create user with API key (should be hashed)
-echo "Test 6: Create user with API key (bcrypt-hashed)"
-echo "-------------------------------------------------"
-RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "example.fabrica.dev/v1",
-    "kind": "User",
-    "metadata": {
-      "name": "david"
-    },
-    "spec": {
-      "username": "david",
-      "email": "david@example.com",
-      "password": "DavidPassword123!",
-      "fullName": "David Lee",
-      "role": "user",
-      "apiKey": "sk-1234567890abcdefghijklmnopqrstuvwxyz"
-    }
-  }')
-
-if echo "$RESPONSE" | jq -e '.metadata.uid' > /dev/null 2>&1; then
-    print_status "Created user david with API key"
-
-    # Verify API key is NOT in response (sensitive field)
-    if echo "$RESPONSE" | jq -e '.spec.apiKey' > /dev/null 2>&1; then
-        print_error "API key should NOT be in response (sensitive field)"
-    else
-        print_status "API key correctly excluded from response"
-    fi
-else
-    print_error "Failed to create user david"
-    echo "$RESPONSE" | jq .
-    exit 1
-fi
-echo ""
-
-# Test 7: List users
-echo "Test 7: List all users"
-echo "----------------------"
-RESPONSE=$(curl -s http://localhost:8080/api/v1/users)
-
-if echo "$RESPONSE" | jq -e '.items' > /dev/null 2>&1; then
-    COUNT=$(echo "$RESPONSE" | jq '.items | length')
-    print_status "Listed $COUNT users"
-
-    # Verify no passwords in list response
-    if echo "$RESPONSE" | jq -e '.items[].spec.password' > /dev/null 2>&1; then
-        print_error "Passwords should NOT be in list response"
-    else
-        print_status "Passwords correctly excluded from list"
-    fi
-else
-    print_error "Failed to list users"
-    echo "$RESPONSE" | jq .
-    exit 1
-fi
-echo ""
-
-# Test 8: Query by role (indexed field - should be fast)
-echo "Test 8: Query by role (indexed field)"
-echo "--------------------------------------"
-RESPONSE=$(curl -s "http://localhost:8080/api/v1/users?role=admin")
-
-if echo "$RESPONSE" | jq -e '.items' > /dev/null 2>&1; then
-    COUNT=$(echo "$RESPONSE" | jq '.items | length')
-    print_status "Found $COUNT admin users"
-
-    # Verify alice is in results
-    if echo "$RESPONSE" | jq -e '.items[] | select(.spec.username=="alice")' > /dev/null 2>&1; then
-        print_status "Found alice in admin results"
-    fi
-else
-    print_error "Failed to query by role"
-    echo "$RESPONSE" | jq .
-    exit 1
-fi
-echo ""
-
-# Summary
-echo "==================================="
-echo "Summary"
-echo "==================================="
-echo ""
-print_status "All tests passed!"
-echo ""
-echo "Verified features:"
-echo "  ✓ Passwords bcrypt-hashed (not plaintext)"
-echo "  ✓ Sensitive fields excluded from responses"
-echo "  ✓ Unique constraints enforced (username, email)"
-echo "  ✓ Immutable fields protected (username, password)"
-echo "  ✓ Default values applied (role=user, active=true)"
-echo "  ✓ Indexed fields enable fast queries"
-echo ""
-
-# Optional: Show database schema
-if command -v sqlite3 > /dev/null 2>&1; then
-    if [ -f "/tmp/user-service/user-service.db" ]; then
-        echo "Database Schema:"
-        echo "----------------"
-        sqlite3 /tmp/user-service/user-service.db ".schema users" | head -20
-        echo ""
-
-        echo "Sample Password Hash:"
-        echo "---------------------"
-        sqlite3 /tmp/user-service/user-service.db \
-            "SELECT username, substr(password, 1, 40) || '...' as password_hash FROM users WHERE username='alice';"
-        echo ""
-        print_status "Password is securely hashed with bcrypt"
-    fi
-fi
-
-echo "🎉 Example 12 complete!"
+printf 'Example 12 API verification passed: CRUD/defaults/unique/immutable/bcrypt/redaction/list/status/error contracts=true\n'

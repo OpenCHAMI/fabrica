@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/openchami/fabrica/pkg/httpbody"
 )
 
 // PatchHandler wraps a handler to provide PATCH support
@@ -54,8 +56,12 @@ func (ph *PatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read patch document
-	patchData, err := io.ReadAll(r.Body)
+	patchData, err := httpbody.ReadAll(w, r)
 	if err != nil {
+		if httpbody.IsTooLarge(err) {
+			httpbody.WriteTooLarge(w)
+			return
+		}
 		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read request body: %w", err))
 		return
 	}
@@ -162,8 +168,12 @@ func AutoPatchMiddleware(_ string) func(http.Handler) http.Handler {
 			}
 
 			// Read patch document
-			patchData, err := io.ReadAll(r.Body)
+			patchData, err := httpbody.ReadAll(w, r)
 			if err != nil {
+				if httpbody.IsTooLarge(err) {
+					httpbody.WriteTooLarge(w)
+					return
+				}
 				respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch: %w", err))
 				return
 			}

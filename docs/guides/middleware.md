@@ -12,6 +12,7 @@ SPDX-License-Identifier: MIT
 
 - [Overview](#overview)
 - [Generated Middleware](#generated-middleware)
+- [Request Body Limits](#request-body-limits)
 - [Middleware Order](#middleware-order)
 - [Adding Custom Middleware](#adding-custom-middleware)
 - [Per-Resource Middleware](#per-resource-middleware)
@@ -127,6 +128,24 @@ features:
     bus_type: memory  # memory | nats | kafka
 ```
 
+## Request Body Limits
+
+Generated servers install request-body limiting as the outermost router middleware, before version negotiation and all PATCH handling. Positive `Content-Length` values above the selected limit are rejected immediately. Streaming or chunked bodies are wrapped with `http.MaxBytesReader`, so middleware and handlers cannot buffer beyond the selected limit.
+
+The compatibility default is 16 MiB. This accommodates multi-megabyte inventory payloads such as `DiscoverySnapshot` raw discovery data while retaining a finite denial-of-service boundary. Configure the global limit with the generated `--request-body-max-bytes` flag, the service-prefixed `*_REQUEST_BODY_MAX_BYTES` environment variable, or the runtime YAML key:
+
+```yaml
+request_body_max_bytes: 16777216
+request_body_max_bytes_by_resource:
+  DiscoverySnapshot: 33554432
+```
+
+Per-resource keys are exact generated resource Kind names. Unknown resource names and nonpositive global or per-resource values fail server startup before storage initialization. Oversized bodies return HTTP 413 with the stable response `{"error":"request body too large","code":413}` and do not reach storage writes.
+
+Generated JSON handlers accept exactly one JSON value. They consume the remainder of the bounded stream to verify EOF, which rejects a second value, malformed trailing bytes, and trailing whitespace that pushes the total body above the configured limit.
+
+Executable coverage is anchored by `TestGeneratedHandlers_bound_every_request_body_with_stable_413_contract` for generated structure and `TestDedicatedSecurity_generated_adapter_runtime` for declared/chunked limits, per-resource overrides, inventory-scale payloads, trailing-body rejection, stable 413 responses, and no-write behavior.
+
 ## Middleware Order
 
 **Middleware executes in the order it's registered.** The correct order ensures each middleware has the context it needs:
@@ -134,16 +153,17 @@ features:
 ### Recommended Order
 
 ```
-1. Logging           (first - log everything)
-2. Recovery/Panic    (catch panics early)
-3. CORS              (handle preflight requests)
-4. Authentication    (verify identity)
-5. Authorization     (check permissions)
-6. Rate Limiting     (throttle requests)
-7. Validation        (validate input)
-8. Versioning        (negotiate API version)
-9. Conditional       (check ETags, timestamps)
-10. Handler          (business logic)
+1. Request body limit (outermost - bounds every body reader)
+2. Logging            (log accepted requests)
+3. Recovery/Panic     (catch panics early)
+4. CORS               (handle preflight requests)
+5. Authentication     (verify identity)
+6. Authorization      (check permissions)
+7. Rate Limiting      (throttle requests)
+8. Validation         (validate input)
+9. Versioning         (negotiate API version)
+10. Conditional       (check ETags, timestamps)
+11. Handler           (business logic)
 ```
 
 ### Why Order Matters
@@ -176,6 +196,7 @@ func main() {
     r := chi.NewRouter()
 
     // Global middleware (applies to all routes)
+    r.Use(bodyLimitMiddleware) // Must remain outermost
     r.Use(middleware.Logger)
     r.Use(middleware.Recoverer)
 

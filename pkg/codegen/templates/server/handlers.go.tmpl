@@ -42,8 +42,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -99,8 +99,8 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 // Create{{.Name}} creates a new {{.Name}} resource
 func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	var req Create{{.Name}}Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		respondRequestBodyError(w, err, "invalid request body")
 		return
 	}
 
@@ -164,6 +164,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{camelCase .Name}}.Metadata.Initialize(req.Metadata.Name, uid)
 	} else {
 		{{camelCase .Name}}.Metadata.Initialize("", uid)
+	}
 	now := time.Now()
 	{{camelCase .Name}}.Metadata.CreatedAt = now
 	{{camelCase .Name}}.Metadata.UpdatedAt = now
@@ -192,6 +193,10 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 
 	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		if errors.Is(err, storage.ErrStorageConflict) {
+			respondError(w, http.StatusConflict, storage.ErrStorageConflict)
+			return
+		}
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
@@ -207,6 +212,14 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	{{- end }}{{- end }}
+	{{if isDedicatedAnnotations .Annotations}}
+	persisted{{.Name}}, err := storage.Load{{.StorageName}}(r.Context(), {{camelCase .Name}}.GetUID())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, errors.New("failed to reload persisted {{.Name}}"))
+		return
+	}
+	{{camelCase .Name}} = persisted{{.Name}}
+	{{end}}
 
 	// Publish resource created event
 {{if .IsVersioned}}
@@ -239,8 +252,8 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req Update{{.Name}}Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		respondRequestBodyError(w, err, "invalid request body")
 		return
 	}
 
@@ -291,12 +304,25 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 
 	// Layer 2: Custom business logic validation
+{{if isDedicatedAnnotations .Annotations}}
+	if customValidator, ok := interface{}({{camelCase .Name}}).(validation.CustomValidator); ok {
+		if err := customValidator.Validate(r.Context()); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+			return
+		}
+	}
+	{{else}}
 	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
+	{{end}}
 
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		if errors.Is(err, storage.ErrStorageConflict) {
+			respondError(w, http.StatusConflict, storage.ErrStorageConflict)
+			return
+		}
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
 		return
 	}
@@ -312,6 +338,14 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	{{- end }}{{- end }}
+	{{if isDedicatedAnnotations .Annotations}}
+	persisted{{.Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, errors.New("failed to reload persisted {{.Name}}"))
+		return
+	}
+	{{camelCase .Name}} = persisted{{.Name}}
+	{{end}}
 
 	// Publish resource updated event
 	updateMetadata := map[string]interface{}{
@@ -347,9 +381,9 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read patch document
-	patchData, err := io.ReadAll(r.Body)
+	patchData, err := readRequestBody(w, r)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch data: %w", err))
+		respondRequestBodyError(w, err, "failed to read patch data")
 		return
 	}
 
@@ -388,13 +422,29 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 
 	// Layer 2: Custom business logic validation
+{{if isDedicatedAnnotations .Annotations}}
+	// Dedicated reads redact hidden fields, so whole-resource tag validation would
+	// reject unrelated updates. Create remains fully validated; updates run custom
+	// validation while the adapter preserves omitted hidden values.
+	if customValidator, ok := interface{}({{camelCase .Name}}).(validation.CustomValidator); ok {
+		if err := customValidator.Validate(r.Context()); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+			return
+		}
+	}
+	{{else}}
 	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
+	{{end}}
 
 	// Save the patched resource
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		if errors.Is(err, storage.ErrStorageConflict) {
+			respondError(w, http.StatusConflict, storage.ErrStorageConflict)
+			return
+		}
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}}: %w", err))
 		return
 	}
@@ -410,6 +460,14 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	{{- end }}{{- end }}
+	{{if isDedicatedAnnotations .Annotations}}
+	persisted{{.Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, errors.New("failed to reload persisted {{.Name}}"))
+		return
+	}
+	{{camelCase .Name}} = persisted{{.Name}}
+	{{end}}
 
 	// Publish resource patched event
 	patchMetadata := map[string]interface{}{
@@ -453,16 +511,18 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var statusUpdate {{.PackageAlias}}.{{.Name}}Status
-	if err := json.NewDecoder(r.Body).Decode(&statusUpdate); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid status body: %w", err))
+	if err := decodeRequestBody(w, r, &statusUpdate); err != nil {
+		respondRequestBodyError(w, err, "invalid status body")
 		return
 	}
 
-	// Preserve spec - only update status
-	res.Status = statusUpdate
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Preserve server-managed version field in status
 	prevVersion := res.Status.Version
+	{{- end }}{{- end }}
+	// Preserve spec - only update status
+	res.Status = statusUpdate
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	res.Status.Version = prevVersion
 	{{- end }}{{- end }}
 {{if .IsVersioned}}
@@ -472,12 +532,21 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 {{end}}
 
 	// Layer 2: Custom business logic validation
+{{if isDedicatedAnnotations .Annotations}}
+	if customValidator, ok := interface{}(res).(validation.CustomValidator); ok {
+		if err := customValidator.Validate(r.Context()); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+			return
+		}
+	}
+	{{else}}
 	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
+	{{end}}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
+	if err := storage.{{if isDedicatedAnnotations .Annotations}}Save{{.StorageName}}Status{{else}}Save{{.StorageName}}{{end}}(r.Context(), res); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}} status: %w", err))
 		return
 	}
@@ -520,13 +589,18 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	patchData, err := io.ReadAll(r.Body)
+	patchData, err := readRequestBody(w, r)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch data: %w", err))
+		respondRequestBodyError(w, err, "failed to read patch data")
 		return
 	}
 
 	// Marshal current status for patching
+	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+	{{- if isDedicatedAnnotations .Annotations }}
+	prevVersion := res.Status.Version
+	{{- end }}
+	{{- end }}{{- end }}
 	currentStatusJSON, err := json.Marshal(res.Status)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current status: %w", err))
@@ -553,10 +627,13 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Ensure server-managed version field is preserved after patch
-	// Reload current to get authoritative version and copy it back
+	{{- if isDedicatedAnnotations .Annotations }}
+	res.Status.Version = prevVersion
+	{{- else }}
 	if current, err := storage.Load{{.StorageName}}(r.Context(), uid); err == nil {
 		res.Status.Version = current.Status.Version
 	}
+	{{- end }}
 	{{- end }}{{- end }}
 
 {{if .IsVersioned}}
@@ -566,12 +643,21 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 {{end}}
 
 	// Layer 2: Custom business logic validation
+{{if isDedicatedAnnotations .Annotations}}
+	if customValidator, ok := interface{}(res).(validation.CustomValidator); ok {
+		if err := customValidator.Validate(r.Context()); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+			return
+		}
+	}
+	{{else}}
 	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
+	{{end}}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
+	if err := storage.{{if isDedicatedAnnotations .Annotations}}Save{{.StorageName}}Status{{else}}Save{{.StorageName}}{{end}}(r.Context(), res); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}} status: %w", err))
 		return
 	}

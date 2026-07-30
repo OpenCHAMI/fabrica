@@ -179,16 +179,6 @@ type IndexConfig struct {
 	Name string
 }
 
-// ParseError represents an annotation parsing error
-type ParseError struct {
-	Line    string // The annotation line that failed to parse
-	Message string // Error message
-}
-
-func (e *ParseError) Error() string {
-	return fmt.Sprintf("failed to parse annotation %q: %s", e.Line, e.Message)
-}
-
 // ValidationError represents an annotation validation error with context
 type ValidationError struct {
 	File       string // Source file path

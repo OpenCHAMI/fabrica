@@ -504,14 +504,7 @@ Attempts to patch metadata or status fields will be ignored.`,
 				setNestedField(patch, parts[0], parts[1])
 			}
 
-			// Process --remove flags
-			for _, removePair := range removePairs {
-				parts := strings.SplitN(removePair, "=", 2)
-				if len(parts) != 2 {
-					return fmt.Errorf("invalid --remove format: %s (expected field=value)", removePair)
-				}
-				// Remove operations are complex and might need JSON Patch
-				// For now, we'll handle simple cases
+			if len(removePairs) > 0 {
 				return fmt.Errorf("--remove operations require --json-patch format")
 			}
 

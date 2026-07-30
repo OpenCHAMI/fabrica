@@ -35,9 +35,60 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/go-chi/chi/v5"
+	"github.com/openchami/fabrica/pkg/httpbody"
 	"github.com/openchami/fabrica/pkg/resource"
 )
+
+// DefaultRequestBodyMaxBytes is the compatibility default for generated APIs.
+const DefaultRequestBodyMaxBytes int64 = httpbody.DefaultMaxBytes
+
+func newRequestBodyLimitMiddleware(defaultLimit int64, overrides map[string]int64) (func(http.Handler) http.Handler, error) {
+	if defaultLimit <= 0 {
+		return nil, fmt.Errorf("request_body_max_bytes must be positive: %d", defaultLimit)
+	}
+	resourceLimits := make(map[string]int64, len(overrides))
+	for resourceName, limit := range overrides {
+		if limit <= 0 {
+			return nil, fmt.Errorf("request_body_max_bytes_by_resource[%q] must be positive: %d", resourceName, limit)
+		}
+		switch resourceName {
+{{range .Resources}}		case "{{.Name}}":
+			resourceLimits["{{.URLPath}}"] = limit
+{{end}}		default:
+			return nil, fmt.Errorf("request_body_max_bytes_by_resource contains unknown resource %q", resourceName)
+		}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch {
+				next.ServeHTTP(w, r)
+				return
+			}
+			limit := defaultLimit
+			for resourcePath, resourceLimit := range resourceLimits {
+				if r.URL.Path == resourcePath || strings.HasPrefix(r.URL.Path, resourcePath+"/") {
+					limit = resourceLimit
+					break
+				}
+			}
+			if err := httpbody.Apply(w, r, limit); err != nil {
+				if httpbody.IsTooLarge(err) {
+					httpbody.WriteTooLarge(w)
+					return
+				}
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}, nil
+}
 
 // registerResourcePrefixes registers UID prefixes for all resource types
 // This must be called before any resource creation operations

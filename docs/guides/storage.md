@@ -52,6 +52,12 @@ type StorageBackend interface {
 
 The default file-based storage backend stores resources as JSON files.
 
+## Versioning support
+
+Resource version snapshots are file-backend only. Every Ent configuration with `+fabrica:resource-versioning=enabled` fails before output, for both generic and dedicated Ent storage. Fabrica does not emit Ent snapshot calls or partial managed output for this unsupported combination.
+
+`TestGeneratedFileVersioning_builds_and_runs_snapshot_runtime` proves the generated file snapshot lifecycle. `TestPrepareResourceAnnotations_rejects_ent_version_snapshots_for_every_storage_mode` proves the Ent preflight boundary.
+
 ### Basic Usage
 
 ```go

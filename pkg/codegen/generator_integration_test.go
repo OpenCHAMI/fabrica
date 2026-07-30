@@ -153,6 +153,7 @@ func TestIntegrationTokenService(t *testing.T) {
 		StatusType:   "v1.TokenStatus",
 		URLPath:      "/tokens",
 		StorageName:  "Token",
+		SourcePath:   tokenTypesPath,
 		Tags:         make(map[string]string),
 		SpecFields: []SpecField{
 			{Name: "Value", JSONName: "value", Type: "string", Required: true},
@@ -193,11 +194,10 @@ func TestIntegrationTokenService(t *testing.T) {
 		{"type Token struct", "Token struct definition"},
 		{"func (Token) Fields()", "Fields method"},
 		{"func (Token) Indexes()", "Indexes method"},
-		{"bcrypt", "bcrypt reference for Value field"},
+		{"field.String(\"spec_value\")", "string storage for Value field"},
 		{"Sensitive()", "Sensitive() for Value field"},
 		{"Immutable()", "Immutable() for Value field"},
 		{"Unique()", "Unique() for Name field"},
-		{"index.Fields(\"name\")", "index on Name field"},
 		{"Default(false)", "Default(false) for Revoked field"},
 	}
 
@@ -205,6 +205,12 @@ func TestIntegrationTokenService(t *testing.T) {
 		if !strings.Contains(schemaStr, check.pattern) {
 			t.Errorf("schema missing %s (pattern: %q)", check.desc, check.pattern)
 		}
+	}
+	if strings.Contains(schemaStr, "bcrypt") {
+		t.Error("schema must not contain bcrypt implementation")
+	}
+	if strings.Contains(schemaStr, `index.Fields("spec_name")`) {
+		t.Error("schema must not contain a redundant B-tree index for unique Name field")
 	}
 
 	// Step 6: Generate storage adapter
@@ -236,13 +242,16 @@ func TestIntegrationTokenService(t *testing.T) {
 		{"func QueryTokenByName", "QueryTokenByName function"},
 		{"func ListTokens", "ListTokens function"},
 		{"func DeleteTokenByUID", "DeleteTokenByUID function"},
-		{"is immutable", "immutability comment for Value field"},
 	}
 
 	for _, check := range adapterChecks {
 		if !strings.Contains(adapterStr, check.pattern) {
 			t.Errorf("adapter missing %s (pattern: %q)", check.desc, check.pattern)
 		}
+	}
+	updateBody := generatedSection(t, adapterStr, "func UpdateTokenFromResource", "func QueryTokenByName")
+	if strings.Contains(updateBody, "SetSpecValue(resource.Spec.Value)") {
+		t.Error("immutable Value field must not have an update setter")
 	}
 
 	t.Logf("✅ Integration test passed - complete pipeline validated")

@@ -7,81 +7,135 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	{{range .DedicatedFields}}{{if .ImportBcrypt}}
+	"golang.org/x/crypto/bcrypt"
+	{{end}}{{end}}
 
 	"{{.ModulePath}}/internal/storage/ent"
 	ent{{toLower .Name}} "{{.ModulePath}}/internal/storage/ent/{{toLower .Name}}"
-	{{if .Config.VersioningEnabled}}"github.com/openchami/fabrica/pkg/fabrica"{{else}}"github.com/openchami/fabrica/pkg/resource"{{end}}
+	{{if .IsVersioned}}"github.com/openchami/fabrica/pkg/fabrica"{{else}}"github.com/openchami/fabrica/pkg/resource"{{end}}
 	"{{.Package}}"
 )
 
 // ToEnt{{.Name}} converts a Fabrica {{.Name}} resource to an Ent {{.Name}} entity.
 // This adapter maps the resource envelope to dedicated table fields.
 func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.PackageAlias}}.{{.Name}}) (*ent.{{.Name}}Create, error) {
+	{{range .DedicatedFields}}
+	{{if .Bcrypt}}
+	var {{.HashVariable}} string
+	{{if not .Optional}}
+	{{if .Nillable}}
+	if resource.Spec.{{.GoName}} == nil || *resource.Spec.{{.GoName}} == "" {
+		return nil, fmt.Errorf("hash {{$.Name}} {{.GoName}}: required bcrypt field is empty")
+	}
+	{{else}}
+	if resource.Spec.{{.GoName}} == "" {
+		return nil, fmt.Errorf("hash {{$.Name}} {{.GoName}}: required bcrypt field is empty")
+	}
+	{{end}}
+	{{end}}
+	{{if .Nillable}}
+	if resource.Spec.{{.GoName}} != nil && *resource.Spec.{{.GoName}} != "" {
+		{{.HashVariable}}Bytes, hashErr := bcrypt.GenerateFromPassword([]byte(*resource.Spec.{{.GoName}}), {{.BcryptCost}})
+		if hashErr != nil {
+			return nil, fmt.Errorf("hash {{$.Name}} {{.GoName}}: %w", hashErr)
+		}
+		{{.HashVariable}} = string({{.HashVariable}}Bytes)
+	}
+	{{else}}
+	if resource.Spec.{{.GoName}} != "" {
+		{{.HashVariable}}Bytes, hashErr := bcrypt.GenerateFromPassword([]byte(resource.Spec.{{.GoName}}), {{.BcryptCost}})
+		if hashErr != nil {
+			return nil, fmt.Errorf("hash {{$.Name}} {{.GoName}}: %w", hashErr)
+		}
+		{{.HashVariable}} = string({{.HashVariable}}Bytes)
+	}
+	{{end}}
+	{{end}}
+	{{end}}
+
+	status, err := json.Marshal(resource.Status)
+	if err != nil {
+		return nil, fmt.Errorf("marshal {{.Name}} status: %w", err)
+	}
+
 	create := client.{{.Name}}.Create().
 		SetUID(resource.Metadata.UID).
 		SetName(resource.Metadata.Name).
+		SetNamespace(resource.Metadata.Namespace).
 		SetAPIVersion(resource.APIVersion).
 		SetKind(resource.Kind).
 		SetCreatedAt(resource.Metadata.CreatedAt).
 		SetUpdatedAt(resource.Metadata.UpdatedAt).
-		SetResourceVersion(resource.Metadata.ResourceVersion)
-
-	{{if .Metadata.Namespace}}
-	if resource.Metadata.Namespace != "" {
-		create = create.SetNamespace(resource.Metadata.Namespace)
-	}
-	{{end}}
+		SetResourceVersion(resource.Metadata.ResourceVersion).
+		SetStatus(status).
+		SetLabels(resource.Metadata.Labels).
+		SetAnnotations(resource.Metadata.Annotations)
 
 	// Map Spec fields to entity fields
-	{{range .SpecFields}}
-	{{$fieldAnnots := index $.Annotations.Fields .Name}}
-	{{if $fieldAnnots}}
-	{{if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
-	// {{.Name}} field will be hashed by Ent hook
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
-	{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "encrypted")}}
-	// {{.Name}} field - encryption handled by Ent hook (TODO: Phase 5+)
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
-	{{else}}
-	{{if .Required}}
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
-	{{else}}
-	if resource.Spec.{{.Name}} != {{if eq .Type "string"}}""{{else if eq .Type "int"}}0{{else if eq .Type "bool"}}false{{else}}nil{{end}} {
-		create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	{{range .DedicatedFields}}
+	{{if .Bcrypt}}
+	if {{.HashVariable}} != "" {
+		create = create.Set{{.AccessorName}}({{.HashVariable}})
 	}
-	{{end}}
-	{{end}}
+	{{else if .Nillable}}
+	create = create.SetNillable{{.AccessorName}}(resource.Spec.{{.GoName}})
 	{{else}}
-	// {{.Name}} field (no annotations)
-	{{if .Required}}
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
-	{{else}}
-	if resource.Spec.{{.Name}} != {{if eq .Type "string"}}""{{else if eq .Type "int"}}0{{else if eq .Type "bool"}}false{{else}}nil{{end}} {
-		create = create.Set{{.Name}}(resource.Spec.{{.Name}})
-	}
-	{{end}}
+	create = create.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
 	{{end}}
 	{{end}}
 
 	return create, nil
 }
 
+// {{.Name}}MigrationTypeError identifies a converted generic value of the wrong API resource type.
+type {{.Name}}MigrationTypeError struct {
+	SourceUID string
+	Expected  string
+	Actual    string
+}
+
+func (e *{{.Name}}MigrationTypeError) Error() string {
+	return fmt.Sprintf("generic source %s: expected %s, got %s", e.SourceUID, e.Expected, e.Actual)
+}
+
+func as{{.Name}}MigrationResource(sourceUID string, value interface{}) (*{{.PackageAlias}}.{{.Name}}, error) {
+	resource, ok := value.(*{{.PackageAlias}}.{{.Name}})
+	if !ok {
+		return nil, &{{.Name}}MigrationTypeError{
+			SourceUID: sourceUID,
+			Expected:  "*{{.PackageAlias}}.{{.Name}}",
+			Actual:    fmt.Sprintf("%T", value),
+		}
+	}
+	return resource, nil
+}
+
 // FromEnt{{.Name}} converts an Ent {{.Name}} entity to a Fabrica {{.Name}} resource.
 // This adapter maps dedicated table fields back to the resource envelope.
 func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error) {
+	var status {{.PackageAlias}}.{{.Name}}Status
+	if len(entity.Status) > 0 {
+		if err := json.Unmarshal(entity.Status, &status); err != nil {
+			return nil, fmt.Errorf("unmarshal {{.Name}} status: %w", err)
+		}
+	}
+
 	resource := &{{.PackageAlias}}.{{.Name}}{
-		{{if $.Config.VersioningEnabled}}
+		{{if .IsVersioned}}
 		APIVersion: entity.APIVersion,
 		Kind:       entity.Kind,
 		Metadata: fabrica.Metadata{
 			Name:            entity.Name,
 			UID:             entity.UID,
+			Namespace:       entity.Namespace,
 			CreatedAt:       entity.CreatedAt,
 			UpdatedAt:       entity.UpdatedAt,
 			ResourceVersion: entity.ResourceVersion,
-			Labels:          make(map[string]string),
-			Annotations:     make(map[string]string),
+			Labels:          entity.Labels,
+			Annotations:     entity.Annotations,
 		},
 		{{else}}
 		Resource: resource.Resource{
@@ -90,39 +144,23 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 			Metadata: resource.Metadata{
 				Name:            entity.Name,
 				UID:             entity.UID,
+				Namespace:       entity.Namespace,
 				CreatedAt:       entity.CreatedAt,
 				UpdatedAt:       entity.UpdatedAt,
 				ResourceVersion: entity.ResourceVersion,
-				Labels:          make(map[string]string),
-				Annotations:     make(map[string]string),
+				Labels:          entity.Labels,
+				Annotations:     entity.Annotations,
 			},
 		},
 		{{end}}
+		Status: status,
 	}
-
-	{{if .Metadata.Namespace}}
-	if entity.Namespace != nil {
-		resource.Metadata.Namespace = *entity.Namespace
-	}
-	{{end}}
 
 	// Map entity fields to Spec fields
 	resource.Spec = {{.PackageAlias}}.{{.Name}}Spec{
-		{{range .SpecFields}}
-		{{$fieldAnnots := index $.Annotations.Fields .Name}}
-		{{if $fieldAnnots}}
-		{{if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
-		// {{.Name}}: Hashed field - cannot retrieve plaintext
-		// Users must compare via bcrypt.CompareHashAndPassword
-		{{.Name}}: entity.{{.Name}},
-		{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "encrypted")}}
-		// {{.Name}}: Encrypted field - decryption handled here (TODO: Phase 5+)
-		{{.Name}}: entity.{{.Name}},
-		{{else}}
-		{{.Name}}: entity.{{.Name}},
-		{{end}}
-		{{else}}
-		{{.Name}}: entity.{{.Name}},
+		{{range .DedicatedFields}}
+		{{if and (not .Sensitive) (not .Bcrypt)}}
+		{{.GoName}}: entity.{{.AccessorName}},
 		{{end}}
 		{{end}}
 	}
@@ -133,27 +171,92 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 // Update{{.Name}}FromResource updates an Ent {{.Name}} entity from a Fabrica resource.
 // This is used for PATCH/PUT operations, respecting immutable field constraints.
 func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}UpdateOne, resource *{{.PackageAlias}}.{{.Name}}) error {
-	update = update.
-		SetUpdatedAt(resource.Metadata.UpdatedAt).
-		SetResourceVersion(resource.Metadata.ResourceVersion)
-
-	// Update mutable Spec fields only
-	{{range .SpecFields}}
-	{{$fieldAnnots := index $.Annotations.Fields .Name}}
-	{{if $fieldAnnots}}
-	{{if $fieldAnnots.Immutable}}
-	// {{.Name}} is immutable - skip update
-	{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
-	// {{.Name}} field - hash update will be handled by Ent hook
-	if resource.Spec.{{.Name}} != "" {
-		update = update.Set{{.Name}}(resource.Spec.{{.Name}})
+	{{range .DedicatedFields}}
+	{{if and .Bcrypt (not .Immutable)}}
+	var {{.HashVariable}} string
+	{{if .Nillable}}
+	if resource.Spec.{{.GoName}} != nil && *resource.Spec.{{.GoName}} != "" {
+		{{.HashVariable}}Bytes, hashErr := bcrypt.GenerateFromPassword([]byte(*resource.Spec.{{.GoName}}), {{.BcryptCost}})
+		if hashErr != nil {
+			return fmt.Errorf("hash {{$.Name}} {{.GoName}} for update: %w", hashErr)
+		}
+		{{.HashVariable}} = string({{.HashVariable}}Bytes)
 	}
 	{{else}}
-	update = update.Set{{.Name}}(resource.Spec.{{.Name}})
+	if resource.Spec.{{.GoName}} != "" {
+		{{.HashVariable}}Bytes, hashErr := bcrypt.GenerateFromPassword([]byte(resource.Spec.{{.GoName}}), {{.BcryptCost}})
+		if hashErr != nil {
+			return fmt.Errorf("hash {{$.Name}} {{.GoName}} for update: %w", hashErr)
+		}
+		{{.HashVariable}} = string({{.HashVariable}}Bytes)
+	}
 	{{end}}
+	{{end}}
+	{{end}}
+
+	status, err := json.Marshal(resource.Status)
+	if err != nil {
+		return fmt.Errorf("marshal {{.Name}} status for update: %w", err)
+	}
+
+	update = update.
+		SetName(resource.Metadata.Name).
+		SetNamespace(resource.Metadata.Namespace).
+		SetAPIVersion(resource.APIVersion).
+		SetKind(resource.Kind).
+		SetUpdatedAt(resource.Metadata.UpdatedAt).
+		SetResourceVersion(resource.Metadata.ResourceVersion).
+		SetStatus(status).
+		SetLabels(resource.Metadata.Labels).
+		SetAnnotations(resource.Metadata.Annotations)
+
+	// Update mutable Spec fields only
+	{{range .DedicatedFields}}
+	{{if not .Immutable}}
+	{{if .Bcrypt}}
+	if {{.HashVariable}} != "" {
+		update = update.Set{{.AccessorName}}({{.HashVariable}})
+	}
+	{{else if and .Sensitive .Nillable}}
+	// A nil sensitive pointer is the redacted/omitted representation. A non-nil
+	// pointer is explicit, including a pointer to the field's zero value.
+	if resource.Spec.{{.GoName}} != nil {
+		update = update.SetNillable{{.AccessorName}}(resource.Spec.{{.GoName}})
+	}
+	{{else if and .Sensitive (eq .Builder "String")}}
+	// Redacted non-pointer sensitive fields use their zero value. Preserve that
+	// value on update; callers that must explicitly store zero should use *string.
+	if resource.Spec.{{.GoName}} != "" {
+		update = update.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
+	}
+	{{else if and .Sensitive (eq .Builder "Bool")}}
+	// A redacted bool cannot distinguish omission from an explicit false value.
+	// Preserve false; use *bool when explicit zero-value replacement is required.
+	if resource.Spec.{{.GoName}} {
+		update = update.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
+	}
+	{{else if and .Sensitive (or (eq .Builder "Int") (eq .Builder "Int64") (eq .Builder "Float"))}}
+	// A redacted scalar cannot distinguish omission from an explicit zero value.
+	// Preserve zero; use a supported pointer type for explicit zero replacement.
+	if resource.Spec.{{.GoName}} != 0 {
+		update = update.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
+	}
+	{{else if and .Sensitive (eq .Builder "Time")}}
+	// A redacted time cannot distinguish omission from an explicit zero time.
+	// Preserve zero; use *time.Time when explicit zero replacement is required.
+	if !resource.Spec.{{.GoName}}.IsZero() {
+		update = update.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
+	}
+	{{else if and .Sensitive (eq .Builder "Strings")}}
+	// Redaction and empty input both represent omission for non-pointer slices.
+	if len(resource.Spec.{{.GoName}}) > 0 {
+		update = update.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
+	}
+	{{else if .Nillable}}
+	update = update.SetNillable{{.AccessorName}}(resource.Spec.{{.GoName}})
 	{{else}}
-	// {{.Name}} (no immutability constraint)
-	update = update.Set{{.Name}}(resource.Spec.{{.Name}})
+	update = update.Set{{.AccessorName}}(resource.Spec.{{.GoName}})
+	{{end}}
 	{{end}}
 	{{end}}
 
@@ -189,8 +292,14 @@ func List{{.Name}}s(ctx context.Context, client *ent.Client, namespace string) (
 
 // Delete{{.Name}}ByUID deletes a {{.Name}} by UID.
 func Delete{{.Name}}ByUID(ctx context.Context, client *ent.Client, uid string) error {
-	_, err := client.{{.Name}}.Delete().
+	deleted, err := client.{{.Name}}.Delete().
 		Where(ent{{toLower .Name}}.UIDEQ(uid)).
 		Exec(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete {{.Name}} by UID: %w", err)
+	}
+	if deleted == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

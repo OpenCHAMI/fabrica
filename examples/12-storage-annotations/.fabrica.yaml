@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+#
+# SPDX-License-Identifier: MIT
+
+project:
+  name: storage-annotations
+  module: example.com/fabrica/storage-annotations
+features:
+  validation:
+    enabled: true
+    mode: strict
+  storage:
+    enabled: true
+    type: ent
+    db_driver: sqlite3
+generation:
+  handlers: true
+  storage: true
+  client: true
+  openapi: true
+  middleware: true

@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Field directives now fail closed unless the resource uses dedicated Ent storage. This stabilization also defines required bcrypt create versus omitted update, persisted redacted write responses, one backend-common typed storage conflict contract, and commit-aware migration cursors.
+
+Resource version snapshots are now explicitly file-backend only; every Ent resource with versioning enabled fails before output. Unknown Fabrica directives now fail strictly with source-located typed parse errors instead of being ignored for forward compatibility.
+
+The historical annotation-layer proposal is non-authoritative; the root/package documentation, storage guides, examples, and this changelog define the current tested contract.
+
+Generated servers now apply a configurable 16 MiB outer limit through `--request-body-max-bytes`, a service-prefixed environment variable, YAML `request_body_max_bytes`, and validated per-Kind overrides. Oversized requests return HTTP 413; decoding verifies EOF and rejects second values or malformed/over-limit trailing bytes. PATCH storage conflicts return HTTP 409 without mutation. Generic Ent updates preserve Namespace and ResourceVersion, including zero values, and complete legacy embedded-resource handlers compile with file and Ent storage.
+
+### Changed
+- Field directives now fail closed unless the resource uses dedicated Ent storage; dedicated resources on the file backend are rejected before output.
+- Dedicated sensitive writes distinguish required bcrypt create versus omitted update and pointer versus non-pointer zero replacement, then reload persisted redacted write responses.
+- File and Ent generation now share a backend-common typed storage conflict contract while retaining stable HTTP 409 mapping for Ent constraint failures.
+- Generated dedicated migrations now publish commit-aware migration cursors and restore the input cursor with zero copied rows after rollback.
+- Resource version snapshots now remain supported on file storage only; generic and dedicated Ent configurations with versioning enabled fail before output.
+- Unknown Fabrica resource and field directives now fail strictly with source-located typed parse errors.
+- Generated servers now enforce a configurable 16 MiB outer request-body limit before middleware and handlers. Operators can set `--request-body-max-bytes`, the service-prefixed environment variable, YAML `request_body_max_bytes`, and validated per-Kind overrides.
+- Oversized requests return HTTP 413 without writes. Single-value JSON decoding verifies EOF and rejects second values, malformed trailing bytes, or over-limit trailing whitespace.
+- POST, PUT, and PATCH storage conflicts map to stable HTTP 409 responses without mutation.
+- Generic Ent updates preserve Namespace and ResourceVersion, including explicit zero values.
+- Complete legacy embedded-resource handlers now compile with file and Ent storage alongside the API-layout generator path.
+
 ## [v0.4.9] - 2026-07-20
 
 ### Added

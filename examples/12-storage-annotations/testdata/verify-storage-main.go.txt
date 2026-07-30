@@ -1,0 +1,59 @@
+// Copyright © 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+
+	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/bcrypt"
+
+	"example.com/fabrica/storage-annotations/internal/storage/ent"
+	"example.com/fabrica/storage-annotations/internal/storage/ent/user"
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	databaseURL := flag.String("database-url", "file:./data.db?_fk=1", "SQLite connection URL")
+	username := flag.String("username", "", "username to inspect")
+	plaintext := flag.String("plaintext", "", "expected bcrypt plaintext")
+	recoveryHint := flag.String("recovery-hint", "", "expected ordinary sensitive value")
+	flag.Parse()
+	if *username == "" || *plaintext == "" {
+		return fmt.Errorf("username and plaintext are required")
+	}
+
+	client, err := ent.Open("sqlite3", *databaseURL)
+	if err != nil {
+		return fmt.Errorf("open SQLite: %w", err)
+	}
+	defer client.Close()
+
+	entity, err := client.User.Query().Where(user.SpecUsernameEQ(*username)).Only(context.Background())
+	if err != nil {
+		return fmt.Errorf("query user: %w", err)
+	}
+	if entity.SpecPassword == *plaintext {
+		return fmt.Errorf("password stored as plaintext")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(entity.SpecPassword), []byte(*plaintext)); err != nil {
+		return fmt.Errorf("bcrypt verification: %w", err)
+	}
+	if entity.SpecRecoveryHint != *recoveryHint {
+		return fmt.Errorf("ordinary sensitive value was not stored")
+	}
+
+	fmt.Printf("storage receipt: user=%s bcrypt_match=true plaintext=false ordinary_sensitive_stored=true\n", *username)
+	return nil
+}

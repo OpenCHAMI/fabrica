@@ -14,13 +14,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+
+	"github.com/openchami/fabrica/pkg/httpbody"
 )
 
 // VersionContext contains version information for the current request
@@ -96,7 +97,12 @@ func VersionNegotiationMiddleware(registry *VersionRegistry, mapper ResourceMapp
 
 			// Parse requested version from request body (preferred when provided)
 			if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
-				if bodyVersion := parseVersionFromBody(r); bodyVersion != "" {
+				bodyVersion, err := parseVersionFromBody(w, r)
+				if err != nil && httpbody.IsTooLarge(err) {
+					httpbody.WriteTooLarge(w)
+					return
+				}
+				if bodyVersion != "" {
 					ctx.RequestedVersion = bodyVersion
 				}
 			}
@@ -246,31 +252,28 @@ func parseVersionFromAcceptHeader(acceptHeader string) string {
 	return ""
 }
 
-func parseVersionFromBody(r *http.Request) string {
+func parseVersionFromBody(w http.ResponseWriter, r *http.Request) (string, error) {
 	if r.Body == nil {
-		return ""
+		return "", nil
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := httpbody.ReadAll(w, r)
 	if err != nil {
-		return ""
+		return "", err
 	}
-
-	// Restore body for downstream handlers
-	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	if len(bytes.TrimSpace(body)) == 0 {
-		return ""
+		return "", nil
 	}
 
 	var payload struct {
 		APIVersion string `json:"apiVersion"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return ""
+		return "", nil
 	}
 
-	return parseVersionFromAPIVersion(payload.APIVersion)
+	return parseVersionFromAPIVersion(payload.APIVersion), nil
 }
 
 func parseVersionFromAPIVersion(apiVersion string) string {

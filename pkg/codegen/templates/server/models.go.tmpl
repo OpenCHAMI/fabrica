@@ -39,6 +39,7 @@ import (
 	"net/http"
 
 	"github.com/openchami/fabrica/pkg/fabrica"
+	"github.com/openchami/fabrica/pkg/httpbody"
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{end}}
@@ -90,6 +91,22 @@ type DeleteResponse struct {
 }
 
 // Helper functions for handlers
+
+func decodeRequestBody(w http.ResponseWriter, r *http.Request, destination interface{}) error {
+	return httpbody.DecodeOne(w, r, destination)
+}
+
+func readRequestBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	return httpbody.ReadAll(w, r)
+}
+
+func respondRequestBodyError(w http.ResponseWriter, err error, message string) {
+	if httpbody.IsTooLarge(err) {
+		httpbody.WriteTooLarge(w)
+		return
+	}
+	respondError(w, http.StatusBadRequest, fmt.Errorf("%s: %w", message, err))
+}
 
 // respondJSON sends a JSON response
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {

@@ -94,3 +94,15 @@ go run ./cmd/server/ serve
 # Run with custom config
 go run ./cmd/server/ serve --config config.yaml
 ```
+
+## Request body limits
+
+Generated servers default to a 16 MiB request-body limit so multi-megabyte inventory resources remain compatible while every body reader stays bounded. Override it globally with `--request-body-max-bytes`, `{{.EnvPrefix}}_REQUEST_BODY_MAX_BYTES`, or runtime YAML. Per-resource overrides use exact resource Kind names:
+
+```yaml
+request_body_max_bytes: 16777216
+request_body_max_bytes_by_resource:
+  DiscoverySnapshot: 33554432
+```
+
+Limits must be positive and resource names must exist. Invalid values fail startup before storage initialization. Oversized requests return HTTP 413 and never reach a storage write.

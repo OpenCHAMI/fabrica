@@ -143,28 +143,41 @@ Introduce profile-aware node composition:
 
 **What you'll build:** A node-service shim that composes inventory + boot + metadata intent and demonstrates profile bindings without relying on SMD groups for config intent.
 
+### 10. [Storage Annotations](12-storage-annotations/) - Dedicated Ent Schemas 🗃️
+**Time:** 15-20 minutes
+
+Run the checked annotation workflow:
+- generate a dedicated `User` entity through the normal Fabrica CLI path;
+- build and test the generated project;
+- exercise SQLite CRUD, bcrypt, sensitive zeroing, defaults, immutability, uniqueness, and the complete resource envelope; and
+- use the repository integration suite for restricted-role PostgreSQL verification.
+
+**Support boundary:** Annotation-driven dedicated storage supports PostgreSQL and SQLite. Encryption, Argon2, SHA-256, MySQL, GiST, and unsupported field types are rejected.
+
+Field directives require dedicated Ent storage; dedicated+file and generic field directives fail closed. Dedicated writes return reloaded redacted state, Ent conflicts map through the generated common contract to HTTP 409, and migration continuation cursors advance only after commit.
+
 ## Quick Reference
 
 ### Example Comparison
 
-| Feature | Basic CRUD | FRU Service | CloudEvents | Rack Reconciliation | Ent Advanced | Export/Import |
-|---------|------------|-------------|-------------|---------------------|--------------|---------------|
-| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Storage Backends | File | DB | File | File | Ent (DB) | Ent (DB) |
-| Authentication | ❌ | ✅ JWT | ❌ | ❌ | ❌ | ❌ |
-| Authorization | ❌ | ✅ RBAC | ❌ | ❌ | ❌ | ❌ |
-| Validation | Basic | ✅ Custom | Basic | ✅ Custom | ✅ Custom | ✅ Custom |
-| Reconciliation | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| CloudEvents | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Event Monitoring | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Hierarchical Resources | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| State Machines | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Query Builders | ❌ | ❌ | ❌ | ❌ | ✅ Type-safe queries | ✅ via storage |
-| Transactions | ❌ | ❌ | ❌ | ❌ | ✅ Atomic ops | ✅ atomic imports |
-| Export/Import | ❌ | ❌ | ❌ | ❌ | ✅ server commands | ✅ server commands |
-| Label Filtering | ❌ | ❌ | ❌ | ❌ | ✅ Production queries | ✅ via storage |
+| Feature | Basic CRUD | FRU Service | CloudEvents | Rack Reconciliation | Ent Advanced | Export/Import | Storage Annotations |
+|---------|------------|-------------|-------------|---------------------|--------------|---------------|---------------------|
+| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Code Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenAPI Spec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Storage Backends | File | DB | File | File | Ent (DB) | Ent (DB) | Ent SQLite + PostgreSQL test |
+| Authentication | ❌ | ✅ JWT | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Authorization | ❌ | ✅ RBAC | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Validation | Basic | ✅ Custom | Basic | ✅ Custom | ✅ Custom | ✅ Custom | Strict annotation diagnostics |
+| Reconciliation | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| CloudEvents | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Event Monitoring | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Hierarchical Resources | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| State Machines | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Query Builders | ❌ | ❌ | ❌ | ❌ | ✅ Type-safe queries | ✅ via storage | ✅ dedicated route |
+| Transactions | ❌ | ❌ | ❌ | ❌ | ✅ Atomic ops | ✅ atomic imports | Explicit migration helper |
+| Export/Import | ❌ | ❌ | ❌ | ❌ | ✅ server commands | ✅ server commands | ❌ |
+| Label Filtering | ❌ | ❌ | ❌ | ❌ | ✅ Production queries | ✅ via storage | Envelope preserved |
 
 ### Running Examples
 

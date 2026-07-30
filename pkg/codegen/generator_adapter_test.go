@@ -112,8 +112,9 @@ func TestGenerateEntAdapterDedicated(t *testing.T) {
 		t.Error("expected QueryTokenByName function")
 	}
 
-	if !strings.Contains(adapterStr, "is immutable") {
-		t.Error("expected immutability comment for Value field")
+	updateBody := generatedSection(t, adapterStr, "func UpdateTokenFromResource", "func QueryTokenByName")
+	if strings.Contains(updateBody, "SetSpecValue(resource.Spec.Value)") {
+		t.Error("immutable Value field must not have an update setter")
 	}
 }
 

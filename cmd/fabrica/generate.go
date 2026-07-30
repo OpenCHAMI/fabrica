@@ -154,7 +154,7 @@ Examples:
 				return nil
 			}
 
-			fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(resources, ", "))
+			fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(discoveredResourceNames(resources), ", "))
 
 			// Check version compatibility before regenerating (only if generated code exists)
 			regFile := "pkg/resources/register_generated.go"
@@ -187,6 +187,17 @@ Examples:
 				if err := checkModuleCompatibility(version, debug); err != nil {
 					return err // Error message already formatted with actionable guidance
 				}
+			}
+			dbDriver := "sqlite"
+			storageType := "file"
+			if config != nil && config.Features.Storage.Type != "" {
+				storageType = config.Features.Storage.Type
+			}
+			if config != nil && config.Features.Storage.DBDriver != "" {
+				dbDriver = config.Features.Storage.DBDriver
+			}
+			if err := validateDiscoveredResourceAnnotations(resources, storageType, dbDriver); err != nil {
+				return err
 			}
 
 			// Auto-generate registration file
@@ -229,7 +240,7 @@ Examples:
 			}
 
 			// Auto-generate Ent client code if using Ent storage
-			storageType := detectStorageType()
+			storageType = detectStorageType()
 			if storageType == "ent" && (all || storage) {
 				fmt.Println("🔄 Generating Ent client code...")
 
@@ -908,6 +919,9 @@ func main() {
 	if err := resources.RegisterAllResources(gen); err != nil {
 		log.Fatalf("Failed to register resources: %%v", err)
 	}
+	if err := gen.PrepareResourceAnnotations(); err != nil {
+		log.Fatalf("Failed to prepare resource annotations: %%v", err)
+	}
 
 %s}
 
@@ -957,8 +971,21 @@ func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
 `, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, commit, storageType, storageType, generationCalls.String())
 }
 
+type discoveredResource struct {
+	Name       string
+	SourcePath string
+}
+
+func discoveredResourceNames(resources []discoveredResource) []string {
+	names := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		names = append(names, resource.Name)
+	}
+	return names
+}
+
 // discoverResources scans for resource definitions using apis.yaml when present.
-func discoverResources(apisConfig *config.APIsConfig) ([]string, error) {
+func discoverResources(apisConfig *config.APIsConfig) ([]discoveredResource, error) {
 	if apisConfig != nil {
 		return discoverVersionedResources(apisConfig)
 	}
@@ -968,7 +995,7 @@ func discoverResources(apisConfig *config.APIsConfig) ([]string, error) {
 }
 
 // discoverVersionedResources scans apis/<group>/<storage-version>/ for resource definitions
-func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error) {
+func discoverVersionedResources(apisConfig *config.APIsConfig) ([]discoveredResource, error) {
 	group, err := apisConfig.PrimaryGroup()
 	if err != nil {
 		return nil, err
@@ -978,19 +1005,23 @@ func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error)
 	hubDir := filepath.Join("apis", group.Name, group.StorageVersion)
 
 	if _, err := os.Stat(hubDir); os.IsNotExist(err) {
-		// Hub directory doesn't exist yet, return resources listed in apis.yaml
-		return group.Resources, nil
+		resources := make([]discoveredResource, 0, len(group.Resources))
+		for _, name := range group.Resources {
+			resources = append(resources, discoveredResource{
+				Name: name,
+			})
+		}
+		return resources, nil
 	}
 
-	var resources []string
+	resources := make([]discoveredResource, 0)
 
 	err = filepath.Walk(hubDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip non-Go files and non-type files
-		if info.IsDir() || !strings.HasSuffix(path, "_types.go") {
+		if info.IsDir() || filepath.Ext(path) != ".go" {
 			return nil
 		}
 
@@ -1034,7 +1065,10 @@ func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error)
 
 			// If it has all three flattened envelope fields, it's a resource
 			if hasAPIVersion && hasKind && hasMetadata {
-				resources = append(resources, typeSpec.Name.Name)
+				resources = append(resources, discoveredResource{
+					Name:       typeSpec.Name.Name,
+					SourcePath: path,
+				})
 			}
 
 			return true
@@ -1051,14 +1085,14 @@ func discoverVersionedResources(apisConfig *config.APIsConfig) ([]string, error)
 }
 
 // discoverLegacyResources scans pkg/resources for resource definitions (legacy mode)
-func discoverLegacyResources() ([]string, error) {
+func discoverLegacyResources() ([]discoveredResource, error) {
 	resourcesDir := "pkg/resources"
 
 	if _, err := os.Stat(resourcesDir); os.IsNotExist(err) {
 		return nil, nil // No resources directory yet
 	}
 
-	var resources []string
+	resources := make([]discoveredResource, 0)
 
 	err := filepath.Walk(resourcesDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -1095,7 +1129,10 @@ func discoverLegacyResources() ([]string, error) {
 					if sel, ok := field.Type.(*ast.SelectorExpr); ok {
 						if ident, ok := sel.X.(*ast.Ident); ok {
 							if ident.Name == "resource" && sel.Sel.Name == "Resource" {
-								resources = append(resources, typeSpec.Name.Name)
+								resources = append(resources, discoveredResource{
+									Name:       typeSpec.Name.Name,
+									SourcePath: path,
+								})
 								return false
 							}
 						}
@@ -1147,7 +1184,7 @@ func generateRegistrationFile(debug bool, apisConfig *config.APIsConfig) error {
 	}
 
 	if !debug {
-		fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(resources, ", "))
+		fmt.Printf("📦 Found %d resource(s): %s\n", len(resources), strings.Join(discoveredResourceNames(resources), ", "))
 	}
 
 	// 3. Generate registration file
@@ -1238,24 +1275,28 @@ func writeGeneratedFile(path string, content []byte) (bool, error) {
 }
 
 // generateRegistrationCode creates the content of the registration file
-func generateRegistrationCode(modulePath string, resources []string) string {
+func generateRegistrationCode(modulePath string, resources []discoveredResource) string {
 	var imports strings.Builder
 	var registrations strings.Builder
 
 	for _, resource := range resources {
-		resourceStruct := toPascal(resource)
+		resourceStruct := toPascal(resource.Name)
 
-		pkg := strings.ToLower(resource)
+		pkg := strings.ToLower(resource.Name)
 		fmt.Fprintf(&imports, "\t\"%s/pkg/resources/%s\"\n", modulePath, pkg)
-		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
-		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
+		if resource.SourcePath == "" {
+			fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
+		} else {
+			fmt.Fprintf(&registrations, "\tif err := gen.RegisterResourceFromSource(&%s.%s{}, %q); err != nil {\n", pkg, resourceStruct, resource.SourcePath)
+		}
+		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource.Name)
 		registrations.WriteString("\t}\n")
 
 		// After registration, set per-resource tags if markers are present.
 		// Marker: // +fabrica:resource-versioning=enabled on the resource source file
 		registrations.WriteString("\t// Set per-resource tags based on source markers\n")
-		fmt.Fprintf(&registrations, "\tif hasVersioningMarker(\"%s\") {\n", resource)
-		fmt.Fprintf(&registrations, "\t\tgen.SetResourceTag(\"%s\", \"versioning\", \"enabled\")\n", resource)
+		fmt.Fprintf(&registrations, "\tif hasVersioningMarker(\"%s\") {\n", resource.Name)
+		fmt.Fprintf(&registrations, "\t\tgen.SetResourceTag(\"%s\", \"versioning\", \"enabled\")\n", resource.Name)
 		registrations.WriteString("\t}\n")
 	}
 
@@ -1293,7 +1334,7 @@ func hasVersioningMarker(resourceName string) bool {
 }
 
 // generateVersionedRegistrationCode creates registration code for versioned (apis/) mode
-func generateVersionedRegistrationCode(modulePath string, apisConfig *config.APIsConfig, resources []string) string {
+func generateVersionedRegistrationCode(modulePath string, apisConfig *config.APIsConfig, resources []discoveredResource) string {
 	var imports strings.Builder
 	var registrations strings.Builder
 
@@ -1307,11 +1348,18 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *config.API
 	fmt.Fprintf(&imports, "\t%s \"%s\"\n", pkg, importPath)
 
 	for _, resource := range resources {
-		resourceStruct := toPascal(resource)
+		resourceStruct := toPascal(resource.Name)
 
-		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
-		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
+		if resource.SourcePath == "" {
+			fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
+		} else {
+			fmt.Fprintf(&registrations, "\tif err := gen.RegisterResourceFromSource(&%s.%s{}, %q); err != nil {\n", pkg, resourceStruct, resource.SourcePath)
+		}
+		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource.Name)
 		registrations.WriteString("\t}\n")
+		if sourceHasVersioningMarker(resource.SourcePath) {
+			fmt.Fprintf(&registrations, "\tgen.SetResourceTag(%q, %q, %q)\n", resource.Name, "versioning", "enabled")
+		}
 	}
 
 	return fmt.Sprintf(`%spackage resources
@@ -1331,6 +1379,14 @@ func RegisterAllResources(gen *codegen.Generator) error {
 `, generatedRegistrationFileHeader("cmd/fabrica/generate.go:generateVersionedRegistrationCode"), imports.String(), registrations.String())
 }
 
+func sourceHasVersioningMarker(sourcePath string) bool {
+	if sourcePath == "" {
+		return false
+	}
+	content, err := os.ReadFile(sourcePath)
+	return err == nil && strings.Contains(string(content), "+fabrica:resource-versioning=enabled")
+}
+
 // generateEntCode runs 'go generate ./internal/storage' to generate Ent client code
 // This is automatically called by 'fabrica generate' when Ent storage is detected
 func generateEntCode(debug bool) error {
@@ -1344,7 +1400,7 @@ func generateEntCode(debug bool) error {
 	}
 
 	// Run go generate
-	entCmd := exec.Command("go", "generate", "./internal/storage")
+	entCmd := exec.Command("go", "generate", "-mod=mod", "./internal/storage")
 	if debug {
 		entCmd.Stdout = os.Stdout
 		entCmd.Stderr = os.Stderr

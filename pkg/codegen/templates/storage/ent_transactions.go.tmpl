@@ -11,7 +11,57 @@ import (
     "fmt"
 
     "{{.ModulePath}}/internal/storage/ent"
+    {{if hasDedicatedStorage .Resources}}entresource "{{.ModulePath}}/internal/storage/ent/resource"
+    {{range .Resources}}{{if isDedicatedStorage .}}ent{{toLower .Name}} "{{$.ModulePath}}/internal/storage/ent/{{toLower .Name}}"
+    {{end}}{{end}}{{end}}
 )
+
+{{if hasDedicatedStorage .Resources}}
+const maxDedicatedMigrationBatchSize = 1000
+
+// DedicatedMigrationOptions bounds one explicit generic-to-dedicated migration batch.
+type DedicatedMigrationOptions struct {
+    Limit int
+    AfterID int
+}
+
+// DedicatedMigrationFailure identifies the source row and stage that aborted a batch.
+type DedicatedMigrationFailure struct {
+    SourceUID string
+    Stage string
+    Message string
+}
+
+// DedicatedMigrationReport describes one preview or committed migration batch.
+type DedicatedMigrationReport struct {
+    Scanned int
+    Eligible int
+    Copied int
+    Skipped int
+    SourceUIDs []string
+    Failures []DedicatedMigrationFailure
+    NextAfterID int
+}
+
+func validateDedicatedMigrationOptions(options DedicatedMigrationOptions) error {
+    if options.Limit < 1 || options.Limit > maxDedicatedMigrationBatchSize {
+        return fmt.Errorf("dedicated migration limit must be between 1 and %d", maxDedicatedMigrationBatchSize)
+    }
+    if options.AfterID < 0 {
+        return fmt.Errorf("dedicated migration after ID must not be negative")
+    }
+    return nil
+}
+
+func failDedicatedMigration(report *DedicatedMigrationReport, sourceUID, stage string, err error) error {
+    report.Failures = append(report.Failures, DedicatedMigrationFailure{
+        SourceUID: sourceUID,
+        Stage: stage,
+        Message: err.Error(),
+    })
+    return fmt.Errorf("migrate generic source %s during %s: %w", sourceUID, stage, err)
+}
+{{end}}
 
 // WithTx executes fn within a database transaction.
 // If fn returns an error, the transaction is rolled back; otherwise, it is committed.
@@ -37,3 +87,121 @@ func WithTx(ctx context.Context, fn func(*ent.Tx) error) error {
     }
     return tx.Commit()
 }
+
+{{range .Resources}}{{if isDedicatedStorage .}}
+// Preview{{.Name}}Migration reports the next bounded batch without persisting dedicated rows.
+func Preview{{.Name}}Migration(ctx context.Context, options DedicatedMigrationOptions) (DedicatedMigrationReport, error) {
+    if entClient == nil {
+        return DedicatedMigrationReport{}, fmt.Errorf("ent client not initialized")
+    }
+    if err := validateDedicatedMigrationOptions(options); err != nil {
+        return DedicatedMigrationReport{}, err
+    }
+    report, lastProcessedID, err := migrate{{.Name}}Batch(ctx, entClient, options, false)
+    if err != nil {
+        return report, err
+    }
+    report.NextAfterID = lastProcessedID
+    return report, nil
+}
+
+// Migrate{{.Name}}FromGeneric transactionally copies one bounded batch into dedicated storage.
+// Existing destination UIDs are skipped and generic source rows are never modified.
+func Migrate{{.Name}}FromGeneric(ctx context.Context, options DedicatedMigrationOptions) (DedicatedMigrationReport, error) {
+    if err := validateDedicatedMigrationOptions(options); err != nil {
+        return DedicatedMigrationReport{}, err
+    }
+    var report DedicatedMigrationReport
+    lastProcessedID := options.AfterID
+    err := WithTx(ctx, func(tx *ent.Tx) error {
+        var err error
+        report, lastProcessedID, err = migrate{{.Name}}Batch(ctx, tx.Client(), options, true)
+        if err != nil {
+            return err
+        }
+        if err := ctx.Err(); err != nil {
+            sourceUID := ""
+            if len(report.SourceUIDs) > 0 {
+                sourceUID = report.SourceUIDs[len(report.SourceUIDs)-1]
+            }
+            return failDedicatedMigration(&report, sourceUID, "pre-commit-context", err)
+        }
+        return nil
+    })
+    if err != nil {
+        report.Copied = 0
+        report.NextAfterID = options.AfterID
+        return report, err
+    }
+    report.NextAfterID = lastProcessedID
+    return report, nil
+}
+
+func migrate{{.Name}}Batch(ctx context.Context, client *ent.Client, options DedicatedMigrationOptions, persist bool) (DedicatedMigrationReport, int, error) {
+    report := DedicatedMigrationReport{NextAfterID: options.AfterID}
+    lastProcessedID := options.AfterID
+    sourceQuery := client.Resource.Query().Where(entresource.KindEQ("{{.Name}}"))
+    if options.AfterID > 0 {
+        sourceQuery = sourceQuery.Where(entresource.IDGT(options.AfterID))
+    }
+    sourceRefs, err := sourceQuery.
+        Select(entresource.FieldID, entresource.FieldUID).
+        Order(entresource.ByID()).
+        Limit(options.Limit).
+        All(ctx)
+    if err != nil {
+        return report, lastProcessedID, fmt.Errorf("query generic {{.Name}} migration sources: %w", err)
+    }
+    report.Scanned = len(sourceRefs)
+    report.SourceUIDs = make([]string, 0, len(sourceRefs))
+    for _, sourceRef := range sourceRefs {
+        report.SourceUIDs = append(report.SourceUIDs, sourceRef.UID)
+        if err := ctx.Err(); err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "context", err)
+        }
+        exists, err := client.{{.Name}}.Query().Where(ent{{toLower .Name}}.UIDEQ(sourceRef.UID)).Exist(ctx)
+        if err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "check-destination", err)
+        }
+        if exists {
+            report.Skipped++
+            lastProcessedID = sourceRef.ID
+            continue
+        }
+        source, err := client.Resource.Query().
+            Where(entresource.IDEQ(sourceRef.ID)).
+            WithLabels().
+            WithAnnotations().
+            Only(ctx)
+        if err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "load-source", err)
+        }
+        converted, err := FromEntResource(ctx, source)
+        if err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "convert-generic", err)
+        }
+        resource, err := as{{.Name}}MigrationResource(sourceRef.UID, converted)
+        if err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "assert-resource-type", err)
+        }
+        if err := resource.Validate(ctx); err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "validate-resource", err)
+        }
+        create, err := ToEnt{{.Name}}(ctx, client, resource)
+        if err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "convert-dedicated", err)
+        }
+        report.Eligible++
+        if !persist {
+            lastProcessedID = sourceRef.ID
+            continue
+        }
+        if _, err := create.Save(ctx); err != nil {
+            return report, lastProcessedID, failDedicatedMigration(&report, sourceRef.UID, "save-dedicated", err)
+        }
+        report.Copied++
+        lastProcessedID = sourceRef.ID
+    }
+    return report, lastProcessedID, nil
+}
+{{end}}{{end}}

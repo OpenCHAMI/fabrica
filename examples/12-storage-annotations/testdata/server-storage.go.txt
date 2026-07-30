@@ -1,0 +1,34 @@
+// Copyright © 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	_ "github.com/mattn/go-sqlite3"
+
+	"example.com/fabrica/storage-annotations/internal/storage"
+	"example.com/fabrica/storage-annotations/internal/storage/ent"
+	"example.com/fabrica/storage-annotations/internal/storage/ent/migrate"
+)
+
+func initializeStorage(config *Config) (func(), error) {
+	client, err := ent.Open("sqlite3", config.DatabaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("open SQLite: %w", err)
+	}
+	if err := client.Schema.Create(context.Background(), migrate.WithForeignKeys(true)); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("migrate SQLite: %w", err)
+	}
+	storage.SetEntClient(client)
+	return func() {
+		if err := client.Close(); err != nil {
+			log.Printf("close SQLite: %v", err)
+		}
+	}, nil
+}

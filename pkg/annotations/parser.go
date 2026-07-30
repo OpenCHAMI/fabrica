@@ -6,175 +6,118 @@ package annotations
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"strings"
 )
 
-// ParseResourceAnnotations extracts Fabrica annotations from a type declaration
-//
-// This parses annotations from the type's doc comments and field comments.
-// The docComments parameter should be the GenDecl.Doc if available, or typeSpec.Doc otherwise.
-//
-// Example:
-//
-//	genDecl := ... // *ast.GenDecl from parsing Go code
-//	typeSpec := genDecl.Specs[0].(*ast.TypeSpec)
-//	annotations, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
-func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup) (*ResourceAnnotations, error) {
-	result := NewResourceAnnotations()
-
-	// Parse type-level annotations from doc comments
-	// Try the provided docComments first (from GenDecl), then fall back to typeSpec.Doc
-	comments := docComments
-	if comments == nil {
-		comments = typeSpec.Doc
-	}
-
-	if comments != nil {
-		for _, comment := range comments.List {
-			line := CleanAnnotationLine(comment.Text)
-			if !IsFabricaAnnotation(line) {
-				continue
-			}
-
-			result.RawAnnotations = append(result.RawAnnotations, line)
-
-			if err := parseResourceLevelAnnotation(result, line); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// Parse field-level annotations if this is a struct
-	structType, ok := typeSpec.Type.(*ast.StructType)
-	if !ok {
-		return result, nil
-	}
-
-	for _, field := range structType.Fields.List {
-		// Skip fields without names (embedded types)
-		if len(field.Names) == 0 {
-			continue
-		}
-
-		fieldName := field.Names[0].Name
-
-		// Parse annotations from field comments
-		if field.Doc != nil {
-			fieldAnnotations := NewFieldAnnotations(fieldName)
-
-			for _, comment := range field.Doc.List {
-				line := CleanAnnotationLine(comment.Text)
-				if !IsFabricaAnnotation(line) {
-					continue
-				}
-
-				fieldAnnotations.RawAnnotations = append(fieldAnnotations.RawAnnotations, line)
-
-				if err := parseFieldLevelAnnotation(fieldAnnotations, line); err != nil {
-					return nil, &ParseError{Line: line, Message: err.Error()}
-				}
-			}
-
-			// Only store if field has annotations
-			if len(fieldAnnotations.RawAnnotations) > 0 {
-				result.Fields[fieldName] = fieldAnnotations
-			}
-		}
-	}
-
-	return result, nil
-}
-
 // parseResourceLevelAnnotation processes a single resource-level annotation
-func parseResourceLevelAnnotation(result *ResourceAnnotations, annotation string) error {
-	parts := ParseAnnotationValue(annotation)
-	if len(parts) == 0 {
-		return nil
+func parseResourceLevelAnnotation(
+	result *ResourceAnnotations,
+	annotation string,
+	seen map[string]string,
+) error {
+	parts, err := strictAnnotationParts(annotation)
+	if err != nil {
+		return parseError(parseSource{directive: annotation}, err.Error(), err)
+	}
+	key := directiveKey(parts[0])
+	if err := recordDirective(seen, key, annotation); err != nil {
+		return parseError(parseSource{directive: annotation}, err.Error(), err)
 	}
 
-	switch parts[0] {
+	switch key {
 	case "resource":
+		if len(parts) != 1 || parts[0] != "resource" {
+			return parseError(parseSource{directive: annotation}, "resource directive does not accept a value", nil)
+		}
 		result.IsResource = true
 		return nil
-
-	default:
-		// Try to parse as key=value format (e.g., storage=dedicated)
+	case "storage":
+		if len(parts) != 1 {
+			return parseError(parseSource{directive: annotation}, "resource storage directive has trailing parameters", nil)
+		}
 		key, value, hasValue := ParseKeyValue(parts[0])
-		if !hasValue {
-			return nil
+		if !hasValue || key != "storage" || value == "" {
+			return parseError(parseSource{directive: annotation}, "expected format: storage=<mode>", nil)
 		}
-
-		if key == "storage" {
-			switch StorageMode(value) {
-			case StorageModeGeneric:
-				result.StorageMode = StorageModeGeneric
-			case StorageModeDedicated:
-				result.StorageMode = StorageModeDedicated
-			default:
-				return &ParseError{
-					Line:    annotation,
-					Message: fmt.Sprintf("unknown storage mode %q, expected 'generic' or 'dedicated'", value),
-				}
-			}
-			return nil
+		switch StorageMode(value) {
+		case StorageModeGeneric:
+			result.StorageMode = StorageModeGeneric
+		case StorageModeDedicated:
+			result.StorageMode = StorageModeDedicated
+		default:
+			message := fmt.Sprintf("unknown storage mode %q, expected 'generic' or 'dedicated'", value)
+			return parseError(parseSource{directive: annotation}, message, nil)
 		}
-
 		return nil
+	default:
+		return unknownDirectiveError("resource", key, resourceDirectiveKeys, annotation)
 	}
 }
 
 // parseFieldLevelAnnotation processes a single field-level annotation
-func parseFieldLevelAnnotation(result *FieldAnnotations, annotation string) error {
-	parts := ParseAnnotationValue(annotation)
-	if len(parts) == 0 {
-		return nil
+func parseFieldLevelAnnotation(
+	result *FieldAnnotations,
+	annotation string,
+	seen map[string]string,
+) error {
+	parts, err := strictAnnotationParts(annotation)
+	if err != nil {
+		return parseError(parseSource{directive: annotation}, err.Error(), err)
 	}
 
 	// All field annotations start with "field:"
 	if parts[0] != "field" {
-		return &ParseError{
-			Line:    annotation,
-			Message: "field annotations must start with +fabrica:field:",
-		}
+		return parseError(parseSource{directive: annotation}, "field annotations must start with +fabrica:field:", nil)
 	}
 
 	if len(parts) < 2 {
-		return &ParseError{
-			Line:    annotation,
-			Message: "field annotation requires a directive after 'field:'",
-		}
+		return parseError(parseSource{directive: annotation}, "field annotation requires a directive after 'field:'", nil)
 	}
 
 	directive := parts[1]
+	key, _, hasValue := ParseKeyValue(directive)
+	if err := recordDirective(seen, key, annotation); err != nil {
+		return parseError(parseSource{directive: annotation}, err.Error(), err)
+	}
 
-	switch {
-	case directive == "sensitive":
+	switch key {
+	case "sensitive":
+		if hasValue || len(parts) != 2 {
+			return parseError(parseSource{directive: annotation}, "sensitive directive does not accept parameters", nil)
+		}
 		result.Sensitive = true
 		return nil
 
-	case directive == "immutable":
+	case "immutable":
+		if hasValue || len(parts) != 2 {
+			return parseError(parseSource{directive: annotation}, "immutable directive does not accept parameters", nil)
+		}
 		result.Immutable = true
 		return nil
 
-	case directive == "unique":
+	case "unique":
+		if hasValue || len(parts) != 2 {
+			return parseError(parseSource{directive: annotation}, "unique directive does not accept parameters", nil)
+		}
 		result.Unique = true
 		return nil
 
-	case strings.HasPrefix(directive, "storage"):
+	case "storage":
 		return parseStorageAnnotation(result, parts[1:], annotation)
 
-	case strings.HasPrefix(directive, "index"):
+	case "index":
+		if len(parts) != 2 {
+			return parseError(parseSource{directive: annotation}, "index directive has trailing parameters", nil)
+		}
 		return parseIndexAnnotation(result, parts[1:], annotation)
 
-	case strings.HasPrefix(directive, "default"):
+	case "default":
+		if len(parts) != 2 {
+			return parseError(parseSource{directive: annotation}, "default directive has trailing parameters", nil)
+		}
 		return parseDefaultAnnotation(result, parts[1:], annotation)
 
 	default:
-		// Unknown field annotation - ignore for forward compatibility
-		return nil
+		return unknownDirectiveError("field", key, fieldDirectiveKeys, annotation)
 	}
 }
 
@@ -227,23 +170,16 @@ func parseHashedStorage(config *StorageConfig, parts []string, _ string) error {
 	case HashAlgorithmBcrypt:
 		// Default bcrypt cost
 		config.Hash.Cost = 12
-
-		// Parse cost parameter if provided
-		if len(parts) > 1 {
-			for _, param := range parts[1:] {
-				key, value, hasValue := ParseKeyValue(param)
-				if !hasValue {
-					continue
-				}
-
-				if key == "cost" {
-					cost, err := ParseIntValue(value, 4, 31)
-					if err != nil {
-						return fmt.Errorf("bcrypt cost: %w", err)
-					}
-					config.Hash.Cost = cost
-				}
+		value, present, err := parseSingleStorageParameter(parts[1:], "cost")
+		if err != nil {
+			return err
+		}
+		if present {
+			cost, err := ParseIntValue(value, 4, 31)
+			if err != nil {
+				return fmt.Errorf("bcrypt cost: %w", err)
 			}
+			config.Hash.Cost = cost
 		}
 		return nil
 
@@ -251,27 +187,22 @@ func parseHashedStorage(config *StorageConfig, parts []string, _ string) error {
 		// Default argon2 parameters
 		config.Hash.Cost = 65536 // 64MB memory
 
-		if len(parts) > 1 {
-			for _, param := range parts[1:] {
-				key, value, hasValue := ParseKeyValue(param)
-				if !hasValue {
-					continue
-				}
-
-				if key == "memory" {
-					memory, err := ParseIntValue(value, 1024, 1048576)
-					if err != nil {
-						return fmt.Errorf("argon2 memory: %w", err)
-					}
-					config.Hash.Cost = memory
-				}
+		value, present, err := parseSingleStorageParameter(parts[1:], "memory")
+		if err != nil {
+			return err
+		}
+		if present {
+			memory, err := ParseIntValue(value, 1024, 1048576)
+			if err != nil {
+				return fmt.Errorf("argon2 memory: %w", err)
 			}
+			config.Hash.Cost = memory
 		}
 		return nil
 
 	case HashAlgorithmSHA256:
-		// SHA256 has no cost parameter
-		return nil
+		_, _, err := parseSingleStorageParameter(parts[1:], "")
+		return err
 
 	default:
 		return fmt.Errorf("unknown hash algorithm %q, expected 'bcrypt', 'argon2', or 'sha256'", config.Hash.Algorithm)
@@ -291,18 +222,12 @@ func parseEncryptedStorage(config *StorageConfig, parts []string, _ string) erro
 		KeySource: "env", // default
 	}
 
-	// Parse key source if provided
-	if len(parts) > 1 {
-		for _, param := range parts[1:] {
-			key, value, hasValue := ParseKeyValue(param)
-			if !hasValue {
-				continue
-			}
-
-			if key == "key" {
-				config.Encryption.KeySource = value
-			}
-		}
+	value, present, err := parseSingleStorageParameter(parts[1:], "key")
+	if err != nil {
+		return err
+	}
+	if present {
+		config.Encryption.KeySource = value
 	}
 
 	return nil
@@ -356,97 +281,4 @@ func parseDefaultAnnotation(result *FieldAnnotations, parts []string, _ string) 
 
 	result.Default = value
 	return nil
-}
-
-// ParseFileAnnotations parses annotations from a Go source file with caching
-//
-// This function parses a Go source file and extracts Fabrica annotations.
-// Results are cached based on file modification time for performance.
-//
-// Example:
-//
-//	annotations, err := ParseFileAnnotations("apis/v1/user_types.go")
-//	if err != nil {
-//	    return err
-//	}
-//	for fieldName, ann := range annotations {
-//	    fmt.Printf("%s: %+v\n", fieldName, ann)
-//	}
-func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, error) {
-	// Check cache first
-	if cached, ok := globalCache.Get(filename); ok {
-		// Convert cached FieldAnnotations to ResourceAnnotations
-		result := make(map[string]*ResourceAnnotations)
-		for typeName, fields := range groupFieldsByType(cached) {
-			resAnn := NewResourceAnnotations()
-			resAnn.Fields = fields
-			result[typeName] = resAnn
-		}
-		return result, nil
-	}
-
-	// Parse file
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
-	if err != nil {
-		return nil, fmt.Errorf("parse file: %w", err)
-	}
-
-	result := make(map[string]*ResourceAnnotations)
-
-	// Walk declarations
-	for _, decl := range file.Decls {
-		genDecl, ok := decl.(*ast.GenDecl)
-		if !ok {
-			continue
-		}
-
-		for _, spec := range genDecl.Specs {
-			typeSpec, ok := spec.(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-
-			annotations, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
-			if err != nil {
-				return nil, err
-			}
-
-			result[typeSpec.Name.Name] = annotations
-		}
-	}
-
-	// Cache result (flatten for caching)
-	cached := make(map[string]*FieldAnnotations)
-	for typeName, resAnn := range result {
-		for fieldName, fieldAnn := range resAnn.Fields {
-			key := typeName + "." + fieldName
-			cached[key] = fieldAnn
-		}
-	}
-	globalCache.Set(filename, cached)
-
-	return result, nil
-}
-
-// groupFieldsByType groups flat cached fields back into per-type maps
-func groupFieldsByType(flat map[string]*FieldAnnotations) map[string]map[string]*FieldAnnotations {
-	result := make(map[string]map[string]*FieldAnnotations)
-
-	for key, ann := range flat {
-		parts := strings.SplitN(key, ".", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		typeName := parts[0]
-		fieldName := parts[1]
-
-		if result[typeName] == nil {
-			result[typeName] = make(map[string]*FieldAnnotations)
-		}
-		result[typeName][fieldName] = ann
-	}
-
-	return result
 }

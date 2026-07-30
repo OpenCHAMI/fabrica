@@ -7,89 +7,137 @@ SPDX-License-Identifier: MIT
 package storage
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    "{{.ModulePath}}/internal/storage/ent"
-    entresource "{{.ModulePath}}/internal/storage/ent/resource"
-    "{{.ModulePath}}/internal/storage/ent/label"
-    {{range .UniqueImports}}
-    {{.Alias}} "{{.Path}}"
-    {{- end}}
+	"{{.ModulePath}}/internal/storage/ent"
+	"{{.ModulePath}}/internal/storage/ent/label"
+	entresource "{{.ModulePath}}/internal/storage/ent/resource"
+	{{range .UniqueImports}}
+	{{.Alias}} "{{.Path}}"
+	{{- end}}
 )
 
 // ensureEntClient verifies the ent client has been initialized
 func ensureEntClient() {
-    if entClient == nil {
-        panic("ent client not initialized: call SetEntClient in main.go before using storage")
-    }
+	if entClient == nil {
+		panic("ent client not initialized: call SetEntClient in main.go before using storage")
+	}
 }
 
 // QueryResources returns a generic query builder for a given kind
 func QueryResources(ctx context.Context, kind string) *ent.ResourceQuery {
-    ensureEntClient()
-    return entClient.Resource.Query().
-        Where(entresource.KindEQ(kind))
+	ensureEntClient()
+	return entClient.Resource.Query().Where(entresource.KindEQ(kind))
 }
 
 // QueryResourcesByLabels queries resources by kind and exact-match labels
 func QueryResourcesByLabels(ctx context.Context, kind string, labels map[string]string) (*ent.ResourceQuery, error) {
-    ensureEntClient()
-    q := entClient.Resource.Query().Where(entresource.KindEQ(kind))
-    for k, v := range labels {
-        q = q.Where(entresource.HasLabelsWith(
-            label.KeyEQ(k),
-            label.ValueEQ(v),
-        ))
-    }
-    return q, nil
+	ensureEntClient()
+	q := entClient.Resource.Query().Where(entresource.KindEQ(kind))
+	for key, value := range labels {
+		q = q.Where(entresource.HasLabelsWith(label.KeyEQ(key), label.ValueEQ(value)))
+	}
+	return q, nil
 }
 
 {{range .Resources}}
+{{if isDedicatedStorage .}}
+// Query{{.PluralName}} returns a dedicated query builder for {{.PluralName}}.
+func Query{{.PluralName}}(ctx context.Context) *ent.{{.Name}}Query {
+	ensureEntClient()
+	return entClient.{{.Name}}.Query()
+}
+
+// Get{{.Name}}ByUID loads a single {{.Name}} by UID.
+func Get{{.Name}}ByUID(ctx context.Context, uid string) ({{.TypeName}}, error) {
+	return Load{{.StorageName}}(ctx, uid)
+}
+
+// Get{{.Name}}ByName loads a {{.Name}} by name and optional namespace.
+func Get{{.Name}}ByName(ctx context.Context, name, namespace string) ({{.TypeName}}, error) {
+	ensureEntClient()
+	entity, err := Query{{.Name}}ByName(ctx, entClient, name, namespace)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("load {{.Name}} by name from dedicated storage: %w", err)
+	}
+	resource, err := FromEnt{{.Name}}(ctx, entity)
+	if err != nil {
+		return nil, fmt.Errorf("convert {{.Name}} %s from dedicated storage: %w", entity.UID, err)
+	}
+	return resource, nil
+}
+
+// List{{.PluralName}}ByLabels returns {{.PluralName}} matching all provided labels.
+func List{{.PluralName}}ByLabels(ctx context.Context, labels map[string]string) ([]{{.TypeName}}, error) {
+	resources, err := LoadAll{{.StorageName}}s(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list {{.Name}} resources for label filter: %w", err)
+	}
+	out := make([]{{.TypeName}}, 0, len(resources))
+	for _, resource := range resources {
+		matches := true
+		for key, value := range labels {
+			if resource.Metadata.Labels[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			out = append(out, resource)
+		}
+	}
+	return out, nil
+}
+{{else}}
 // Query{{.PluralName}} returns a query builder for {{.PluralName}}
 func Query{{.PluralName}}(ctx context.Context) *ent.ResourceQuery {
-    return QueryResources(ctx, "{{.Name}}")
+	return QueryResources(ctx, "{{.Name}}")
 }
 
 // Get{{.Name}}ByUID loads a single {{.Name}} by UID
 func Get{{.Name}}ByUID(ctx context.Context, uid string) ({{.TypeName}}, error) {
-    ensureEntClient()
-    r, err := entClient.Resource.Query().
-        Where(entresource.UIDEQ(uid), entresource.KindEQ("{{.Name}}")).
-        WithLabels().
-        WithAnnotations().
-        Only(ctx)
-    if err != nil {
-        if ent.IsNotFound(err) {
-            return nil, ErrNotFound
-        }
-        return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
-    }
-    v, err := FromEntResource(ctx, r)
-    if err != nil {
-        return nil, err
-    }
-    return v.(*{{.PackageAlias}}.{{.Name}}), nil
+	ensureEntClient()
+	entity, err := entClient.Resource.Query().
+		Where(entresource.UIDEQ(uid), entresource.KindEQ("{{.Name}}")).
+		WithLabels().
+		WithAnnotations().
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
+	}
+	value, err := FromEntResource(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	return value.(*{{.PackageAlias}}.{{.Name}}), nil
 }
 
 // List{{.PluralName}}ByLabels returns {{.PluralName}} matching all provided labels
 func List{{.PluralName}}ByLabels(ctx context.Context, labels map[string]string) ([]{{.TypeName}}, error) {
-    q, err := QueryResourcesByLabels(ctx, "{{.Name}}", labels)
-    if err != nil {
-        return nil, err
-    }
-    rs, err := q.WithLabels().WithAnnotations().All(ctx)
-    if err != nil {
-        return nil, err
-    }
-    out := make([]{{.TypeName}}, 0, len(rs))
-    for _, r := range rs {
-        v, err := FromEntResource(ctx, r)
-        if err != nil {
-            continue
-        }
-        out = append(out, v.(*{{.PackageAlias}}.{{.Name}}))
-    }
-    return out, nil
+	query, err := QueryResourcesByLabels(ctx, "{{.Name}}", labels)
+	if err != nil {
+		return nil, err
+	}
+	entities, err := query.WithLabels().WithAnnotations().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]{{.TypeName}}, 0, len(entities))
+	for _, entity := range entities {
+		value, err := FromEntResource(ctx, entity)
+		if err != nil {
+			continue
+		}
+		out = append(out, value.(*{{.PackageAlias}}.{{.Name}}))
+	}
+	return out, nil
 }
+{{end}}
 {{end}}

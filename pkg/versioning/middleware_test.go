@@ -6,6 +6,7 @@ package versioning
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -201,5 +202,51 @@ func TestVersionNegotiationRejectsRequestedVersionWithNoRegisteredVersions(t *te
 
 	if result.status != http.StatusNotAcceptable {
 		t.Fatalf("expected 406, got %d", result.status)
+	}
+}
+
+func TestVersionNegotiationReturnsStable413WhenBoundedBodyExceedsLimit(t *testing.T) {
+	tests := []struct {
+		name          string
+		contentLength int64
+	}{
+		{name: "declared length", contentLength: 256},
+		{name: "chunked without content length", contentLength: -1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			const limit = 64
+			registry := NewVersionRegistry()
+			registerDeviceVersions(t, registry, "v1", "v1")
+			called := false
+			next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })
+			recorder := httptest.NewRecorder()
+			payload := `{"apiVersion":"v1","padding":"` + string(bytes.Repeat([]byte("x"), 256)) + `"}`
+			request := httptest.NewRequest(http.MethodPost, "/devices", bytes.NewBufferString(payload))
+			request.ContentLength = test.contentLength
+			request.Body = http.MaxBytesReader(recorder, request.Body, limit)
+
+			// When
+			VersionNegotiationMiddleware(registry, nil)(next).ServeHTTP(recorder, request)
+
+			// Then
+			if recorder.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if called {
+				t.Fatal("version negotiation called downstream handler after oversized body")
+			}
+			var response struct {
+				Error string `json:"error"`
+				Code  int    `json:"code"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.Error != "request body too large" || response.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("response=%#v", response)
+			}
+		})
 	}
 }

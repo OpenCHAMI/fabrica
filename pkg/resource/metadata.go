@@ -36,12 +36,14 @@ import "time"
 //	resource.SetAnnotation("deployment.notes", "Deployed during maintenance window")
 //	resource.SetAnnotation("contact.email", "ops@example.com")
 type Metadata struct {
-	Name        string            `json:"name" yaml:"name"`
-	UID         string            `json:"uid" yaml:"uid"`
-	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
-	CreatedAt   time.Time         `json:"createdAt" yaml:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt" yaml:"updatedAt"`
+	Name            string            `json:"name" yaml:"name"`
+	UID             string            `json:"uid" yaml:"uid"`
+	Namespace       string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	ResourceVersion string            `json:"resourceVersion,omitempty" yaml:"resourceVersion,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	CreatedAt       time.Time         `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt       time.Time         `json:"updatedAt" yaml:"updatedAt"`
 }
 
 // Metadata helper methods
@@ -103,10 +105,12 @@ func (m *Metadata) Initialize(name, uid string) {
 //	metadataCopy.Name = "new-name" // Won't affect original
 func (m *Metadata) Clone() *Metadata {
 	clone := &Metadata{
-		Name:      m.Name,
-		UID:       m.UID,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
+		Name:            m.Name,
+		UID:             m.UID,
+		Namespace:       m.Namespace,
+		ResourceVersion: m.ResourceVersion,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 
 	if m.Labels != nil {
