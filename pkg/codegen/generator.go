@@ -323,6 +323,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"ModulePath":            g.ModulePath,
 		"Annotations":           resource.Annotations,
 		"Operations":            resource.Operations,
+		"HooksEnabled":          handlerHooksEnabled(resource.Operations),
 	})
 }
 
@@ -823,6 +824,7 @@ func (g *Generator) LoadTemplates() error {
 	templateFiles := map[string]string{
 		// Server templates
 		"handlers":                  "server/handlers.go.tmpl",
+		"handlerHooks":              "server/handler_hooks.go.tmpl",
 		"routes":                    "server/routes.go.tmpl",
 		"models":                    "server/models.go.tmpl",
 		"openapi":                   "server/openapi.go.tmpl",
@@ -933,6 +935,31 @@ func (g *Generator) GenerateHandlers() error {
 		if written {
 			fmt.Printf("  ✓ Generated %s\n", filename)
 		}
+
+		operations := resolvedResourceOperations(resource)
+		if !handlerHooksEnabled(operations) {
+			continue
+		}
+		hookFilename := filepath.Join(g.OutputDir, fmt.Sprintf("%s_hooks.go", strings.ToLower(resource.Name)))
+		if _, err := os.Stat(hookFilename); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to inspect handler hooks file for %s: %w", resource.Name, err)
+		}
+
+		var hookBuf bytes.Buffer
+		hookData := g.templateData(resource, "server/handler_hooks.go.tmpl")
+		if err := g.Templates["handlerHooks"].Execute(&hookBuf, hookData); err != nil {
+			return fmt.Errorf("failed to execute handler hooks template for %s: %w", resource.Name, err)
+		}
+		hookFormatted, err := format.Source(hookBuf.Bytes())
+		if err != nil {
+			return fmt.Errorf("failed to format handler hooks for %s: %w", resource.Name, err)
+		}
+		if _, err := writeGeneratedFile(hookFilename, hookFormatted); err != nil {
+			return fmt.Errorf("failed to write handler hooks file for %s: %w", resource.Name, err)
+		}
+		fmt.Printf("  ✓ Generated %s\n", hookFilename)
 	}
 
 	return nil

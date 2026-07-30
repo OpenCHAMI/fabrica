@@ -23,6 +23,7 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 		forbidPublicClient string
 		wantCLI            []string
 		forbidCLI          []string
+		wantHookFile       bool
 	}{
 		{
 			name: "unannotated complete surface",
@@ -35,7 +36,8 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 				"func (c *Client) GetTokens(", "func (c *Client) GetToken(", "func (c *Client) CreateToken(",
 				"func (c *Client) UpdateToken(", "func (c *Client) PatchToken(", "func (c *Client) DeleteToken(",
 			},
-			wantCLI: []string{"tokenListCmd", "tokenGetCmd", "tokenCreateCmd", "tokenUpdateCmd", "tokenPatchCmd", "tokenDeleteCmd"},
+			wantCLI:      []string{"tokenListCmd", "tokenGetCmd", "tokenCreateCmd", "tokenUpdateCmd", "tokenPatchCmd", "tokenDeleteCmd"},
+			wantHookFile: true,
 		},
 		{
 			name:           "read only",
@@ -45,6 +47,7 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 			wantRoute:      "registerTokenRoutes(r)",
 			wantCLI:        []string{"tokenListCmd", "tokenGetCmd"},
 			forbidCLI:      []string{"tokenCreateCmd", "tokenUpdateCmd", "tokenPatchCmd", "tokenDeleteCmd"},
+			wantHookFile:   true,
 		},
 		{
 			name:           "status only",
@@ -53,6 +56,7 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 			forbidHandlers: []string{"func GetToken(", "func CreateToken(", "func UpdateToken(", "func PatchToken("},
 			wantClient:     []string{"func (c *Client) UpdateTokenStatus(", "func (c *Client) PatchTokenStatus("},
 			forbidCLI:      []string{"tokenCmd", "tokenListCmd", "tokenGetCmd"},
+			wantHookFile:   true,
 		},
 		{
 			name:           "version only",
@@ -62,6 +66,7 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 			forbidHandlers: []string{"func GetToken(", "func CreateToken(", "func UpdateToken(", "func PatchToken("},
 			wantClient:     []string{"func (c *Client) ListTokenVersions(", "func (c *Client) GetTokenVersion(", "func (c *Client) DeleteTokenVersion("},
 			wantCLI:        []string{"tokenVersionsCmd", "tokenVersionsListCmd", "tokenVersionsGetCmd", "tokenVersionsDeleteCmd"},
+			wantHookFile:   true,
 		},
 		{
 			name:               "none",
@@ -85,6 +90,7 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 			wantRoute:          "RegisterGeneratedInternalRoutes",
 			forbidPublicClient: "func (c *Client) GetToken",
 			forbidCLI:          []string{"tokenCmd", "tokenListCmd", "tokenGetCmd"},
+			wantHookFile:       true,
 		},
 	}
 
@@ -159,6 +165,14 @@ func TestGeneratedOperationExposureSurfaces_compile_and_filter(t *testing.T) {
 			registry := readGeneratedArtifact(t, project.root, filepath.Join("pkg", "resources", "register_generated.go"))
 			if !strings.Contains(registry, "Token") {
 				t.Error("API resource registry omitted Token")
+			}
+			hookPath := filepath.Join(project.root, "cmd", "server", "token_hooks.go")
+			_, hookErr := os.Stat(hookPath)
+			if tt.wantHookFile && hookErr != nil {
+				t.Errorf("expected handler hook file: %v", hookErr)
+			}
+			if !tt.wantHookFile && !os.IsNotExist(hookErr) {
+				t.Errorf("unexpected handler hook file: %v", hookErr)
 			}
 		})
 	}

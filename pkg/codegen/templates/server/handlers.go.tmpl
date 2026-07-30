@@ -42,8 +42,9 @@ package main
 
 {{if .Operations.HasHTTPOperations}}
 import (
+	{{if .HooksEnabled}}"context"{{end}}
 	{{if or .Operations.Patch .Operations.StatusPatch}}"encoding/json"{{end}}
-	{{if or .Operations.Create .Operations.Update .Operations.Patch}}"errors"{{end}}
+	{{if or .Operations.Create .Operations.Update .Operations.Patch .Operations.Delete .Operations.StatusUpdate .Operations.StatusPatch}}"errors"{{end}}
 	"fmt"
 	"net/http"
 	{{if or .Operations.Create .Operations.Update .Operations.Patch .Operations.Delete .Operations.StatusUpdate .Operations.StatusPatch}}"time"{{end}}
@@ -54,7 +55,7 @@ import (
 	{{if .Operations.Create}}"github.com/openchami/fabrica/pkg/resource"{{end}}
 	{{if or .Operations.Create .Operations.Update .Operations.Patch .Operations.StatusUpdate .Operations.StatusPatch}}"github.com/openchami/fabrica/pkg/validation"{{end}}
 	{{if .Operations.Create}}"github.com/openchami/fabrica/pkg/versioning"{{end}}
-	{{if or .Operations.Create .Operations.StatusUpdate}}
+	{{if or .Operations.List .Operations.Get .Operations.Create .Operations.Update .Operations.Patch .Operations.StatusUpdate .Operations.StatusPatch}}
 	{{range .UniqueImports -}}
 	{{.Alias}} "{{.Path}}"
 	{{end}}
@@ -63,18 +64,65 @@ import (
 )
 {{end}}
 
+// {{.Name}}Hooks contains optional extension points for enabled {{.Name}} operations.
+// Nil fields preserve the generated handler behavior.
+type {{.Name}}Hooks struct {
+	{{if .HooksEnabled}}{{if .Operations.List}}BeforeList func(context.Context, *http.Request) error
+	AfterList func(context.Context, *http.Request, http.Header, []*{{.PackageAlias}}.{{.Name}}) ([]*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.Get}}BeforeGet func(context.Context, *http.Request, string) error
+	AfterGet func(context.Context, *http.Request, http.Header, *{{.PackageAlias}}.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.Create}}BeforeCreate func(context.Context, *http.Request, *Create{{.Name}}Request) error
+	ExecuteCreate func(context.Context, *http.Request, *Create{{.Name}}Request) (*{{.PackageAlias}}.{{.Name}}, bool, error)
+	AfterCreate func(context.Context, *http.Request, http.Header, *{{.PackageAlias}}.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.Update}}BeforeUpdate func(context.Context, *http.Request, string, *Update{{.Name}}Request) error
+	ExecuteUpdate func(context.Context, *http.Request, string, *Update{{.Name}}Request) (*{{.PackageAlias}}.{{.Name}}, bool, error)
+	AfterUpdate func(context.Context, *http.Request, http.Header, *{{.PackageAlias}}.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.Patch}}BeforePatch func(context.Context, *http.Request, string, []byte) error
+	ExecutePatch func(context.Context, *http.Request, string, []byte) (*{{.PackageAlias}}.{{.Name}}, bool, error)
+	AfterPatch func(context.Context, *http.Request, http.Header, *{{.PackageAlias}}.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.Delete}}BeforeDelete func(context.Context, *http.Request, string) error
+	ExecuteDelete func(context.Context, *http.Request, string) (*DeleteResponse, bool, error)
+	AfterDelete func(context.Context, *http.Request, http.Header, *DeleteResponse) (*DeleteResponse, error)
+	{{end}}{{if .Operations.StatusUpdate}}BeforeStatusUpdate func(context.Context, *http.Request, string, *{{.PackageAlias}}.{{.Name}}Status) error
+	ExecuteStatusUpdate func(context.Context, *http.Request, string, *{{.PackageAlias}}.{{.Name}}Status) (*{{.PackageAlias}}.{{.Name}}, bool, error)
+	AfterStatusUpdate func(context.Context, *http.Request, http.Header, *{{.PackageAlias}}.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.StatusPatch}}BeforeStatusPatch func(context.Context, *http.Request, string, []byte) error
+	ExecuteStatusPatch func(context.Context, *http.Request, string, []byte) (*{{.PackageAlias}}.{{.Name}}, bool, error)
+	AfterStatusPatch func(context.Context, *http.Request, http.Header, *{{.PackageAlias}}.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error)
+	{{end}}{{if .Operations.VersionList}}BeforeVersionList func(context.Context, *http.Request, string) error
+	AfterVersionList func(context.Context, *http.Request, http.Header, []{{.Name}}VersionSnapshot) ([]{{.Name}}VersionSnapshot, error)
+	{{end}}{{if .Operations.VersionGet}}BeforeVersionGet func(context.Context, *http.Request, string, string) error
+	AfterVersionGet func(context.Context, *http.Request, http.Header, *{{.Name}}VersionSnapshot) (*{{.Name}}VersionSnapshot, error)
+	{{end}}{{if .Operations.VersionDelete}}BeforeVersionDelete func(context.Context, *http.Request, string, string) error
+	AfterVersionDelete func(context.Context, *http.Request, http.Header, *DeleteResponse) (*DeleteResponse, error)
+	{{end}}{{end}}
+}
+
 {{if .Operations.List}}
 // Get{{.Name}}s returns all {{.Name}} resources
 func Get{{.Name}}s(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware in routes.go or implement checks here
 	// Example: if !authorized(r) { respondError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized")); return }
 
-	{{camelCase .PluralName}}, err := storage.LoadAll{{.StorageName}}s(r.Context())
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeList != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeList(r.Context(), r); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}{{camelCase .PluralName}}, err := storage.LoadAll{{.StorageName}}s(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to load {{.PluralName}}: %w", err))
 		return
 	}
-	respondJSON(w, http.StatusOK, {{camelCase .PluralName}})
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterList != nil {
+		{{camelCase .PluralName}}, err = {{camelCase .Name}}Hooks.AfterList(r.Context(), r, w.Header(), {{camelCase .PluralName}})
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, {{camelCase .PluralName}})
 }
 {{end}}
 
@@ -95,12 +143,25 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware in routes.go or implement checks here
 	// Example: if !authorized(r) { respondError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized")); return }
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeGet != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeGet(r.Context(), r, uid); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
-	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterGet != nil {
+		{{camelCase .Name}}, err = {{camelCase .Name}}Hooks.AfterGet(r.Context(), r, w.Header(), {{camelCase .Name}})
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, {{camelCase .Name}})
 }
 {{end}}
 
@@ -118,6 +179,36 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
+
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeCreate != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeCreate(r.Context(), r, &req); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	if {{camelCase .Name}}Hooks.ExecuteCreate != nil {
+		hookResult, handled, err := {{camelCase .Name}}Hooks.ExecuteCreate(r.Context(), r, &req)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+		if handled {
+			if hookResult == nil {
+				respondHookError(w, errors.New("handled create executor returned nil result"))
+				return
+			}
+			if {{camelCase .Name}}Hooks.AfterCreate != nil {
+				hookResult, err = {{camelCase .Name}}Hooks.AfterCreate(r.Context(), r, w.Header(), hookResult)
+				if err != nil {
+					respondHookError(w, err)
+					return
+				}
+			}
+			respondJSON(w, http.StatusCreated, hookResult)
+			return
+		}
+	}
+	{{end}}
 
 	// Get version context from request (set by version negotiation middleware)
 	versionCtx := versioning.GetVersionContext(r.Context())
@@ -242,7 +333,14 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusCreated, {{camelCase .Name}})
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterCreate != nil {
+		{{camelCase .Name}}, err = {{camelCase .Name}}Hooks.AfterCreate(r.Context(), r, w.Header(), {{camelCase .Name}})
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusCreated, {{camelCase .Name}})
 }
 {{end}}
 
@@ -256,17 +354,56 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{if .HooksEnabled}}var req Update{{.Name}}Request
+	hooksBeforeStorage := {{camelCase .Name}}Hooks.BeforeUpdate != nil || {{camelCase .Name}}Hooks.ExecuteUpdate != nil
+	if hooksBeforeStorage {
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			respondRequestBodyError(w, err, "invalid request body")
+			return
+		}
+		if {{camelCase .Name}}Hooks.BeforeUpdate != nil {
+			if err := {{camelCase .Name}}Hooks.BeforeUpdate(r.Context(), r, uid, &req); err != nil {
+				respondHookError(w, err)
+				return
+			}
+		}
+		if {{camelCase .Name}}Hooks.ExecuteUpdate != nil {
+			hookResult, handled, err := {{camelCase .Name}}Hooks.ExecuteUpdate(r.Context(), r, uid, &req)
+			if err != nil {
+				respondHookError(w, err)
+				return
+			}
+			if handled {
+				if hookResult == nil {
+					respondHookError(w, errors.New("handled update executor returned nil result"))
+					return
+				}
+				if {{camelCase .Name}}Hooks.AfterUpdate != nil {
+					hookResult, err = {{camelCase .Name}}Hooks.AfterUpdate(r.Context(), r, w.Header(), hookResult)
+					if err != nil {
+						respondHookError(w, err)
+						return
+					}
+				}
+				respondJSON(w, http.StatusOK, hookResult)
+				return
+			}
+		}
+	}
+	{{end}}{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
 
-	var req Update{{.Name}}Request
-	if err := decodeRequestBody(w, r, &req); err != nil {
+	{{if not .HooksEnabled}}var req Update{{.Name}}Request
+	{{end}}{{if .HooksEnabled}}if !hooksBeforeStorage {
+	{{end}}if err := decodeRequestBody(w, r, &req); err != nil {
 		respondRequestBodyError(w, err, "invalid request body")
 		return
 	}
+	{{if .HooksEnabled}}}
+	{{end}}
 
 	// Apply updates
 {{if .IsVersioned}}
@@ -373,7 +510,14 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterUpdate != nil {
+		{{camelCase .Name}}, err = {{camelCase .Name}}Hooks.AfterUpdate(r.Context(), r, w.Header(), {{camelCase .Name}})
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, {{camelCase .Name}})
 }
 {{end}}
 
@@ -387,18 +531,59 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{if .HooksEnabled}}var patchData []byte
+	hooksBeforeStorage := {{camelCase .Name}}Hooks.BeforePatch != nil || {{camelCase .Name}}Hooks.ExecutePatch != nil
+	if hooksBeforeStorage {
+		var err error
+		patchData, err = readRequestBody(w, r)
+		if err != nil {
+			respondRequestBodyError(w, err, "failed to read patch data")
+			return
+		}
+		if {{camelCase .Name}}Hooks.BeforePatch != nil {
+			if err := {{camelCase .Name}}Hooks.BeforePatch(r.Context(), r, uid, patchData); err != nil {
+				respondHookError(w, err)
+				return
+			}
+		}
+		if {{camelCase .Name}}Hooks.ExecutePatch != nil {
+			hookResult, handled, err := {{camelCase .Name}}Hooks.ExecutePatch(r.Context(), r, uid, patchData)
+			if err != nil {
+				respondHookError(w, err)
+				return
+			}
+			if handled {
+				if hookResult == nil {
+					respondHookError(w, errors.New("handled patch executor returned nil result"))
+					return
+				}
+				if {{camelCase .Name}}Hooks.AfterPatch != nil {
+					hookResult, err = {{camelCase .Name}}Hooks.AfterPatch(r.Context(), r, w.Header(), hookResult)
+					if err != nil {
+						respondHookError(w, err)
+						return
+					}
+				}
+				respondJSON(w, http.StatusOK, hookResult)
+				return
+			}
+		}
+	}
+	{{end}}{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
 
 	// Read patch document
-	patchData, err := readRequestBody(w, r)
+	{{if .HooksEnabled}}if !hooksBeforeStorage {
+	{{end}}{{if .HooksEnabled}}patchData, err ={{else}}patchData, err :={{end}} readRequestBody(w, r)
 	if err != nil {
 		respondRequestBodyError(w, err, "failed to read patch data")
 		return
 	}
+	{{if .HooksEnabled}}}
+	{{end}}
 
 	// Marshal current spec to JSON for patching (only allow spec modifications)
 	currentSpecJSON, err := json.Marshal({{camelCase .Name}}.Spec)
@@ -498,7 +683,14 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterPatch != nil {
+		{{camelCase .Name}}, err = {{camelCase .Name}}Hooks.AfterPatch(r.Context(), r, w.Header(), {{camelCase .Name}})
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, {{camelCase .Name}})
 }
 {{end}}
 
@@ -519,17 +711,56 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status update authorization
 	// Status updates can have different permissions than spec updates
 
-	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{if .HooksEnabled}}var statusUpdate {{.PackageAlias}}.{{.Name}}Status
+	hooksBeforeStorage := {{camelCase .Name}}Hooks.BeforeStatusUpdate != nil || {{camelCase .Name}}Hooks.ExecuteStatusUpdate != nil
+	if hooksBeforeStorage {
+		if err := decodeRequestBody(w, r, &statusUpdate); err != nil {
+			respondRequestBodyError(w, err, "invalid status body")
+			return
+		}
+		if {{camelCase .Name}}Hooks.BeforeStatusUpdate != nil {
+			if err := {{camelCase .Name}}Hooks.BeforeStatusUpdate(r.Context(), r, uid, &statusUpdate); err != nil {
+				respondHookError(w, err)
+				return
+			}
+		}
+		if {{camelCase .Name}}Hooks.ExecuteStatusUpdate != nil {
+			hookResult, handled, err := {{camelCase .Name}}Hooks.ExecuteStatusUpdate(r.Context(), r, uid, &statusUpdate)
+			if err != nil {
+				respondHookError(w, err)
+				return
+			}
+			if handled {
+				if hookResult == nil {
+					respondHookError(w, errors.New("handled status update executor returned nil result"))
+					return
+				}
+				if {{camelCase .Name}}Hooks.AfterStatusUpdate != nil {
+					hookResult, err = {{camelCase .Name}}Hooks.AfterStatusUpdate(r.Context(), r, w.Header(), hookResult)
+					if err != nil {
+						respondHookError(w, err)
+						return
+					}
+				}
+				respondJSON(w, http.StatusOK, hookResult)
+				return
+			}
+		}
+	}
+	{{end}}res, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
 
-	var statusUpdate {{.PackageAlias}}.{{.Name}}Status
-	if err := decodeRequestBody(w, r, &statusUpdate); err != nil {
+	{{if not .HooksEnabled}}var statusUpdate {{.PackageAlias}}.{{.Name}}Status
+	{{end}}{{if .HooksEnabled}}if !hooksBeforeStorage {
+	{{end}}if err := decodeRequestBody(w, r, &statusUpdate); err != nil {
 		respondRequestBodyError(w, err, "invalid status body")
 		return
 	}
+	{{if .HooksEnabled}}}
+	{{end}}
 
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
 	// Preserve server-managed version field in status
@@ -582,7 +813,14 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, res)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterStatusUpdate != nil {
+		res, err = {{camelCase .Name}}Hooks.AfterStatusUpdate(r.Context(), r, w.Header(), res)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, res)
 }
 {{end}}
 
@@ -600,17 +838,58 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status patch authorization
 	// Status patches can have different permissions than spec patches
 
-	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	{{if .HooksEnabled}}var patchData []byte
+	hooksBeforeStorage := {{camelCase .Name}}Hooks.BeforeStatusPatch != nil || {{camelCase .Name}}Hooks.ExecuteStatusPatch != nil
+	if hooksBeforeStorage {
+		var err error
+		patchData, err = readRequestBody(w, r)
+		if err != nil {
+			respondRequestBodyError(w, err, "failed to read patch data")
+			return
+		}
+		if {{camelCase .Name}}Hooks.BeforeStatusPatch != nil {
+			if err := {{camelCase .Name}}Hooks.BeforeStatusPatch(r.Context(), r, uid, patchData); err != nil {
+				respondHookError(w, err)
+				return
+			}
+		}
+		if {{camelCase .Name}}Hooks.ExecuteStatusPatch != nil {
+			hookResult, handled, err := {{camelCase .Name}}Hooks.ExecuteStatusPatch(r.Context(), r, uid, patchData)
+			if err != nil {
+				respondHookError(w, err)
+				return
+			}
+			if handled {
+				if hookResult == nil {
+					respondHookError(w, errors.New("handled status patch executor returned nil result"))
+					return
+				}
+				if {{camelCase .Name}}Hooks.AfterStatusPatch != nil {
+					hookResult, err = {{camelCase .Name}}Hooks.AfterStatusPatch(r.Context(), r, w.Header(), hookResult)
+					if err != nil {
+						respondHookError(w, err)
+						return
+					}
+				}
+				respondJSON(w, http.StatusOK, hookResult)
+				return
+			}
+		}
+	}
+	{{end}}res, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
 
-	patchData, err := readRequestBody(w, r)
+	{{if .HooksEnabled}}if !hooksBeforeStorage {
+	{{end}}{{if .HooksEnabled}}patchData, err ={{else}}patchData, err :={{end}} readRequestBody(w, r)
 	if err != nil {
 		respondRequestBodyError(w, err, "failed to read patch data")
 		return
 	}
+	{{if .HooksEnabled}}}
+	{{end}}
 
 	// Marshal current status for patching
 	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
@@ -694,7 +973,14 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, res)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterStatusPatch != nil {
+		res, err = {{camelCase .Name}}Hooks.AfterStatusPatch(r.Context(), r, w.Header(), res)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, res)
 }
 {{end}}
 
@@ -707,12 +993,25 @@ func List{{.Name}}Versions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	versions, err := storage.List{{.Name}}Versions(r.Context(), uid)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeVersionList != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeVersionList(r.Context(), r, uid); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}versions, err := storage.List{{.Name}}Versions(r.Context(), uid)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to list versions: %w", err))
 		return
 	}
-	respondJSON(w, http.StatusOK, versions)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterVersionList != nil {
+		versions, err = {{camelCase .Name}}Hooks.AfterVersionList(r.Context(), r, w.Header(), versions)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, versions)
 }
 {{end}}
 
@@ -726,12 +1025,25 @@ func Get{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	version, err := storage.Get{{.Name}}Version(r.Context(), uid, versionID)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeVersionGet != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeVersionGet(r.Context(), r, uid, versionID); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}version, err := storage.Get{{.Name}}Version(r.Context(), uid, versionID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Errorf("version not found: %w", err))
 		return
 	}
-	respondJSON(w, http.StatusOK, version)
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterVersionGet != nil {
+		version, err = {{camelCase .Name}}Hooks.AfterVersionGet(r.Context(), r, w.Header(), version)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, version)
 }
 {{end}}
 
@@ -745,11 +1057,27 @@ func Delete{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeVersionDelete != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeVersionDelete(r.Context(), r, uid, versionID); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}
 	if err := storage.Delete{{.Name}}Version(r.Context(), uid, versionID); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete version: %w", err))
 		return
 	}
-	respondJSON(w, http.StatusOK, DeleteResponse{Message: "version deleted", UID: versionID})
+	response := &DeleteResponse{Message: "version deleted", UID: versionID}
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterVersionDelete != nil {
+		var err error
+		response, err = {{camelCase .Name}}Hooks.AfterVersionDelete(r.Context(), r, w.Header(), response)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, response)
 }
 {{end}}
 
@@ -762,6 +1090,35 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.BeforeDelete != nil {
+		if err := {{camelCase .Name}}Hooks.BeforeDelete(r.Context(), r, uid); err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	if {{camelCase .Name}}Hooks.ExecuteDelete != nil {
+		hookResult, handled, err := {{camelCase .Name}}Hooks.ExecuteDelete(r.Context(), r, uid)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+		if handled {
+			if hookResult == nil {
+				respondHookError(w, errors.New("handled delete executor returned nil result"))
+				return
+			}
+			if {{camelCase .Name}}Hooks.AfterDelete != nil {
+				hookResult, err = {{camelCase .Name}}Hooks.AfterDelete(r.Context(), r, w.Header(), hookResult)
+				if err != nil {
+					respondHookError(w, err)
+					return
+				}
+			}
+			respondJSON(w, http.StatusOK, hookResult)
+			return
+		}
+	}
+	{{end}}
 	// Load resource before deletion for event publishing
 	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
 	if err != nil {
@@ -789,9 +1146,17 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, &DeleteResponse{
+	response := &DeleteResponse{
 		Message: "{{.Name}} deleted successfully",
 		UID:     uid,
-	})
+	}
+	{{if .HooksEnabled}}if {{camelCase .Name}}Hooks.AfterDelete != nil {
+		response, err = {{camelCase .Name}}Hooks.AfterDelete(r.Context(), r, w.Header(), response)
+		if err != nil {
+			respondHookError(w, err)
+			return
+		}
+	}
+	{{end}}respondJSON(w, http.StatusOK, response)
 }
 {{end}}

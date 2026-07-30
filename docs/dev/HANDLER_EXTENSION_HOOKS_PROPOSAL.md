@@ -6,8 +6,8 @@ SPDX-License-Identifier: MIT
 
 # Generated Handler Extension Hooks Proposal
 
-**Status:** Proposed
-**Scope:** Design proposal only; no implementation is approved by this document.
+**Status:** Implemented
+**Scope:** Implement regeneration-safe generated handler hooks for enabled generated operations. Operation/exposure annotations remain the source of truth for whether a route exists; disabled or private operations do not get routes or hook calls.
 
 ## Problem
 
@@ -43,25 +43,25 @@ cmd/server/<resource>_handlers_generated.go      # overwritten
 cmd/server/<resource>_hooks.go                   # create-once, user-owned
 ```
 
-The generated file calls a package-level hook provider from the create-once file:
+The generated file defines the evolving optional-function hook type. The create-once file owns only the stable package variable, so adding an enabled operation does not require overwriting user code:
 
 ```go
-var refreshTokenFamilyHooks RefreshTokenFamilyHooks = NoopRefreshTokenFamilyHooks{}
+var refreshTokenFamilyHooks = RefreshTokenFamilyHooks{}
 ```
 
-The hook interface is generated from enabled operations only. A conceptual shape:
+Hook fields are generated from enabled operations only. A resource with no enabled HTTP operations or private exposure receives no hook file, fields, or calls. A conceptual shape:
 
 ```go
-type RefreshTokenFamilyHooks interface {
-    BeforeList(context.Context, *http.Request) error
-    AfterList(context.Context, *http.Request, []v1.RefreshTokenFamily) ([]v1.RefreshTokenFamily, error)
+type RefreshTokenFamilyHooks struct {
+    BeforeList func(context.Context, *http.Request) error
+    AfterList func(context.Context, *http.Request, http.Header, []*v1.RefreshTokenFamily) ([]*v1.RefreshTokenFamily, error)
 
-    BeforeGet(context.Context, *http.Request, string) error
-    AfterGet(context.Context, *http.Request, *v1.RefreshTokenFamily) (*v1.RefreshTokenFamily, error)
+    BeforeGet func(context.Context, *http.Request, string) error
+    AfterGet func(context.Context, *http.Request, http.Header, *v1.RefreshTokenFamily) (*v1.RefreshTokenFamily, error)
 
-    BeforeCreate(context.Context, *http.Request, *CreateRefreshTokenFamilyRequest) error
-    ExecuteCreate(context.Context, *http.Request, *CreateRefreshTokenFamilyRequest) (*v1.RefreshTokenFamily, bool, error)
-    AfterCreate(context.Context, *http.Request, *v1.RefreshTokenFamily) (*v1.RefreshTokenFamily, error)
+    BeforeCreate func(context.Context, *http.Request, *CreateRefreshTokenFamilyRequest) error
+    ExecuteCreate func(context.Context, *http.Request, *CreateRefreshTokenFamilyRequest) (*v1.RefreshTokenFamily, bool, error)
+    AfterCreate func(context.Context, *http.Request, http.Header, *v1.RefreshTokenFamily) (*v1.RefreshTokenFamily, error)
 }
 ```
 
@@ -71,7 +71,7 @@ type RefreshTokenFamilyHooks interface {
 - `handled=true` means the hook has completed the operation and the generated handler skips generated storage.
 - `error` is mapped through the generated error response path.
 
-Only operations enabled by the operation/exposure policy get hook methods. A disabled operation has no route and no hook call.
+Only operations enabled by the operation/exposure policy get hook methods. A disabled operation has no route and no hook call. Hooks cannot create a route, OpenAPI path, or client method that operation/exposure annotations disabled.
 
 ## Hook Categories
 
@@ -108,7 +108,7 @@ Examples:
 - a power-control transition create that maps to an external state machine;
 - a resource whose delete operation must enqueue a safe reconciliation task instead of deleting a row.
 
-Executor hooks should be opt-in per operation and visible in generated code. A project-level setting may be required before generator emits executor hook calls, so ordinary generated services keep the simpler default path.
+Executor hooks are generated for enabled mutating operations, but they are no-ops by default. They may replace generated storage only when user-owned hook code returns `handled=true`. This keeps ordinary generated services on the existing storage path unless user code explicitly takes ownership of an operation.
 
 ## Error Mapping
 
@@ -126,14 +126,15 @@ Rules:
 
 - `errors.Is` and `errors.As` should preserve wrapped domain errors.
 - Generated handlers should map `HandlerError` status codes directly.
+- Only statuses from 400 through 599 are accepted; invalid statuses safely map to 500.
 - Non-typed hook errors should use the existing generated error behavior.
 - Sensitive internal causes must not be serialized into public responses.
 
 ## Regeneration Contract
 
-- Generated files may call hook interfaces and default no-op implementations.
+- Generated files define optional-function hook sets; nil fields are the no-op implementation.
 - Create-once hook files are never overwritten after first generation.
-- Adding a new enabled operation may add a new hook method. This is a compile-time signal that user-owned hook implementations must be updated.
+- Adding a new enabled operation may add a new optional function field on the generated hook set without changing the create-once variable declaration.
 - Removing an operation removes generated calls to the hook but does not rewrite user-owned files.
 - Hooks cannot make disabled routes reachable.
 - Hook signatures are versioned as part of the generated API contract.
@@ -156,7 +157,19 @@ No generated handler hooks are needed because no generated HTTP operation exists
 // +fabrica:verbs=list,get
 ```
 
-Then read hooks can filter, authorize, and redact projection data while create/update/delete remain absent. If TokenSmith later defines generated action support, executor hooks can delegate action semantics to `TokenStateStore` instead of direct storage CRUD.
+Then read hooks can filter, authorize, and redact projection data while create/update/delete remain absent. If TokenSmith later enables a protected mutating operation, executor hooks can delegate the operation to `TokenStateStore` instead of direct storage CRUD. Action-style endpoints remain a separate design problem; this implementation only affects generated resource operations that already exist.
+
+## Implementation Decisions
+
+- Hooks are generated as create-once files beside generated handlers, for example `cmd/server/token_hooks.go`.
+- Generated handler files are overwritten as usual and call hook variables declared in the create-once hook file.
+- Hook stubs use optional function fields rather than forcing users to implement a large interface. Missing fields mean no-op/default generated behavior.
+- Generated no-op hook sets are safe to embed in user-owned hook implementations.
+- Guard hooks run before storage interaction for their operation.
+- Response hooks run after generated storage behavior or executor behavior and before the response is serialized.
+- Executor hooks exist only for mutating operations that can be replaced without changing route shape: create, update, patch, delete, status update, and status patch. Read operations use guard/response hooks only.
+- Hook errors use generated `HandlerError` helpers for stable status mapping. Unwrapped errors keep existing generated behavior.
+- Operation/exposure policy decides whether hook code is emitted for an operation. Private resources and `verbs=none` resources do not receive hook methods or calls.
 
 ## Required Tests
 
@@ -169,10 +182,7 @@ Then read hooks can filter, authorize, and redact projection data while create/u
 - Typed hook errors map to expected HTTP status codes without leaking internal causes.
 - A TokenSmith-like fixture proves replay-sensitive operations can be delegated to a handwritten transaction service without generated storage mutation.
 
-## Open Questions
+## Future Follow-ups
 
-- Should hook interfaces be generated per resource or as generic typed interfaces in a shared package?
-- Should executor hooks be emitted by default, or gated behind a project config option?
-- Should hook stubs live in `cmd/server` or in an internal package for easier unit testing?
 - How should hook interface changes be versioned to avoid surprising compile failures during regeneration?
 - Should OpenAPI support documenting hook-backed action endpoints, or should that be a separate action-endpoint proposal?

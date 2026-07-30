@@ -44,6 +44,10 @@ func resolvedResourceOperations(resource ResourceMetadata) annotations.Operation
 	return operations
 }
 
+func handlerHooksEnabled(operations annotations.OperationPolicy) bool {
+	return operations.Exposure != annotations.ExposurePrivate && operations.HasHTTPOperations()
+}
+
 func (g *Generator) operationTemplateData() map[string]interface{} {
 	publicResources := make([]ResourceMetadata, 0)
 	protectedResources := make([]ResourceMetadata, 0)

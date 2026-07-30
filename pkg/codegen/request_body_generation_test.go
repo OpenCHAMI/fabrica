@@ -40,11 +40,11 @@ func TestGeneratedHandlers_bound_every_request_body_with_stable_413_contract(t *
 
 	// Then
 	generatedHandlers := handlers.String()
-	if got := strings.Count(generatedHandlers, "decodeRequestBody(w, r,"); got != 3 {
-		t.Fatalf("bounded JSON decode calls=%d, want 3\n%s", got, generatedHandlers)
+	if got := strings.Count(generatedHandlers, "decodeRequestBody(w, r,"); got != 5 {
+		t.Fatalf("bounded JSON decode calls=%d, want 5\n%s", got, generatedHandlers)
 	}
-	if got := strings.Count(generatedHandlers, "readRequestBody(w, r)"); got != 2 {
-		t.Fatalf("bounded read calls=%d, want 2\n%s", got, generatedHandlers)
+	if got := strings.Count(generatedHandlers, "readRequestBody(w, r)"); got != 4 {
+		t.Fatalf("bounded read calls=%d, want 4\n%s", got, generatedHandlers)
 	}
 	for _, unbounded := range []string{"json.NewDecoder(r.Body)", "io.ReadAll(r.Body)"} {
 		if strings.Contains(generatedHandlers, unbounded) {
