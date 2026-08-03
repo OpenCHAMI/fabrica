@@ -165,13 +165,139 @@ func ({{.Name}}) Fields() []ent.Field {
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
+		{{- else if eq .Type "int64" }}
+		field.Int64("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.Unique }}
+			Unique().
+			{{- end }}
+			{{- if $fieldAnnots.Default }}
+			Default({{$fieldAnnots.Default}}).
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "float64" }}
+		field.Float("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.Default }}
+			Default({{$fieldAnnots.Default}}).
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "time.Duration" }}
+		// time.Duration is stored as int64 nanoseconds, matching Go's internal
+		// representation, so round-tripping is exact and no unit is implied.
+		field.Int64("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.Default }}
+			Default({{$fieldAnnots.Default}}).
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}} (time.Duration, nanoseconds)"),
+		{{- else if eq .Type "time.Time" }}
+		field.Time("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "*time.Time" }}
+		// Pointer field: nullable regardless of annotations, and Nillable so a
+		// NULL round-trips back to nil rather than the zero time.
+		field.Time("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			Optional().
+			Nillable().
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "[]string" }}
+		field.Strings("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "[]uint8" }}
+		field.Bytes("{{.JSONName}}").
+			{{- if $fieldAnnots.Sensitive }}
+			Sensitive().
+			{{- end }}
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "[]time.Time" }}
+		field.JSON("{{.JSONName}}", []time.Time{}).
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "map[string]string" }}
+		field.JSON("{{.JSONName}}", map[string]string{}).
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
 		{{- else }}
-		// Fallback for other types
+		// UNMAPPED TYPE: {{.Type}} has no Ent mapping and is stored as text.
+		// Ordering, range queries and indexes on this column will not behave as
+		// the Go type implies. Add a case to resource_dedicated.go.tmpl if this
+		// type matters.
 		field.String("{{.JSONName}}").
 			{{- if not .Required }}
 			Optional().
 			{{- end }}
-			Comment("{{.Name}} ({{.Type}})"),
+			Comment("{{.Name}} (unmapped {{.Type}})"),
 		{{- end }}
 		{{- end }}
 		{{- else }}
@@ -196,12 +322,73 @@ func ({{.Name}}) Fields() []ent.Field {
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
+		{{- else if eq .Type "int64" }}
+		field.Int64("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "float64" }}
+		field.Float("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "time.Duration" }}
+		// time.Duration is stored as int64 nanoseconds, matching Go's internal
+		// representation, so round-tripping is exact and no unit is implied.
+		field.Int64("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}} (time.Duration, nanoseconds)"),
+		{{- else if eq .Type "time.Time" }}
+		field.Time("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "*time.Time" }}
+		// Pointer field: nullable, and Nillable so a NULL round-trips back to
+		// nil rather than the zero time.
+		field.Time("{{.JSONName}}").
+			Optional().
+			Nillable().
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "[]string" }}
+		field.Strings("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "[]uint8" }}
+		field.Bytes("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "[]time.Time" }}
+		field.JSON("{{.JSONName}}", []time.Time{}).
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .Type "map[string]string" }}
+		field.JSON("{{.JSONName}}", map[string]string{}).
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
 		{{- else }}
+		// UNMAPPED TYPE: {{.Type}} has no Ent mapping and is stored as text.
+		// Ordering, range queries and indexes on this column will not behave as
+		// the Go type implies. Add a case to resource_dedicated.go.tmpl if this
+		// type matters.
 		field.String("{{.JSONName}}").
 			{{- if not .Required }}
 			Optional().
 			{{- end }}
-			Comment("{{.Name}} ({{.Type}})"),
+			Comment("{{.Name}} (unmapped {{.Type}})"),
 		{{- end }}
 		{{- end }}
 		{{- end }}
