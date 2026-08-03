@@ -2,17 +2,14 @@
 // Copyright © <year> OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
-
 package schema
 
 import (
 	"time"
 
 	"entgo.io/ent"
-	"entgo.io/ent/dialect"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // typedToken holds the schema definition for the typedToken entity.
