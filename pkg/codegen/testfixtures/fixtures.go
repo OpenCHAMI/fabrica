@@ -62,3 +62,27 @@ type AliasTokenSpec struct {
 	SequenceNumber AliasSequenceNumber `json:"sequence_number"`
 	Weight         AliasWeight         `json:"weight"`
 }
+
+// WidgetSpec is the desired state of a Widget.
+type WidgetSpec struct {
+	Name string `json:"name"`
+	Size int    `json:"size"`
+}
+
+// WidgetStatus is the observed state of a Widget.
+type WidgetStatus struct {
+	Phase string `json:"phase,omitempty"`
+}
+
+// Widget models a resource the way a real service does: embedding
+// resource.Resource, which supplies APIVersion, Kind and Metadata.
+//
+// The generated adapter expects that embedded type in non-versioned mode. A
+// resource declaring those fields directly, without the embed, produces an
+// adapter that references fields the resource does not have, which compiles
+// in fabrica and fails only in the generated project.
+type Widget struct {
+	resource.Resource
+	Spec   WidgetSpec   `json:"spec"`
+	Status WidgetStatus `json:"status"`
+}
