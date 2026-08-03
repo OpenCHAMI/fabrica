@@ -100,10 +100,26 @@ func parseResourceLevelAnnotation(result *ResourceAnnotations, annotation string
 		result.IsResource = true
 		return nil
 
+	case "index":
+		return parseCompositeIndexAnnotation(result, parts[1:], annotation)
+
 	default:
 		// Try to parse as key=value format (e.g., storage=dedicated)
 		key, value, hasValue := ParseKeyValue(parts[0])
 		if !hasValue {
+			return nil
+		}
+
+		if key == "migration" {
+			switch MigrationPolicy(value) {
+			case MigrationPolicyUnrestricted, MigrationPolicyAdditiveOnly:
+				result.Migration = MigrationPolicy(value)
+			default:
+				return &ParseError{
+					Line:    annotation,
+					Message: fmt.Sprintf("unknown migration policy %q, expected 'unrestricted' or 'additive-only'", value),
+				}
+			}
 			return nil
 		}
 
@@ -162,6 +178,20 @@ func parseFieldLevelAnnotation(result *FieldAnnotations, annotation string) erro
 	case directive == "unique":
 		result.Unique = true
 		return nil
+
+	case directive == "nullable":
+		result.Nullable = true
+		return nil
+
+	case directive == "notnull":
+		result.NotNull = true
+		return nil
+
+	case strings.HasPrefix(directive, "size"):
+		return parseSizeAnnotation(result, parts[1:], annotation)
+
+	case strings.HasPrefix(directive, "relation"):
+		return parseRelationAnnotation(result, parts[1:], annotation)
 
 	case strings.HasPrefix(directive, "storage"):
 		return parseStorageAnnotation(result, parts[1:], annotation)
@@ -336,6 +366,139 @@ func parseIndexAnnotation(result *FieldAnnotations, parts []string, _ string) er
 		}
 	}
 
+	// Trailing modifiers: unique and name=<identifier>
+	for _, param := range parts[1:] {
+		pKey, pValue, pHasValue := ParseKeyValue(param)
+		switch {
+		case pKey == "unique" && !pHasValue:
+			result.Index.Unique = true
+		case pKey == "name" && pHasValue:
+			result.Index.Name = pValue
+		default:
+			return fmt.Errorf("unknown index modifier %q, expected 'unique' or 'name=<identifier>'", param)
+		}
+	}
+
+	return nil
+}
+
+// parseCompositeIndexAnnotation parses a resource-level multi-column index.
+//
+// Format: +fabrica:index:fields=<f1,f2>[:name=<identifier>][:unique][:type=<type>]
+func parseCompositeIndexAnnotation(result *ResourceAnnotations, parts []string, annotation string) error {
+	idx := &CompositeIndex{Type: IndexTypeBTree}
+
+	for _, param := range parts {
+		key, value, hasValue := ParseKeyValue(param)
+		switch {
+		case key == "fields" && hasValue:
+			for _, f := range strings.Split(value, ",") {
+				if f = strings.TrimSpace(f); f != "" {
+					idx.Fields = append(idx.Fields, f)
+				}
+			}
+
+		case key == "name" && hasValue:
+			idx.Name = value
+
+		case key == "unique" && !hasValue:
+			idx.Unique = true
+
+		case key == "type" && hasValue:
+			switch IndexType(value) {
+			case IndexTypeBTree, IndexTypeGIN, IndexTypeGiST, IndexTypeHash:
+				idx.Type = IndexType(value)
+			default:
+				return &ParseError{
+					Line:    annotation,
+					Message: fmt.Sprintf("unknown index type %q, expected 'btree', 'gin', 'gist', or 'hash'", value),
+				}
+			}
+
+		default:
+			return &ParseError{
+				Line:    annotation,
+				Message: fmt.Sprintf("unknown composite index parameter %q, expected 'fields=', 'name=', 'unique', or 'type='", param),
+			}
+		}
+	}
+
+	if len(idx.Fields) == 0 {
+		return &ParseError{
+			Line:    annotation,
+			Message: "composite index requires fields=<f1,f2>",
+		}
+	}
+
+	result.Indexes = append(result.Indexes, idx)
+	return nil
+}
+
+// parseSizeAnnotation parses +fabrica:field:size=<n>
+func parseSizeAnnotation(result *FieldAnnotations, parts []string, _ string) error {
+	if len(parts) == 0 {
+		return fmt.Errorf("size annotation missing")
+	}
+
+	key, value, hasValue := ParseKeyValue(parts[0])
+	if !hasValue || key != "size" {
+		return fmt.Errorf("expected format: size=<n>")
+	}
+
+	size, err := ParseIntValue(value, 1, 65535)
+	if err != nil {
+		return fmt.Errorf("field size: %w", err)
+	}
+
+	result.Size = size
+	return nil
+}
+
+// parseRelationAnnotation parses a foreign-key relation to another resource.
+//
+// Format: +fabrica:field:relation=<belongs-to|has-many>:<Target>[:on-delete=<action>]
+func parseRelationAnnotation(result *FieldAnnotations, parts []string, _ string) error {
+	if len(parts) == 0 {
+		return fmt.Errorf("relation annotation missing")
+	}
+
+	key, value, hasValue := ParseKeyValue(parts[0])
+	if !hasValue || key != "relation" {
+		return fmt.Errorf("expected format: relation=<belongs-to|has-many>:<Target>")
+	}
+
+	kind := RelationKind(value)
+	switch kind {
+	case RelationBelongsTo, RelationHasMany:
+	default:
+		return fmt.Errorf("unknown relation kind %q, expected 'belongs-to' or 'has-many'", value)
+	}
+
+	if len(parts) < 2 {
+		return fmt.Errorf("relation requires a target resource type: relation=%s:<Target>", value)
+	}
+
+	rel := &RelationConfig{
+		Kind:     kind,
+		Target:   parts[1],
+		OnDelete: OnDeleteRestrict,
+	}
+
+	for _, param := range parts[2:] {
+		pKey, pValue, pHasValue := ParseKeyValue(param)
+		if pKey != "on-delete" || !pHasValue {
+			return fmt.Errorf("unknown relation parameter %q, expected 'on-delete=<action>'", param)
+		}
+
+		switch OnDeleteAction(pValue) {
+		case OnDeleteRestrict, OnDeleteCascade, OnDeleteSetNull:
+			rel.OnDelete = OnDeleteAction(pValue)
+		default:
+			return fmt.Errorf("unknown on-delete action %q, expected 'restrict', 'cascade', or 'set-null'", pValue)
+		}
+	}
+
+	result.Relation = rel
 	return nil
 }
 
@@ -470,7 +633,6 @@ func mergeSpecFields(byType map[string]*ResourceAnnotations) {
 //	    fmt.Printf("%s: %+v\n", fieldName, ann)
 //	}
 func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, error) {
-	// Check cache first
 	if cached, ok := globalCache.Get(filename); ok {
 		return cached, nil
 	}
