@@ -6,6 +6,7 @@ package annotations
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Validate checks that annotations are semantically correct
@@ -27,14 +28,118 @@ func Validate(annotations *ResourceAnnotations) error {
 		}
 	}
 
+	// Composite indexes are a dedicated-table concept
+	if err := validateCompositeIndexes(annotations); err != nil {
+		return err
+	}
+
 	// Field-level validation
 	for fieldName, fieldAnnotations := range annotations.Fields {
 		if err := validateFieldAnnotations(fieldName, fieldAnnotations); err != nil {
 			return err
 		}
+
+		if err := validateFieldStorageMode(fieldName, fieldAnnotations, annotations.StorageMode); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+// validateCompositeIndexes checks resource-level multi-column indexes
+func validateCompositeIndexes(annotations *ResourceAnnotations) error {
+	if len(annotations.Indexes) == 0 {
+		return nil
+	}
+
+	if annotations.StorageMode != StorageModeDedicated {
+		return &ValidationError{
+			Annotation: "+fabrica:index",
+			Message:    "composite indexes require +fabrica:storage=dedicated (generic storage keeps spec in a single JSON column)",
+		}
+	}
+
+	seen := make(map[string]bool)
+
+	for _, idx := range annotations.Indexes {
+		if len(idx.Fields) < 2 {
+			return &ValidationError{
+				Annotation: "+fabrica:index",
+				Message: fmt.Sprintf(
+					"composite index on %v covers a single column; use +fabrica:field:index on that field instead",
+					idx.Fields),
+			}
+		}
+
+		dupe := make(map[string]bool)
+		for _, f := range idx.Fields {
+			if dupe[f] {
+				return &ValidationError{
+					Annotation: "+fabrica:index",
+					Message:    fmt.Sprintf("composite index lists field %q more than once", f),
+				}
+			}
+			dupe[f] = true
+
+			if _, ok := annotations.Fields[f]; !ok {
+				// Not fatal: the field may carry no annotations of its own and
+				// therefore never enters the Fields map. Emitters resolve names
+				// against the struct, so only flag obviously empty names.
+				if f == "" {
+					return &ValidationError{
+						Annotation: "+fabrica:index",
+						Message:    "composite index contains an empty field name",
+					}
+				}
+			}
+		}
+
+		if idx.Name != "" {
+			if seen[idx.Name] {
+				return &ValidationError{
+					Annotation: "+fabrica:index",
+					Message:    fmt.Sprintf("duplicate composite index name %q", idx.Name),
+				}
+			}
+			seen[idx.Name] = true
+		}
+	}
+
+	return nil
+}
+
+// validateFieldStorageMode rejects field annotations that only mean something
+// on a dedicated table. Generic storage keeps spec/status in a single JSON
+// column, so per-column intent has nowhere to land.
+//
+// Only the vocabulary introduced alongside composite indexes is checked here.
+// The pre-existing annotations (index, unique, default, storage=…) stay lenient
+// in generic mode for backward compatibility.
+func validateFieldStorageMode(fieldName string, annotations *FieldAnnotations, mode StorageMode) error {
+	if mode == StorageModeDedicated {
+		return nil
+	}
+
+	var offender string
+	switch {
+	case annotations.Nullable:
+		offender = "nullable"
+	case annotations.NotNull:
+		offender = "notnull"
+	case annotations.Size > 0:
+		offender = "size"
+	case annotations.Relation != nil:
+		offender = "relation"
+	default:
+		return nil
+	}
+
+	return &ValidationError{
+		Field:      fieldName,
+		Annotation: fmt.Sprintf("+fabrica:field:%s", offender),
+		Message:    fmt.Sprintf("%s requires +fabrica:storage=dedicated", offender),
+	}
 }
 
 // validateDedicatedStorage checks dedicated storage requirements
@@ -68,6 +173,15 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 		}
 	}
 
+	// Nullability must not be asserted both ways
+	if annotations.Nullable && annotations.NotNull {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s", fieldName),
+			Message:    "cannot be both nullable and notnull",
+		}
+	}
+
 	// Index validation
 	if annotations.Index != nil {
 		if err := validateIndexConfig(fieldName, annotations.Index); err != nil {
@@ -75,7 +189,74 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 		}
 	}
 
+	// Relation validation
+	if annotations.Relation != nil {
+		if err := validateRelationConfig(fieldName, annotations); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// validateRelationConfig checks a foreign-key relation declaration
+func validateRelationConfig(fieldName string, annotations *FieldAnnotations) error {
+	rel := annotations.Relation
+
+	if rel.Target == "" {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation", fieldName),
+			Message:    "relation requires a target resource type",
+		}
+	}
+
+	if !isGoIdentifier(rel.Target) {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation", fieldName),
+			Message:    fmt.Sprintf("relation target %q is not a valid Go type name", rel.Target),
+		}
+	}
+
+	// SET NULL cannot apply to a column that refuses NULL.
+	if rel.OnDelete == OnDeleteSetNull && annotations.NotNull {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation on-delete=set-null", fieldName),
+			Message:    "on-delete=set-null conflicts with +fabrica:field:notnull",
+		}
+	}
+
+	// An immutable column cannot be rewritten by a referential action.
+	if rel.OnDelete == OnDeleteSetNull && annotations.Immutable {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation on-delete=set-null", fieldName),
+			Message:    "on-delete=set-null conflicts with +fabrica:field:immutable",
+		}
+	}
+
+	return nil
+}
+
+// isGoIdentifier reports whether s is a legal, exported-looking Go type name
+func isGoIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // validateStorageConfig validates storage configuration
@@ -205,6 +386,14 @@ func ValidateForDatabase(annotations *ResourceAnnotations, dbDriver string) erro
 			if err := validateIndexForDatabase(fieldName, fieldAnnotations.Index, dbDriver); err != nil {
 				return err
 			}
+		}
+	}
+
+	// Composite indexes obey the same per-database index-type rules
+	for _, idx := range annotations.Indexes {
+		label := strings.Join(idx.Fields, ",")
+		if err := validateIndexForDatabase(label, &IndexConfig{Type: idx.Type}, dbDriver); err != nil {
+			return err
 		}
 	}
 

@@ -11,8 +11,13 @@ import (
 )
 
 // CachedResult holds parsed annotations with metadata
+//
+// Annotations is keyed by resource type name and holds the complete
+// *ResourceAnnotations. It previously stored only the flattened field map,
+// which silently dropped resource-level state (IsResource, StorageMode, and
+// now composite indexes and migration policy) on every cache hit.
 type CachedResult struct {
-	Annotations map[string]*FieldAnnotations
+	Annotations map[string]*ResourceAnnotations
 	ModTime     time.Time
 	ParseTime   time.Time
 }
@@ -31,7 +36,7 @@ func NewAnnotationCache() *AnnotationCache {
 }
 
 // Get retrieves cached annotations if the file hasn't been modified
-func (c *AnnotationCache) Get(filename string) (map[string]*FieldAnnotations, bool) {
+func (c *AnnotationCache) Get(filename string) (map[string]*ResourceAnnotations, bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -50,7 +55,7 @@ func (c *AnnotationCache) Get(filename string) (map[string]*FieldAnnotations, bo
 }
 
 // Set stores parsed annotations in cache
-func (c *AnnotationCache) Set(filename string, anns map[string]*FieldAnnotations) {
+func (c *AnnotationCache) Set(filename string, anns map[string]*ResourceAnnotations) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
