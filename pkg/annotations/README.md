@@ -930,6 +930,51 @@ func ({{ .Name }}) Fields() []ent.Field {
 
 ---
 
+## Go Type → Ent Field Mapping
+
+For `+fabrica:storage=dedicated`, each Spec field's Go type selects an Ent field
+constructor:
+
+| Go type | Ent field | Notes |
+|---|---|---|
+| `string` | `field.String` | |
+| `int` | `field.Int` | |
+| `int64` | `field.Int64` | |
+| `float64` | `field.Float` | |
+| `bool` | `field.Bool` | |
+| `time.Time` | `field.Time` | |
+| `*time.Time` | `field.Time().Optional().Nillable()` | NULL round-trips to `nil`, not the zero time |
+| `time.Duration` | `field.Int64` | **int64 nanoseconds**, matching Go's internal representation — exact round-trip, no implied unit |
+| `[]string` | `field.Strings` | |
+| `[]byte` | `field.Bytes` | |
+| `[]time.Time` | `field.JSON(name, []time.Time{})` | |
+| `map[string]string` | `field.JSON(name, map[string]string{})` | |
+| anything else | `field.String` **+ a visible `UNMAPPED TYPE` comment** | See below |
+
+### Unmapped types are loud, not silent
+
+A type with no mapping still falls back to a text column, but the generated
+schema now carries:
+
+```go
+// UNMAPPED TYPE: []int has no Ent mapping and is stored as text.
+// Ordering, range queries and indexes on this column will not behave as
+// the Go type implies. Add a case to resource_dedicated.go.tmpl if this
+// type matters.
+```
+
+Previously every non-`string`/`int`/`bool` type took this path with no warning,
+so timestamps and slices became text columns silently.
+
+### Reserved column names
+
+The generated schema always emits `uid`, `name`, `namespace`, `api_version`,
+`kind`, `created_at`, `updated_at` and `resource_version`. A Spec field whose
+JSON name collides with one of these produces a **duplicate column** and Ent
+will reject the schema. Rename the field or its `json` tag.
+
+---
+
 ## Database Compatibility
 
 ### Index Types
