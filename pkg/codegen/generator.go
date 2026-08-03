@@ -38,10 +38,7 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"go/ast"
 	"go/format"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -417,55 +414,12 @@ func (g *Generator) middlewareData(templateName string) map[string]interface{} {
 //	    return err
 //	}
 func (g *Generator) ParseResourceAnnotations(filePath, resourceName string) (*annotations.ResourceAnnotations, error) {
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+	// The two-declaration merge (<Name> for type-level, <Name>Spec for
+	// field-level) lives in pkg/annotations so this path and the package's own
+	// public API cannot drift apart.
+	resourceAnnotations, err := annotations.ParseResourceFile(filePath, resourceName)
 	if err != nil {
-		return nil, fmt.Errorf("parse file %s: %w", filePath, err)
-	}
-
-	var resourceAnnotations *annotations.ResourceAnnotations
-	specTypeName := resourceName + "Spec"
-
-	ast.Inspect(node, func(n ast.Node) bool {
-		gd, ok := n.(*ast.GenDecl)
-		if !ok || gd.Tok != token.TYPE {
-			return true
-		}
-
-		for _, spec := range gd.Specs {
-			ts, ok := spec.(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-
-			switch ts.Name.Name {
-			case resourceName:
-				annots, err := annotations.ParseResourceAnnotations(ts, gd.Doc)
-				if err != nil {
-					return true
-				}
-				resourceAnnotations = annots
-			case specTypeName:
-				if resourceAnnotations == nil {
-					resourceAnnotations = annotations.NewResourceAnnotations()
-				}
-
-				specAnnots, err := annotations.ParseResourceAnnotations(ts, gd.Doc)
-				if err != nil {
-					return true
-				}
-
-				for fieldName, fieldAnnots := range specAnnots.Fields {
-					resourceAnnotations.Fields[fieldName] = fieldAnnots
-				}
-			}
-		}
-
-		return true
-	})
-
-	if resourceAnnotations == nil {
-		return annotations.NewResourceAnnotations(), nil
+		return nil, err
 	}
 
 	if err := annotations.Validate(resourceAnnotations); err != nil {

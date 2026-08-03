@@ -521,6 +521,103 @@ func parseDefaultAnnotation(result *FieldAnnotations, parts []string, _ string) 
 	return nil
 }
 
+// ParseResourceFile returns the annotations for a single resource type in a
+// file, merging the field annotations declared on its <Name>Spec companion.
+//
+// Fabrica splits a resource across two declarations: type-level annotations sit
+// on <Name>, field-level annotations on <Name>Spec. Anything that wants a
+// complete, validatable picture of a resource needs both, so this does the
+// merge in one place.
+//
+// Declaration order does not matter: <Name>Spec may appear before or after
+// <Name>. A resource that does not appear in the file yields empty annotations
+// rather than an error, matching the previous behaviour of callers.
+func ParseResourceFile(filename, resourceName string) (*ResourceAnnotations, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse file %s: %w", filename, err)
+	}
+
+	return parseResourceFromFile(file, resourceName)
+}
+
+// parseResourceFromFile does the two-declaration merge over an already-parsed
+// file. Kept separate so callers that already hold an *ast.File do not reparse.
+func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnotations, error) {
+	specTypeName := resourceName + "Spec"
+
+	var (
+		resourceAnnots *ResourceAnnotations
+		specFields     map[string]*FieldAnnotations
+	)
+
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			switch typeSpec.Name.Name {
+			case resourceName:
+				annots, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
+				if err != nil {
+					return nil, fmt.Errorf("parse annotations on %s: %w", resourceName, err)
+				}
+				resourceAnnots = annots
+
+			case specTypeName:
+				annots, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
+				if err != nil {
+					return nil, fmt.Errorf("parse annotations on %s: %w", specTypeName, err)
+				}
+				if specFields == nil {
+					specFields = make(map[string]*FieldAnnotations)
+				}
+				for fieldName, fieldAnnots := range annots.Fields {
+					specFields[fieldName] = fieldAnnots
+				}
+			}
+		}
+	}
+
+	// Merge after the whole file is walked, so <Name>Spec declared before
+	// <Name> is not discarded when the resource declaration is reached.
+	if resourceAnnots == nil {
+		if specFields == nil {
+			return NewResourceAnnotations(), nil
+		}
+		resourceAnnots = NewResourceAnnotations()
+	}
+
+	for fieldName, fieldAnnots := range specFields {
+		resourceAnnots.Fields[fieldName] = fieldAnnots
+	}
+
+	return resourceAnnots, nil
+}
+
+// mergeSpecFields folds each <Name>Spec's field annotations into <Name> so that
+// every resource entry in the map is complete and validatable on its own. The
+// <Name>Spec entries are left in place for backward compatibility.
+func mergeSpecFields(byType map[string]*ResourceAnnotations) {
+	for typeName, annots := range byType {
+		spec, ok := byType[typeName+"Spec"]
+		if !ok {
+			continue
+		}
+		for fieldName, fieldAnnots := range spec.Fields {
+			annots.Fields[fieldName] = fieldAnnots
+		}
+	}
+}
+
 // ParseFileAnnotations parses annotations from a Go source file with caching
 //
 // This function parses a Go source file and extracts Fabrica annotations.
@@ -573,6 +670,10 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 			result[typeSpec.Name.Name] = annotations
 		}
 	}
+
+	// Fold <Name>Spec field annotations into <Name> before caching, so callers
+	// get a complete resource they can hand straight to Validate.
+	mergeSpecFields(result)
 
 	globalCache.Set(filename, result)
 

@@ -215,8 +215,9 @@ Maintainability:
 
 The annotations package is designed to integrate with Fabrica's code generator:
 
-1. Generator parses Go source files with go/ast
-2. Calls ParseResourceAnnotations for each type
+1. Generator calls ParseResourceFile(path, name) for each resource
+2. That merges type-level annotations from <Name> with field-level annotations
+   from <Name>Spec, in either declaration order
 3. Validates annotations
 4. Uses annotations to select schema templates
 5. Generates dedicated Ent schemas for annotated resources
