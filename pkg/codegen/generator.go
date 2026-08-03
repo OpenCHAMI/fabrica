@@ -159,6 +159,10 @@ type Generator struct {
 	Config      *GeneratorConfig // Configuration for generation
 	Version     string           // Fabrica version used for generation
 	Commit      string           // Fabrica git commit SHA used for generation
+
+	// Emitters overrides code emission for this Generator only. Use
+	// SetEmitter to populate it; see emitter.go for the extension point.
+	Emitters map[EmitterKind]ResourceEmitter
 }
 
 // NewGenerator creates a new code generator
@@ -1579,19 +1583,50 @@ func (g *Generator) GenerateEntSchemas() error {
 	}
 
 	for _, resource := range g.Resources {
-		if resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated {
-			data := g.templateData(resource, "ent/schema/resource_dedicated.go.tmpl")
-			schemaFile := filepath.Join(schemaDir, strings.ToLower(resource.Name)+".go")
-
-			if err := g.executeTemplate("entSchemaResourceDedicated", schemaFile, data); err != nil {
-				return fmt.Errorf("generate dedicated schema for %s: %w", resource.Name, err)
-			}
-
-			fmt.Printf("  ✓ Generated dedicated schema for %s\n", resource.Name)
+		if resource.Annotations == nil || resource.Annotations.StorageMode != annotations.StorageModeDedicated {
+			continue
 		}
+
+		req := g.emitRequest(
+			EmitterKindEntSchema,
+			resource,
+			"entSchemaResourceDedicated",
+			"ent/schema/resource_dedicated.go.tmpl",
+			filepath.Join(schemaDir, strings.ToLower(resource.Name)+".go"),
+		)
+
+		if err := g.emitResource(EmitterKindEntSchema, req); err != nil {
+			return fmt.Errorf("generate dedicated schema for %s: %w", resource.Name, err)
+		}
+
+		fmt.Printf("  ✓ Generated dedicated schema for %s\n", resource.Name)
 	}
 
 	return nil
+}
+
+// emitRequest assembles the context handed to an emitter for one resource.
+//
+// Template data is merged with the common fields here, so a custom emitter that
+// executes req.Template gets identical output to the built-in one.
+func (g *Generator) emitRequest(kind EmitterKind, resource ResourceMetadata, templateName, templatePath, defaultPath string) EmitRequest {
+	annots := resource.Annotations
+	if annots == nil {
+		annots = annotations.NewResourceAnnotations()
+	}
+
+	return EmitRequest{
+		Kind:        kind,
+		Resource:    resource,
+		Annotations: annots,
+		StorageType: g.StorageType,
+		DBDriver:    g.DBDriver,
+		ModulePath:  g.ModulePath,
+		PackageName: g.PackageName,
+		DefaultPath: defaultPath,
+		Template:    g.Templates[templateName],
+		Data:        g.mergeCommonTemplateData(templateName, g.templateData(resource, templatePath)),
+	}
 }
 
 // GenerateEntAdapter generates the adapter layer between Fabrica resources and Ent entities
@@ -1770,6 +1805,75 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 
 	if written {
 		fmt.Printf("  ✓ Generated %s\n", outputPath)
+	}
+
+	return nil
+}
+
+// renderTemplate executes a parsed template against data and returns the raw
+// result. Formatting and writing are deliberately separate so an emitter can
+// post-process rendered output before it is written.
+func renderTemplate(tmpl *template.Template, data interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return nil, fmt.Errorf("failed to execute template %s: %w", tmpl.Name(), err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// writeEmittedFile formats and writes one file produced by an emitter, using
+// exactly the same pipeline as executeTemplate so built-in and custom emitters
+// are indistinguishable downstream.
+func writeEmittedFile(file EmittedFile, emitterName string) error {
+	if file.Path == "" {
+		return fmt.Errorf("emitter %s returned a file with an empty path", emitterName)
+	}
+
+	output := file.Content
+	if filepath.Ext(file.Path) == ".go" {
+		formatted, err := format.Source(file.Content)
+		if err != nil {
+			return fmt.Errorf("emitter %s produced invalid Go for %s: %w", emitterName, file.Path, err)
+		}
+		output = formatted
+	}
+
+	if dir := filepath.Dir(file.Path); dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("create directory for %s: %w", file.Path, err)
+		}
+	}
+
+	written, err := writeGeneratedFile(file.Path, output)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %w", file.Path, err)
+	}
+
+	if written {
+		fmt.Printf("  ✓ Generated %s\n", file.Path)
+	}
+
+	return nil
+}
+
+// emitResource resolves the emitter for a kind and writes everything it
+// produces for one resource.
+func (g *Generator) emitResource(kind EmitterKind, req EmitRequest) error {
+	emitter := g.emitterFor(kind)
+	if emitter == nil {
+		return fmt.Errorf("no emitter registered for kind %q", kind)
+	}
+
+	files, err := emitter.Emit(req)
+	if err != nil {
+		return fmt.Errorf("emitter %s: %w", emitter.Name(), err)
+	}
+
+	for _, file := range files {
+		if err := writeEmittedFile(file, emitter.Name()); err != nil {
+			return err
+		}
 	}
 
 	return nil
