@@ -99,25 +99,31 @@ func (baselineToken) Indexes() []ent.Index {
 // Hooks of the baselineToken.
 func (baselineToken) Hooks() []ent.Hook {
 	return []ent.Hook{
-		// Hash Value field with bcrypt on create.
+		// Hash Value with bcrypt on create.
 		//
-		// The mutation is matched structurally rather than as *ent.baselineTokenMutation:
-		// that type is generated FROM this package, so naming it here would be a
-		// circular reference. An anonymous interface gets the same typed access
-		// with no import of the generated package.
+		// Access goes through ent.Mutation's untyped Field/SetField, keyed by
+		// COLUMN name. Two reasons:
+		//
+		//   - *ent.baselineTokenMutation is generated FROM this package, so naming
+		//     it here would be a circular reference;
+		//   - the typed accessors are named after the column, not the Go field.
+		//     A field like `Secret string ` + "`json:\"secret_value\"`" + ` gets
+		//     SecretValue()/SetSecretValue(), so keying off the Go name would
+		//     silently miss and store the value UNHASHED.
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
 				if m.Op().Is(ent.OpCreate) {
-					if mut, ok := m.(interface {
-						Value() (string, bool)
-						SetValue(string)
-					}); ok {
-						if value, exists := mut.Value(); exists {
-							hashed, err := bcrypt.GenerateFromPassword([]byte(value), 12)
-							if err != nil {
-								return nil, fmt.Errorf("hash Value: %w", err)
-							}
-							mut.SetValue(string(hashed))
+					if raw, exists := m.Field("value"); exists {
+						value, ok := raw.(string)
+						if !ok {
+							return nil, fmt.Errorf("hash Value: expected string, got %T", raw)
+						}
+						hashed, err := bcrypt.GenerateFromPassword([]byte(value), 12)
+						if err != nil {
+							return nil, fmt.Errorf("hash Value: %w", err)
+						}
+						if err := m.SetField("value", string(hashed)); err != nil {
+							return nil, fmt.Errorf("set hashed Value: %w", err)
 						}
 					}
 				}

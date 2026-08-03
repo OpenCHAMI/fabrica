@@ -204,9 +204,10 @@ func TestSchemaWithSHA256HashCompiles(t *testing.T) {
 	}
 }
 
-// TestHooksDoNotReferenceGeneratedPackage pins the layering fix. The hook used
-// to assert on *ent.<Name>Mutation, a type generated FROM the schema package, so
-// the schema could never compile. It now matches the mutation structurally.
+// TestHooksDoNotReferenceGeneratedPackage pins two fixes at once. The hook used
+// to assert on *ent.<Name>Mutation — a type generated FROM the schema package,
+// so the schema could never compile — and to address the field by its Go name,
+// which silently missed whenever the json tag differed.
 func TestHooksDoNotReferenceGeneratedPackage(t *testing.T) {
 	annots := annotations.NewResourceAnnotations()
 	annots.IsResource = true
@@ -226,7 +227,13 @@ func TestHooksDoNotReferenceGeneratedPackage(t *testing.T) {
 	if strings.Contains(got, "m.(*ent.") {
 		t.Error("hook asserts on the generated mutation type; the schema cannot compile against it")
 	}
-	if !strings.Contains(got, "m.(interface {") {
-		t.Errorf("hook should match the mutation structurally:\n%s", got)
+	// The hook goes through ent.Mutation's untyped Field/SetField, keyed by
+	// column name. Keying off the Go field name silently misses whenever the
+	// json tag differs, storing the value unhashed.
+	if !strings.Contains(got, `m.Field("token")`) {
+		t.Errorf("hook should look the field up by column name:\n%s", got)
+	}
+	if !strings.Contains(got, `m.SetField("token"`) {
+		t.Errorf("hook should write back by column name:\n%s", got)
 	}
 }

@@ -31,7 +31,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	{{- end }}
-	{{- if $hasBcrypt }}
+	{{- if $hasHashed }}
 	"fmt"
 	{{- end }}
 	"time"
@@ -514,32 +514,39 @@ func ({{.Name}}) Hooks() []ent.Hook {
 		{{- range .SpecFields }}
 		{{- $fieldAnnots := index $.Annotations.Fields .Name }}
 		{{- if and $fieldAnnots $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed") }}
-		// Hash {{.Name}} field with {{$fieldAnnots.Storage.Hash.Algorithm}} on create.
+		// Hash {{.Name}} with {{$fieldAnnots.Storage.Hash.Algorithm}} on create.
 		//
-		// The mutation is matched structurally rather than as *ent.{{$.Name}}Mutation:
-		// that type is generated FROM this package, so naming it here would be a
-		// circular reference. An anonymous interface gets the same typed access
-		// with no import of the generated package.
+		// Access goes through ent.Mutation's untyped Field/SetField, keyed by
+		// COLUMN name. Two reasons:
+		//
+		//   - *ent.{{$.Name}}Mutation is generated FROM this package, so naming
+		//     it here would be a circular reference;
+		//   - the typed accessors are named after the column, not the Go field.
+		//     A field like `Secret string ` + "`json:\"secret_value\"`" + ` gets
+		//     SecretValue()/SetSecretValue(), so keying off the Go name would
+		//     silently miss and store the value UNHASHED.
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
 				if m.Op().Is(ent.OpCreate) {
-					if mut, ok := m.(interface {
-						{{.Name}}() (string, bool)
-						Set{{.Name}}(string)
-					}); ok {
-						if value, exists := mut.{{.Name}}(); exists {
-							{{- if eq $fieldAnnots.Storage.Hash.Algorithm "bcrypt" }}
-							hashed, err := bcrypt.GenerateFromPassword([]byte(value), {{$fieldAnnots.Storage.Hash.Cost}})
-							if err != nil {
-								return nil, fmt.Errorf("hash {{.Name}}: %w", err)
-							}
-							mut.Set{{.Name}}(string(hashed))
-							{{- else if eq $fieldAnnots.Storage.Hash.Algorithm "sha256" }}
-							hasher := sha256.New()
-							hasher.Write([]byte(value))
-							mut.Set{{.Name}}(hex.EncodeToString(hasher.Sum(nil)))
-							{{- end }}
+					if raw, exists := m.Field("{{.JSONName}}"); exists {
+						value, ok := raw.(string)
+						if !ok {
+							return nil, fmt.Errorf("hash {{.Name}}: expected string, got %T", raw)
 						}
+						{{- if eq $fieldAnnots.Storage.Hash.Algorithm "bcrypt" }}
+						hashed, err := bcrypt.GenerateFromPassword([]byte(value), {{$fieldAnnots.Storage.Hash.Cost}})
+						if err != nil {
+							return nil, fmt.Errorf("hash {{.Name}}: %w", err)
+						}
+						if err := m.SetField("{{.JSONName}}", string(hashed)); err != nil {
+							return nil, fmt.Errorf("set hashed {{.Name}}: %w", err)
+						}
+						{{- else if eq $fieldAnnots.Storage.Hash.Algorithm "sha256" }}
+						sum := sha256.Sum256([]byte(value))
+						if err := m.SetField("{{.JSONName}}", hex.EncodeToString(sum[:])); err != nil {
+							return nil, fmt.Errorf("set hashed {{.Name}}: %w", err)
+						}
+						{{- end }}
 					}
 				}
 				return next.Mutate(ctx, m)
