@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openchami/fabrica/pkg/annotations"
 )
@@ -228,6 +229,73 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 
 	got := generateDedicatedSchema(t, &GoldenToken{}, "GoldenToken", annots)
 	assertGolden(t, "token_dedicated_full.go.golden", got)
+}
+
+type TypedTokenSpec struct {
+	Subject        string            `json:"subject" validate:"required"`
+	UsageCount     int               `json:"usage_count"`
+	Revoked        bool              `json:"revoked"`
+	SequenceNumber int64             `json:"sequence_number"`
+	Weight         float64           `json:"weight"`
+	TTL            time.Duration     `json:"ttl"`
+	IssuedAt       time.Time         `json:"issued_at" validate:"required"`
+	ConsumedAt     *time.Time        `json:"consumed_at"`
+	Scopes         []string          `json:"scopes"`
+	Fingerprint    []byte            `json:"fingerprint"`
+	ReplayAttempts []time.Time       `json:"replay_attempts"`
+	Labels         map[string]string `json:"labels"`
+	Unmapped       []int             `json:"unmapped"`
+}
+
+type TypedToken struct {
+	Spec TypedTokenSpec
+}
+
+func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+
+	issuedAt := annotations.NewFieldAnnotations("IssuedAt")
+	issuedAt.Immutable = true
+	annots.Fields["IssuedAt"] = issuedAt
+
+	scopes := annotations.NewFieldAnnotations("Scopes")
+	scopes.Immutable = true
+	annots.Fields["Scopes"] = scopes
+
+	fingerprint := annotations.NewFieldAnnotations("Fingerprint")
+	fingerprint.Sensitive = true
+	annots.Fields["Fingerprint"] = fingerprint
+
+	if err := annotations.Validate(annots); err != nil {
+		t.Fatalf("fixture failed validation: %v", err)
+	}
+
+	got := generateDedicatedSchema(t, &TypedToken{}, "TypedToken", annots)
+	assertGolden(t, "token_dedicated_types.go.golden", got)
+
+	for _, want := range []string{
+		`field.Int64("sequence_number")`,
+		`field.Float("weight")`,
+		`field.Int64("ttl")`,
+		`field.Time("issued_at")`,
+		`field.Time("consumed_at")`,
+		`Nillable()`,
+		`field.Strings("scopes")`,
+		`field.Bytes("fingerprint")`,
+		`field.JSON("replay_attempts", []time.Time{})`,
+		`field.JSON("labels", map[string]string{})`,
+		`UNMAPPED TYPE: []int`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("generated schema missing %q", want)
+		}
+	}
+
+	if strings.Contains(string(got), `field.String("ttl")`) {
+		t.Error("time.Duration was emitted as a string column")
+	}
 }
 
 type BaselineTokenSpec struct {
