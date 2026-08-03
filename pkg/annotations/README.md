@@ -18,6 +18,7 @@ The annotations package provides parsing and validation for Fabrica's `+fabrica:
 - [Validation Rules](#validation-rules)
 - [Database Compatibility](#database-compatibility)
 - [Error Handling](#error-handling)
+- [Future Enhancements](#future-enhancements-phase-5)
 
 ---
 
@@ -138,9 +139,133 @@ type Token struct { ... }
 
 ---
 
+#### `+fabrica:index:fields=<f1,f2>[:name=<id>][:unique][:type=<type>]`
+
+Declares a **multi-column** index. Single-column indexes belong on the field
+itself (`+fabrica:field:index`); a composite index covering one column is
+rejected with that guidance.
+
+Field names are the **Go field names** from the resource's `Spec` struct, in
+index order. The generator resolves them to column names.
+
+**Parameters:**
+
+| Parameter | Required | Default | Meaning |
+|-----------|----------|---------|---------|
+| `fields=` | yes | — | Comma-separated Go field names, in index order |
+| `name=` | no | derived by Ent | Explicit index name (`StorageKey`) |
+| `unique` | no | false | Make the index unique |
+| `type=` | no | `btree` | `btree`, `gin`, `gist`, or `hash` |
+
+**Example:**
+```go
+// +fabrica:resource
+// +fabrica:storage=dedicated
+// +fabrica:index:fields=Owner,CreatedAt:name=idx_owner_created
+// +fabrica:index:fields=Owner,Slug:unique
+type Token struct { ... }
+```
+
+**Validation:**
+- Requires `+fabrica:storage=dedicated`
+- At least two fields
+- No repeated field within one index
+- No duplicate index names on the same resource
+- Index type must be supported by the target database (see [Database Compatibility](#database-compatibility))
+
+Repeat the annotation to declare more than one composite index.
+
+---
+
+#### `+fabrica:migration=<policy>`
+
+Constrains what a generated migration may do to this resource's table.
+
+**Values:**
+- `unrestricted` (default) - Any migration is permitted
+- `additive-only` - Only additive changes (new columns, new indexes); column drops and narrowing type changes must be rejected
+
+**Example:**
+```go
+// +fabrica:migration=additive-only
+type Token struct { ... }
+```
+
+**Status:** the policy is parsed, validated, and emitted into the generated
+schema as a header comment. Enforcement belongs to the migration tooling and is
+not yet wired up — treat it as declared intent, not a guarantee.
+
+---
+
 ### Field-Level Annotations
 
 All field annotations start with `+fabrica:field:`.
+
+> **Dedicated storage only.** `nullable`, `notnull`, `size` and `relation`
+> require `+fabrica:storage=dedicated` and are rejected during validation
+> otherwise. Generic storage keeps spec and status in a single JSON column, so
+> per-column intent has nowhere to land.
+
+#### `+fabrica:field:nullable` / `+fabrica:field:notnull`
+
+Force the column's nullability, overriding what Fabrica infers from the
+`validate:"required"` struct tag.
+
+```go
+// +fabrica:field:nullable
+Note string `json:"note"`
+
+// +fabrica:field:notnull
+Owner string `json:"owner"`
+```
+
+**Validation:**
+- A field may not declare both
+- `notnull` conflicts with a relation using `on-delete=set-null`
+
+---
+
+#### `+fabrica:field:size=<n>`
+
+Cap the stored width of a string column. Emits Ent's `MaxLen(n)`.
+
+```go
+// +fabrica:field:size=253
+Owner string `json:"owner"`
+```
+
+**Validation:**
+- `n` must be 1-65535
+
+**Note:** has no effect on `storage=hashed` fields, whose column width is
+already fixed by the hash algorithm's `SchemaType`.
+
+---
+
+#### `+fabrica:field:relation=<kind>:<Target>[:on-delete=<action>]`
+
+Declare a foreign-key relation to another resource type.
+
+**Kinds:** `belongs-to` (many-to-one), `has-many` (one-to-many)
+
+**On-delete actions:** `restrict` (default), `cascade`, `set-null`
+
+```go
+// +fabrica:field:relation=belongs-to:User:on-delete=cascade
+OwnerID string `json:"owner_id"`
+```
+
+**Validation:**
+- Target must be a valid Go type name
+- `on-delete=set-null` conflicts with `notnull` and with `immutable`
+
+> **Status: parsed and validated, not yet emitted.** Ent edges live in an
+> `Edges()` method that requires resolving the target resource's schema, which
+> the per-resource template cannot see. Declaring a relation today records
+> intent and is checked for consistency, but does **not** change the generated
+> schema. Emission is a follow-up change.
+
+---
 
 #### `+fabrica:field:storage=hashed:<algorithm>[:<params>]`
 
@@ -258,6 +383,13 @@ Creates a database index on the field for faster queries.
 - `gist` - PostgreSQL GiST index (spatial)
 - `hash` - Hash index
 
+**Modifiers:** append `:unique` and/or `:name=<identifier>`.
+
+| Modifier | Meaning |
+|----------|---------|
+| `unique` | Make the index unique |
+| `name=`  | Explicit index name (Ent `StorageKey`) |
+
 **Examples:**
 ```go
 // +fabrica:field:index
@@ -265,7 +397,16 @@ Name string
 
 // +fabrica:field:index=gin
 Tags []string
+
+// +fabrica:field:index=btree:unique:name=idx_token_slug
+Slug string
 ```
+
+An unknown modifier is a parse error, so `+fabrica:field:index=btree:uniqe`
+fails loudly rather than being ignored.
+
+For an index spanning more than one column, use the resource-level
+[`+fabrica:index`](#fabricaindexfieldsf1f2nameiduniquetypetype).
 
 **Database Compatibility:**
 | Database   | btree | gin | gist | hash |
@@ -591,6 +732,66 @@ type DocumentSpec struct {
 
 ---
 
+### Session Service — composite indexes, sizing, and a relation
+
+A worked example using the full vocabulary together.
+
+```go
+// +fabrica:resource
+// +fabrica:storage=dedicated
+// +fabrica:migration=additive-only
+// Look up a user's sessions newest-first without a filesort:
+// +fabrica:index:fields=OwnerID,CreatedAt:name=idx_session_owner_created
+// One live session per (owner, device):
+// +fabrica:index:fields=OwnerID,DeviceID:unique
+type Session struct {
+    metav1.TypeMeta   `json:",inline"`
+    metav1.ObjectMeta `json:"metadata,omitempty"`
+    Spec   SessionSpec `json:"spec,omitempty"`
+}
+
+type SessionSpec struct {
+    // Opaque session secret: never logged, hashed at rest, set once.
+    // +fabrica:field:storage=hashed:sha256
+    // +fabrica:field:sensitive
+    // +fabrica:field:immutable
+    Token string `json:"token"`
+
+    // Owning user. Deleting the user deletes their sessions.
+    // +fabrica:field:relation=belongs-to:User:on-delete=cascade
+    // +fabrica:field:notnull
+    // +fabrica:field:size=36
+    OwnerID string `json:"owner_id"`
+
+    // +fabrica:field:size=128
+    // +fabrica:field:notnull
+    DeviceID string `json:"device_id"`
+
+    // Optional free text supplied by the client.
+    // +fabrica:field:nullable
+    // +fabrica:field:size=1024
+    UserAgent string `json:"user_agent"`
+
+    // +fabrica:field:index
+    CreatedAt string `json:"created_at"`
+}
+```
+
+This emits, in the dedicated Ent schema:
+
+- `MaxLen(36)` + `NotEmpty()` on `owner_id`, `MaxLen(1024)` + `Optional()` on `user_agent`
+- a B-tree index on `created_at`
+- `index.Fields("owner_id", "created_at").StorageKey("idx_session_owner_created")`
+- `index.Fields("owner_id", "device_id").Unique()`
+- a sha256 hashing hook for `token`
+- an additive-only migration policy comment in the file header
+
+The `relation` on `OwnerID` is validated — `on-delete=cascade` is consistent
+with `notnull` — but does not yet emit an Ent edge. See
+[Future Enhancements](#future-enhancements-phase-5).
+
+---
+
 ## Integration Guide
 
 ### Step 1: Define Resource with Annotations
@@ -699,6 +900,11 @@ func ({{ .Name }}) Fields() []ent.Field {
 |------|-------|-------|
 | Dedicated storage | Must have ≥1 field annotation | "requires at least one field annotation to justify separate table" |
 | Storage mode | Must be `generic` or `dedicated` | "unknown storage mode" |
+| Migration policy | Must be `unrestricted` or `additive-only` | "unknown migration policy" |
+| Composite index storage | Requires dedicated storage | "composite indexes require +fabrica:storage=dedicated" |
+| Composite index width | Must cover ≥2 columns | "covers a single column; use +fabrica:field:index on that field instead" |
+| Composite index columns | No repeats within one index | "lists field X more than once" |
+| Composite index names | Unique per resource | "duplicate composite index name" |
 
 ---
 
@@ -711,7 +917,16 @@ func ({{ .Name }}) Fields() []ent.Field {
 | `encryption:algorithm` | Algorithm name | aes128, aes192, aes256 | "unknown encryption algorithm" |
 | `encryption:key` | Key source | env, vault, kms | "unknown key source" |
 | `index:type` | Index type | btree, gin, gist, hash | "unknown index type" |
+| `index` modifiers | Modifier name | unique, name= | "unknown index modifier" |
 | `immutable` + `default` | Conflicting | N/A | "immutable fields should not have database defaults" |
+| `nullable` + `notnull` | Conflicting | N/A | "cannot be both nullable and notnull" |
+| `size` | Column width | 1-65535 | "value N out of range [1, 65535]" |
+| `relation` kind | Relation kind | belongs-to, has-many | "unknown relation kind" |
+| `relation` target | Go type name | identifier | "is not a valid Go type name" |
+| `relation:on-delete` | Action | restrict, cascade, set-null | "unknown on-delete action" |
+| `on-delete=set-null` + `notnull` | Conflicting | N/A | "conflicts with +fabrica:field:notnull" |
+| `on-delete=set-null` + `immutable` | Conflicting | N/A | "conflicts with +fabrica:field:immutable" |
+| `nullable`/`notnull`/`size`/`relation` | Requires dedicated storage | N/A | "X requires +fabrica:storage=dedicated" |
 
 ---
 
@@ -903,12 +1118,29 @@ Content string
 
 ## Future Enhancements (Phase 5+)
 
-### Planned Annotations
+### Status of the originally planned annotations
 
-- `+fabrica:field:ttl=duration` - Row expiration
-- `+fabrica:field:cascade=delete|null` - Foreign key behavior
-- `+fabrica:field:computed=expression` - Generated columns
-- `+fabrica:field:audit=true` - Automatic audit trail
+Each annotation previously listed here now has an explicit verdict, so there is
+one spelling per capability rather than two competing ones.
+
+| Planned | Verdict | Where it went |
+|---------|---------|---------------|
+| `+fabrica:field:cascade=delete\|null` | **Superseded** | Folded into [`+fabrica:field:relation`](#fabricafieldrelationkindtargeton-deleteaction) as `on-delete=cascade\|set-null`. A referential action is meaningless without a declared relation, so the two belong in one annotation. `cascade=` was never implemented and is **not** accepted. |
+| `+fabrica:field:ttl=duration` | **Deferred** | Row expiration needs a runtime reaper, not just a schema change. Nothing to emit onto an Ent field today. |
+| `+fabrica:field:computed=expression` | **Deferred** | Ent generated columns need a typed expression model and a dialect-aware emitter; the dedicated template has no branch for it. |
+| `+fabrica:field:audit=true` | **Deferred** | Cross-cutting; belongs with the hooks/events machinery rather than the column vocabulary. |
+
+### Still unimplemented
+
+- **Relation emission.** `+fabrica:field:relation` parses and validates, but does
+  not yet generate Ent edges. See the annotation's Status note.
+- **Migration enforcement.** `+fabrica:migration=additive-only` is emitted as a
+  schema comment; the migration tooling does not yet reject non-additive changes.
+- **Precision and scale.** No `precision=`/`scale=` annotation exists: the
+  dedicated template has no float or decimal branch, so there is nothing to emit
+  onto. `size=` covers the string case.
+- **Check constraints.** Ent expresses these through dialect-specific
+  annotations; deferred until there is a portable way to describe them as intent.
 
 ---
 
