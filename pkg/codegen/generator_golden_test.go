@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openchami/fabrica/pkg/annotations"
 )
@@ -197,6 +198,82 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 
 	got := generateDedicatedSchema(t, &goldenToken{}, "goldenToken", annots)
 	assertGolden(t, "token_dedicated_full.go.golden", got)
+}
+
+// typedTokenSpec mirrors the field types on tokensmith's BootstrapTokenPolicy
+// and RefreshTokenFamily, which is what surfaced the missing type mapping.
+type typedTokenSpec struct {
+	Subject        string            `json:"subject" validate:"required"`
+	UsageCount     int               `json:"usage_count"`
+	Revoked        bool              `json:"revoked"`
+	SequenceNumber int64             `json:"sequence_number"`
+	Weight         float64           `json:"weight"`
+	TTL            time.Duration     `json:"ttl"`
+	IssuedAt       time.Time         `json:"issued_at" validate:"required"`
+	ConsumedAt     *time.Time        `json:"consumed_at"`
+	Scopes         []string          `json:"scopes"`
+	Fingerprint    []byte            `json:"fingerprint"`
+	ReplayAttempts []time.Time       `json:"replay_attempts"`
+	Labels         map[string]string `json:"labels"`
+	Unmapped       []int             `json:"unmapped"`
+}
+
+type typedToken struct {
+	Spec typedTokenSpec
+}
+
+// TestGoldenDedicatedSchemaTypeMapping pins the Ent field type chosen for each
+// Go type. Before this mapping existed, every type below except string, int and
+// bool fell through to field.String — silently wrong for ordering, range
+// queries and indexes.
+func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+
+	// One annotated field proves annotations still compose with the new types.
+	issuedAt := annotations.NewFieldAnnotations("IssuedAt")
+	issuedAt.Immutable = true
+	annots.Fields["IssuedAt"] = issuedAt
+
+	scopes := annotations.NewFieldAnnotations("Scopes")
+	scopes.Immutable = true
+	annots.Fields["Scopes"] = scopes
+
+	fingerprint := annotations.NewFieldAnnotations("Fingerprint")
+	fingerprint.Sensitive = true
+	annots.Fields["Fingerprint"] = fingerprint
+
+	if err := annotations.Validate(annots); err != nil {
+		t.Fatalf("fixture failed validation: %v", err)
+	}
+
+	got := generateDedicatedSchema(t, &typedToken{}, "typedToken", annots)
+	assertGolden(t, "token_dedicated_types.go.golden", got)
+
+	// Spot-check the mapping directly, so a wrong golden update is still caught.
+	for _, want := range []string{
+		`field.Int64("sequence_number")`,
+		`field.Float("weight")`,
+		`field.Int64("ttl")`,
+		`field.Time("issued_at")`,
+		`field.Time("consumed_at")`,
+		`Nillable()`,
+		`field.Strings("scopes")`,
+		`field.Bytes("fingerprint")`,
+		`field.JSON("replay_attempts", []time.Time{})`,
+		`field.JSON("labels", map[string]string{})`,
+		`UNMAPPED TYPE: []int`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("generated schema missing %q", want)
+		}
+	}
+
+	// time.Duration must not silently become a string.
+	if strings.Contains(string(got), `field.String("ttl")`) {
+		t.Error("time.Duration was emitted as a string column")
+	}
 }
 
 type baselineTokenSpec struct {
