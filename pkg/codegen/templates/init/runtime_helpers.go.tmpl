@@ -28,6 +28,11 @@ import (
 	{{if eq .StorageType "ent"}}
 	"{{.ModulePath}}/internal/storage/ent"
 	"{{.ModulePath}}/internal/storage/ent/migrate"
+	// Ent registers schema hooks and field defaults from its generated runtime
+	// package. Without this blank import, creating a row fails with
+	// "uninitialized ... (forgotten import ent/runtime?)" and any hashing hook
+	// never fires.
+	_ "{{.ModulePath}}/internal/storage/ent/runtime"
 
 	{{if eq .DBDriver "postgres"}}
 	_ "github.com/lib/pq"
