@@ -79,6 +79,39 @@ func TestGenerateRunnerCode_StorageOnlyDoesNotRegenerateRoutesOrModels(t *testin
 	}
 }
 
+func TestGenerateRunnerCode_CustomStorageDoesNotGeneratePersistence(t *testing.T) {
+	runnerCode := generateRunnerCode(
+		"/tmp/project",
+		"github.com/example/project",
+		"cmd/server",
+		"main",
+		true,
+		true,
+		true,
+		false,
+		false,
+		"custom",
+	)
+
+	for _, unexpected := range []string{
+		"GenerateEntSchemas",
+		"GenerateEntAdapter",
+		"GenerateEntHelpers",
+		"GenerateStorage",
+		"GenerateExportCommand",
+		"GenerateImportCommand",
+	} {
+		if strings.Contains(runnerCode, unexpected) {
+			t.Fatalf("custom storage runner should not include %s", unexpected)
+		}
+	}
+	for _, expected := range []string{"GenerateHandlers", "GenerateRoutes", "GenerateModels", "GenerateOpenAPI"} {
+		if !strings.Contains(runnerCode, expected) {
+			t.Fatalf("custom storage runner should still include %s", expected)
+		}
+	}
+}
+
 func TestGenerateRunnerCode_OpenAPIOnlyRegeneratesModelDependency(t *testing.T) {
 	runnerCode := generateRunnerCode(
 		"/tmp/project",

@@ -50,7 +50,7 @@ type initOptions struct {
 	reconcileRequeueMs int  // Default requeue delay in minutes
 
 	// Storage options
-	storageType string // file, ent
+	storageType string // file, ent, custom
 	dbDriver    string // postgres, mysql, sqlite
 }
 
@@ -175,7 +175,7 @@ or by providing the name of an existing directory.`,
 	cmd.Flags().IntVar(&opts.reconcileRequeueMs, "reconcile-requeue", 5, "Default requeue delay in minutes")
 
 	// Storage options
-	cmd.Flags().StringVar(&opts.storageType, "storage-type", "file", "Storage backend: file or ent")
+	cmd.Flags().StringVar(&opts.storageType, "storage-type", "file", "Storage backend: file, ent, or custom")
 	cmd.Flags().StringVar(&opts.dbDriver, "db", "sqlite", "Database driver for Ent: postgres, mysql, or sqlite")
 
 	return cmd
@@ -239,6 +239,7 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 		fmt.Println("Storage backend:")
 		fmt.Println("  1) File-based storage (simple)")
 		fmt.Println("  2) Database with Ent (postgres/mysql/sqlite)")
+		fmt.Println("  3) Project-owned custom storage")
 		fmt.Print("Choose [1]: ")
 		input, _ = reader.ReadString('\n')
 		switch strings.TrimSpace(input) {
@@ -260,6 +261,8 @@ func runInteractiveInit(projectName string, opts *initOptions) error {
 			default:
 				opts.dbDriver = "sqlite"
 			}
+		case "3":
+			opts.storageType = "custom"
 		default:
 			opts.storageType = "file"
 		}
@@ -413,7 +416,13 @@ func validateInitOptions(opts *initOptions) error {
 		return fmt.Errorf("init options are required")
 	}
 	if !opts.withStorage {
-		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file or --storage-type ent")
+		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file, --storage-type ent, or --storage-type custom")
+	}
+	if opts.storageType == "" {
+		opts.storageType = "file"
+	}
+	if opts.storageType != "file" && opts.storageType != "ent" && opts.storageType != "custom" {
+		return fmt.Errorf("unsupported storage type %q: use file, ent, or custom", opts.storageType)
 	}
 	if opts.withEvents && opts.eventBusType != "memory" {
 		return fmt.Errorf("unsupported events bus %q: only memory is implemented", opts.eventBusType)
@@ -635,9 +644,12 @@ func generateFeaturesText(data templateData) string {
 		features = append(features, "- 🔐 Authentication with TokenSmith")
 	}
 	if data.WithStorage {
-		if data.StorageType == "ent" {
+		switch data.StorageType {
+		case "ent":
 			features = append(features, fmt.Sprintf("- 💾 Database storage (%s)", data.DBDriver))
-		} else {
+		case "custom":
+			features = append(features, "- 💾 Project-owned custom storage")
+		default:
 			features = append(features, "- 💾 File-based storage")
 		}
 	}
@@ -869,6 +881,15 @@ package %s
 				return fmt.Errorf("failed to create ent/%s stub file: %w", pkg, err)
 			}
 		}
+	case "custom":
+		stubContent = `// SPDX-FileCopyrightText: Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
+// SPDX-License-Identifier: MIT
+//
+// This project uses Fabrica custom storage. Replace this file with the
+// project-owned storage implementation before running the generated server.
+
+package storage
+`
 	}
 
 	if err := os.WriteFile(filepath.Join(storageDir, "storage.go"), []byte(stubContent), 0644); err != nil {
