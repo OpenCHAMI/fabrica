@@ -86,6 +86,58 @@ func TestInitScaffold_EmitsHelperBoundaries(t *testing.T) {
 	}
 }
 
+func TestInitScaffold_CustomStorageIsProjectOwned(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "custom-storage")
+	opts := &initOptions{
+		modulePath:         "github.com/example/custom-storage",
+		description:        "custom storage smoke",
+		withStorage:        true,
+		withVersion:        true,
+		validationMode:     "strict",
+		eventBusType:       "memory",
+		apiGroup:           "example.fabrica.dev",
+		storageVersion:     "v1",
+		apiVersions:        []string{"v1"},
+		reconcileWorkers:   5,
+		reconcileRequeueMs: 5,
+		storageType:        "custom",
+		dbDriver:           "bogus",
+	}
+
+	if err := runInit(root, opts); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+
+	storagePath := filepath.Join(root, "internal/storage/storage.go")
+	storageContent, err := os.ReadFile(storagePath)
+	if err != nil {
+		t.Fatalf("ReadFile(storage.go): %v", err)
+	}
+	if !strings.Contains(string(storageContent), "project-owned storage implementation") {
+		t.Fatalf("custom storage stub does not describe project ownership:\n%s", storageContent)
+	}
+	if _, err := os.Stat(filepath.Join(root, "internal/storage/ent")); !os.IsNotExist(err) {
+		t.Fatalf("custom storage should not create Ent directories, stat err=%v", err)
+	}
+
+	runtimePath := filepath.Join(root, "cmd/server/runtime_helpers_generated.go")
+	runtimeContent, err := os.ReadFile(runtimePath)
+	if err != nil {
+		t.Fatalf("ReadFile(runtime_helpers_generated.go): %v", err)
+	}
+	if !strings.Contains(string(runtimeContent), "Custom storage selected") {
+		t.Fatalf("runtime helper does not acknowledge custom storage:\n%s", runtimeContent)
+	}
+	if strings.Contains(string(runtimeContent), "internal/storage/ent") || strings.Contains(string(runtimeContent), "InitFileBackend") {
+		t.Fatalf("custom runtime helper should not initialize generated storage:\n%s", runtimeContent)
+	}
+
+	fset := token.NewFileSet()
+	if _, err := parser.ParseFile(fset, runtimePath, nil, parser.AllErrors); err != nil {
+		t.Fatalf("ParseFile(runtime helper): %v", err)
+	}
+}
+
 func TestValidateInitOptions_RejectsUnsupportedCombinations(t *testing.T) {
 	base := &initOptions{
 		withStorage:  true,
@@ -114,5 +166,11 @@ func TestValidateInitOptions_RejectsUnsupportedCombinations(t *testing.T) {
 	reconcileNoEvents.withReconcile = true
 	if err := validateInitOptions(&reconcileNoEvents); err == nil {
 		t.Fatalf("expected reconciliation without events to be rejected")
+	}
+
+	badStorage := *base
+	badStorage.storageType = "oracle"
+	if err := validateInitOptions(&badStorage); err == nil {
+		t.Fatalf("expected unsupported storage type to be rejected")
 	}
 }

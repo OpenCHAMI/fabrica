@@ -113,11 +113,12 @@ type AuthConfig struct {
 
 // StorageConfig controls storage backend configuration.
 // Determines the persistence layer for resources. Type can be 'file'
-// (file-based JSON storage) or 'ent' (database with Ent ORM).
+// (file-based JSON storage), 'ent' (database with Ent ORM), or 'custom'
+// (project-owned persistence implementation).
 // When using 'ent', DBDriver specifies the database (postgres, mysql, sqlite).
 type StorageConfig struct {
 	Enabled  bool   `yaml:"enabled"`
-	Type     string `yaml:"type"`                // file, ent
+	Type     string `yaml:"type"`                // file, ent, custom
 	DBDriver string `yaml:"db_driver,omitempty"` // postgres, mysql, sqlite, sqlite3
 }
 
@@ -211,7 +212,7 @@ func SaveConfig(targetDir string, config *FabricaConfig) error {
 //   - Validation mode must be 'strict', 'warn', or 'disabled'
 //   - Event bus type must be 'memory'
 //   - ETag algorithm must be 'sha256' or 'md5'
-//   - Storage type must be 'file' or 'ent'
+//   - Storage type must be 'file', 'ent', or 'custom'
 //   - DB driver (when using ent) must be 'postgres', 'mysql', 'sqlite', or 'sqlite3'
 //
 // Returns a descriptive error if any validation rule is violated.
@@ -271,9 +272,9 @@ func ValidateConfig(config *FabricaConfig) error {
 	}
 
 	// Validate storage type
-	validTypes := map[string]bool{"file": true, "ent": true}
+	validTypes := map[string]bool{"file": true, "ent": true, "custom": true}
 	if !validTypes[config.Features.Storage.Type] {
-		return fmt.Errorf("invalid storage.type: %s (must be 'file' or 'ent')",
+		return fmt.Errorf("invalid storage.type: %s (must be 'file', 'ent', or 'custom')",
 			config.Features.Storage.Type)
 	}
 

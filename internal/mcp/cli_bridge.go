@@ -52,7 +52,7 @@ func validateInitOptions(opts *initOptions) error {
 		return fmt.Errorf("init options are required")
 	}
 	if !opts.withStorage {
-		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file or --storage-type ent")
+		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file, --storage-type ent, or --storage-type custom")
 	}
 	if opts.withEvents && opts.eventBusType != "memory" {
 		return fmt.Errorf("unsupported events bus %q: only memory is implemented", opts.eventBusType)

@@ -15,14 +15,14 @@ package main
 
 {{if or .WithStorage .WithEvents .WithReconcile}}
 import (
-	{{if or .WithStorage .WithReconcile}}
+	{{if or (and .WithStorage (ne .StorageType "custom")) .WithReconcile}}
 	"fmt"
 	{{end}}
 	{{if or (eq .StorageType "ent") (and .WithEvents .WithReconcile)}}
 	"context"
 	{{end}}
 	"log"
-	{{if .WithStorage}}
+	{{if or (and .WithStorage (ne .StorageType "custom")) .WithReconcile}}
 	"{{.ModulePath}}/internal/storage"
 	{{end}}
 	{{if eq .StorageType "ent"}}
@@ -61,6 +61,9 @@ func initializeStorage(config *Config) (func(), error) {
 		return nil, fmt.Errorf("failed to initialize file storage: %w", err)
 	}
 	log.Printf("File storage initialized in %s", config.DataDir)
+	return func() {}, nil
+	{{else if eq .StorageType "custom"}}
+	log.Println("Custom storage selected; project-owned storage initialization is expected")
 	return func() {}, nil
 	{{else if eq .StorageType "ent"}}
 	client, err := ent.Open("{{.DBDriver}}", config.DatabaseURL)
@@ -182,6 +185,8 @@ func logStartupConfiguration(config *Config, addr string) {
 	{{if .WithStorage}}
 	{{if eq .StorageType "file"}}
 	log.Printf("Storage: file backend in %s", config.DataDir)
+	{{else if eq .StorageType "custom"}}
+	log.Printf("Storage: custom project-owned backend")
 	{{else if eq .StorageType "ent"}}
 	log.Printf("Storage: {{.DBDriver}} database")
 	{{end}}
