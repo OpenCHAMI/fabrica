@@ -99,7 +99,7 @@ fabrica init [project-name] [flags]
 #### Storage Options
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--storage-type <type>` | string | `file` | Storage backend: `file`, `ent` |
+| `--storage-type <type>` | string | `file` | Storage backend: `file`, `ent`, `custom` |
 | `--db <driver>` | string | `sqlite` | Database driver: `sqlite`, `postgres`, `mysql` |
 
 #### Event Options
@@ -543,7 +543,7 @@ features:
 
   storage:
     enabled: true
-    type: ent                 # file | ent
+    type: ent                 # file | ent | custom
     db_driver: postgres       # sqlite | postgres | mysql
 
 generation:

@@ -195,3 +195,20 @@ func TestWriteGeneratedFileWritesRealChanges(t *testing.T) {
 		t.Fatalf("file content mismatch: got %q want %q", got, updated)
 	}
 }
+
+func TestGenerateStorageSkipsCustomStorage(t *testing.T) {
+	dir := t.TempDir()
+	gen := NewGenerator(dir, "main", "example.com/test")
+	gen.SetStorageType("custom")
+
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	if err := gen.GenerateStorage(); err != nil {
+		t.Fatalf("GenerateStorage: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "internal", "storage", "storage_generated.go")); !os.IsNotExist(err) {
+		t.Fatalf("custom storage generated storage file, stat err=%v", err)
+	}
+}
