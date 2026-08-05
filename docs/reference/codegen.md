@@ -600,6 +600,20 @@ myproject/
 └── Makefile                              # Build automation with dev workflow
 ```
 
+### Supplemental Ent Schemas And Migrations
+
+For Ent-backed projects, Fabrica owns only the files it generates under
+`internal/storage/ent/schema/`: `resource.go`, `label.go`, `annotation.go`, and
+dedicated resource schemas named after generated resources. Services may place
+additional Ent schema files in the same package for auxiliary tables such as
+audit records, token/session internals, or security history tables.
+
+Regeneration preserves supplemental schema files and project-owned migration
+files. Keep database-specific DDL, triggers, row-level security, partial indexes,
+and append-only enforcement in service-owned migrations, commonly under
+`migrations/`. Do not reuse Fabrica-owned schema filenames for supplemental
+tables; collisions are treated as generated-file ownership conflicts.
+
 ## Advanced Features
 
 ### Multi-Version Support
