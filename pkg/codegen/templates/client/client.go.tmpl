@@ -66,6 +66,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strings"
 {{if $hasVersioning}}	"time"{{end}}
 
 	"github.com/openchami/fabrica/pkg/fabrica"
@@ -80,11 +81,52 @@ import (
 
 // Client provides access to the inventory API
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
-	logger     zerolog.Logger
-	version    string // Optional API version for Accept/Content-Type headers
+	baseURL     *url.URL
+	httpClient  *http.Client
+	logger      zerolog.Logger
+	version     string // Optional API version for Accept/Content-Type headers
 	bearerToken string // Optional JWT bearer token for Authorization header
+	showToken   bool   // Whether access tokens are shown in full in debug logs
+}
+
+// tokenPrefixLen is the number of leading characters of a token to keep when
+// truncating it for logs.
+const tokenPrefixLen = 6
+
+// RedactToken returns token unchanged if show is true. Otherwise, it
+// returns a truncated form of the token that still indicates a token exists.
+// Tokens that are tokenPrefixLen characters or shorter are fully masked.
+func RedactToken(token string, show bool) string {
+	if show || token == "" {
+		return token
+	}
+	if len(token) <= tokenPrefixLen {
+		return "..."
+	}
+	return token[:tokenPrefixLen] + "..."
+}
+
+// redactAuthHeaderValues returns a copy of Authorization header values with
+// their token portions redacted unless show is true.
+func redactAuthHeaderValues(vals []string, show bool) []string {
+	if show {
+		return vals
+	}
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		const bearerPrefix = "Bearer "
+		if strings.HasPrefix(v, bearerPrefix) {
+			out[i] = bearerPrefix + RedactToken(strings.TrimPrefix(v, bearerPrefix), show)
+		} else {
+			out[i] = RedactToken(v, show)
+		}
+	}
+	return out
+}
+
+// isAuthorizationHeader reports whether key is the Authorization header.
+func isAuthorizationHeader(key string) bool {
+	return http.CanonicalHeaderKey(key) == "Authorization"
 }
 
 // ErrorResponse represents an API error response
@@ -130,6 +172,7 @@ func (c *Client) WithVersion(version string) *Client {
 		httpClient:  c.httpClient,
 		version:     version,
 		bearerToken: c.bearerToken,
+		showToken:   c.showToken,
 		logger:      c.logger,
 	}
 }
@@ -141,6 +184,20 @@ func (c *Client) WithBearerToken(token string) *Client {
 		httpClient:  c.httpClient,
 		version:     c.version,
 		bearerToken: token,
+		showToken:   c.showToken,
+		logger:      c.logger,
+	}
+}
+
+// WithShowToken returns a new client configured to show full access tokens in
+// debug logs when show is true. Tokens are truncated by default.
+func (c *Client) WithShowToken(show bool) *Client {
+	return &Client{
+		baseURL:     c.baseURL,
+		httpClient:  c.httpClient,
+		version:     c.version,
+		bearerToken: c.bearerToken,
+		showToken:   show,
 		logger:      c.logger,
 	}
 }
@@ -185,7 +242,11 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 	if len(req.Header) > 0 {
 		c.logger.Debug().Msg("Request headers:")
 		for k, v := range req.Header {
-			c.logger.Debug().Msgf("  %s: %s", k, v)
+			if isAuthorizationHeader(k) {
+				c.logger.Debug().Msgf("  %s: %s", k, redactAuthHeaderValues(v, c.showToken))
+			} else {
+				c.logger.Debug().Msgf("  %s: %s", k, v)
+			}
 		}
 	} else {
 		c.logger.Debug().Msg("No headers in request")
@@ -216,7 +277,11 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 		if len(resp.Header) > 0 {
 			c.logger.Debug().Msg("Response headers:")
 			for k, v := range resp.Header {
-				c.logger.Debug().Msgf("  %s: %s", k, v)
+				if isAuthorizationHeader(k) {
+					c.logger.Debug().Msgf("  %s: %s", k, redactAuthHeaderValues(v, c.showToken))
+				} else {
+					c.logger.Debug().Msgf("  %s: %s", k, v)
+				}
 			}
 		} else {
 			c.logger.Debug().Msg("No headers in response")
