@@ -6,14 +6,9 @@ name: Vulnerability Check
 
 on:
   pull_request:
-    branches: [ main ]
   push:
     branches:
       - main
-      - 'feature/**'
-      - 'fix/**'
-      - 'testing/**'
-      - 'feat/**'
 
 jobs:
   govulncheck:

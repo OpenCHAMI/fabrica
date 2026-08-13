@@ -5,6 +5,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -28,12 +29,14 @@ func TestTemplate_ClientLibrary_BearerTokenSupport(t *testing.T) {
 
 func TestTemplate_ClientLibrary_RedactsAuthorizationInDebugLogs(t *testing.T) {
 	clientTmpl := mustReadFile(t, "pkg/codegen/templates/client/client.go.tmpl")
+	if !regexp.MustCompile(`showToken\s+bool`).MatchString(clientTmpl) {
+		t.Error("client template must contain per-client token visibility state")
+	}
 
 	checks := []struct {
 		content string
 		msg     string
 	}{
-		{"showToken  bool", "per-client token visibility state"},
 		{"const tokenPrefixLen = 6", "token prefix length"},
 		{"func RedactToken(token string, show bool) string", "token redaction helper with explicit visibility state"},
 		{"func redactAuthHeaderValues(vals []string, show bool) []string", "Authorization value redaction helper with explicit visibility state"},
@@ -115,7 +118,7 @@ func TestTemplate_ClientLibrary_LoggerSupport(t *testing.T) {
 	clientTmpl := mustReadFile(t, "pkg/codegen/templates/client/client.go.tmpl")
 
 	// Check logger field exists in Client struct
-	if !strings.Contains(clientTmpl, "logger     zerolog.Logger") {
+	if !regexp.MustCompile(`logger\s+zerolog\.Logger`).MatchString(clientTmpl) {
 		t.Fatalf("client template must define logger field in Client struct")
 	}
 

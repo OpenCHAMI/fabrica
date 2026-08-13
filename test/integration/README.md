@@ -57,7 +57,7 @@ Tests run automatically on:
 - Pull requests to main branch
 - Pushes to main branch
 
-See `.github/workflows/regression-tests.yml` for CI configuration.
+See `.github/workflows/tests.yml` for CI configuration.
 
 ## Test Coverage
 
