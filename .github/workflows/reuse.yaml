@@ -6,14 +6,9 @@ name: REUSE Compliance
 
 on:
   pull_request:
-    branches: [ main ]
   push:
     branches:
       - main
-      - 'feature/**'
-      - 'fix/**'
-      - 'testing/**'
-      - 'feat/**'
 
 jobs:
   reuse:
