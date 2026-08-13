@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -48,6 +49,52 @@ func TestGlobalAndMiddlewareTemplateDataIncludeCopyrightYear(t *testing.T) {
 		if got, ok := data["CopyrightYear"].(int); !ok || got != time.Now().UTC().Year() {
 			t.Fatalf("%s CopyrightYear = %v, want %d", name, data["CopyrightYear"], time.Now().UTC().Year())
 		}
+	}
+}
+
+func TestGenerateClientUsesPerClientTokenVisibility(t *testing.T) {
+	outDir := t.TempDir()
+	gen := NewGenerator(outDir, "client", "example.com/test")
+	gen.Resources = []ResourceMetadata{
+		{
+			Name:         "Node",
+			PluralName:   "nodes",
+			Package:      "example.com/test/apis/v1",
+			PackageAlias: "v1",
+			TypeName:     "*v1.Node",
+			SpecType:     "v1.NodeSpec",
+			StatusType:   "v1.NodeStatus",
+			URLPath:      "/nodes",
+			StorageName:  "Node",
+		},
+	}
+
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	if err := gen.GenerateClient(); err != nil {
+		t.Fatalf("GenerateClient: %v", err)
+	}
+
+	generated, err := os.ReadFile(filepath.Join(outDir, "client_generated.go"))
+	if err != nil {
+		t.Fatalf("read generated client: %v", err)
+	}
+	client := string(generated)
+
+	if !regexp.MustCompile(`showToken\s+bool\s+// Whether access tokens`).MatchString(client) {
+		t.Error("generated client missing per-client token visibility field")
+	}
+	for _, want := range []string{
+		"func (c *Client) WithShowToken(show bool) *Client",
+		"redactAuthHeaderValues(v, c.showToken)",
+	} {
+		if !strings.Contains(client, want) {
+			t.Errorf("generated client missing %q", want)
+		}
+	}
+	if strings.Contains(client, "var ShowToken bool") {
+		t.Error("generated client contains package-global token visibility state")
 	}
 }
 

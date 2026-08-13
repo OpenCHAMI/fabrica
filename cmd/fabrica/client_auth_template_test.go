@@ -26,6 +26,51 @@ func TestTemplate_ClientLibrary_BearerTokenSupport(t *testing.T) {
 	}
 }
 
+func TestTemplate_ClientLibrary_RedactsAuthorizationInDebugLogs(t *testing.T) {
+	clientTmpl := mustReadFile(t, "pkg/codegen/templates/client/client.go.tmpl")
+
+	checks := []struct {
+		content string
+		msg     string
+	}{
+		{"showToken  bool", "per-client token visibility state"},
+		{"const tokenPrefixLen = 6", "token prefix length"},
+		{"func RedactToken(token string, show bool) string", "token redaction helper with explicit visibility state"},
+		{"func redactAuthHeaderValues(vals []string, show bool) []string", "Authorization value redaction helper with explicit visibility state"},
+		{"func isAuthorizationHeader(key string) bool", "Authorization header detector"},
+		{"http.CanonicalHeaderKey(key) == \"Authorization\"", "case-insensitive Authorization header comparison"},
+		{"c.logger.Debug().Msgf(\"  %s: %s\", k, redactAuthHeaderValues(v, c.showToken))", "redacted Authorization header logging using per-client state"},
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(clientTmpl, check.content) {
+			t.Errorf("client template must contain %s", check.msg)
+		}
+	}
+
+	if strings.Contains(clientTmpl, "var ShowToken bool") {
+		t.Error("client template must not use package-global token visibility state")
+	}
+
+	if got := strings.Count(clientTmpl, "c.logger.Debug().Msgf(\"  %s: %s\", k, redactAuthHeaderValues(v, c.showToken))"); got != 2 {
+		t.Errorf("client template must redact Authorization values in request and response logs; got %d occurrences", got)
+	}
+}
+
+func TestTemplate_ClientLibrary_ShowTokenChaining(t *testing.T) {
+	clientTmpl := mustReadFile(t, "pkg/codegen/templates/client/client.go.tmpl")
+
+	if !strings.Contains(clientTmpl, "func (c *Client) WithShowToken(show bool) *Client") {
+		t.Fatal("client template must provide WithShowToken")
+	}
+	if !strings.Contains(clientTmpl, "showToken:   show,") {
+		t.Fatal("WithShowToken must set token visibility on the returned client")
+	}
+	if got := strings.Count(clientTmpl, "showToken:   c.showToken,"); got != 2 {
+		t.Errorf("WithVersion and WithBearerToken must preserve token visibility; got %d copies", got)
+	}
+}
+
 func TestTemplate_ClientCLI_BearerTokenFlagSupport(t *testing.T) {
 	cliTmpl := mustReadFile(t, "pkg/codegen/templates/client/cmd.go.tmpl")
 
@@ -43,6 +88,26 @@ func TestTemplate_ClientCLI_BearerTokenFlagSupport(t *testing.T) {
 	}
 	if !strings.Contains(cliTmpl, "c = c.WithBearerToken(token)") {
 		t.Fatalf("cli template must configure client with bearer token")
+	}
+}
+
+func TestTemplate_ClientCLI_ShowTokenFlagSupport(t *testing.T) {
+	cliTmpl := mustReadFile(t, "pkg/codegen/templates/client/cmd.go.tmpl")
+
+	checks := []struct {
+		content string
+		msg     string
+	}{
+		{"--show-token   Show the full bearer token in debug logs", "document --show-token"},
+		{"BoolVar(&showToken, \"show-token\", false", "register --show-token as disabled by default"},
+		{"BindPFlag(\"show-token\"", "bind --show-token to configuration"},
+		{"c = c.WithShowToken(viper.GetBool(\"show-token\"))", "apply --show-token to the client instance"},
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(cliTmpl, check.content) {
+			t.Errorf("client CLI template must %s", check.msg)
+		}
 	}
 }
 
