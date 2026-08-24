@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
 
 SPDX-License-Identifier: MIT
 -->
