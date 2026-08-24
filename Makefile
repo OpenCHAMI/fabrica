@@ -1,5 +1,5 @@
 # Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
-# SPDX-FileCopyrightText: 2025 OpenCHAMI Contributors
+# SPDX-FileCopyrightText: © 2025 OpenCHAMI a Series of LF Projects, LLC
 #
 # SPDX-License-Identifier: MIT
 
@@ -92,7 +92,7 @@ vuln: ## Check for vulnerabilities
 	govulncheck ./...
 
 reuse: ## Check REUSE compliance
-	reuse lint
+	reuse lint --lines
 
 reuse-spdx: ## Generate SPDX bill of materials
 	reuse spdx -o reuse.spdx
