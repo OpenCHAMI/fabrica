@@ -29,6 +29,8 @@ Define a resource with annotations:
 
 	// +fabrica:resource
 	// +fabrica:storage=dedicated
+	// +fabrica:migration=additive-only
+	// +fabrica:index:fields=Owner,Name:name=idx_owner_name
 	type Token struct {
 	    metav1.TypeMeta   `json:",inline"`
 	    metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -44,6 +46,11 @@ Define a resource with annotations:
 	    // +fabrica:field:index
 	    // +fabrica:field:unique
 	    Name string `json:"name"`
+
+	    // +fabrica:field:size=253
+	    // +fabrica:field:notnull
+	    // +fabrica:field:relation=belongs-to:User:on-delete=cascade
+	    Owner string `json:"owner"`
 	}
 
 Parse annotations from Go AST:
@@ -91,6 +98,18 @@ Use annotations in code generation:
 	+fabrica:storage=generic  - Use shared resources table (default)
 	+fabrica:storage=dedicated - Use dedicated table per resource
 
+Multi-column indexes (dedicated storage only):
+
+	+fabrica:index:fields=Owner,Name                      - Composite B-tree index
+	+fabrica:index:fields=Owner,Name:unique               - Composite unique index
+	+fabrica:index:fields=Owner,Name:name=idx_owner_name  - Explicit index name
+	+fabrica:index:fields=Owner,Name:type=gin             - Index type (btree default)
+
+Migration safety:
+
+	+fabrica:migration=unrestricted   - Any migration permitted (default)
+	+fabrica:migration=additive-only  - Declare additive-only migration intent
+
 # Field-Level Annotations
 
 Storage transformations:
@@ -106,6 +125,9 @@ Constraints:
 	+fabrica:field:immutable    - Prevent updates
 	+fabrica:field:unique       - Unique constraint
 	+fabrica:field:default=val  - Database default
+	+fabrica:field:nullable     - Column permits NULL
+	+fabrica:field:notnull      - Column rejects NULL
+	+fabrica:field:size=253     - Cap stored width (strings)
 
 Indexes:
 
@@ -113,6 +135,27 @@ Indexes:
 	+fabrica:field:index=gin    - GIN index (full-text, PostgreSQL)
 	+fabrica:field:index=gist   - GiST index (spatial, PostgreSQL)
 	+fabrica:field:index=hash   - Hash index
+	+fabrica:field:index=btree:unique          - Unique index
+	+fabrica:field:index=btree:name=idx_value  - Explicit index name
+
+Relations (parsed and validated; edge emission is not yet implemented):
+
+	+fabrica:field:relation=belongs-to:User
+	+fabrica:field:relation=has-many:Session
+	+fabrica:field:relation=belongs-to:User:on-delete=cascade
+	+fabrica:field:relation=belongs-to:User:on-delete=restrict   (default)
+	+fabrica:field:relation=belongs-to:User:on-delete=set-null
+
+# Storage Mode Applies
+
+nullable, notnull, size, relation and +fabrica:index require
++fabrica:storage=dedicated. Generic storage keeps spec and status in a single
+JSON column, so per-column intent has nowhere to land and is rejected during
+validation.
+
+PR 98 parses and validates this vocabulary. Ent schema emission for composite
+indexes, index modifiers, nullability, size, relations, and migration intent is
+added by follow-up generator changes.
 
 # Validation
 

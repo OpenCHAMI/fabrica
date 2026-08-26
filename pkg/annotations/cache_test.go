@@ -100,3 +100,66 @@ func TestAnnotationCache_Invalidate(t *testing.T) {
 		t.Error("Expected cache hit for non-invalidated file")
 	}
 }
+
+func TestParseFileAnnotationsCachePreservesVocabularyFields(t *testing.T) {
+	globalCache.Clear()
+
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "types.go")
+	source := `package test
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+// +fabrica:migration=additive-only
+// +fabrica:index:fields=OwnerID,CreatedAt:name=idx_owner_created:unique
+type Token struct { Spec TokenSpec }
+
+type TokenSpec struct {
+	// +fabrica:field:nullable
+	// +fabrica:field:size=128
+	// +fabrica:field:relation=belongs-to:User:on-delete=cascade
+	OwnerID string
+	CreatedAt string
+}
+`
+	if err := os.WriteFile(tmpFile, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := ParseFileAnnotations(tmpFile)
+	if err != nil {
+		t.Fatalf("first parse: %v", err)
+	}
+	second, err := ParseFileAnnotations(tmpFile)
+	if err != nil {
+		t.Fatalf("cached parse: %v", err)
+	}
+
+	for label, anns := range map[string]*ResourceAnnotations{"first": first["Token"], "cached": second["Token"]} {
+		t.Run(label, func(t *testing.T) {
+			if anns == nil {
+				t.Fatal("Token annotations missing")
+			}
+			if anns.Migration != MigrationPolicyAdditiveOnly {
+				t.Fatalf("Migration = %q, want additive-only", anns.Migration)
+			}
+			if len(anns.Indexes) != 1 {
+				t.Fatalf("Indexes length = %d, want 1", len(anns.Indexes))
+			}
+			idx := anns.Indexes[0]
+			if idx.Name != "idx_owner_created" || !idx.Unique {
+				t.Fatalf("Index = %+v, want named unique", idx)
+			}
+			if !anns.SpecFields["OwnerID"] || !anns.SpecFields["CreatedAt"] {
+				t.Fatalf("SpecFields = %+v, want OwnerID and CreatedAt", anns.SpecFields)
+			}
+			owner := anns.Fields["OwnerID"]
+			if owner == nil || !owner.Nullable || owner.Size != 128 {
+				t.Fatalf("OwnerID annotations = %+v", owner)
+			}
+			if owner.Relation == nil || owner.Relation.OnDelete != OnDeleteCascade {
+				t.Fatalf("OwnerID relation = %+v", owner.Relation)
+			}
+		})
+	}
+}

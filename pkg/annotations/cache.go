@@ -11,6 +11,11 @@ import (
 )
 
 // CachedResult holds parsed annotations with metadata
+//
+// Annotations is keyed by resource type name and holds the complete
+// *ResourceAnnotations. It previously stored only the flattened field map,
+// which silently dropped resource-level state (IsResource, StorageMode, and
+// now composite indexes and migration policy) on every cache hit.
 type CachedResult struct {
 	Annotations map[string]*ResourceAnnotations
 	ModTime     time.Time

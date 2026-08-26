@@ -65,6 +65,40 @@ const (
 	StorageTypeEncrypted StorageType = "encrypted"
 )
 
+// MigrationPolicy defines how far a schema migration may go when altering a
+// resource's table.
+type MigrationPolicy string
+
+const (
+	// MigrationPolicyUnrestricted allows any migration (default)
+	MigrationPolicyUnrestricted MigrationPolicy = "unrestricted"
+	// MigrationPolicyAdditiveOnly permits only additive changes (new columns,
+	// new indexes); drops and narrowing type changes are rejected
+	MigrationPolicyAdditiveOnly MigrationPolicy = "additive-only"
+)
+
+// RelationKind defines the cardinality of a relation between resources
+type RelationKind string
+
+const (
+	// RelationBelongsTo is a many-to-one edge to the target resource
+	RelationBelongsTo RelationKind = "belongs-to"
+	// RelationHasMany is a one-to-many edge to the target resource
+	RelationHasMany RelationKind = "has-many"
+)
+
+// OnDeleteAction defines referential behavior when the target row is deleted
+type OnDeleteAction string
+
+const (
+	// OnDeleteRestrict blocks deletion while references remain (default)
+	OnDeleteRestrict OnDeleteAction = "restrict"
+	// OnDeleteCascade deletes the referencing rows
+	OnDeleteCascade OnDeleteAction = "cascade"
+	// OnDeleteSetNull nulls the referencing column; requires a nullable field
+	OnDeleteSetNull OnDeleteAction = "set-null"
+)
+
 // HashAlgorithm defines the hashing algorithm
 type HashAlgorithm string
 
@@ -88,6 +122,18 @@ type ResourceAnnotations struct {
 	// Fields maps field names to their annotations
 	Fields map[string]*FieldAnnotations
 
+	// SpecFields contains every Go field name discovered on the resource's Spec
+	// struct, including fields with no annotations. It is populated by parsers so
+	// resource-level annotations can validate field references.
+	SpecFields map[string]bool
+
+	// Indexes holds multi-column indexes declared at the resource level
+	// (+fabrica:index:fields=a,b). Single-column indexes stay on the field.
+	Indexes []*CompositeIndex
+
+	// Migration constrains what a generated migration may do to this table
+	Migration MigrationPolicy
+
 	// RawAnnotations contains unparsed annotation lines for debugging
 	RawAnnotations []string
 }
@@ -98,13 +144,45 @@ func NewResourceAnnotations() *ResourceAnnotations {
 		IsResource:  false,
 		StorageMode: StorageModeGeneric,
 		Fields:      make(map[string]*FieldAnnotations),
+		SpecFields:  make(map[string]bool),
+		Migration:   MigrationPolicyUnrestricted,
 	}
+}
+
+// CompositeIndex describes a multi-column index on a resource's dedicated table
+type CompositeIndex struct {
+	// Name is an optional explicit index name; derived from fields when empty
+	Name string
+
+	// Fields lists the resource field names covered, in index order
+	Fields []string
+
+	// Unique makes this a unique index
+	Unique bool
+
+	// Type is the index type (defaults to btree)
+	Type IndexType
+}
+
+// RelationConfig describes a foreign-key relation to another resource type
+type RelationConfig struct {
+	// Kind is the relation cardinality
+	Kind RelationKind
+
+	// Target is the referenced resource type name
+	Target string
+
+	// OnDelete is the referential action (defaults to restrict)
+	OnDelete OnDeleteAction
 }
 
 // FieldAnnotations contains all annotations for a single field
 type FieldAnnotations struct {
 	// FieldName is the Go field name
 	FieldName string
+
+	// FieldType is the Go type syntax discovered by the parser when available.
+	FieldType string
 
 	// Storage configuration
 	Storage *StorageConfig
@@ -123,6 +201,20 @@ type FieldAnnotations struct {
 
 	// Unique constraint
 	Unique bool
+
+	// Nullable forces the column to permit NULL, overriding the inference
+	// made from the Go struct tag (+fabrica:field:nullable)
+	Nullable bool
+
+	// NotNull forces the column to reject NULL, overriding the inference
+	// made from the Go struct tag (+fabrica:field:notnull)
+	NotNull bool
+
+	// Size caps the stored width of a string column (0 = unset)
+	Size int
+
+	// Relation declares a foreign-key relation to another resource type
+	Relation *RelationConfig
 
 	// RawAnnotations contains unparsed annotation lines for debugging
 	RawAnnotations []string
@@ -257,8 +349,8 @@ func ParseAnnotationValue(annotation string) []string {
 
 // ParseKeyValue splits a "key=value" string
 func ParseKeyValue(part string) (key, value string, hasValue bool) {
-	if idx := strings.Index(part, "="); idx >= 0 {
-		return part[:idx], part[idx+1:], true
+	if key, value, ok := strings.Cut(part, "="); ok {
+		return key, value, true
 	}
 	return part, "", false
 }
