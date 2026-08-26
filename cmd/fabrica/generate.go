@@ -455,6 +455,8 @@ func detectStorageType() string {
 			return "ent"
 		case "file":
 			return "file"
+		case "custom":
+			return "custom"
 		}
 	}
 
@@ -637,7 +639,7 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\t}\n")
 		}
 
-		if storage {
+		if storage && storageType != "custom" {
 			// Generate Ent schemas first if using Ent storage
 			generationCalls.WriteString("\t// Generate Ent schemas if using Ent storage\n")
 			generationCalls.WriteString("\tif err := gen.GenerateEntSchemas(); err != nil {\n")
@@ -687,7 +689,7 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 		generationCalls.WriteString("\t}\n")
 
 		// Generate export/import commands only when regenerating Ent storage (v0.4.0+)
-		if storage {
+		if storage && storageType != "custom" {
 			generationCalls.WriteString("\tif gen.StorageType == \"ent\" {\n")
 			generationCalls.WriteString("\t\tif err := gen.GenerateExportCommand(); err != nil {\n")
 			generationCalls.WriteString("\t\t\tlog.Fatalf(\"Failed to generate export command: %v\", err)\n")

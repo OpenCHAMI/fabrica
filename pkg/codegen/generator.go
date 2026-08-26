@@ -131,7 +131,7 @@ type GeneratorConfig struct {
 	MetricsEnabled bool
 
 	// Storage configuration
-	StorageType string // file, ent
+	StorageType string // file, ent, custom
 	DBDriver    string // postgres, mysql, sqlite
 
 	// TokenSmith-first Security generation toggles.
@@ -150,7 +150,7 @@ type Generator struct {
 	ModulePath  string
 	Resources   []ResourceMetadata
 	Templates   map[string]*template.Template
-	StorageType string           // "file" or "ent" - type of storage backend to generate
+	StorageType string           // "file", "ent", or "custom" - type of storage backend to generate
 	DBDriver    string           // "postgres", "mysql", "sqlite" - database driver for Ent
 	Verbose     bool             // Enable verbose output showing files being generated
 	Config      *GeneratorConfig // Configuration for generation
@@ -189,7 +189,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 	}
 }
 
-// SetStorageType sets the storage backend type ("file" or "ent")
+// SetStorageType sets the storage backend type ("file", "ent", or "custom")
 func (g *Generator) SetStorageType(storageType string) {
 	g.StorageType = storageType
 }
@@ -779,6 +779,11 @@ func (g *Generator) GenerateAll() error {
 
 // GenerateStorage generates storage operations for server
 func (g *Generator) GenerateStorage() error {
+	if g.StorageType == "custom" {
+		fmt.Printf("📁 Skipping storage layer generation (custom storage)\n")
+		return nil
+	}
+
 	fmt.Printf("📁 Generating storage layer (%s)...\n", g.StorageType)
 	var buf bytes.Buffer
 

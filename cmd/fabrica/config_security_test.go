@@ -31,6 +31,25 @@ func TestValidateConfig_RequiresStorage(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_AcceptsCustomStorage(t *testing.T) {
+	cfg := config.NewDefaultConfig("test", "example.com/test")
+	cfg.Features.Storage.Type = "custom"
+	cfg.Features.Storage.DBDriver = "not-a-real-driver"
+
+	if err := config.ValidateConfig(cfg); err != nil {
+		t.Fatalf("custom storage config rejected: %v", err)
+	}
+}
+
+func TestValidateConfig_RejectsUnknownStorage(t *testing.T) {
+	cfg := config.NewDefaultConfig("test", "example.com/test")
+	cfg.Features.Storage.Type = "oracle"
+
+	if err := config.ValidateConfig(cfg); err == nil {
+		t.Fatalf("expected unknown storage type to be rejected")
+	}
+}
+
 func TestValidateConfig_EventsBusMemoryOnly(t *testing.T) {
 	cfg := config.NewDefaultConfig("test", "example.com/test")
 	cfg.Features.Events.Enabled = true
