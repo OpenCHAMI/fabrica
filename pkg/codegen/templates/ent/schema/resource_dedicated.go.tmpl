@@ -3,16 +3,48 @@
 //
 // SPDX-License-Identifier: MIT
 
+{{- /*
+    Work out which imports this resource actually needs. Emitting the full set
+    unconditionally leaves unused imports on any resource without a hashed
+    field, which does not compile.
+*/ -}}
+{{- $hasHashed := false }}
+{{- $hasBcrypt := false }}
+{{- $hasSHA256 := false }}
+{{- range .SpecFields }}
+{{- $fa := index $.Annotations.Fields .Name }}
+{{- if and $fa $fa.Storage (eq $fa.Storage.Type "hashed") }}
+{{- $hasHashed = true }}
+{{- if $fa.Storage.Hash }}
+{{- if eq (printf "%s" $fa.Storage.Hash.Algorithm) "bcrypt" }}{{ $hasBcrypt = true }}{{ end }}
+{{- if eq (printf "%s" $fa.Storage.Hash.Algorithm) "sha256" }}{{ $hasSHA256 = true }}{{ end }}
+{{- end }}
+{{- end }}
+{{- end }}
 package schema
 
 import (
+	{{- if $hasHashed }}
+	"context"
+	{{- end }}
+	{{- if $hasSHA256 }}
+	"crypto/sha256"
+	"encoding/hex"
+	{{- end }}
+	{{- if $hasBcrypt }}
+	"fmt"
+	{{- end }}
 	"time"
 
 	"entgo.io/ent"
+	{{- if $hasHashed }}
 	"entgo.io/ent/dialect"
+	{{- end }}
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+	{{- if $hasBcrypt }}
 	"golang.org/x/crypto/bcrypt"
+	{{- end }}
 )
 
 // {{.Name}} holds the schema definition for the {{.Name}} entity.
@@ -482,23 +514,30 @@ func ({{.Name}}) Hooks() []ent.Hook {
 		{{- range .SpecFields }}
 		{{- $fieldAnnots := index $.Annotations.Fields .Name }}
 		{{- if and $fieldAnnots $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed") }}
-		// Hash {{.Name}} field with {{$fieldAnnots.Storage.Hash.Algorithm}} on create
+		// Hash {{.Name}} field with {{$fieldAnnots.Storage.Hash.Algorithm}} on create.
+		//
+		// The mutation is matched structurally rather than as *ent.{{$.Name}}Mutation:
+		// that type is generated FROM this package, so naming it here would be a
+		// circular reference. An anonymous interface gets the same typed access
+		// with no import of the generated package.
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
 				if m.Op().Is(ent.OpCreate) {
-					if {{$.Name}}Mut, ok := m.(*ent.{{$.Name}}Mutation); ok {
-						if value, exists := {{$.Name}}Mut.{{.Name}}(); exists {
+					if mut, ok := m.(interface {
+						{{.Name}}() (string, bool)
+						Set{{.Name}}(string)
+					}); ok {
+						if value, exists := mut.{{.Name}}(); exists {
 							{{- if eq $fieldAnnots.Storage.Hash.Algorithm "bcrypt" }}
 							hashed, err := bcrypt.GenerateFromPassword([]byte(value), {{$fieldAnnots.Storage.Hash.Cost}})
 							if err != nil {
 								return nil, fmt.Errorf("hash {{.Name}}: %w", err)
 							}
-							{{$.Name}}Mut.Set{{.Name}}(string(hashed))
+							mut.Set{{.Name}}(string(hashed))
 							{{- else if eq $fieldAnnots.Storage.Hash.Algorithm "sha256" }}
 							hasher := sha256.New()
 							hasher.Write([]byte(value))
-							hashed := hex.EncodeToString(hasher.Sum(nil))
-							{{$.Name}}Mut.Set{{.Name}}(hashed)
+							mut.Set{{.Name}}(hex.EncodeToString(hasher.Sum(nil)))
 							{{- end }}
 						}
 					}
