@@ -100,15 +100,15 @@ Use annotations in code generation:
 
 Multi-column indexes (dedicated storage only):
 
-	+fabrica:index:fields=a,b                      - Composite B-tree index
-	+fabrica:index:fields=a,b:unique               - Composite unique index
-	+fabrica:index:fields=a,b:name=idx_a_b         - Explicit index name
-	+fabrica:index:fields=a,b:type=gin             - Index type (btree default)
+	+fabrica:index:fields=Owner,Name                      - Composite B-tree index
+	+fabrica:index:fields=Owner,Name:unique               - Composite unique index
+	+fabrica:index:fields=Owner,Name:name=idx_owner_name  - Explicit index name
+	+fabrica:index:fields=Owner,Name:type=gin             - Index type (btree default)
 
 Migration safety:
 
 	+fabrica:migration=unrestricted   - Any migration permitted (default)
-	+fabrica:migration=additive-only  - Only additive changes permitted
+	+fabrica:migration=additive-only  - Declare additive-only migration intent
 
 # Field-Level Annotations
 
@@ -152,6 +152,10 @@ nullable, notnull, size, relation and +fabrica:index require
 +fabrica:storage=dedicated. Generic storage keeps spec and status in a single
 JSON column, so per-column intent has nowhere to land and is rejected during
 validation.
+
+PR 98 parses and validates this vocabulary. Ent schema emission for composite
+indexes, index modifiers, nullability, size, relations, and migration intent is
+added by follow-up generator changes.
 
 # Validation
 

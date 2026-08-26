@@ -153,7 +153,7 @@ index order. The generator resolves them to column names.
 | Parameter | Required | Default | Meaning |
 |-----------|----------|---------|---------|
 | `fields=` | yes | — | Comma-separated Go field names, in index order |
-| `name=` | no | derived by Ent | Explicit index name (`StorageKey`) |
+| `name=` | no | derived by Ent | Explicit index name carried for later schema emission |
 | `unique` | no | false | Make the index unique |
 | `type=` | no | `btree` | `btree`, `gin`, `gist`, or `hash` |
 
@@ -169,8 +169,9 @@ type Token struct { ... }
 **Validation:**
 - Requires `+fabrica:storage=dedicated`
 - At least two fields
+- Every field must name an existing exported Go `Spec` field
 - No repeated field within one index
-- No duplicate index names on the same resource
+- Explicit names must be portable identifiers and unique on the same resource
 - Index type must be supported by the target database (see [Database Compatibility](#database-compatibility))
 
 Repeat the annotation to declare more than one composite index.
@@ -191,9 +192,9 @@ Constrains what a generated migration may do to this resource's table.
 type Token struct { ... }
 ```
 
-**Status:** the policy is parsed, validated, and emitted into the generated
-schema as a header comment. Enforcement belongs to the migration tooling and is
-not yet wired up — treat it as declared intent, not a guarantee.
+**Status:** the policy is parsed and validated as declared intent. Emitting it
+into generated schemas and enforcing it in migration tooling belong to follow-up
+changes.
 
 ---
 
@@ -208,8 +209,8 @@ All field annotations start with `+fabrica:field:`.
 
 #### `+fabrica:field:nullable` / `+fabrica:field:notnull`
 
-Force the column's nullability, overriding what Fabrica infers from the
-`validate:"required"` struct tag.
+Declare column nullability intent for dedicated storage. Generator support for
+overriding `validate:"required"` inference lands in a follow-up change.
 
 ```go
 // +fabrica:field:nullable
@@ -222,12 +223,14 @@ Owner string `json:"owner"`
 **Validation:**
 - A field may not declare both
 - `notnull` conflicts with a relation using `on-delete=set-null`
+- `on-delete=set-null` requires an explicit `nullable`
 
 ---
 
 #### `+fabrica:field:size=<n>`
 
-Cap the stored width of a string column. Emits Ent's `MaxLen(n)`.
+Cap the stored width of a string column. Ent `MaxLen(n)` emission lands in a
+follow-up change.
 
 ```go
 // +fabrica:field:size=253
@@ -236,6 +239,7 @@ Owner string `json:"owner"`
 
 **Validation:**
 - `n` must be 1-65535
+- the annotated Go field must be `string` or `*string`
 
 **Note:** has no effect on `storage=hashed` fields, whose column width is
 already fixed by the hash algorithm's `SchemaType`.
@@ -388,7 +392,7 @@ Creates a database index on the field for faster queries.
 | Modifier | Meaning |
 |----------|---------|
 | `unique` | Make the index unique |
-| `name=`  | Explicit index name (Ent `StorageKey`) |
+| `name=`  | Explicit index name for later Ent `StorageKey` emission |
 
 **Examples:**
 ```go
@@ -448,6 +452,9 @@ type ResourceAnnotations struct {
     IsResource     bool                          // Marked with +fabrica:resource
     StorageMode    StorageMode                   // generic or dedicated
     Fields         map[string]*FieldAnnotations  // Field name -> annotations
+    SpecFields     map[string]bool               // All parsed Spec field names
+    Indexes        []*CompositeIndex             // Resource-level indexes
+    Migration      MigrationPolicy               // Migration safety intent
     RawAnnotations []string                      // Original annotation lines
 }
 ```
@@ -461,12 +468,17 @@ Container for all annotations on a single field.
 ```go
 type FieldAnnotations struct {
     FieldName      string          // Go field name
+    FieldType      string          // Parsed Go type syntax, when available
     Storage        *StorageConfig  // Storage transformation (hashed, encrypted)
     Sensitive      bool            // Exclude from logs
     Immutable      bool            // Prevent updates
     Index          *IndexConfig    // Database index
     Default        string          // Database default value
     Unique         bool            // Unique constraint
+    Nullable       bool            // Nullable column intent
+    NotNull        bool            // Not-null column intent
+    Size           int             // String width cap
+    Relation       *RelationConfig // Foreign-key intent
     RawAnnotations []string        // Original annotation lines
 }
 ```
@@ -777,18 +789,18 @@ type SessionSpec struct {
 }
 ```
 
-This emits, in the dedicated Ent schema:
+This records and validates the dedicated-storage intent for later schema
+generation:
 
-- `MaxLen(36)` + `NotEmpty()` on `owner_id`, `MaxLen(1024)` + `Optional()` on `user_agent`
-- a B-tree index on `created_at`
-- `index.Fields("owner_id", "created_at").StorageKey("idx_session_owner_created")`
-- `index.Fields("owner_id", "device_id").Unique()`
-- a sha256 hashing hook for `token`
-- an additive-only migration policy comment in the file header
+- `OwnerID` and `UserAgent` string sizes are range-checked.
+- composite indexes resolve `OwnerID`, `CreatedAt`, and `DeviceID` against the `Spec` fields.
+- `idx_session_owner_created` is checked as a portable index name.
+- `token` is checked as a string field using supported SHA-256 hashing intent.
+- `additive-only` is checked as a supported migration policy.
 
 The `relation` on `OwnerID` is validated — `on-delete=cascade` is consistent
-with `notnull` — but does not yet emit an Ent edge. See
-[Future Enhancements](#future-enhancements-phase-5).
+with `notnull` — but does not yet emit an Ent edge. Schema emission for these
+new annotations lands in follow-up stack layers.
 
 ---
 
@@ -904,7 +916,8 @@ func ({{ .Name }}) Fields() []ent.Field {
 | Composite index storage | Requires dedicated storage | "composite indexes require +fabrica:storage=dedicated" |
 | Composite index width | Must cover ≥2 columns | "covers a single column; use +fabrica:field:index on that field instead" |
 | Composite index columns | No repeats within one index | "lists field X more than once" |
-| Composite index names | Unique per resource | "duplicate composite index name" |
+| Composite index names | Portable identifier, unique per resource | "invalid index name" / "duplicate index name" |
+| Composite index fields | Existing exported Go `Spec` fields | "unknown Spec field" / "not a valid Go field name" |
 
 ---
 
@@ -920,10 +933,11 @@ func ({{ .Name }}) Fields() []ent.Field {
 | `index` modifiers | Modifier name | unique, name= | "unknown index modifier" |
 | `immutable` + `default` | Conflicting | N/A | "immutable fields should not have database defaults" |
 | `nullable` + `notnull` | Conflicting | N/A | "cannot be both nullable and notnull" |
-| `size` | Column width | 1-65535 | "value N out of range [1, 65535]" |
+| `size` | Column width | 1-65535, string fields only | "value N out of range [1, 65535]" / "size requires a string field" |
 | `relation` kind | Relation kind | belongs-to, has-many | "unknown relation kind" |
 | `relation` target | Go type name | identifier | "is not a valid Go type name" |
 | `relation:on-delete` | Action | restrict, cascade, set-null | "unknown on-delete action" |
+| `on-delete=set-null` without `nullable` | Missing nullability | N/A | "requires +fabrica:field:nullable" |
 | `on-delete=set-null` + `notnull` | Conflicting | N/A | "conflicts with +fabrica:field:notnull" |
 | `on-delete=set-null` + `immutable` | Conflicting | N/A | "conflicts with +fabrica:field:immutable" |
 | `nullable`/`notnull`/`size`/`relation` | Requires dedicated storage | N/A | "X requires +fabrica:storage=dedicated" |
@@ -1134,8 +1148,12 @@ one spelling per capability rather than two competing ones.
 
 - **Relation emission.** `+fabrica:field:relation` parses and validates, but does
   not yet generate Ent edges. See the annotation's Status note.
-- **Migration enforcement.** `+fabrica:migration=additive-only` is emitted as a
-  schema comment; the migration tooling does not yet reject non-additive changes.
+- **Schema emission for the new vocabulary.** PR 98 parses and validates
+  composite indexes, index modifiers, nullability, size, relations, and
+  migration intent. Ent emission for those annotations belongs to follow-up
+  stack layers.
+- **Migration enforcement.** `+fabrica:migration=additive-only` is recorded as
+  intent; the migration tooling does not yet reject non-additive changes.
 - **Precision and scale.** No `precision=`/`scale=` annotation exists: the
   dedicated template has no float or decimal branch, so there is nothing to emit
   onto. `size=` covers the string case.

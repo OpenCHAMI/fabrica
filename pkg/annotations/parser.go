@@ -5,10 +5,13 @@
 package annotations
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
+	"maps"
 	"strings"
 )
 
@@ -23,6 +26,10 @@ import (
 //	typeSpec := genDecl.Specs[0].(*ast.TypeSpec)
 //	annotations, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
 func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup) (*ResourceAnnotations, error) {
+	if typeSpec == nil {
+		return nil, &ParseError{Message: "typeSpec must not be nil"}
+	}
+
 	result := NewResourceAnnotations()
 
 	// Parse type-level annotations from doc comments
@@ -59,11 +66,14 @@ func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGr
 			continue
 		}
 
-		fieldName := field.Names[0].Name
+		for _, name := range field.Names {
+			result.SpecFields[name.Name] = true
+		}
 
 		// Parse annotations from field comments
 		if field.Doc != nil {
-			fieldAnnotations := NewFieldAnnotations(fieldName)
+			fieldAnnotations := NewFieldAnnotations(field.Names[0].Name)
+			fieldAnnotations.FieldType = formatExpr(field.Type)
 
 			for _, comment := range field.Doc.List {
 				line := CleanAnnotationLine(comment.Text)
@@ -80,7 +90,9 @@ func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGr
 
 			// Only store if field has annotations
 			if len(fieldAnnotations.RawAnnotations) > 0 {
-				result.Fields[fieldName] = fieldAnnotations
+				for _, name := range field.Names {
+					result.Fields[name.Name] = cloneFieldAnnotations(fieldAnnotations, name.Name)
+				}
 			}
 		}
 	}
@@ -97,6 +109,9 @@ func parseResourceLevelAnnotation(result *ResourceAnnotations, annotation string
 
 	switch parts[0] {
 	case "resource":
+		if len(parts) != 1 {
+			return &ParseError{Line: annotation, Message: "resource annotation does not accept parameters"}
+		}
 		result.IsResource = true
 		return nil
 
@@ -107,10 +122,13 @@ func parseResourceLevelAnnotation(result *ResourceAnnotations, annotation string
 		// Try to parse as key=value format (e.g., storage=dedicated)
 		key, value, hasValue := ParseKeyValue(parts[0])
 		if !hasValue {
-			return nil
+			return &ParseError{Line: annotation, Message: fmt.Sprintf("unknown resource annotation %q", parts[0])}
 		}
 
 		if key == "migration" {
+			if len(parts) != 1 {
+				return &ParseError{Line: annotation, Message: "migration annotation does not accept trailing parameters"}
+			}
 			switch MigrationPolicy(value) {
 			case MigrationPolicyUnrestricted, MigrationPolicyAdditiveOnly:
 				result.Migration = MigrationPolicy(value)
@@ -124,6 +142,9 @@ func parseResourceLevelAnnotation(result *ResourceAnnotations, annotation string
 		}
 
 		if key == "storage" {
+			if len(parts) != 1 {
+				return &ParseError{Line: annotation, Message: "storage annotation does not accept trailing parameters"}
+			}
 			switch StorageMode(value) {
 			case StorageModeGeneric:
 				result.StorageMode = StorageModeGeneric
@@ -138,8 +159,23 @@ func parseResourceLevelAnnotation(result *ResourceAnnotations, annotation string
 			return nil
 		}
 
-		return nil
+		return &ParseError{Line: annotation, Message: fmt.Sprintf("unknown resource annotation %q", key)}
 	}
+}
+
+func cloneFieldAnnotations(source *FieldAnnotations, fieldName string) *FieldAnnotations {
+	clone := *source
+	clone.FieldName = fieldName
+	clone.RawAnnotations = append([]string(nil), source.RawAnnotations...)
+	return &clone
+}
+
+func formatExpr(expr ast.Expr) string {
+	var buf bytes.Buffer
+	if err := format.Node(&buf, token.NewFileSet(), expr); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 // parseFieldLevelAnnotation processes a single field-level annotation
@@ -168,22 +204,37 @@ func parseFieldLevelAnnotation(result *FieldAnnotations, annotation string) erro
 
 	switch {
 	case directive == "sensitive":
+		if len(parts) != 2 {
+			return fmt.Errorf("sensitive annotation does not accept parameters")
+		}
 		result.Sensitive = true
 		return nil
 
 	case directive == "immutable":
+		if len(parts) != 2 {
+			return fmt.Errorf("immutable annotation does not accept parameters")
+		}
 		result.Immutable = true
 		return nil
 
 	case directive == "unique":
+		if len(parts) != 2 {
+			return fmt.Errorf("unique annotation does not accept parameters")
+		}
 		result.Unique = true
 		return nil
 
 	case directive == "nullable":
+		if len(parts) != 2 {
+			return fmt.Errorf("nullable annotation does not accept parameters")
+		}
 		result.Nullable = true
 		return nil
 
 	case directive == "notnull":
+		if len(parts) != 2 {
+			return fmt.Errorf("notnull annotation does not accept parameters")
+		}
 		result.NotNull = true
 		return nil
 
@@ -203,8 +254,7 @@ func parseFieldLevelAnnotation(result *FieldAnnotations, annotation string) erro
 		return parseDefaultAnnotation(result, parts[1:], annotation)
 
 	default:
-		// Unknown field annotation - ignore for forward compatibility
-		return nil
+		return fmt.Errorf("unknown field annotation %q", directive)
 	}
 }
 
@@ -260,19 +310,22 @@ func parseHashedStorage(config *StorageConfig, parts []string, _ string) error {
 
 		// Parse cost parameter if provided
 		if len(parts) > 1 {
+			seenCost := false
 			for _, param := range parts[1:] {
 				key, value, hasValue := ParseKeyValue(param)
-				if !hasValue {
-					continue
+				if !hasValue || key != "cost" {
+					return fmt.Errorf("unknown bcrypt parameter %q, expected 'cost=<n>'", param)
 				}
 
-				if key == "cost" {
-					cost, err := ParseIntValue(value, 4, 31)
-					if err != nil {
-						return fmt.Errorf("bcrypt cost: %w", err)
-					}
-					config.Hash.Cost = cost
+				if seenCost {
+					return fmt.Errorf("duplicate bcrypt cost parameter")
 				}
+				seenCost = true
+				cost, err := ParseIntValue(value, 4, 31)
+				if err != nil {
+					return fmt.Errorf("bcrypt cost: %w", err)
+				}
+				config.Hash.Cost = cost
 			}
 		}
 		return nil
@@ -282,25 +335,30 @@ func parseHashedStorage(config *StorageConfig, parts []string, _ string) error {
 		config.Hash.Cost = 65536 // 64MB memory
 
 		if len(parts) > 1 {
+			seenMemory := false
 			for _, param := range parts[1:] {
 				key, value, hasValue := ParseKeyValue(param)
-				if !hasValue {
-					continue
+				if !hasValue || key != "memory" {
+					return fmt.Errorf("unknown argon2 parameter %q, expected 'memory=<kb>'", param)
 				}
 
-				if key == "memory" {
-					memory, err := ParseIntValue(value, 1024, 1048576)
-					if err != nil {
-						return fmt.Errorf("argon2 memory: %w", err)
-					}
-					config.Hash.Cost = memory
+				if seenMemory {
+					return fmt.Errorf("duplicate argon2 memory parameter")
 				}
+				seenMemory = true
+				memory, err := ParseIntValue(value, 1024, 1048576)
+				if err != nil {
+					return fmt.Errorf("argon2 memory: %w", err)
+				}
+				config.Hash.Cost = memory
 			}
 		}
 		return nil
 
 	case HashAlgorithmSHA256:
-		// SHA256 has no cost parameter
+		if len(parts) > 1 {
+			return fmt.Errorf("sha256 does not accept parameters")
+		}
 		return nil
 
 	default:
@@ -323,15 +381,18 @@ func parseEncryptedStorage(config *StorageConfig, parts []string, _ string) erro
 
 	// Parse key source if provided
 	if len(parts) > 1 {
+		seenKey := false
 		for _, param := range parts[1:] {
 			key, value, hasValue := ParseKeyValue(param)
-			if !hasValue {
-				continue
+			if !hasValue || key != "key" {
+				return fmt.Errorf("unknown encryption parameter %q, expected 'key=<source>'", param)
 			}
 
-			if key == "key" {
-				config.Encryption.KeySource = value
+			if seenKey {
+				return fmt.Errorf("duplicate encryption key parameter")
 			}
+			seenKey = true
+			config.Encryption.KeySource = value
 		}
 	}
 
@@ -367,12 +428,25 @@ func parseIndexAnnotation(result *FieldAnnotations, parts []string, _ string) er
 	}
 
 	// Trailing modifiers: unique and name=<identifier>
+	seenUnique := false
+	seenName := false
 	for _, param := range parts[1:] {
 		pKey, pValue, pHasValue := ParseKeyValue(param)
 		switch {
 		case pKey == "unique" && !pHasValue:
+			if seenUnique {
+				return fmt.Errorf("duplicate index unique modifier")
+			}
+			seenUnique = true
 			result.Index.Unique = true
 		case pKey == "name" && pHasValue:
+			if seenName {
+				return fmt.Errorf("duplicate index name modifier")
+			}
+			if !isPortableIdentifier(pValue) {
+				return fmt.Errorf("invalid index name %q", pValue)
+			}
+			seenName = true
 			result.Index.Name = pValue
 		default:
 			return fmt.Errorf("unknown index modifier %q, expected 'unique' or 'name=<identifier>'", param)
@@ -387,24 +461,53 @@ func parseIndexAnnotation(result *FieldAnnotations, parts []string, _ string) er
 // Format: +fabrica:index:fields=<f1,f2>[:name=<identifier>][:unique][:type=<type>]
 func parseCompositeIndexAnnotation(result *ResourceAnnotations, parts []string, annotation string) error {
 	idx := &CompositeIndex{Type: IndexTypeBTree}
+	seenFields := false
+	seenName := false
+	seenUnique := false
+	seenType := false
 
 	for _, param := range parts {
 		key, value, hasValue := ParseKeyValue(param)
 		switch {
 		case key == "fields" && hasValue:
-			for _, f := range strings.Split(value, ",") {
+			if seenFields {
+				return &ParseError{Line: annotation, Message: "duplicate composite index fields parameter"}
+			}
+			seenFields = true
+			for f := range strings.SplitSeq(value, ",") {
 				if f = strings.TrimSpace(f); f != "" {
+					if !isExportedGoIdentifier(f) {
+						return &ParseError{
+							Line:    annotation,
+							Message: fmt.Sprintf("composite index field %q is not a valid Go field name", f),
+						}
+					}
 					idx.Fields = append(idx.Fields, f)
 				}
 			}
 
 		case key == "name" && hasValue:
+			if seenName {
+				return &ParseError{Line: annotation, Message: "duplicate composite index name parameter"}
+			}
+			if !isPortableIdentifier(value) {
+				return &ParseError{Line: annotation, Message: fmt.Sprintf("invalid index name %q", value)}
+			}
+			seenName = true
 			idx.Name = value
 
 		case key == "unique" && !hasValue:
+			if seenUnique {
+				return &ParseError{Line: annotation, Message: "duplicate composite index unique parameter"}
+			}
+			seenUnique = true
 			idx.Unique = true
 
 		case key == "type" && hasValue:
+			if seenType {
+				return &ParseError{Line: annotation, Message: "duplicate composite index type parameter"}
+			}
+			seenType = true
 			switch IndexType(value) {
 			case IndexTypeBTree, IndexTypeGIN, IndexTypeGiST, IndexTypeHash:
 				idx.Type = IndexType(value)
@@ -443,6 +546,9 @@ func parseSizeAnnotation(result *FieldAnnotations, parts []string, _ string) err
 	key, value, hasValue := ParseKeyValue(parts[0])
 	if !hasValue || key != "size" {
 		return fmt.Errorf("expected format: size=<n>")
+	}
+	if len(parts) != 1 {
+		return fmt.Errorf("size annotation does not accept trailing parameters")
 	}
 
 	size, err := ParseIntValue(value, 1, 65535)
@@ -516,6 +622,12 @@ func parseDefaultAnnotation(result *FieldAnnotations, parts []string, _ string) 
 	if !hasValue || key != "default" {
 		return fmt.Errorf("expected format: default=<value>")
 	}
+	if len(parts) != 1 {
+		return fmt.Errorf("default annotation does not accept trailing parameters")
+	}
+	if value == "" {
+		return fmt.Errorf("default annotation requires a non-empty value")
+	}
 
 	result.Default = value
 	return nil
@@ -550,6 +662,7 @@ func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnota
 	var (
 		resourceAnnots *ResourceAnnotations
 		specFields     map[string]*FieldAnnotations
+		specFieldNames map[string]bool
 	)
 
 	for _, decl := range file.Decls {
@@ -580,9 +693,11 @@ func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnota
 				if specFields == nil {
 					specFields = make(map[string]*FieldAnnotations)
 				}
-				for fieldName, fieldAnnots := range annots.Fields {
-					specFields[fieldName] = fieldAnnots
+				if specFieldNames == nil {
+					specFieldNames = make(map[string]bool)
 				}
+				maps.Copy(specFields, annots.Fields)
+				maps.Copy(specFieldNames, annots.SpecFields)
 			}
 		}
 	}
@@ -596,9 +711,8 @@ func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnota
 		resourceAnnots = NewResourceAnnotations()
 	}
 
-	for fieldName, fieldAnnots := range specFields {
-		resourceAnnots.Fields[fieldName] = fieldAnnots
-	}
+	maps.Copy(resourceAnnots.Fields, specFields)
+	maps.Copy(resourceAnnots.SpecFields, specFieldNames)
 
 	return resourceAnnots, nil
 }
@@ -612,9 +726,8 @@ func mergeSpecFields(byType map[string]*ResourceAnnotations) {
 		if !ok {
 			continue
 		}
-		for fieldName, fieldAnnots := range spec.Fields {
-			annots.Fields[fieldName] = fieldAnnots
-		}
+		maps.Copy(annots.Fields, spec.Fields)
+		maps.Copy(annots.SpecFields, spec.SpecFields)
 	}
 }
 

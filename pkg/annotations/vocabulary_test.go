@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"strings"
 	"testing"
 )
@@ -27,6 +28,7 @@ func parseSource(t *testing.T, src, typeName string) (*ResourceAnnotations, erro
 	var result *ResourceAnnotations
 	specTypeName := typeName + "Spec"
 	specFields := make(map[string]*FieldAnnotations)
+	specFieldNames := make(map[string]bool)
 
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
@@ -52,9 +54,8 @@ func parseSource(t *testing.T, src, typeName string) (*ResourceAnnotations, erro
 				if err != nil {
 					return nil, err
 				}
-				for name, fieldAnnots := range annots.Fields {
-					specFields[name] = fieldAnnots
-				}
+				maps.Copy(specFields, annots.Fields)
+				maps.Copy(specFieldNames, annots.SpecFields)
 			}
 		}
 	}
@@ -63,9 +64,8 @@ func parseSource(t *testing.T, src, typeName string) (*ResourceAnnotations, erro
 		t.Fatalf("type %q not found in source", typeName)
 	}
 
-	for name, fieldAnnots := range specFields {
-		result.Fields[name] = fieldAnnots
-	}
+	maps.Copy(result.Fields, specFields)
+	maps.Copy(result.SpecFields, specFieldNames)
 
 	return result, nil
 }
@@ -101,28 +101,28 @@ func TestParseCompositeIndex(t *testing.T) {
 	}{
 		{
 			name:       "minimal",
-			annotation: "// +fabrica:index:fields=value,owner",
-			wantFields: []string{"value", "owner"},
+			annotation: "// +fabrica:index:fields=Value,Owner",
+			wantFields: []string{"Value", "Owner"},
 			wantType:   IndexTypeBTree,
 		},
 		{
 			name:       "named unique",
-			annotation: "// +fabrica:index:fields=value,owner:name=idx_value_owner:unique",
-			wantFields: []string{"value", "owner"},
+			annotation: "// +fabrica:index:fields=Value,Owner:name=idx_value_owner:unique",
+			wantFields: []string{"Value", "Owner"},
 			wantName:   "idx_value_owner",
 			wantUnique: true,
 			wantType:   IndexTypeBTree,
 		},
 		{
 			name:       "explicit type",
-			annotation: "// +fabrica:index:fields=value,owner:type=gin",
-			wantFields: []string{"value", "owner"},
+			annotation: "// +fabrica:index:fields=Value,Owner:type=gin",
+			wantFields: []string{"Value", "Owner"},
 			wantType:   IndexTypeGIN,
 		},
 		{
 			name:       "whitespace in field list is trimmed",
-			annotation: "// +fabrica:index:fields=value, owner",
-			wantFields: []string{"value", "owner"},
+			annotation: "// +fabrica:index:fields=Value, Owner",
+			wantFields: []string{"Value", "Owner"},
 			wantType:   IndexTypeBTree,
 		},
 	}
@@ -161,8 +161,10 @@ func TestParseCompositeIndexErrors(t *testing.T) {
 		wantErr    string
 	}{
 		{"no fields", "// +fabrica:index:name=idx_foo", "requires fields="},
-		{"bad type", "// +fabrica:index:fields=a,b:type=bogus", "unknown index type"},
-		{"unknown param", "// +fabrica:index:fields=a,b:sorted", "unknown composite index parameter"},
+		{"bad type", "// +fabrica:index:fields=Value,Owner:type=bogus", "unknown index type"},
+		{"unknown param", "// +fabrica:index:fields=Value,Owner:sorted", "unknown composite index parameter"},
+		{"invalid field name", "// +fabrica:index:fields=owner_id,CreatedAt", "not a valid Go field name"},
+		{"invalid index name", "// +fabrica:index:fields=Value,Owner:name=bad-name", "invalid index name"},
 	}
 
 	for _, tt := range tests {
@@ -178,6 +180,88 @@ func TestParseCompositeIndexErrors(t *testing.T) {
 	}
 }
 
+func TestParseRejectsUnknownAndTrailingAnnotations(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		annotation string
+		wantErr    string
+	}{
+		{"unknown resource directive", "// +fabrica:migraton=additive-only", "unknown resource annotation"},
+		{"resource trailing parameter", "// +fabrica:resource:extra", "does not accept parameters"},
+		{"storage trailing parameter", "// +fabrica:storage=dedicated:extra", "does not accept trailing parameters"},
+		{"migration trailing parameter", "// +fabrica:migration=additive-only:extra", "does not accept trailing parameters"},
+		{"unknown field directive", "// +fabrica:field:notnul", "unknown field annotation"},
+		{"nullable trailing parameter", "// +fabrica:field:nullable:junk", "does not accept parameters"},
+		{"size trailing parameter", "// +fabrica:field:size=10:junk", "does not accept trailing parameters"},
+		{"default empty value", "// +fabrica:field:default=", "requires a non-empty value"},
+		{"default trailing parameter", "// +fabrica:field:default=pending:junk", "does not accept trailing parameters"},
+		{"superseded cascade directive", "// +fabrica:field:cascade=delete", "unknown field annotation"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var src string
+			if strings.Contains(tt.annotation, "+fabrica:field:") {
+				src = dedicatedSrc("", tt.annotation)
+			} else {
+				src = dedicatedSrc(tt.annotation, "")
+			}
+
+			_, err := parseSource(t, src, "Token")
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected an error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestParseRejectsUnknownStorageParameters(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		annotation string
+		wantErr    string
+	}{
+		{"bcrypt unknown parameter", "// +fabrica:field:storage=hashed:bcrypt:memory=1024", "unknown bcrypt parameter"},
+		{"bcrypt duplicate cost", "// +fabrica:field:storage=hashed:bcrypt:cost=10:cost=11", "duplicate bcrypt cost"},
+		{"argon2 unknown parameter", "// +fabrica:field:storage=hashed:argon2:cost=12", "unknown argon2 parameter"},
+		{"sha256 parameter", "// +fabrica:field:storage=hashed:sha256:cost=12", "sha256 does not accept parameters"},
+		{"encryption unknown parameter", "// +fabrica:field:storage=encrypted:aes256:keys=vault", "unknown encryption parameter"},
+		{"encryption duplicate key", "// +fabrica:field:storage=encrypted:aes256:key=env:key=vault", "duplicate encryption key"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseSource(t, dedicatedSrc("", tt.annotation), "Token")
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected an error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestGroupedFieldAnnotationsApplyToEachName(t *testing.T) {
+	src := `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type Token struct {
+	Spec TokenSpec
+}
+
+type TokenSpec struct {
+	// +fabrica:field:size=64
+	OwnerID, DeviceID string ` + "`json:\"owner_id\"`" + `
+}
+`
+
+	annots, err := parseSource(t, src, "Token")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	for _, name := range []string{"OwnerID", "DeviceID"} {
+		field := annots.Fields[name]
+		if field == nil || field.Size != 64 || field.FieldType != "string" {
+			t.Fatalf("%s annotations = %+v", name, field)
+		}
+	}
+}
+
 func TestValidateCompositeIndex(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -188,7 +272,7 @@ func TestValidateCompositeIndex(t *testing.T) {
 			name: "single column rejected with guidance",
 			build: func() *ResourceAnnotations {
 				a := dedicatedResource()
-				a.Indexes = []*CompositeIndex{{Fields: []string{"value"}, Type: IndexTypeBTree}}
+				a.Indexes = []*CompositeIndex{{Fields: []string{"Value"}, Type: IndexTypeBTree}}
 				return a
 			},
 			wantErr: "use +fabrica:field:index",
@@ -197,7 +281,7 @@ func TestValidateCompositeIndex(t *testing.T) {
 			name: "duplicate column rejected",
 			build: func() *ResourceAnnotations {
 				a := dedicatedResource()
-				a.Indexes = []*CompositeIndex{{Fields: []string{"value", "value"}, Type: IndexTypeBTree}}
+				a.Indexes = []*CompositeIndex{{Fields: []string{"Value", "Value"}, Type: IndexTypeBTree}}
 				return a
 			},
 			wantErr: "more than once",
@@ -207,12 +291,12 @@ func TestValidateCompositeIndex(t *testing.T) {
 			build: func() *ResourceAnnotations {
 				a := dedicatedResource()
 				a.Indexes = []*CompositeIndex{
-					{Fields: []string{"value", "owner"}, Name: "idx_a", Type: IndexTypeBTree},
-					{Fields: []string{"owner", "value"}, Name: "idx_a", Type: IndexTypeBTree},
+					{Fields: []string{"Value", "Owner"}, Name: "idx_a", Type: IndexTypeBTree},
+					{Fields: []string{"Owner", "Value"}, Name: "idx_a", Type: IndexTypeBTree},
 				}
 				return a
 			},
-			wantErr: "duplicate composite index name",
+			wantErr: "duplicate index name",
 		},
 		{
 			name: "generic storage rejected",
@@ -220,7 +304,7 @@ func TestValidateCompositeIndex(t *testing.T) {
 				a := NewResourceAnnotations()
 				a.IsResource = true
 				a.StorageMode = StorageModeGeneric
-				a.Indexes = []*CompositeIndex{{Fields: []string{"value", "owner"}, Type: IndexTypeBTree}}
+				a.Indexes = []*CompositeIndex{{Fields: []string{"Value", "Owner"}, Type: IndexTypeBTree}}
 				return a
 			},
 			wantErr: "require +fabrica:storage=dedicated",
@@ -229,7 +313,7 @@ func TestValidateCompositeIndex(t *testing.T) {
 			name: "valid composite index accepted",
 			build: func() *ResourceAnnotations {
 				a := dedicatedResource()
-				a.Indexes = []*CompositeIndex{{Fields: []string{"value", "owner"}, Type: IndexTypeBTree}}
+				a.Indexes = []*CompositeIndex{{Fields: []string{"Value", "Owner"}, Type: IndexTypeBTree}}
 				return a
 			},
 		},
@@ -254,6 +338,97 @@ func TestValidateCompositeIndex(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsMalformedCompositeIndexStructs(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		indexes []*CompositeIndex
+		wantErr string
+	}{
+		{
+			name:    "nil composite index",
+			indexes: []*CompositeIndex{nil},
+			wantErr: "must not be nil",
+		},
+		{
+			name:    "unknown composite index type",
+			indexes: []*CompositeIndex{{Fields: []string{"Value", "Owner"}, Type: IndexType("bogus")}},
+			wantErr: "unknown index type",
+		},
+		{
+			name:    "invalid composite field name",
+			indexes: []*CompositeIndex{{Fields: []string{"owner_id", "CreatedAt"}, Type: IndexTypeBTree}},
+			wantErr: "not a valid Go field name",
+		},
+		{
+			name:    "unknown composite field name",
+			indexes: []*CompositeIndex{{Fields: []string{"Value", "Missing"}, Type: IndexTypeBTree}},
+			wantErr: "unknown Spec field",
+		},
+		{
+			name:    "invalid composite index name",
+			indexes: []*CompositeIndex{{Fields: []string{"Value", "Owner"}, Name: "bad-name", Type: IndexTypeBTree}},
+			wantErr: "invalid index name",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := dedicatedResource()
+			a.Indexes = tt.indexes
+
+			err := Validate(a)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected an error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsDuplicateIndexNamesAcrossCompositeAndFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func() *ResourceAnnotations
+	}{
+		{
+			name: "duplicate field index names",
+			build: func() *ResourceAnnotations {
+				a := dedicatedResource()
+				a.Fields["Value"].Index = &IndexConfig{Type: IndexTypeBTree, Name: "idx_token_lookup"}
+				owner := NewFieldAnnotations("Owner")
+				owner.Index = &IndexConfig{Type: IndexTypeBTree, Name: "idx_token_lookup"}
+				a.Fields["Owner"] = owner
+				return a
+			},
+		},
+		{
+			name: "field index name duplicates composite index name",
+			build: func() *ResourceAnnotations {
+				a := dedicatedResource()
+				a.Fields["Value"].Index = &IndexConfig{Type: IndexTypeBTree, Name: "idx_token_lookup"}
+				a.Indexes = []*CompositeIndex{{Fields: []string{"Value", "Owner"}, Name: "idx_token_lookup", Type: IndexTypeBTree}}
+				return a
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Validate(tt.build())
+			if err == nil || !strings.Contains(err.Error(), "duplicate index name") {
+				t.Fatalf("expected a duplicate index name error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsUnknownStorageMode(t *testing.T) {
+	a := dedicatedResource()
+	a.StorageMode = StorageMode("bogus")
+
+	err := Validate(a)
+	if err == nil || !strings.Contains(err.Error(), "unknown storage mode") {
+		t.Fatalf("expected an unknown storage mode error, got %v", err)
+	}
+}
+
 // dedicatedResource returns a dedicated-mode resource with one annotated field,
 // which satisfies validateDedicatedStorage.
 func dedicatedResource() *ResourceAnnotations {
@@ -261,6 +436,8 @@ func dedicatedResource() *ResourceAnnotations {
 	a.IsResource = true
 	a.StorageMode = StorageModeDedicated
 	a.Fields["Value"] = NewFieldAnnotations("Value")
+	a.SpecFields["Value"] = true
+	a.SpecFields["Owner"] = true
 	return a
 }
 
@@ -442,6 +619,23 @@ func TestRelationSetNullConflicts(t *testing.T) {
 	}
 }
 
+func TestRelationSetNullRequiresNullable(t *testing.T) {
+	a := dedicatedResource()
+	f := NewFieldAnnotations("Value")
+	f.Relation = &RelationConfig{Kind: RelationBelongsTo, Target: "User", OnDelete: OnDeleteSetNull}
+	a.Fields["Value"] = f
+
+	err := Validate(a)
+	if err == nil || !strings.Contains(err.Error(), "requires +fabrica:field:nullable") {
+		t.Fatalf("expected set-null to require nullable, got %v", err)
+	}
+
+	f.Nullable = true
+	if err := Validate(a); err != nil {
+		t.Fatalf("expected nullable set-null relation to validate, got %v", err)
+	}
+}
+
 func TestRelationInvalidTarget(t *testing.T) {
 	a := dedicatedResource()
 	f := NewFieldAnnotations("Value")
@@ -451,6 +645,53 @@ func TestRelationInvalidTarget(t *testing.T) {
 	err := Validate(a)
 	if err == nil || !strings.Contains(err.Error(), "not a valid Go type name") {
 		t.Fatalf("expected an invalid-target error, got %v", err)
+	}
+}
+
+func TestRelationInvalidTargetRejectsKeywordAndUnexportedName(t *testing.T) {
+	for _, target := range []string{"type", "func", "user"} {
+		t.Run(target, func(t *testing.T) {
+			a := dedicatedResource()
+			f := NewFieldAnnotations("Value")
+			f.Relation = &RelationConfig{Kind: RelationBelongsTo, Target: target, OnDelete: OnDeleteRestrict}
+			a.Fields["Value"] = f
+
+			err := Validate(a)
+			if err == nil || !strings.Contains(err.Error(), "not a valid Go type name") {
+				t.Fatalf("expected an invalid-target error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsMalformedRelationStructs(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		relation *RelationConfig
+		wantErr  string
+	}{
+		{
+			name:     "unknown kind",
+			relation: &RelationConfig{Kind: RelationKind("owns"), Target: "User", OnDelete: OnDeleteRestrict},
+			wantErr:  "unknown relation kind",
+		},
+		{
+			name:     "unknown on-delete",
+			relation: &RelationConfig{Kind: RelationBelongsTo, Target: "User", OnDelete: OnDeleteAction("explode")},
+			wantErr:  "unknown on-delete action",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := dedicatedResource()
+			f := NewFieldAnnotations("Value")
+			f.Relation = tt.relation
+			a.Fields["Value"] = f
+
+			err := Validate(a)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected an error containing %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -478,6 +719,16 @@ func TestMigrationPolicyDefaultsToUnrestricted(t *testing.T) {
 
 func TestMigrationPolicyUnknownValue(t *testing.T) {
 	_, err := parseSource(t, dedicatedSrc("// +fabrica:migration=yolo", ""), "Token")
+	if err == nil || !strings.Contains(err.Error(), "unknown migration policy") {
+		t.Fatalf("expected an unknown-policy error, got %v", err)
+	}
+}
+
+func TestValidateRejectsUnknownMigrationPolicy(t *testing.T) {
+	a := dedicatedResource()
+	a.Migration = MigrationPolicy("yolo")
+
+	err := Validate(a)
 	if err == nil || !strings.Contains(err.Error(), "unknown migration policy") {
 		t.Fatalf("expected an unknown-policy error, got %v", err)
 	}
@@ -515,6 +766,98 @@ func TestParseIndexUnknownModifier(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsMalformedFieldAnnotationStructs(t *testing.T) {
+	tests := []struct {
+		name    string
+		apply   func(*ResourceAnnotations)
+		wantErr string
+	}{
+		{
+			name: "nil field annotations",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"] = nil
+			},
+			wantErr: "must not be nil",
+		},
+		{
+			name: "unknown field index type",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].Index = &IndexConfig{Type: IndexType("bogus")}
+			},
+			wantErr: "unknown index type",
+		},
+		{
+			name: "invalid field index name",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].Index = &IndexConfig{Type: IndexTypeBTree, Name: "bad-name"}
+			},
+			wantErr: "invalid index name",
+		},
+		{
+			name: "out-of-range size",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].Size = 65536
+			},
+			wantErr: "field size must be 1-65535",
+		},
+		{
+			name: "size on non-string field",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].FieldType = "int"
+				a.Fields["Value"].Size = 64
+			},
+			wantErr: "size requires a string field",
+		},
+		{
+			name: "hashed storage on non-string field",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].FieldType = "int"
+				a.Fields["Value"].Storage = &StorageConfig{Type: StorageTypeHashed, Hash: &HashConfig{Algorithm: HashAlgorithmBcrypt, Cost: 12}}
+			},
+			wantErr: "hashed storage requires a string field",
+		},
+		{
+			name: "default storage with hash config",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].Storage = &StorageConfig{Type: StorageTypeDefault, Hash: &HashConfig{Algorithm: HashAlgorithmBcrypt, Cost: 12}}
+			},
+			wantErr: "default storage must not include hash or encryption config",
+		},
+		{
+			name: "hashed storage with encryption config",
+			apply: func(a *ResourceAnnotations) {
+				a.Fields["Value"].Storage = &StorageConfig{
+					Type:       StorageTypeHashed,
+					Hash:       &HashConfig{Algorithm: HashAlgorithmBcrypt, Cost: 12},
+					Encryption: &EncryptionConfig{Algorithm: "aes256", KeySource: "env"},
+				}
+			},
+			wantErr: "hashed storage must not include encryption config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := dedicatedResource()
+			tt.apply(a)
+
+			err := Validate(a)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected an error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsNilAnnotations(t *testing.T) {
+	if err := Validate(nil); err == nil || !strings.Contains(err.Error(), "must not be nil") {
+		t.Fatalf("expected Validate(nil) to fail, got %v", err)
+	}
+	if err := ValidateForDatabase(nil, "postgres"); err == nil || !strings.Contains(err.Error(), "must not be nil") {
+		t.Fatalf("expected ValidateForDatabase(nil) to fail, got %v", err)
+	}
+}
+
 // --- Per-database validation -------------------------------------------------
 
 func TestCompositeIndexDatabaseCompatibility(t *testing.T) {
@@ -528,12 +871,13 @@ func TestCompositeIndexDatabaseCompatibility(t *testing.T) {
 		{"gist on mysql rejected", IndexTypeGiST, "mysql", true},
 		{"gin on postgres allowed", IndexTypeGIN, "postgres", false},
 		{"btree on sqlite allowed", IndexTypeBTree, "sqlite3", false},
+		{"unknown driver rejected", IndexTypeBTree, "sqlitee", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := dedicatedResource()
-			a.Indexes = []*CompositeIndex{{Fields: []string{"value", "owner"}, Type: tt.indexType}}
+			a.Indexes = []*CompositeIndex{{Fields: []string{"Value", "Owner"}, Type: tt.indexType}}
 
 			err := ValidateForDatabase(a, tt.driver)
 			if tt.wantErr && err == nil {

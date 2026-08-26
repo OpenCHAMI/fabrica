@@ -6,6 +6,8 @@ package annotations
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
 	"strings"
 )
 
@@ -16,9 +18,21 @@ import (
 //   - Hashed/encrypted fields must be strings
 //   - Conflicting annotations (e.g., immutable + default)
 func Validate(annotations *ResourceAnnotations) error {
+	if annotations == nil {
+		return &ValidationError{Message: "annotations must not be nil"}
+	}
+
 	// If not marked as a resource, no validation needed
 	if !annotations.IsResource {
 		return nil
+	}
+
+	if err := validateStorageMode(annotations.StorageMode); err != nil {
+		return err
+	}
+
+	if err := validateMigrationPolicy(annotations.Migration); err != nil {
+		return err
 	}
 
 	// Dedicated storage validation
@@ -35,6 +49,13 @@ func Validate(annotations *ResourceAnnotations) error {
 
 	// Field-level validation
 	for fieldName, fieldAnnotations := range annotations.Fields {
+		if fieldAnnotations == nil {
+			return &ValidationError{
+				Field:   fieldName,
+				Message: "field annotations must not be nil",
+			}
+		}
+
 		if err := validateFieldAnnotations(fieldName, fieldAnnotations); err != nil {
 			return err
 		}
@@ -47,10 +68,34 @@ func Validate(annotations *ResourceAnnotations) error {
 	return nil
 }
 
+func validateStorageMode(mode StorageMode) error {
+	switch mode {
+	case "", StorageModeGeneric, StorageModeDedicated:
+		return nil
+	default:
+		return &ValidationError{
+			Annotation: "+fabrica:storage",
+			Message:    fmt.Sprintf("unknown storage mode: %s", mode),
+		}
+	}
+}
+
+func validateMigrationPolicy(policy MigrationPolicy) error {
+	switch policy {
+	case "", MigrationPolicyUnrestricted, MigrationPolicyAdditiveOnly:
+		return nil
+	default:
+		return &ValidationError{
+			Annotation: "+fabrica:migration",
+			Message:    fmt.Sprintf("unknown migration policy: %s", policy),
+		}
+	}
+}
+
 // validateCompositeIndexes checks resource-level multi-column indexes
 func validateCompositeIndexes(annotations *ResourceAnnotations) error {
 	if len(annotations.Indexes) == 0 {
-		return nil
+		return validateFieldIndexNames(annotations.Fields, nil)
 	}
 
 	if annotations.StorageMode != StorageModeDedicated {
@@ -61,8 +106,26 @@ func validateCompositeIndexes(annotations *ResourceAnnotations) error {
 	}
 
 	seen := make(map[string]bool)
+	if err := validateFieldIndexNames(annotations.Fields, seen); err != nil {
+		return err
+	}
 
 	for _, idx := range annotations.Indexes {
+		if idx == nil {
+			return &ValidationError{
+				Annotation: "+fabrica:index",
+				Message:    "composite index must not be nil",
+			}
+		}
+		if err := validateIndexType("+fabrica:index", idx.Type); err != nil {
+			return err
+		}
+		if idx.Name != "" && !isPortableIdentifier(idx.Name) {
+			return &ValidationError{
+				Annotation: "+fabrica:index",
+				Message:    fmt.Sprintf("invalid index name %q", idx.Name),
+			}
+		}
 		if len(idx.Fields) < 2 {
 			return &ValidationError{
 				Annotation: "+fabrica:index",
@@ -74,6 +137,12 @@ func validateCompositeIndexes(annotations *ResourceAnnotations) error {
 
 		dupe := make(map[string]bool)
 		for _, f := range idx.Fields {
+			if !isExportedGoIdentifier(f) {
+				return &ValidationError{
+					Annotation: "+fabrica:index",
+					Message:    fmt.Sprintf("composite index field %q is not a valid Go field name", f),
+				}
+			}
 			if dupe[f] {
 				return &ValidationError{
 					Annotation: "+fabrica:index",
@@ -82,15 +151,10 @@ func validateCompositeIndexes(annotations *ResourceAnnotations) error {
 			}
 			dupe[f] = true
 
-			if _, ok := annotations.Fields[f]; !ok {
-				// Not fatal: the field may carry no annotations of its own and
-				// therefore never enters the Fields map. Emitters resolve names
-				// against the struct, so only flag obviously empty names.
-				if f == "" {
-					return &ValidationError{
-						Annotation: "+fabrica:index",
-						Message:    "composite index contains an empty field name",
-					}
+			if len(annotations.SpecFields) > 0 && !annotations.SpecFields[f] {
+				return &ValidationError{
+					Annotation: "+fabrica:index",
+					Message:    fmt.Sprintf("composite index references unknown Spec field %q", f),
 				}
 			}
 		}
@@ -99,13 +163,41 @@ func validateCompositeIndexes(annotations *ResourceAnnotations) error {
 			if seen[idx.Name] {
 				return &ValidationError{
 					Annotation: "+fabrica:index",
-					Message:    fmt.Sprintf("duplicate composite index name %q", idx.Name),
+					Message:    fmt.Sprintf("duplicate index name %q", idx.Name),
 				}
 			}
 			seen[idx.Name] = true
 		}
 	}
 
+	return nil
+}
+
+func validateFieldIndexNames(fields map[string]*FieldAnnotations, seen map[string]bool) error {
+	if seen == nil {
+		seen = make(map[string]bool)
+	}
+	for fieldName, fieldAnnotations := range fields {
+		if fieldAnnotations == nil || fieldAnnotations.Index == nil || fieldAnnotations.Index.Name == "" {
+			continue
+		}
+		name := fieldAnnotations.Index.Name
+		if !isPortableIdentifier(name) {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s index", fieldName),
+				Message:    fmt.Sprintf("invalid index name %q", name),
+			}
+		}
+		if seen[name] {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s index", fieldName),
+				Message:    fmt.Sprintf("duplicate index name %q", name),
+			}
+		}
+		seen[name] = true
+	}
 	return nil
 }
 
@@ -158,6 +250,13 @@ func validateDedicatedStorage(annotations *ResourceAnnotations) error {
 
 // validateFieldAnnotations checks field-level annotations for conflicts
 func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) error {
+	if annotations == nil {
+		return &ValidationError{
+			Field:   fieldName,
+			Message: "field annotations must not be nil",
+		}
+	}
+
 	// Immutable + default can conflict (default set on update attempt)
 	if annotations.Immutable && annotations.Default != "" {
 		return &ValidationError{
@@ -168,7 +267,7 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 
 	// Storage validation
 	if annotations.Storage != nil {
-		if err := validateStorageConfig(fieldName, annotations.Storage); err != nil {
+		if err := validateStorageConfig(fieldName, annotations); err != nil {
 			return err
 		}
 	}
@@ -179,6 +278,21 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 			Field:      fieldName,
 			Annotation: fmt.Sprintf("field %s", fieldName),
 			Message:    "cannot be both nullable and notnull",
+		}
+	}
+
+	if annotations.Size < 0 || annotations.Size > 65535 {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s size", fieldName),
+			Message:    fmt.Sprintf("field size must be 1-65535 when set, got %d", annotations.Size),
+		}
+	}
+	if annotations.Size > 0 && !isStringFieldType(annotations.FieldType) {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s size", fieldName),
+			Message:    fmt.Sprintf("size requires a string field, got %s", annotations.FieldType),
 		}
 	}
 
@@ -202,6 +316,9 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 // validateRelationConfig checks a foreign-key relation declaration
 func validateRelationConfig(fieldName string, annotations *FieldAnnotations) error {
 	rel := annotations.Relation
+	if rel == nil {
+		return nil
+	}
 
 	if rel.Target == "" {
 		return &ValidationError{
@@ -211,11 +328,31 @@ func validateRelationConfig(fieldName string, annotations *FieldAnnotations) err
 		}
 	}
 
-	if !isGoIdentifier(rel.Target) {
+	if !isExportedGoIdentifier(rel.Target) {
 		return &ValidationError{
 			Field:      fieldName,
 			Annotation: fmt.Sprintf("field %s relation", fieldName),
 			Message:    fmt.Sprintf("relation target %q is not a valid Go type name", rel.Target),
+		}
+	}
+
+	switch rel.Kind {
+	case RelationBelongsTo, RelationHasMany:
+	default:
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation", fieldName),
+			Message:    fmt.Sprintf("unknown relation kind: %s", rel.Kind),
+		}
+	}
+
+	switch rel.OnDelete {
+	case "", OnDeleteRestrict, OnDeleteCascade, OnDeleteSetNull:
+	default:
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation on-delete", fieldName),
+			Message:    fmt.Sprintf("unknown on-delete action: %s", rel.OnDelete),
 		}
 	}
 
@@ -237,32 +374,40 @@ func validateRelationConfig(fieldName string, annotations *FieldAnnotations) err
 		}
 	}
 
+	if rel.OnDelete == OnDeleteSetNull && !annotations.Nullable {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s relation on-delete=set-null", fieldName),
+			Message:    "on-delete=set-null requires +fabrica:field:nullable",
+		}
+	}
+
 	return nil
 }
 
-// isGoIdentifier reports whether s is a legal, exported-looking Go type name
-func isGoIdentifier(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
-		case r >= '0' && r <= '9':
-			if i == 0 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
+func isExportedGoIdentifier(s string) bool {
+	return token.IsIdentifier(s) && ast.IsExported(s)
 }
 
 // validateStorageConfig validates storage configuration
-func validateStorageConfig(fieldName string, config *StorageConfig) error {
+func validateStorageConfig(fieldName string, annotations *FieldAnnotations) error {
+	config := annotations.Storage
 	switch config.Type {
 	case StorageTypeHashed:
+		if !isStringFieldType(annotations.FieldType) {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s storage", fieldName),
+				Message:    fmt.Sprintf("hashed storage requires a string field, got %s", annotations.FieldType),
+			}
+		}
+		if config.Encryption != nil {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s storage", fieldName),
+				Message:    "hashed storage must not include encryption config",
+			}
+		}
 		if config.Hash == nil {
 			return &ValidationError{
 				Annotation: fmt.Sprintf("field %s storage=hashed", fieldName),
@@ -272,6 +417,20 @@ func validateStorageConfig(fieldName string, config *StorageConfig) error {
 		return validateHashConfig(fieldName, config.Hash)
 
 	case StorageTypeEncrypted:
+		if !isStringFieldType(annotations.FieldType) {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s storage", fieldName),
+				Message:    fmt.Sprintf("encrypted storage requires a string field, got %s", annotations.FieldType),
+			}
+		}
+		if config.Hash != nil {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s storage", fieldName),
+				Message:    "encrypted storage must not include hash config",
+			}
+		}
 		if config.Encryption == nil {
 			return &ValidationError{
 				Annotation: fmt.Sprintf("field %s storage=encrypted", fieldName),
@@ -281,6 +440,13 @@ func validateStorageConfig(fieldName string, config *StorageConfig) error {
 		return validateEncryptionConfig(fieldName, config.Encryption)
 
 	case StorageTypeDefault:
+		if config.Hash != nil || config.Encryption != nil {
+			return &ValidationError{
+				Field:      fieldName,
+				Annotation: fmt.Sprintf("field %s storage", fieldName),
+				Message:    "default storage must not include hash or encryption config",
+			}
+		}
 		return nil
 
 	default:
@@ -288,6 +454,15 @@ func validateStorageConfig(fieldName string, config *StorageConfig) error {
 			Annotation: fmt.Sprintf("field %s storage", fieldName),
 			Message:    fmt.Sprintf("unknown storage type: %s", config.Type),
 		}
+	}
+}
+
+func isStringFieldType(fieldType string) bool {
+	switch fieldType {
+	case "", "string", "*string":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -358,6 +533,23 @@ func validateEncryptionConfig(fieldName string, config *EncryptionConfig) error 
 
 // validateIndexConfig validates index configuration
 func validateIndexConfig(fieldName string, config *IndexConfig) error {
+	if config == nil {
+		return &ValidationError{
+			Annotation: fmt.Sprintf("field %s index", fieldName),
+			Message:    "index config must not be nil",
+		}
+	}
+	if config.Name != "" && !isPortableIdentifier(config.Name) {
+		return &ValidationError{
+			Field:      fieldName,
+			Annotation: fmt.Sprintf("field %s index", fieldName),
+			Message:    fmt.Sprintf("invalid index name %q", config.Name),
+		}
+	}
+	return validateIndexType(fmt.Sprintf("field %s index type", fieldName), config.Type)
+}
+
+func validateIndexType(annotation string, indexType IndexType) error {
 	// Validate index type
 	validTypes := map[IndexType]bool{
 		IndexTypeBTree: true,
@@ -366,14 +558,32 @@ func validateIndexConfig(fieldName string, config *IndexConfig) error {
 		IndexTypeHash:  true,
 	}
 
-	if !validTypes[config.Type] {
+	if !validTypes[indexType] {
 		return &ValidationError{
-			Annotation: fmt.Sprintf("field %s index type", fieldName),
-			Message:    fmt.Sprintf("unknown index type: %s", config.Type),
+			Annotation: annotation,
+			Message:    fmt.Sprintf("unknown index type: %s", indexType),
 		}
 	}
 
 	return nil
+}
+
+func isPortableIdentifier(s string) bool {
+	if len(s) == 0 || len(s) > 63 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r == '_':
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // ValidateForDatabase validates annotations against database capabilities
@@ -381,8 +591,30 @@ func validateIndexConfig(fieldName string, config *IndexConfig) error {
 // Some features (like GIN indexes) are PostgreSQL-specific. This validates
 // that annotations are compatible with the target database.
 func ValidateForDatabase(annotations *ResourceAnnotations, dbDriver string) error {
+	if err := Validate(annotations); err != nil {
+		return err
+	}
+
+	switch dbDriver {
+	case "postgres", "postgresql", "mysql", "mariadb", "sqlite", "sqlite3":
+	default:
+		return &ValidationError{
+			Annotation: "database",
+			Message:    fmt.Sprintf("unknown database driver: %s", dbDriver),
+		}
+	}
+
 	for fieldName, fieldAnnotations := range annotations.Fields {
+		if fieldAnnotations == nil {
+			return &ValidationError{
+				Field:   fieldName,
+				Message: "field annotations must not be nil",
+			}
+		}
 		if fieldAnnotations.Index != nil {
+			if err := validateIndexConfig(fieldName, fieldAnnotations.Index); err != nil {
+				return err
+			}
 			if err := validateIndexForDatabase(fieldName, fieldAnnotations.Index, dbDriver); err != nil {
 				return err
 			}
@@ -391,6 +623,15 @@ func ValidateForDatabase(annotations *ResourceAnnotations, dbDriver string) erro
 
 	// Composite indexes obey the same per-database index-type rules
 	for _, idx := range annotations.Indexes {
+		if idx == nil {
+			return &ValidationError{
+				Annotation: "+fabrica:index",
+				Message:    "composite index must not be nil",
+			}
+		}
+		if err := validateIndexType("+fabrica:index", idx.Type); err != nil {
+			return err
+		}
 		label := strings.Join(idx.Fields, ",")
 		if err := validateIndexForDatabase(label, &IndexConfig{Type: idx.Type}, dbDriver); err != nil {
 			return err

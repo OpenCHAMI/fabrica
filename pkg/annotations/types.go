@@ -122,6 +122,11 @@ type ResourceAnnotations struct {
 	// Fields maps field names to their annotations
 	Fields map[string]*FieldAnnotations
 
+	// SpecFields contains every Go field name discovered on the resource's Spec
+	// struct, including fields with no annotations. It is populated by parsers so
+	// resource-level annotations can validate field references.
+	SpecFields map[string]bool
+
 	// Indexes holds multi-column indexes declared at the resource level
 	// (+fabrica:index:fields=a,b). Single-column indexes stay on the field.
 	Indexes []*CompositeIndex
@@ -139,6 +144,7 @@ func NewResourceAnnotations() *ResourceAnnotations {
 		IsResource:  false,
 		StorageMode: StorageModeGeneric,
 		Fields:      make(map[string]*FieldAnnotations),
+		SpecFields:  make(map[string]bool),
 		Migration:   MigrationPolicyUnrestricted,
 	}
 }
@@ -174,6 +180,9 @@ type RelationConfig struct {
 type FieldAnnotations struct {
 	// FieldName is the Go field name
 	FieldName string
+
+	// FieldType is the Go type syntax discovered by the parser when available.
+	FieldType string
 
 	// Storage configuration
 	Storage *StorageConfig
@@ -340,8 +349,8 @@ func ParseAnnotationValue(annotation string) []string {
 
 // ParseKeyValue splits a "key=value" string
 func ParseKeyValue(part string) (key, value string, hasValue bool) {
-	if idx := strings.Index(part, "="); idx >= 0 {
-		return part[:idx], part[idx+1:], true
+	if key, value, ok := strings.Cut(part, "="); ok {
+		return key, value, true
 	}
 	return part, "", false
 }
