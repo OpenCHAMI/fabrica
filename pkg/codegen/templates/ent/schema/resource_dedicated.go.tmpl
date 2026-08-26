@@ -17,6 +17,13 @@ import (
 
 // {{.Name}} holds the schema definition for the {{.Name}} entity.
 // This is a dedicated schema with flattened fields from {{.Name}}Spec.
+{{- if eq (printf "%s" $.Annotations.Migration) "additive-only" }}
+//
+// Migration policy: additive-only (+fabrica:migration=additive-only).
+// Only additive changes — new columns, new indexes — are permitted on this
+// table. Column drops and narrowing type changes must be rejected by the
+// migration tooling.
+{{- end }}
 type {{.Name}} struct {
 	ent.Schema
 }
@@ -109,10 +116,17 @@ func ({{.Name}}) Fields() []ent.Field {
 			{{- if $fieldAnnots.Unique }}
 			Unique().
 			{{- end }}
+			{{- if $fieldAnnots.Size }}
+			MaxLen({{$fieldAnnots.Size}}).
+			{{- end }}
 			{{- if $fieldAnnots.Default }}
 			Default("{{$fieldAnnots.Default}}").
 			{{- end }}
-			{{- if .Required }}
+			{{- if $fieldAnnots.NotNull }}
+			NotEmpty().
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if .Required }}
 			NotEmpty().
 			{{- else }}
 			Optional().
@@ -129,7 +143,10 @@ func ({{.Name}}) Fields() []ent.Field {
 			{{- if $fieldAnnots.Default }}
 			Default({{$fieldAnnots.Default}}).
 			{{- end }}
-			{{- if not .Required }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
@@ -141,7 +158,10 @@ func ({{.Name}}) Fields() []ent.Field {
 			{{- if $fieldAnnots.Default }}
 			Default({{$fieldAnnots.Default}}).
 			{{- end }}
-			{{- if not .Required }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
@@ -199,26 +219,72 @@ func ({{.Name}}) Indexes() []ent.Index {
 		{{- if eq $fieldAnnots.Index.Type "gin" }}
 		// GIN index for {{.Name}} (PostgreSQL only)
 		index.Fields("{{.JSONName}}").
+			{{- if $fieldAnnots.Index.Unique }}
+			Unique().
+			{{- end }}
+			{{- if $fieldAnnots.Index.Name }}
+			StorageKey("{{$fieldAnnots.Index.Name}}").
+			{{- end }}
 			Annotations(map[string]interface{}{
 				"gin": true,
 			}),
 		{{- else if eq $fieldAnnots.Index.Type "gist" }}
 		// GiST index for {{.Name}} (PostgreSQL only)
 		index.Fields("{{.JSONName}}").
+			{{- if $fieldAnnots.Index.Unique }}
+			Unique().
+			{{- end }}
+			{{- if $fieldAnnots.Index.Name }}
+			StorageKey("{{$fieldAnnots.Index.Name}}").
+			{{- end }}
 			Annotations(map[string]interface{}{
 				"gist": true,
 			}),
 		{{- else if eq $fieldAnnots.Index.Type "hash" }}
 		// Hash index for {{.Name}}
 		index.Fields("{{.JSONName}}").
+			{{- if $fieldAnnots.Index.Unique }}
+			Unique().
+			{{- end }}
+			{{- if $fieldAnnots.Index.Name }}
+			StorageKey("{{$fieldAnnots.Index.Name}}").
+			{{- end }}
 			Annotations(map[string]interface{}{
 				"hash": true,
 			}),
 		{{- else }}
 		// B-tree index for {{.Name}}
+		{{- if or $fieldAnnots.Index.Unique $fieldAnnots.Index.Name }}
+		index.Fields("{{.JSONName}}").
+			{{- if $fieldAnnots.Index.Unique }}
+			Unique(){{if $fieldAnnots.Index.Name}}.{{else}},{{end}}
+			{{- end }}
+			{{- if $fieldAnnots.Index.Name }}
+			StorageKey("{{$fieldAnnots.Index.Name}}"),
+			{{- end }}
+		{{- else }}
 		index.Fields("{{.JSONName}}"),
 		{{- end }}
 		{{- end }}
+		{{- end }}
+		{{- end }}
+		{{- range $idx := $.Annotations.Indexes }}
+
+		// Composite index{{if $idx.Name}} {{$idx.Name}}{{end}} ({{$idx.Type}}{{if $idx.Unique}}, unique{{end}})
+		index.Fields(
+			{{- range $fname := $idx.Fields }}
+			{{- range $.SpecFields }}
+			{{- if eq .Name $fname }}
+			"{{.JSONName}}",
+			{{- end }}
+			{{- end }}
+			{{- end }}
+		){{if $idx.Unique}}.
+			Unique(){{end}}{{if $idx.Name}}.
+			StorageKey("{{$idx.Name}}"){{end}}{{if ne (printf "%s" $idx.Type) "btree"}}.
+			Annotations(map[string]interface{}{
+				"{{$idx.Type}}": true,
+			}){{end}},
 		{{- end }}
 	}
 }
