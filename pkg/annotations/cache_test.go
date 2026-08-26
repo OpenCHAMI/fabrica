@@ -27,8 +27,8 @@ func TestAnnotationCache(t *testing.T) {
 	}
 
 	// Set cache
-	anns := map[string]*FieldAnnotations{
-		"TestField": NewFieldAnnotations("TestField"),
+	anns := map[string]*ResourceAnnotations{
+		"TestResource": NewResourceAnnotations(),
 	}
 	cache.Set(tmpFile, anns)
 
@@ -54,8 +54,8 @@ func TestAnnotationCache(t *testing.T) {
 func TestAnnotationCache_Clear(t *testing.T) {
 	cache := NewAnnotationCache()
 
-	cache.Set("file1.go", map[string]*FieldAnnotations{})
-	cache.Set("file2.go", map[string]*FieldAnnotations{})
+	cache.Set("file1.go", map[string]*ResourceAnnotations{})
+	cache.Set("file2.go", map[string]*ResourceAnnotations{})
 
 	if cache.Size() != 2 {
 		t.Errorf("Size() = %d, want 2", cache.Size())
@@ -83,8 +83,8 @@ func TestAnnotationCache_Invalidate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cache.Set(file1, map[string]*FieldAnnotations{})
-	cache.Set(file2, map[string]*FieldAnnotations{})
+	cache.Set(file1, map[string]*ResourceAnnotations{})
+	cache.Set(file2, map[string]*ResourceAnnotations{})
 
 	cache.Invalidate(file1)
 

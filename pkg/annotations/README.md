@@ -375,9 +375,39 @@ type IndexConfig struct {
 
 ### Functions
 
+#### `ParseResourceFile(filename, resourceName) (*ResourceAnnotations, error)`
+
+**Start here.** Returns the complete, validatable annotations for one resource.
+
+A Fabrica resource is split across two declarations: type-level annotations sit
+on `<Name>`, field-level annotations on `<Name>Spec`. This merges both, so the
+result can be handed straight to `Validate`.
+
+```go
+annots, err := annotations.ParseResourceFile("apis/v1/token_types.go", "Token")
+if err != nil {
+    return err
+}
+if err := annotations.Validate(annots); err != nil {
+    return err
+}
+```
+
+**Declaration order does not matter** — `TokenSpec` may appear before or after
+`Token`. A file that does not declare the resource yields empty annotations
+rather than an error; a malformed annotation is a real error, not a silent drop.
+
+Prefer this over calling `ParseResourceAnnotations` per type and merging by
+hand, which is easy to get wrong.
+
+---
+
 #### `ParseResourceAnnotations(typeSpec, docComments) (*ResourceAnnotations, error)`
 
-Parses Fabrica annotations from a Go type declaration.
+Low-level: parses Fabrica annotations from **one** Go type declaration. It does
+not merge `<Name>Spec` — if you call it on `Token` you get the type-level
+annotations with no fields. Use `ParseResourceFile` unless you already hold an
+`*ast.TypeSpec` and want exactly one declaration's annotations.
 
 **Parameters:**
 - `typeSpec` - `*ast.TypeSpec` from `go/ast` parsing
