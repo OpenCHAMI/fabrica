@@ -407,6 +407,124 @@ fabrica generate
 git diff cmd/server/
 ```
 
+That works when you control fabrica. When you don't — you consume it as a
+dependency and want different output for your own resources — register a
+**custom emitter** instead of forking. See
+[Custom Emitters](#custom-emitters).
+
+---
+
+## Custom Emitters
+
+A service can replace what fabrica emits for a resource without forking it or
+editing generated files.
+
+### The interface
+
+```go
+type ResourceEmitter interface {
+    Name() string
+    Emit(req EmitRequest) ([]EmittedFile, error)
+}
+```
+
+`Emit` receives one resource and returns the files to write. Fabrica's own
+dedicated-Ent-schema generator implements this interface, so custom emitters run
+through exactly the same path as the built-in — including gofmt, the idempotent
+write, and the "✓ Generated" output.
+
+`EmitRequest` carries the resource, its parsed annotations, the storage
+type/driver, the module path, the path the built-in would have written, and —
+importantly — **the built-in template and its data**. That lets an emitter
+render fabrica's own template and post-process the result rather than
+reimplementing it.
+
+### Emitter kinds
+
+| Kind | Constant | What it renders |
+|------|----------|-----------------|
+| `ent-schema` | `codegen.EmitterKindEntSchema` | The dedicated Ent schema for one resource (`+fabrica:storage=dedicated`) |
+
+`codegen.KnownEmitterKinds()` returns the current list.
+
+### Registering
+
+Generation does not run in-process. `fabrica generate` writes a throwaway
+program at `cmd/.fabrica-codegen/main.go` and runs it, so you cannot pass an
+emitter in on the command line. That program **does** import your project's
+`pkg/resources`, so register from an `init()` there:
+
+```go
+// pkg/resources/emitters.go
+package resources
+
+import (
+    "fmt"
+
+    "github.com/openchami/fabrica/pkg/codegen"
+)
+
+type auditedSchemaEmitter struct{}
+
+func (auditedSchemaEmitter) Name() string { return "myservice/audited-ent-schema" }
+
+func (e auditedSchemaEmitter) Emit(req codegen.EmitRequest) ([]codegen.EmittedFile, error) {
+    // Only customize resources that ask for it; defer to fabrica otherwise.
+    if req.Annotations.Migration != "additive-only" {
+        return codegen.BuiltinEmitter(req.Kind).Emit(req)
+    }
+
+    files, err := codegen.BuiltinEmitter(req.Kind).Emit(req)
+    if err != nil {
+        return nil, err
+    }
+
+    banner := fmt.Sprintf("// AUDITED SCHEMA — %s is append-only.\n", req.Resource.Name)
+    files[0].Content = append([]byte(banner), files[0].Content...)
+
+    return files, nil
+}
+
+func init() {
+    if err := codegen.RegisterEmitter(codegen.EmitterKindEntSchema, auditedSchemaEmitter{}); err != nil {
+        panic(err)
+    }
+}
+```
+
+Then `fabrica generate` picks it up with no further wiring.
+
+### Scoped registration
+
+When you own the `Generator` — tests, or your own tooling — prefer the
+instance-scoped form, which avoids process-wide state:
+
+```go
+gen := codegen.NewGenerator(outputDir, "main", modulePath)
+if err := gen.SetEmitter(codegen.EmitterKindEntSchema, myEmitter{}); err != nil {
+    return err
+}
+```
+
+**Resolution order**, most specific first:
+
+1. `(*Generator).SetEmitter` — this generator only
+2. `codegen.RegisterEmitter` — process-wide
+3. fabrica's built-in
+
+### Rules
+
+- **Return a path or fail.** An `EmittedFile` with an empty `Path` is an error.
+- **Emit valid Go.** `.go` output is gofmt'd; unparseable content fails
+  generation with the emitter's name in the error.
+- **You may emit more than one file**, including into directories the built-in
+  never touches. Paths are relative to the project root.
+- **Emitting nothing is legal** — return an empty slice to skip a resource.
+- **Be concurrency-safe.** Calls across resources are not serialized.
+- **Prefer delegating.** `codegen.BuiltinEmitter(kind)` returns fabrica's
+  implementation, so you can customize the resources you care about and hand the
+  rest back unchanged.
+
 ### Adding a New Endpoint
 
 **Example: Add a count endpoint for each resource**
