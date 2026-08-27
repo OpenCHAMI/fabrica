@@ -9,20 +9,18 @@ import (
 	"time"
 
 	"entgo.io/ent"
-	"entgo.io/ent/dialect"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
-	"golang.org/x/crypto/bcrypt"
 )
 
-// typedToken holds the schema definition for the typedToken entity.
-// This is a dedicated schema with flattened fields from typedTokenSpec.
-type typedToken struct {
+// TypedToken holds the schema definition for the TypedToken entity.
+// This is a dedicated schema with flattened fields from TypedTokenSpec.
+type TypedToken struct {
 	ent.Schema
 }
 
-// Fields of the typedToken.
-func (typedToken) Fields() []ent.Field {
+// Fields of the TypedToken.
+func (TypedToken) Fields() []ent.Field {
 	return []ent.Field{
 		// Core identity fields
 		field.String("uid").
@@ -46,7 +44,7 @@ func (typedToken) Fields() []ent.Field {
 			Comment("API version"),
 
 		field.String("kind").
-			Default("typedToken").
+			Default("TypedToken").
 			Comment("Resource kind"),
 
 		// Timestamps
@@ -125,26 +123,18 @@ func (typedToken) Fields() []ent.Field {
 		field.JSON("labels", map[string]string{}).
 			Optional().
 			Comment("Labels"),
-		// Field Unmapped has no annotations
-		// UNMAPPED TYPE: []int has no Ent mapping and is stored as text.
-		// Ordering, range queries and indexes on this column will not behave as
-		// the Go type implies. Add a case to resource_dedicated.go.tmpl if this
-		// type matters.
-		field.String("unmapped").
-			Optional().
-			Comment("Unmapped (unmapped []int)"),
 	}
 }
 
-// Indexes of the typedToken.
-func (typedToken) Indexes() []ent.Index {
+// Indexes of the TypedToken.
+func (TypedToken) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("uid").Unique(),
 		index.Fields("name", "namespace"),
 	}
 }
 
-// Hooks of the typedToken.
-func (typedToken) Hooks() []ent.Hook {
+// Hooks of the TypedToken.
+func (TypedToken) Hooks() []ent.Hook {
 	return []ent.Hook{}
 }

@@ -964,22 +964,17 @@ constructor:
 | `[]byte` | `field.Bytes` | |
 | `[]time.Time` | `field.JSON(name, []time.Time{})` | |
 | `map[string]string` | `field.JSON(name, map[string]string{})` | |
-| anything else | `field.String` **+ a visible `UNMAPPED TYPE` comment** | See below |
+| anything else | rejected during generation | Add an explicit mapping before using dedicated storage |
 
-### Unmapped types are loud, not silent
+### Unmapped types fail closed
 
-A type with no mapping still falls back to a text column, but the generated
-schema now carries:
+A type with no mapping now fails dedicated Ent generation with the resource,
+field, and Go type in the error. Fabrica no longer silently stores unsupported
+types as text because that breaks ordering, range queries, indexes, and generated
+adapter conversions.
 
-```go
-// UNMAPPED TYPE: []int has no Ent mapping and is stored as text.
-// Ordering, range queries and indexes on this column will not behave as
-// the Go type implies. Add a case to resource_dedicated.go.tmpl if this
-// type matters.
-```
-
-Previously every non-`string`/`int`/`bool` type took this path with no warning,
-so timestamps and slices became text columns silently.
+Previously every non-`string`/`int`/`bool` type took a text-column path with no
+warning, so timestamps and slices became text columns silently.
 
 ### Reserved column names
 

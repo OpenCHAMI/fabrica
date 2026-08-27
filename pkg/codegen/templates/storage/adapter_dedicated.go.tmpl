@@ -7,7 +7,9 @@ package storage
 
 import (
 	"context"
-	"fmt"
+	{{if .EntAdapter.HasDurationFields}}
+	"time"
+	{{end}}
 
 	"{{.ModulePath}}/internal/storage/ent"
 	ent{{toLower .Name}} "{{.ModulePath}}/internal/storage/ent/{{toLower .Name}}"
@@ -25,7 +27,11 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 		SetKind(resource.Kind).
 		SetCreatedAt(resource.Metadata.CreatedAt).
 		SetUpdatedAt(resource.Metadata.UpdatedAt).
+		{{if $.Config.VersioningEnabled}}
 		SetResourceVersion(resource.Metadata.ResourceVersion)
+		{{else}}
+		SetResourceVersion("1")
+		{{end}}
 
 	{{if .Metadata.Namespace}}
 	if resource.Metadata.Namespace != "" {
@@ -36,6 +42,7 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 	// Map Spec fields to entity fields
 	{{range .SpecFields}}
 	{{$fieldAnnots := index $.Annotations.Fields .Name}}
+	{{$specExpr := printf "resource.Spec.%s" .Name}}
 	{{if $fieldAnnots}}
 	{{if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
 	// {{.Name}} field will be hashed by Ent hook
@@ -45,20 +52,20 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
 	{{else}}
 	{{if .Required}}
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	create = create.{{entSetter .}}({{entSetExpr . $specExpr}})
 	{{else}}
-	if resource.Spec.{{.Name}} != {{if eq .Type "string"}}""{{else if eq .Type "int"}}0{{else if eq .Type "bool"}}false{{else}}nil{{end}} {
-		create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	if {{optionalSpecCondition . $specExpr}} {
+		create = create.{{entSetter .}}({{entSetExpr . $specExpr}})
 	}
 	{{end}}
 	{{end}}
 	{{else}}
 	// {{.Name}} field (no annotations)
 	{{if .Required}}
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	create = create.{{entSetter .}}({{entSetExpr . $specExpr}})
 	{{else}}
-	if resource.Spec.{{.Name}} != {{if eq .Type "string"}}""{{else if eq .Type "int"}}0{{else if eq .Type "bool"}}false{{else}}nil{{end}} {
-		create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	if {{optionalSpecCondition . $specExpr}} {
+		create = create.{{entSetter .}}({{entSetExpr . $specExpr}})
 	}
 	{{end}}
 	{{end}}
@@ -92,7 +99,6 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 				UID:             entity.UID,
 				CreatedAt:       entity.CreatedAt,
 				UpdatedAt:       entity.UpdatedAt,
-				ResourceVersion: entity.ResourceVersion,
 				Labels:          make(map[string]string),
 				Annotations:     make(map[string]string),
 			},
@@ -119,10 +125,10 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 		// {{.Name}}: Encrypted field - decryption handled here (TODO: Phase 5+)
 		{{.Name}}: entity.{{.Name}},
 		{{else}}
-		{{.Name}}: entity.{{.Name}},
+		{{.Name}}: {{resourceSetExpr . (printf "entity.%s" .Name)}},
 		{{end}}
 		{{else}}
-		{{.Name}}: entity.{{.Name}},
+		{{.Name}}: {{resourceSetExpr . (printf "entity.%s" .Name)}},
 		{{end}}
 		{{end}}
 	}
@@ -135,11 +141,16 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}UpdateOne, resource *{{.PackageAlias}}.{{.Name}}) error {
 	update = update.
 		SetUpdatedAt(resource.Metadata.UpdatedAt).
+		{{if $.Config.VersioningEnabled}}
 		SetResourceVersion(resource.Metadata.ResourceVersion)
+		{{else}}
+		SetResourceVersion("1")
+		{{end}}
 
 	// Update mutable Spec fields only
 	{{range .SpecFields}}
 	{{$fieldAnnots := index $.Annotations.Fields .Name}}
+	{{$specExpr := printf "resource.Spec.%s" .Name}}
 	{{if $fieldAnnots}}
 	{{if $fieldAnnots.Immutable}}
 	// {{.Name}} is immutable - skip update
@@ -149,11 +160,11 @@ func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}Updat
 		update = update.Set{{.Name}}(resource.Spec.{{.Name}})
 	}
 	{{else}}
-	update = update.Set{{.Name}}(resource.Spec.{{.Name}})
+	update = update.{{entSetter .}}({{entSetExpr . $specExpr}})
 	{{end}}
 	{{else}}
 	// {{.Name}} (no immutability constraint)
-	update = update.Set{{.Name}}(resource.Spec.{{.Name}})
+	update = update.{{entSetter .}}({{entSetExpr . $specExpr}})
 	{{end}}
 	{{end}}
 

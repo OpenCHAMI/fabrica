@@ -244,14 +244,13 @@ type TypedTokenSpec struct {
 	Fingerprint    []byte            `json:"fingerprint"`
 	ReplayAttempts []time.Time       `json:"replay_attempts"`
 	Labels         map[string]string `json:"labels"`
-	Unmapped       []int             `json:"unmapped"`
 }
 
 type TypedToken struct {
 	Spec TypedTokenSpec
 }
 
-func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
+func typeMappingAnnotations() *annotations.ResourceAnnotations {
 	annots := annotations.NewResourceAnnotations()
 	annots.IsResource = true
 	annots.StorageMode = annotations.StorageModeDedicated
@@ -267,6 +266,12 @@ func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
 	fingerprint := annotations.NewFieldAnnotations("Fingerprint")
 	fingerprint.Sensitive = true
 	annots.Fields["Fingerprint"] = fingerprint
+
+	return annots
+}
+
+func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
+	annots := typeMappingAnnotations()
 
 	if err := annotations.Validate(annots); err != nil {
 		t.Fatalf("fixture failed validation: %v", err)
@@ -286,7 +291,6 @@ func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
 		`field.Bytes("fingerprint")`,
 		`field.JSON("replay_attempts", []time.Time{})`,
 		`field.JSON("labels", map[string]string{})`,
-		`UNMAPPED TYPE: []int`,
 	} {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("generated schema missing %q", want)
@@ -295,6 +299,26 @@ func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
 
 	if strings.Contains(string(got), `field.String("ttl")`) {
 		t.Error("time.Duration was emitted as a string column")
+	}
+}
+
+func TestGenerateDedicatedSchemaRejectsUnsupportedType(t *testing.T) {
+	type UnsupportedTokenSpec struct {
+		Unmapped []int `json:"unmapped"`
+	}
+
+	type UnsupportedToken struct {
+		Spec UnsupportedTokenSpec
+	}
+
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Unmapped"] = annotations.NewFieldAnnotations("Unmapped")
+
+	err := generateDedicatedSchemaError(t, &UnsupportedToken{}, "UnsupportedToken", annots)
+	if err == nil || !strings.Contains(err.Error(), `unsupported dedicated Ent field type "[]int"`) {
+		t.Fatalf("expected unsupported type error, got %v", err)
 	}
 }
 
@@ -366,6 +390,7 @@ func TestGeneratedDedicatedEntSchemasCompile(t *testing.T) {
 
 	schemas := map[string][]byte{
 		"goldentoken.go":   generateDedicatedSchema(t, &GoldenToken{}, "GoldenToken", fullVocabularyAnnotations()),
+		"typedtoken.go":    generateDedicatedSchema(t, &TypedToken{}, "TypedToken", typeMappingAnnotations()),
 		"baselinetoken.go": generateDedicatedSchema(t, &BaselineToken{}, "BaselineToken", baselineAnnotations()),
 		"plaintoken.go":    generateDedicatedSchema(t, &PlainToken{}, "PlainToken", plainAnnotations()),
 	}
