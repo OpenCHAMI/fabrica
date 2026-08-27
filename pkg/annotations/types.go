@@ -99,6 +99,40 @@ const (
 	OnDeleteSetNull OnDeleteAction = "set-null"
 )
 
+// FieldKind is a coarse, underlying Go type category used for validation.
+type FieldKind string
+
+const (
+	// FieldKindUnknown means the parser could not resolve the underlying type.
+	FieldKindUnknown FieldKind = "unknown"
+	// FieldKindString represents string and named string types.
+	FieldKindString FieldKind = "string"
+	// FieldKindBool represents bool and named bool types.
+	FieldKindBool FieldKind = "bool"
+	// FieldKindInt represents signed and unsigned integer types.
+	FieldKindInt FieldKind = "int"
+	// FieldKindFloat represents float32 and float64 types.
+	FieldKindFloat FieldKind = "float"
+	// FieldKindSlice represents slices and arrays.
+	FieldKindSlice FieldKind = "slice"
+	// FieldKindMap represents maps.
+	FieldKindMap FieldKind = "map"
+	// FieldKindStruct represents structs and known struct aliases.
+	FieldKindStruct FieldKind = "struct"
+)
+
+// FieldTypeInfo records parser-derived semantic type metadata for a field.
+type FieldTypeInfo struct {
+	Syntax         string
+	UnderlyingKind FieldKind
+	PointerDepth   int
+	NamedType      string
+	IsStringLike   bool
+	IsScalar       bool
+	IsComparable   bool
+	IsTime         bool
+}
+
 // HashAlgorithm defines the hashing algorithm
 type HashAlgorithm string
 
@@ -183,6 +217,9 @@ type FieldAnnotations struct {
 
 	// FieldType is the Go type syntax discovered by the parser when available.
 	FieldType string
+
+	// TypeInfo is parser-derived semantic type metadata when available.
+	TypeInfo FieldTypeInfo
 
 	// Storage configuration
 	Storage *StorageConfig

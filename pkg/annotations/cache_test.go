@@ -108,6 +108,8 @@ func TestParseFileAnnotationsCachePreservesVocabularyFields(t *testing.T) {
 	tmpFile := filepath.Join(tmpDir, "types.go")
 	source := `package test
 
+type OwnerID string
+
 // +fabrica:resource
 // +fabrica:storage=dedicated
 // +fabrica:migration=additive-only
@@ -118,7 +120,7 @@ type TokenSpec struct {
 	// +fabrica:field:nullable
 	// +fabrica:field:size=128
 	// +fabrica:field:relation=belongs-to:User:on-delete=cascade
-	OwnerID string
+	OwnerID OwnerID
 	CreatedAt string
 }
 `
@@ -156,6 +158,9 @@ type TokenSpec struct {
 			owner := anns.Fields["OwnerID"]
 			if owner == nil || !owner.Nullable || owner.Size != 128 {
 				t.Fatalf("OwnerID annotations = %+v", owner)
+			}
+			if !owner.TypeInfo.IsStringLike || owner.TypeInfo.UnderlyingKind != FieldKindString || owner.TypeInfo.NamedType != "OwnerID" {
+				t.Fatalf("OwnerID type info = %+v", owner.TypeInfo)
 			}
 			if owner.Relation == nil || owner.Relation.OnDelete != OnDeleteCascade {
 				t.Fatalf("OwnerID relation = %+v", owner.Relation)

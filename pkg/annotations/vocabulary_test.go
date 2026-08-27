@@ -5,10 +5,8 @@
 package annotations
 
 import (
-	"go/ast"
 	"go/parser"
 	"go/token"
-	"maps"
 	"strings"
 	"testing"
 )
@@ -19,55 +17,12 @@ import (
 func parseSource(t *testing.T, src, typeName string) (*ResourceAnnotations, error) {
 	t.Helper()
 
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "types.go", src, parser.ParseComments)
+	file, err := parser.ParseFile(token.NewFileSet(), "types.go", src, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("parse source: %v", err)
 	}
 
-	var result *ResourceAnnotations
-	specTypeName := typeName + "Spec"
-	specFields := make(map[string]*FieldAnnotations)
-	specFieldNames := make(map[string]bool)
-
-	for _, decl := range file.Decls {
-		genDecl, ok := decl.(*ast.GenDecl)
-		if !ok {
-			continue
-		}
-		for _, spec := range genDecl.Specs {
-			typeSpec, ok := spec.(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-
-			switch typeSpec.Name.Name {
-			case typeName:
-				annots, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
-				if err != nil {
-					return nil, err
-				}
-				result = annots
-
-			case specTypeName:
-				annots, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
-				if err != nil {
-					return nil, err
-				}
-				maps.Copy(specFields, annots.Fields)
-				maps.Copy(specFieldNames, annots.SpecFields)
-			}
-		}
-	}
-
-	if result == nil {
-		t.Fatalf("type %q not found in source", typeName)
-	}
-
-	maps.Copy(result.Fields, specFields)
-	maps.Copy(result.SpecFields, specFieldNames)
-
-	return result, nil
+	return parseResourceFromFile(file, typeName)
 }
 
 func dedicatedSrc(typeAnnots, fieldAnnots string) string {
@@ -259,6 +214,166 @@ type TokenSpec struct {
 		if field == nil || field.Size != 64 || field.FieldType != "string" {
 			t.Fatalf("%s annotations = %+v", name, field)
 		}
+	}
+}
+
+func TestParseFieldTypeInfoResolvesNamedAliases(t *testing.T) {
+	src := `package v1
+
+type SecretEmail Email
+type Email string
+type Count int
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email ` + "`json:\"email\"`" + `
+
+	// +fabrica:field:storage=hashed:sha256
+	BackupEmail *SecretEmail ` + "`json:\"backup_email\"`" + `
+
+	// +fabrica:field:size=10
+	LoginCount Count ` + "`json:\"login_count\"`" + `
+}
+`
+
+	annots, err := parseSource(t, src, "User")
+	if err != nil {
+		t.Fatalf("parseSource: %v", err)
+	}
+	if err := Validate(annots); err == nil || !strings.Contains(err.Error(), "size requires a string field") {
+		t.Fatalf("expected LoginCount to fail size validation, got %v", err)
+	}
+
+	file, parseErr := parser.ParseFile(token.NewFileSet(), "types.go", src, parser.ParseComments)
+	if parseErr != nil {
+		t.Fatalf("parse source: %v", parseErr)
+	}
+	annots, err = parseResourceFromFile(file, "User")
+	if err != nil {
+		t.Fatalf("parseResourceFromFile: %v", err)
+	}
+
+	email := annots.Fields["Email"]
+	if email == nil || email.FieldType != "Email" || !email.TypeInfo.IsStringLike || email.TypeInfo.UnderlyingKind != FieldKindString {
+		t.Fatalf("Email type info = %+v", email)
+	}
+	backupEmail := annots.Fields["BackupEmail"]
+	if backupEmail == nil || backupEmail.FieldType != "*SecretEmail" || !backupEmail.TypeInfo.IsStringLike || backupEmail.TypeInfo.PointerDepth != 1 {
+		t.Fatalf("BackupEmail type info = %+v", backupEmail)
+	}
+	loginCount := annots.Fields["LoginCount"]
+	if loginCount == nil || loginCount.TypeInfo.UnderlyingKind != FieldKindInt || loginCount.TypeInfo.IsStringLike {
+		t.Fatalf("LoginCount type info = %+v", loginCount)
+	}
+}
+
+func TestNamedStringAliasesPassCurrentStringValidations(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		resource string
+		src      string
+	}{
+		{
+			name:     "size on named string",
+			resource: "User",
+			src: `package v1
+
+type Email string
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email ` + "`json:\"email\"`" + `
+}
+`,
+		},
+		{
+			name:     "hashed pointer to named string",
+			resource: "Token",
+			src: `package v1
+
+type TokenValue string
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type Token struct { Spec TokenSpec }
+
+type TokenSpec struct {
+	// +fabrica:field:storage=hashed:sha256
+	Value *TokenValue ` + "`json:\"value\"`" + `
+}
+`,
+		},
+		{
+			name:     "encrypted alias chain",
+			resource: "Secret",
+			src: `package v1
+
+type Email string
+type SecretEmail Email
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type Secret struct { Spec SecretSpec }
+
+type SecretSpec struct {
+	// +fabrica:field:storage=encrypted:aes256:key=env
+	Email SecretEmail ` + "`json:\"email\"`" + `
+}
+`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			annots, err := parseSource(t, tt.src, tt.resource)
+			if err != nil {
+				t.Fatalf("parseSource: %v", err)
+			}
+			if err := Validate(annots); err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+		})
+	}
+}
+
+func TestNamedNonStringAliasesFailCurrentStringValidations(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		directive string
+		wantErr   string
+	}{
+		{"size", "// +fabrica:field:size=10", "size requires a string field"},
+		{"hashed", "// +fabrica:field:storage=hashed:sha256", "hashed storage requires a string field"},
+		{"encrypted", "// +fabrica:field:storage=encrypted:aes256:key=env", "encrypted storage requires a string field"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			src := `package v1
+
+type Count int
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type Metric struct { Spec MetricSpec }
+
+type MetricSpec struct {
+	` + tt.directive + `
+	Count Count ` + "`json:\"count\"`" + `
+}
+`
+			annots, err := parseSource(t, src, "Metric")
+			if err != nil {
+				t.Fatalf("parseSource: %v", err)
+			}
+			if err := Validate(annots); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 

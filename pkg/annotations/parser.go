@@ -26,6 +26,10 @@ import (
 //	typeSpec := genDecl.Specs[0].(*ast.TypeSpec)
 //	annotations, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
 func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup) (*ResourceAnnotations, error) {
+	return parseResourceAnnotations(typeSpec, docComments, nil)
+}
+
+func parseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup, aliases map[string]FieldTypeInfo) (*ResourceAnnotations, error) {
 	if typeSpec == nil {
 		return nil, &ParseError{Message: "typeSpec must not be nil"}
 	}
@@ -74,6 +78,7 @@ func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGr
 		if field.Doc != nil {
 			fieldAnnotations := NewFieldAnnotations(field.Names[0].Name)
 			fieldAnnotations.FieldType = formatExpr(field.Type)
+			fieldAnnotations.TypeInfo = fieldTypeInfo(field.Type, aliases)
 
 			for _, comment := range field.Doc.List {
 				line := CleanAnnotationLine(comment.Text)
@@ -176,6 +181,105 @@ func formatExpr(expr ast.Expr) string {
 		return ""
 	}
 	return buf.String()
+}
+
+func collectTypeAliases(file *ast.File) map[string]FieldTypeInfo {
+	typeExprs := make(map[string]ast.Expr)
+	aliases := make(map[string]FieldTypeInfo)
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			typeExprs[typeSpec.Name.Name] = typeSpec.Type
+			aliases[typeSpec.Name.Name] = fieldTypeInfo(typeSpec.Type, aliases)
+		}
+	}
+
+	for range typeExprs {
+		for name, expr := range typeExprs {
+			aliases[name] = fieldTypeInfo(expr, aliases)
+		}
+	}
+	return aliases
+}
+
+func fieldTypeInfo(expr ast.Expr, aliases map[string]FieldTypeInfo) FieldTypeInfo {
+	info := FieldTypeInfo{Syntax: formatExpr(expr), UnderlyingKind: FieldKindUnknown}
+	return resolveFieldTypeInfo(expr, aliases, info)
+}
+
+func resolveFieldTypeInfo(expr ast.Expr, aliases map[string]FieldTypeInfo, info FieldTypeInfo) FieldTypeInfo {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		if alias, ok := aliases[t.Name]; ok {
+			alias.Syntax = info.Syntax
+			alias.PointerDepth += info.PointerDepth
+			alias.NamedType = t.Name
+			return alias
+		}
+		return builtinFieldTypeInfo(t.Name, info)
+
+	case *ast.StarExpr:
+		info.PointerDepth++
+		return resolveFieldTypeInfo(t.X, aliases, info)
+
+	case *ast.ArrayType:
+		info.UnderlyingKind = FieldKindSlice
+		info.IsComparable = false
+		return info
+
+	case *ast.MapType:
+		info.UnderlyingKind = FieldKindMap
+		info.IsComparable = false
+		return info
+
+	case *ast.StructType:
+		info.UnderlyingKind = FieldKindStruct
+		return info
+
+	case *ast.SelectorExpr:
+		if x, ok := t.X.(*ast.Ident); ok && x.Name == "time" && t.Sel.Name == "Time" {
+			info.UnderlyingKind = FieldKindStruct
+			info.IsTime = true
+			info.IsComparable = true
+		}
+		return info
+
+	default:
+		return info
+	}
+}
+
+func builtinFieldTypeInfo(name string, info FieldTypeInfo) FieldTypeInfo {
+	switch name {
+	case "string":
+		info.UnderlyingKind = FieldKindString
+		info.IsStringLike = true
+		info.IsScalar = true
+		info.IsComparable = true
+	case "bool":
+		info.UnderlyingKind = FieldKindBool
+		info.IsScalar = true
+		info.IsComparable = true
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr":
+		info.UnderlyingKind = FieldKindInt
+		info.IsScalar = true
+		info.IsComparable = true
+	case "float32", "float64":
+		info.UnderlyingKind = FieldKindFloat
+		info.IsScalar = true
+		info.IsComparable = true
+	default:
+		info.UnderlyingKind = FieldKindUnknown
+	}
+	return info
 }
 
 // parseFieldLevelAnnotation processes a single field-level annotation
@@ -658,6 +762,7 @@ func ParseResourceFile(filename, resourceName string) (*ResourceAnnotations, err
 // file. Kept separate so callers that already hold an *ast.File do not reparse.
 func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnotations, error) {
 	specTypeName := resourceName + "Spec"
+	aliases := collectTypeAliases(file)
 
 	var (
 		resourceAnnots *ResourceAnnotations
@@ -679,14 +784,14 @@ func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnota
 
 			switch typeSpec.Name.Name {
 			case resourceName:
-				annots, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
+				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, aliases)
 				if err != nil {
 					return nil, fmt.Errorf("parse annotations on %s: %w", resourceName, err)
 				}
 				resourceAnnots = annots
 
 			case specTypeName:
-				annots, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
+				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, aliases)
 				if err != nil {
 					return nil, fmt.Errorf("parse annotations on %s: %w", specTypeName, err)
 				}
@@ -758,6 +863,7 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 	}
 
 	result := make(map[string]*ResourceAnnotations)
+	aliases := collectTypeAliases(file)
 
 	// Walk declarations
 	for _, decl := range file.Decls {
@@ -772,7 +878,7 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 				continue
 			}
 
-			annotations, err := ParseResourceAnnotations(typeSpec, genDecl.Doc)
+			annotations, err := parseResourceAnnotations(typeSpec, genDecl.Doc, aliases)
 			if err != nil {
 				return nil, err
 			}

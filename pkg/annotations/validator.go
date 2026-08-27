@@ -288,7 +288,7 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 			Message:    fmt.Sprintf("field size must be 1-65535 when set, got %d", annotations.Size),
 		}
 	}
-	if annotations.Size > 0 && !isStringFieldType(annotations.FieldType) {
+	if annotations.Size > 0 && !isStringLikeField(annotations) {
 		return &ValidationError{
 			Field:      fieldName,
 			Annotation: fmt.Sprintf("field %s size", fieldName),
@@ -394,7 +394,7 @@ func validateStorageConfig(fieldName string, annotations *FieldAnnotations) erro
 	config := annotations.Storage
 	switch config.Type {
 	case StorageTypeHashed:
-		if !isStringFieldType(annotations.FieldType) {
+		if !isStringLikeField(annotations) {
 			return &ValidationError{
 				Field:      fieldName,
 				Annotation: fmt.Sprintf("field %s storage", fieldName),
@@ -417,7 +417,7 @@ func validateStorageConfig(fieldName string, annotations *FieldAnnotations) erro
 		return validateHashConfig(fieldName, config.Hash)
 
 	case StorageTypeEncrypted:
-		if !isStringFieldType(annotations.FieldType) {
+		if !isStringLikeField(annotations) {
 			return &ValidationError{
 				Field:      fieldName,
 				Annotation: fmt.Sprintf("field %s storage", fieldName),
@@ -457,8 +457,12 @@ func validateStorageConfig(fieldName string, annotations *FieldAnnotations) erro
 	}
 }
 
-func isStringFieldType(fieldType string) bool {
-	switch fieldType {
+func isStringLikeField(annotations *FieldAnnotations) bool {
+	if annotations.TypeInfo.Syntax != "" {
+		return annotations.TypeInfo.IsStringLike
+	}
+
+	switch annotations.FieldType {
 	case "", "string", "*string":
 		return true
 	default:

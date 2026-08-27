@@ -469,6 +469,7 @@ Container for all annotations on a single field.
 type FieldAnnotations struct {
     FieldName      string          // Go field name
     FieldType      string          // Parsed Go type syntax, when available
+    TypeInfo       FieldTypeInfo   // Resolved underlying kind/predicates, when available
     Storage        *StorageConfig  // Storage transformation (hashed, encrypted)
     Sensitive      bool            // Exclude from logs
     Immutable      bool            // Prevent updates
