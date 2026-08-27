@@ -6,13 +6,30 @@
 package schema
 
 import (
+	{{- if .EntSchema.HasHashedFields }}
+	"context"
+	{{- end }}
+	{{- if .EntSchema.HasSHA256Fields }}
+	"crypto/sha256"
+	"encoding/hex"
+	{{- end }}
+	{{- if .EntSchema.HasHashedFields }}
+	"fmt"
+	{{- end }}
 	"time"
 
 	"entgo.io/ent"
+	{{- if .EntSchema.HasHashedFields }}
 	"entgo.io/ent/dialect"
+	{{- end }}
+	{{- if .EntSchema.HasNonBTreeIndexes }}
+	"entgo.io/ent/dialect/entsql"
+	{{- end }}
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+	{{- if .EntSchema.HasBcryptFields }}
 	"golang.org/x/crypto/bcrypt"
+	{{- end }}
 )
 
 // {{.Name}} holds the schema definition for the {{.Name}} entity.
@@ -88,9 +105,21 @@ func ({{.Name}}) Fields() []ent.Field {
 			{{- if $fieldAnnots.Unique }}
 			Unique().
 			{{- end }}
+			{{- if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if .Required }}
+			NotEmpty().
+			{{- else if not $fieldAnnots.NotNull }}
+			Optional().
+			{{- end }}
 			SchemaType(map[string]string{
+				{{- if eq $fieldAnnots.Storage.Hash.Algorithm "sha256" }}
+				dialect.Postgres: "varchar(64)",  // SHA-256 hex length
+				dialect.MySQL:    "varchar(64)",
+				{{- else }}
 				dialect.Postgres: "varchar(60)",  // bcrypt hash length
 				dialect.MySQL:    "varchar(60)",
+				{{- end }}
 				dialect.SQLite:   "TEXT",
 			}).
 			Comment("{{.Name}} (hashed with {{$fieldAnnots.Storage.Hash.Algorithm}})"),
@@ -104,6 +133,13 @@ func ({{.Name}}) Fields() []ent.Field {
 			{{- end }}
 			{{- if $fieldAnnots.Unique }}
 			Unique().
+			{{- end }}
+			{{- if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if .Required }}
+			NotEmpty().
+			{{- else if not $fieldAnnots.NotNull }}
+			Optional().
 			{{- end }}
 			Comment("{{.Name}} (encrypted with {{$fieldAnnots.Storage.Encryption.Algorithm}})"),
 		{{- else }}
@@ -120,14 +156,13 @@ func ({{.Name}}) Fields() []ent.Field {
 			MaxLen({{$fieldAnnots.Size}}).
 			{{- end }}
 			{{- if $fieldAnnots.Default }}
-			Default("{{$fieldAnnots.Default}}").
+			Default({{goString $fieldAnnots.Default}}).
 			{{- end }}
-			{{- if $fieldAnnots.NotNull }}
-			NotEmpty().
-			{{- else if $fieldAnnots.Nullable }}
+			{{- if $fieldAnnots.Nullable }}
 			Optional().
 			{{- else if .Required }}
 			NotEmpty().
+			{{- else if $fieldAnnots.NotNull }}
 			{{- else }}
 			Optional().
 			{{- end }}
@@ -225,9 +260,7 @@ func ({{.Name}}) Indexes() []ent.Index {
 			{{- if $fieldAnnots.Index.Name }}
 			StorageKey("{{$fieldAnnots.Index.Name}}").
 			{{- end }}
-			Annotations(map[string]interface{}{
-				"gin": true,
-			}),
+			Annotations(entsql.IndexType("{{entIndexType $fieldAnnots.Index.Type}}")),
 		{{- else if eq $fieldAnnots.Index.Type "gist" }}
 		// GiST index for {{.Name}} (PostgreSQL only)
 		index.Fields("{{.JSONName}}").
@@ -237,9 +270,7 @@ func ({{.Name}}) Indexes() []ent.Index {
 			{{- if $fieldAnnots.Index.Name }}
 			StorageKey("{{$fieldAnnots.Index.Name}}").
 			{{- end }}
-			Annotations(map[string]interface{}{
-				"gist": true,
-			}),
+			Annotations(entsql.IndexType("{{entIndexType $fieldAnnots.Index.Type}}")),
 		{{- else if eq $fieldAnnots.Index.Type "hash" }}
 		// Hash index for {{.Name}}
 		index.Fields("{{.JSONName}}").
@@ -249,9 +280,7 @@ func ({{.Name}}) Indexes() []ent.Index {
 			{{- if $fieldAnnots.Index.Name }}
 			StorageKey("{{$fieldAnnots.Index.Name}}").
 			{{- end }}
-			Annotations(map[string]interface{}{
-				"hash": true,
-			}),
+			Annotations(entsql.IndexType("{{entIndexType $fieldAnnots.Index.Type}}")),
 		{{- else }}
 		// B-tree index for {{.Name}}
 		{{- if or $fieldAnnots.Index.Unique $fieldAnnots.Index.Name }}
@@ -282,9 +311,7 @@ func ({{.Name}}) Indexes() []ent.Index {
 		){{if $idx.Unique}}.
 			Unique(){{end}}{{if $idx.Name}}.
 			StorageKey("{{$idx.Name}}"){{end}}{{if ne (printf "%s" $idx.Type) "btree"}}.
-			Annotations(map[string]interface{}{
-				"{{$idx.Type}}": true,
-			}){{end}},
+			Annotations(entsql.IndexType("{{entIndexType $idx.Type}}")){{end}},
 		{{- end }}
 	}
 }
@@ -295,24 +322,28 @@ func ({{.Name}}) Hooks() []ent.Hook {
 		{{- range .SpecFields }}
 		{{- $fieldAnnots := index $.Annotations.Fields .Name }}
 		{{- if and $fieldAnnots $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed") }}
-		// Hash {{.Name}} field with {{$fieldAnnots.Storage.Hash.Algorithm}} on create
+		// Hash {{.Name}} field with {{$fieldAnnots.Storage.Hash.Algorithm}} on create and update
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-				if m.Op().Is(ent.OpCreate) {
-					if {{$.Name}}Mut, ok := m.(*ent.{{$.Name}}Mutation); ok {
-						if value, exists := {{$.Name}}Mut.{{.Name}}(); exists {
+				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
+					if value, exists := m.Field("{{.JSONName}}"); exists {
+						plain, ok := value.(string)
+						if !ok {
+							return nil, fmt.Errorf("hash {{.Name}}: expected string, got %T", value)
+						}
 							{{- if eq $fieldAnnots.Storage.Hash.Algorithm "bcrypt" }}
-							hashed, err := bcrypt.GenerateFromPassword([]byte(value), {{$fieldAnnots.Storage.Hash.Cost}})
+							hashed, err := bcrypt.GenerateFromPassword([]byte(plain), {{$fieldAnnots.Storage.Hash.Cost}})
 							if err != nil {
 								return nil, fmt.Errorf("hash {{.Name}}: %w", err)
 							}
-							{{$.Name}}Mut.Set{{.Name}}(string(hashed))
+							hashedValue := string(hashed)
 							{{- else if eq $fieldAnnots.Storage.Hash.Algorithm "sha256" }}
 							hasher := sha256.New()
-							hasher.Write([]byte(value))
-							hashed := hex.EncodeToString(hasher.Sum(nil))
-							{{$.Name}}Mut.Set{{.Name}}(hashed)
+							hasher.Write([]byte(plain))
+							hashedValue := hex.EncodeToString(hasher.Sum(nil))
 							{{- end }}
+						if err := m.SetField("{{.JSONName}}", hashedValue); err != nil {
+							return nil, fmt.Errorf("set hashed {{.Name}}: %w", err)
 						}
 					}
 				}

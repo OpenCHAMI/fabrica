@@ -7,6 +7,7 @@ package codegen
 import (
 	"flag"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -62,6 +63,24 @@ func assertGolden(t *testing.T, name string, got []byte) {
 func generateDedicatedSchema(t *testing.T, resource interface{}, name string, annots *annotations.ResourceAnnotations) []byte {
 	t.Helper()
 
+	content, err := generateDedicatedSchemaContent(t, resource, name, annots)
+	if err != nil {
+		t.Fatalf("GenerateEntSchemas failed: %v", err)
+	}
+
+	return content
+}
+
+func generateDedicatedSchemaError(t *testing.T, resource interface{}, name string, annots *annotations.ResourceAnnotations) error {
+	t.Helper()
+
+	_, err := generateDedicatedSchemaContent(t, resource, name, annots)
+	return err
+}
+
+func generateDedicatedSchemaContent(t *testing.T, resource interface{}, name string, annots *annotations.ResourceAnnotations) ([]byte, error) {
+	t.Helper()
+
 	tmpDir := t.TempDir()
 
 	origDir, err := os.Getwd()
@@ -94,42 +113,40 @@ func generateDedicatedSchema(t *testing.T, resource interface{}, name string, an
 	gen.SetResourceAnnotations(name, annots)
 
 	if err := gen.GenerateEntSchemas(); err != nil {
-		t.Fatalf("GenerateEntSchemas failed: %v", err)
+		return nil, err
 	}
 
 	schemaFile := filepath.Join("internal", "storage", "ent", "schema", strings.ToLower(name)+".go")
 	content, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("read generated schema: %v", err)
+		return nil, err
 	}
 
-	return content
+	return content, nil
 }
 
-type goldenTokenSpec struct {
-	Value     string `json:"value" validate:"required"`
-	Owner     string `json:"owner"`
-	Slug      string `json:"slug"`
-	Note      string `json:"note"`
-	UseCount  int    `json:"use_count"`
-	Revoked   bool   `json:"revoked"`
-	CreatedBy string `json:"created_by"`
+type GoldenTokenSpec struct {
+	Value      string `json:"value" validate:"required"`
+	Checksum   string `json:"checksum"`
+	Owner      string `json:"owner"`
+	Slug       string `json:"slug"`
+	Note       string `json:"note" validate:"required"`
+	SearchText string `json:"search_text"`
+	UseCount   int    `json:"use_count"`
+	Revoked    bool   `json:"revoked"`
+	CreatedBy  string `json:"created_by"`
 }
 
-type goldenToken struct {
-	Spec goldenTokenSpec
+type GoldenToken struct {
+	Spec GoldenTokenSpec
 }
 
-// TestGoldenDedicatedSchemaFullVocabulary pins the emitted Ent schema for a
-// resource that exercises every annotation the dedicated template understands,
-// old and new.
-func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
+func fullVocabularyAnnotations() *annotations.ResourceAnnotations {
 	annots := annotations.NewResourceAnnotations()
 	annots.IsResource = true
 	annots.StorageMode = annotations.StorageModeDedicated
 	annots.Migration = annotations.MigrationPolicyAdditiveOnly
 
-	// Pre-existing vocabulary: hashed + sensitive + immutable.
 	value := annotations.NewFieldAnnotations("Value")
 	value.Storage = &annotations.StorageConfig{
 		Type: annotations.StorageTypeHashed,
@@ -139,13 +156,19 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 	value.Immutable = true
 	annots.Fields["Value"] = value
 
-	// New: size + explicit notnull.
+	checksum := annotations.NewFieldAnnotations("Checksum")
+	checksum.Storage = &annotations.StorageConfig{
+		Type: annotations.StorageTypeHashed,
+		Hash: &annotations.HashConfig{Algorithm: annotations.HashAlgorithmSHA256},
+	}
+	checksum.Nullable = true
+	annots.Fields["Checksum"] = checksum
+
 	owner := annotations.NewFieldAnnotations("Owner")
 	owner.Size = 253
 	owner.NotNull = true
 	annots.Fields["Owner"] = owner
 
-	// New: named unique index on a single column.
 	slug := annotations.NewFieldAnnotations("Slug")
 	slug.Index = &annotations.IndexConfig{
 		Type:   annotations.IndexTypeBTree,
@@ -154,24 +177,23 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 	}
 	annots.Fields["Slug"] = slug
 
-	// New: explicit nullable overriding the struct-tag inference.
 	note := annotations.NewFieldAnnotations("Note")
 	note.Nullable = true
 	note.Size = 1024
 	annots.Fields["Note"] = note
 
-	// Pre-existing: default on an int.
+	searchText := annotations.NewFieldAnnotations("SearchText")
+	searchText.Index = &annotations.IndexConfig{Type: annotations.IndexTypeGIN}
+	annots.Fields["SearchText"] = searchText
+
 	useCount := annotations.NewFieldAnnotations("UseCount")
 	useCount.Default = "0"
 	annots.Fields["UseCount"] = useCount
 
-	// Pre-existing: default on a bool.
 	revoked := annotations.NewFieldAnnotations("Revoked")
 	revoked.Default = "false"
 	annots.Fields["Revoked"] = revoked
 
-	// New: relation. Parsed and validated in 01a; edge emission is deferred,
-	// so this must NOT change the generated schema.
 	createdBy := annotations.NewFieldAnnotations("CreatedBy")
 	createdBy.Relation = &annotations.RelationConfig{
 		Kind:     annotations.RelationBelongsTo,
@@ -180,7 +202,6 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 	}
 	annots.Fields["CreatedBy"] = createdBy
 
-	// New: composite indexes, one plain and one named-unique.
 	annots.Indexes = []*annotations.CompositeIndex{
 		{Fields: []string{"Owner", "Revoked"}, Type: annotations.IndexTypeBTree},
 		{
@@ -189,29 +210,44 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 			Unique: true,
 			Type:   annotations.IndexTypeBTree,
 		},
+		{Fields: []string{"Owner", "SearchText"}, Type: annotations.IndexTypeGIN},
 	}
+
+	return annots
+}
+
+// TestGoldenDedicatedSchemaFullVocabulary pins the emitted Ent schema for a
+// resource that exercises every annotation the dedicated template understands,
+// old and new.
+func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
+	annots := fullVocabularyAnnotations()
 
 	if err := annotations.Validate(annots); err != nil {
 		t.Fatalf("fixture failed validation: %v", err)
 	}
 
-	got := generateDedicatedSchema(t, &goldenToken{}, "goldenToken", annots)
+	got := generateDedicatedSchema(t, &GoldenToken{}, "GoldenToken", annots)
 	assertGolden(t, "token_dedicated_full.go.golden", got)
 }
 
-type baselineTokenSpec struct {
-	Value string `json:"value" validate:"required"`
-	Name  string `json:"name"`
+type BaselineTokenSpec struct {
+	Value       string `json:"value" validate:"required"`
+	DisplayName string `json:"display_name"`
 }
 
-type baselineToken struct {
-	Spec baselineTokenSpec
+type BaselineToken struct {
+	Spec BaselineTokenSpec
 }
 
-// TestGoldenDedicatedSchemaBaseline pins the emitted schema for a resource that
-// uses ONLY the pre-01a vocabulary. If extending the vocabulary changes this
-// output, backward compatibility has been broken.
-func TestGoldenDedicatedSchemaBaseline(t *testing.T) {
+type PlainTokenSpec struct {
+	DisplayName string `json:"display_name"`
+}
+
+type PlainToken struct {
+	Spec PlainTokenSpec
+}
+
+func baselineAnnotations() *annotations.ResourceAnnotations {
 	annots := annotations.NewResourceAnnotations()
 	annots.IsResource = true
 	annots.StorageMode = annotations.StorageModeDedicated
@@ -225,15 +261,138 @@ func TestGoldenDedicatedSchemaBaseline(t *testing.T) {
 	value.Immutable = true
 	annots.Fields["Value"] = value
 
-	name := annotations.NewFieldAnnotations("Name")
-	name.Index = &annotations.IndexConfig{Type: annotations.IndexTypeBTree}
-	name.Unique = true
-	annots.Fields["Name"] = name
+	displayName := annotations.NewFieldAnnotations("DisplayName")
+	displayName.Index = &annotations.IndexConfig{Type: annotations.IndexTypeBTree}
+	displayName.Unique = true
+	annots.Fields["DisplayName"] = displayName
+
+	return annots
+}
+
+func plainAnnotations() *annotations.ResourceAnnotations {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["DisplayName"] = annotations.NewFieldAnnotations("DisplayName")
+	return annots
+}
+
+// TestGoldenDedicatedSchemaBaseline pins the emitted schema for a resource that
+// uses ONLY the pre-01a vocabulary. If extending the vocabulary changes this
+// output, backward compatibility has been broken.
+func TestGoldenDedicatedSchemaBaseline(t *testing.T) {
+	annots := baselineAnnotations()
 
 	if err := annotations.Validate(annots); err != nil {
 		t.Fatalf("fixture failed validation: %v", err)
 	}
 
-	got := generateDedicatedSchema(t, &baselineToken{}, "baselineToken", annots)
+	got := generateDedicatedSchema(t, &BaselineToken{}, "BaselineToken", annots)
 	assertGolden(t, "token_dedicated_baseline.go.golden", got)
+}
+
+func TestGeneratedDedicatedEntSchemasCompile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping generated Ent compile test in short mode")
+	}
+
+	schemas := map[string][]byte{
+		"goldentoken.go":   generateDedicatedSchema(t, &GoldenToken{}, "GoldenToken", fullVocabularyAnnotations()),
+		"baselinetoken.go": generateDedicatedSchema(t, &BaselineToken{}, "BaselineToken", baselineAnnotations()),
+		"plaintoken.go":    generateDedicatedSchema(t, &PlainToken{}, "PlainToken", plainAnnotations()),
+	}
+
+	tmpDir := t.TempDir()
+	schemaDir := filepath.Join(tmpDir, "schema")
+	if err := os.MkdirAll(schemaDir, 0o755); err != nil {
+		t.Fatalf("create schema dir: %v", err)
+	}
+	for name, content := range schemas {
+		if err := os.WriteFile(filepath.Join(schemaDir, name), content, 0o644); err != nil {
+			t.Fatalf("write generated schema %s: %v", name, err)
+		}
+	}
+
+	goMod := []byte("module generatedschema\n\ngo 1.26.6\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgolang.org/x/crypto v0.43.0\n)\n")
+	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), goMod, 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = tmpDir
+	output, err := tidy.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated dedicated Ent schema module failed go mod tidy: %v\n%s", err, output)
+	}
+
+	cmd := exec.Command("go", "test", "./schema")
+	cmd.Dir = tmpDir
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated dedicated Ent schemas failed to compile: %v\n%s", err, output)
+	}
+
+	entGenerate := exec.Command("go", "run", "-mod=mod", "entgo.io/ent/cmd/ent", "generate", "./schema")
+	entGenerate.Dir = tmpDir
+	output, err = entGenerate.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated dedicated Ent schemas failed Ent codegen: %v\n%s", err, output)
+	}
+
+	tidy = exec.Command("go", "mod", "tidy")
+	tidy.Dir = tmpDir
+	output, err = tidy.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated Ent module failed post-generation go mod tidy: %v\n%s", err, output)
+	}
+
+	moduleTest := exec.Command("go", "test", "./...")
+	moduleTest.Dir = tmpDir
+	output, err = moduleTest.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated Ent module failed to compile: %v\n%s", err, output)
+	}
+}
+
+func TestGenerateEntSchemasRejectsUnsupportedStorageTransforms(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		configure func(*annotations.FieldAnnotations)
+		wantErr   string
+	}{
+		{
+			name: "encrypted storage",
+			configure: func(field *annotations.FieldAnnotations) {
+				field.Storage = &annotations.StorageConfig{
+					Type:       annotations.StorageTypeEncrypted,
+					Encryption: &annotations.EncryptionConfig{Algorithm: "aes256", KeySource: "env"},
+				}
+			},
+			wantErr: "encrypted storage is not emitted yet",
+		},
+		{
+			name: "argon2 hashing",
+			configure: func(field *annotations.FieldAnnotations) {
+				field.Storage = &annotations.StorageConfig{
+					Type: annotations.StorageTypeHashed,
+					Hash: &annotations.HashConfig{Algorithm: annotations.HashAlgorithmArgon2, Cost: 19456},
+				}
+			},
+			wantErr: "argon2 hashing is not emitted yet",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			annots := annotations.NewResourceAnnotations()
+			annots.IsResource = true
+			annots.StorageMode = annotations.StorageModeDedicated
+			field := annotations.NewFieldAnnotations("Value")
+			tt.configure(field)
+			annots.Fields["Value"] = field
+
+			err := generateDedicatedSchemaError(t, &GoldenToken{}, "GoldenToken", annots)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
 }

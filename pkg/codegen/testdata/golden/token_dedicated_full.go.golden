@@ -6,28 +6,33 @@
 package schema
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// goldenToken holds the schema definition for the goldenToken entity.
-// This is a dedicated schema with flattened fields from goldenTokenSpec.
+// GoldenToken holds the schema definition for the GoldenToken entity.
+// This is a dedicated schema with flattened fields from GoldenTokenSpec.
 //
 // Migration policy: additive-only (+fabrica:migration=additive-only).
 // Only additive changes — new columns, new indexes — are permitted on this
 // table. Column drops and narrowing type changes must be rejected by the
 // migration tooling.
-type goldenToken struct {
+type GoldenToken struct {
 	ent.Schema
 }
 
-// Fields of the goldenToken.
-func (goldenToken) Fields() []ent.Field {
+// Fields of the GoldenToken.
+func (GoldenToken) Fields() []ent.Field {
 	return []ent.Field{
 		// Core identity fields
 		field.String("uid").
@@ -51,7 +56,7 @@ func (goldenToken) Fields() []ent.Field {
 			Comment("API version"),
 
 		field.String("kind").
-			Default("goldenToken").
+			Default("GoldenToken").
 			Comment("Resource kind"),
 
 		// Timestamps
@@ -74,6 +79,7 @@ func (goldenToken) Fields() []ent.Field {
 		field.String("value").
 			Sensitive().
 			Immutable().
+			NotEmpty().
 			SchemaType(map[string]string{
 				dialect.Postgres: "varchar(60)", // bcrypt hash length
 				dialect.MySQL:    "varchar(60)",
@@ -81,11 +87,20 @@ func (goldenToken) Fields() []ent.Field {
 			}).
 			Comment("Value (hashed with bcrypt)"),
 
+		// Field: Checksum (hashed)
+		field.String("checksum").
+			Optional().
+			SchemaType(map[string]string{
+				dialect.Postgres: "varchar(64)", // SHA-256 hex length
+				dialect.MySQL:    "varchar(64)",
+				dialect.SQLite:   "TEXT",
+			}).
+			Comment("Checksum (hashed with sha256)"),
+
 		// Field: Owner
 		// Standard field (no special storage)
 		field.String("owner").
 			MaxLen(253).
-			NotEmpty().
 			Comment("Owner"),
 
 		// Field: Slug
@@ -100,6 +115,12 @@ func (goldenToken) Fields() []ent.Field {
 			MaxLen(1024).
 			Optional().
 			Comment("Note"),
+
+		// Field: SearchText
+		// Standard field (no special storage)
+		field.String("search_text").
+			Optional().
+			Comment("SearchText"),
 
 		// Field: UseCount
 		// Standard field (no special storage)
@@ -123,8 +144,8 @@ func (goldenToken) Fields() []ent.Field {
 	}
 }
 
-// Indexes of the goldenToken.
-func (goldenToken) Indexes() []ent.Index {
+// Indexes of the GoldenToken.
+func (GoldenToken) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("uid").Unique(),
 		index.Fields("name", "namespace"),
@@ -132,6 +153,9 @@ func (goldenToken) Indexes() []ent.Index {
 		index.Fields("slug").
 			Unique().
 			StorageKey("idx_token_slug"),
+		// GIN index for SearchText (PostgreSQL only)
+		index.Fields("search_text").
+			Annotations(entsql.IndexType("GIN")),
 
 		// Composite index (btree)
 		index.Fields(
@@ -146,23 +170,55 @@ func (goldenToken) Indexes() []ent.Index {
 		).
 			Unique().
 			StorageKey("idx_token_owner_slug"),
+
+		// Composite index (gin)
+		index.Fields(
+			"owner",
+			"search_text",
+		).
+			Annotations(entsql.IndexType("GIN")),
 	}
 }
 
-// Hooks of the goldenToken.
-func (goldenToken) Hooks() []ent.Hook {
+// Hooks of the GoldenToken.
+func (GoldenToken) Hooks() []ent.Hook {
 	return []ent.Hook{
-		// Hash Value field with bcrypt on create
+		// Hash Value field with bcrypt on create and update
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-				if m.Op().Is(ent.OpCreate) {
-					if goldenTokenMut, ok := m.(*ent.goldenTokenMutation); ok {
-						if value, exists := goldenTokenMut.Value(); exists {
-							hashed, err := bcrypt.GenerateFromPassword([]byte(value), 12)
-							if err != nil {
-								return nil, fmt.Errorf("hash Value: %w", err)
-							}
-							goldenTokenMut.SetValue(string(hashed))
+				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
+					if value, exists := m.Field("value"); exists {
+						plain, ok := value.(string)
+						if !ok {
+							return nil, fmt.Errorf("hash Value: expected string, got %T", value)
+						}
+						hashed, err := bcrypt.GenerateFromPassword([]byte(plain), 12)
+						if err != nil {
+							return nil, fmt.Errorf("hash Value: %w", err)
+						}
+						hashedValue := string(hashed)
+						if err := m.SetField("value", hashedValue); err != nil {
+							return nil, fmt.Errorf("set hashed Value: %w", err)
+						}
+					}
+				}
+				return next.Mutate(ctx, m)
+			})
+		},
+		// Hash Checksum field with sha256 on create and update
+		func(next ent.Mutator) ent.Mutator {
+			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
+					if value, exists := m.Field("checksum"); exists {
+						plain, ok := value.(string)
+						if !ok {
+							return nil, fmt.Errorf("hash Checksum: expected string, got %T", value)
+						}
+						hasher := sha256.New()
+						hasher.Write([]byte(plain))
+						hashedValue := hex.EncodeToString(hasher.Sum(nil))
+						if err := m.SetField("checksum", hashedValue); err != nil {
+							return nil, fmt.Errorf("set hashed Checksum: %w", err)
 						}
 					}
 				}

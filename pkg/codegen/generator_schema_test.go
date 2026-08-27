@@ -39,8 +39,8 @@ func TestGenerateEntSchemasDedicated(t *testing.T) {
 	}
 
 	type TokenSpec struct {
-		Value string `json:"value"`
-		Name  string `json:"name"`
+		Value       string `json:"value"`
+		DisplayName string `json:"display_name"`
 	}
 
 	type Token struct {
@@ -67,12 +67,12 @@ func TestGenerateEntSchemasDedicated(t *testing.T) {
 	valueAnnots.Immutable = true
 	annots.Fields["Value"] = valueAnnots
 
-	nameAnnots := annotations.NewFieldAnnotations("Name")
-	nameAnnots.Index = &annotations.IndexConfig{
+	displayNameAnnots := annotations.NewFieldAnnotations("DisplayName")
+	displayNameAnnots.Index = &annotations.IndexConfig{
 		Type: annotations.IndexTypeBTree,
 	}
-	nameAnnots.Unique = true
-	annots.Fields["Name"] = nameAnnots
+	displayNameAnnots.Unique = true
+	annots.Fields["DisplayName"] = displayNameAnnots
 
 	gen.SetResourceAnnotations("Token", annots)
 
@@ -109,11 +109,60 @@ func TestGenerateEntSchemasDedicated(t *testing.T) {
 	}
 
 	if !strings.Contains(schemaStr, "Unique()") {
-		t.Error("expected Unique() for Name field")
+		t.Error("expected Unique() for DisplayName field")
 	}
 
-	if !strings.Contains(schemaStr, "index.Fields(\"name\")") {
-		t.Error("expected index on Name field")
+	if !strings.Contains(schemaStr, "index.Fields(\"display_name\")") {
+		t.Error("expected index on DisplayName field")
+	}
+}
+
+func TestGenerateEntSchemasRejectsReservedSpecColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	}()
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("change to temp directory: %v", err)
+	}
+
+	gen := NewGenerator(tmpDir, "test", "github.com/test/project")
+	gen.StorageType = "ent"
+	gen.DBDriver = "postgres"
+
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates failed: %v", err)
+	}
+
+	type TokenSpec struct {
+		Name string `json:"name"`
+	}
+
+	type Token struct {
+		Spec TokenSpec
+	}
+
+	if err := gen.RegisterResource(&Token{}); err != nil {
+		t.Fatalf("RegisterResource failed: %v", err)
+	}
+
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Name"] = annotations.NewFieldAnnotations("Name")
+	gen.SetResourceAnnotations("Token", annots)
+
+	err = gen.GenerateEntSchemas()
+	if err == nil || !strings.Contains(err.Error(), "collides with a dedicated Ent metadata column") {
+		t.Fatalf("expected reserved column collision, got %v", err)
 	}
 }
 
@@ -142,7 +191,7 @@ func TestGenerateEntSchemasGenericOnly(t *testing.T) {
 	}
 
 	type DeviceSpec struct {
-		Name string `json:"name"`
+		DisplayName string `json:"display_name"`
 	}
 
 	type Device struct {
@@ -202,7 +251,7 @@ func TestGenerateEntSchemasMixed(t *testing.T) {
 	}
 
 	type DeviceSpec struct {
-		Name string `json:"name"`
+		DisplayName string `json:"display_name"`
 	}
 
 	type Device struct {

@@ -6,6 +6,8 @@
 package schema
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"entgo.io/ent"
@@ -15,14 +17,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// baselineToken holds the schema definition for the baselineToken entity.
-// This is a dedicated schema with flattened fields from baselineTokenSpec.
-type baselineToken struct {
+// BaselineToken holds the schema definition for the BaselineToken entity.
+// This is a dedicated schema with flattened fields from BaselineTokenSpec.
+type BaselineToken struct {
 	ent.Schema
 }
 
-// Fields of the baselineToken.
-func (baselineToken) Fields() []ent.Field {
+// Fields of the BaselineToken.
+func (BaselineToken) Fields() []ent.Field {
 	return []ent.Field{
 		// Core identity fields
 		field.String("uid").
@@ -46,7 +48,7 @@ func (baselineToken) Fields() []ent.Field {
 			Comment("API version"),
 
 		field.String("kind").
-			Default("baselineToken").
+			Default("BaselineToken").
 			Comment("Resource kind"),
 
 		// Timestamps
@@ -69,6 +71,7 @@ func (baselineToken) Fields() []ent.Field {
 		field.String("value").
 			Sensitive().
 			Immutable().
+			NotEmpty().
 			SchemaType(map[string]string{
 				dialect.Postgres: "varchar(60)", // bcrypt hash length
 				dialect.MySQL:    "varchar(60)",
@@ -76,39 +79,44 @@ func (baselineToken) Fields() []ent.Field {
 			}).
 			Comment("Value (hashed with bcrypt)"),
 
-		// Field: Name
+		// Field: DisplayName
 		// Standard field (no special storage)
-		field.String("name").
+		field.String("display_name").
 			Unique().
 			Optional().
-			Comment("Name"),
+			Comment("DisplayName"),
 	}
 }
 
-// Indexes of the baselineToken.
-func (baselineToken) Indexes() []ent.Index {
+// Indexes of the BaselineToken.
+func (BaselineToken) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("uid").Unique(),
 		index.Fields("name", "namespace"),
-		// B-tree index for Name
-		index.Fields("name"),
+		// B-tree index for DisplayName
+		index.Fields("display_name"),
 	}
 }
 
-// Hooks of the baselineToken.
-func (baselineToken) Hooks() []ent.Hook {
+// Hooks of the BaselineToken.
+func (BaselineToken) Hooks() []ent.Hook {
 	return []ent.Hook{
-		// Hash Value field with bcrypt on create
+		// Hash Value field with bcrypt on create and update
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-				if m.Op().Is(ent.OpCreate) {
-					if baselineTokenMut, ok := m.(*ent.baselineTokenMutation); ok {
-						if value, exists := baselineTokenMut.Value(); exists {
-							hashed, err := bcrypt.GenerateFromPassword([]byte(value), 12)
-							if err != nil {
-								return nil, fmt.Errorf("hash Value: %w", err)
-							}
-							baselineTokenMut.SetValue(string(hashed))
+				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
+					if value, exists := m.Field("value"); exists {
+						plain, ok := value.(string)
+						if !ok {
+							return nil, fmt.Errorf("hash Value: expected string, got %T", value)
+						}
+						hashed, err := bcrypt.GenerateFromPassword([]byte(plain), 12)
+						if err != nil {
+							return nil, fmt.Errorf("hash Value: %w", err)
+						}
+						hashedValue := string(hashed)
+						if err := m.SetField("value", hashedValue); err != nil {
+							return nil, fmt.Errorf("set hashed Value: %w", err)
 						}
 					}
 				}
