@@ -17,9 +17,10 @@ import (
 // which silently dropped resource-level state (IsResource, StorageMode, and
 // now composite indexes and migration policy) on every cache hit.
 type CachedResult struct {
-	Annotations map[string]*ResourceAnnotations
-	ModTime     time.Time
-	ParseTime   time.Time
+	Annotations  map[string]*ResourceAnnotations
+	ModTime      time.Time
+	Dependencies map[string]time.Time
+	ParseTime    time.Time
 }
 
 // AnnotationCache caches parsed annotations to avoid re-parsing unchanged files
@@ -50,12 +51,23 @@ func (c *AnnotationCache) Get(filename string) (map[string]*ResourceAnnotations,
 	if err != nil || stat.ModTime().After(cached.ModTime) {
 		return nil, false
 	}
+	for dependency, modTime := range cached.Dependencies {
+		stat, err := os.Stat(dependency)
+		if err != nil || stat.ModTime().After(modTime) {
+			return nil, false
+		}
+	}
 
 	return cached.Annotations, true
 }
 
 // Set stores parsed annotations in cache
 func (c *AnnotationCache) Set(filename string, anns map[string]*ResourceAnnotations) {
+	c.SetWithDependencies(filename, anns, nil)
+}
+
+// SetWithDependencies stores parsed annotations with package dependency mtimes.
+func (c *AnnotationCache) SetWithDependencies(filename string, anns map[string]*ResourceAnnotations, dependencies []string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -65,10 +77,19 @@ func (c *AnnotationCache) Set(filename string, anns map[string]*ResourceAnnotati
 		modTime = stat.ModTime()
 	}
 
+	dependencyTimes := make(map[string]time.Time, len(dependencies))
+	for _, dependency := range dependencies {
+		stat, err := os.Stat(dependency)
+		if err == nil {
+			dependencyTimes[dependency] = stat.ModTime()
+		}
+	}
+
 	c.cache[filename] = &CachedResult{
-		Annotations: anns,
-		ModTime:     modTime,
-		ParseTime:   time.Now(),
+		Annotations:  anns,
+		ModTime:      modTime,
+		Dependencies: dependencyTimes,
+		ParseTime:    time.Now(),
 	}
 }
 

@@ -127,6 +127,7 @@ type FieldTypeInfo struct {
 	UnderlyingKind FieldKind
 	PointerDepth   int
 	NamedType      string
+	IsResolved     bool
 	IsStringLike   bool
 	IsScalar       bool
 	IsComparable   bool

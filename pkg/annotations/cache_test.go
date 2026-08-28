@@ -7,6 +7,7 @@ package annotations
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -166,5 +167,51 @@ type TokenSpec struct {
 				t.Fatalf("OwnerID relation = %+v", owner.Relation)
 			}
 		})
+	}
+}
+
+func TestParseFileAnnotationsCacheInvalidatesOnPackageDependencyChange(t *testing.T) {
+	globalCache.Clear()
+
+	dir := t.TempDir()
+	aliasPath := filepath.Join(dir, "aliases.go")
+	typesPath := filepath.Join(dir, "types.go")
+	if err := os.WriteFile(aliasPath, []byte("package test\n\ntype Email string\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(typesPath, []byte(`package test
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := ParseFileAnnotations(typesPath)
+	if err != nil {
+		t.Fatalf("first parse: %v", err)
+	}
+	if err := Validate(first["User"]); err != nil {
+		t.Fatalf("first validation: %v", err)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(aliasPath, []byte("package test\n\ntype Email int\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := ParseFileAnnotations(typesPath)
+	if err != nil {
+		t.Fatalf("second parse: %v", err)
+	}
+	err = Validate(second["User"])
+	if err == nil || !strings.Contains(err.Error(), "size requires a string field") {
+		t.Fatalf("expected cache miss and non-string validation error, got %v", err)
 	}
 }

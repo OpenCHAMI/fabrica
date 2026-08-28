@@ -9,9 +9,13 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"maps"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -29,7 +33,13 @@ func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGr
 	return parseResourceAnnotations(typeSpec, docComments, nil)
 }
 
-func parseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup, aliases map[string]FieldTypeInfo) (*ResourceAnnotations, error) {
+type packageContext struct {
+	aliases  map[string]FieldTypeInfo
+	typeInfo map[ast.Expr]FieldTypeInfo
+	files    []string
+}
+
+func parseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup, ctx *packageContext) (*ResourceAnnotations, error) {
 	if typeSpec == nil {
 		return nil, &ParseError{Message: "typeSpec must not be nil"}
 	}
@@ -78,7 +88,7 @@ func parseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGr
 		if field.Doc != nil {
 			fieldAnnotations := NewFieldAnnotations(field.Names[0].Name)
 			fieldAnnotations.FieldType = formatExpr(field.Type)
-			fieldAnnotations.TypeInfo = fieldTypeInfo(field.Type, aliases)
+			fieldAnnotations.TypeInfo = fieldTypeInfoFromContext(field.Type, ctx)
 
 			for _, comment := range field.Doc.List {
 				line := CleanAnnotationLine(comment.Text)
@@ -184,21 +194,27 @@ func formatExpr(expr ast.Expr) string {
 }
 
 func collectTypeAliases(file *ast.File) map[string]FieldTypeInfo {
+	return collectTypeAliasesFromFiles([]*ast.File{file})
+}
+
+func collectTypeAliasesFromFiles(files []*ast.File) map[string]FieldTypeInfo {
 	typeExprs := make(map[string]ast.Expr)
 	aliases := make(map[string]FieldTypeInfo)
-	for _, decl := range file.Decls {
-		genDecl, ok := decl.(*ast.GenDecl)
-		if !ok || genDecl.Tok != token.TYPE {
-			continue
-		}
-
-		for _, spec := range genDecl.Specs {
-			typeSpec, ok := spec.(*ast.TypeSpec)
-			if !ok {
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.TYPE {
 				continue
 			}
-			typeExprs[typeSpec.Name.Name] = typeSpec.Type
-			aliases[typeSpec.Name.Name] = fieldTypeInfo(typeSpec.Type, aliases)
+
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				typeExprs[typeSpec.Name.Name] = typeSpec.Type
+				aliases[typeSpec.Name.Name] = fieldTypeInfo(typeSpec.Type, aliases)
+			}
 		}
 	}
 
@@ -208,6 +224,16 @@ func collectTypeAliases(file *ast.File) map[string]FieldTypeInfo {
 		}
 	}
 	return aliases
+}
+
+func fieldTypeInfoFromContext(expr ast.Expr, ctx *packageContext) FieldTypeInfo {
+	if ctx != nil {
+		if info, ok := ctx.typeInfo[expr]; ok {
+			return info
+		}
+		return fieldTypeInfo(expr, ctx.aliases)
+	}
+	return fieldTypeInfo(expr, nil)
 }
 
 func fieldTypeInfo(expr ast.Expr, aliases map[string]FieldTypeInfo) FieldTypeInfo {
@@ -232,21 +258,25 @@ func resolveFieldTypeInfo(expr ast.Expr, aliases map[string]FieldTypeInfo, info 
 
 	case *ast.ArrayType:
 		info.UnderlyingKind = FieldKindSlice
+		info.IsResolved = true
 		info.IsComparable = false
 		return info
 
 	case *ast.MapType:
 		info.UnderlyingKind = FieldKindMap
+		info.IsResolved = true
 		info.IsComparable = false
 		return info
 
 	case *ast.StructType:
 		info.UnderlyingKind = FieldKindStruct
+		info.IsResolved = true
 		return info
 
 	case *ast.SelectorExpr:
 		if x, ok := t.X.(*ast.Ident); ok && x.Name == "time" && t.Sel.Name == "Time" {
 			info.UnderlyingKind = FieldKindStruct
+			info.IsResolved = true
 			info.IsTime = true
 			info.IsComparable = true
 		}
@@ -261,23 +291,167 @@ func builtinFieldTypeInfo(name string, info FieldTypeInfo) FieldTypeInfo {
 	switch name {
 	case "string":
 		info.UnderlyingKind = FieldKindString
+		info.IsResolved = true
 		info.IsStringLike = true
 		info.IsScalar = true
 		info.IsComparable = true
 	case "bool":
 		info.UnderlyingKind = FieldKindBool
+		info.IsResolved = true
 		info.IsScalar = true
 		info.IsComparable = true
 	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr":
 		info.UnderlyingKind = FieldKindInt
+		info.IsResolved = true
 		info.IsScalar = true
 		info.IsComparable = true
 	case "float32", "float64":
 		info.UnderlyingKind = FieldKindFloat
+		info.IsResolved = true
 		info.IsScalar = true
 		info.IsComparable = true
 	default:
 		info.UnderlyingKind = FieldKindUnknown
+	}
+	return info
+}
+
+func parsePackageContext(filename string) (*ast.File, *packageContext, error) {
+	fset := token.NewFileSet()
+	target, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse file %s: %w", filename, err)
+	}
+
+	absFilename, err := filepath.Abs(filename)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve file %s: %w", filename, err)
+	}
+	files := []*ast.File{target}
+	filenames := []string{absFilename}
+	dir := filepath.Dir(absFilename)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read package directory %s: %w", dir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if sameFile(path, absFilename) {
+			continue
+		}
+		file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse package file %s: %w", path, err)
+		}
+		if file.Name.Name == target.Name.Name {
+			files = append(files, file)
+			filenames = append(filenames, path)
+		}
+	}
+
+	ctx := buildPackageContext(fset, target.Name.Name, files)
+	ctx.files = filenames
+	return target, ctx, nil
+}
+
+func sameFile(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA == nil && errB == nil {
+		return absA == absB
+	}
+	return a == b
+}
+
+func buildPackageContext(fset *token.FileSet, pkgName string, files []*ast.File) *packageContext {
+	ctx := &packageContext{
+		aliases:  collectTypeAliasesFromFiles(files),
+		typeInfo: make(map[ast.Expr]FieldTypeInfo),
+	}
+
+	typesInfo := &types.Info{Types: make(map[ast.Expr]types.TypeAndValue)}
+	conf := types.Config{
+		Importer: importer.Default(),
+		Error:    func(error) {},
+	}
+	_, _ = conf.Check(pkgName, fset, files, typesInfo)
+	for expr, typeAndValue := range typesInfo.Types {
+		if typeAndValue.Type != nil {
+			ctx.typeInfo[expr] = fieldTypeInfoFromType(expr, typeAndValue.Type)
+		}
+	}
+
+	return ctx
+}
+
+func fieldTypeInfoFromType(expr ast.Expr, typ types.Type) FieldTypeInfo {
+	info := FieldTypeInfo{Syntax: formatExpr(expr), UnderlyingKind: FieldKindUnknown, IsResolved: true}
+	if basic, ok := typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Invalid {
+		info.IsResolved = false
+		return info
+	}
+	return resolveTypeInfo(typ, info)
+}
+
+func resolveTypeInfo(typ types.Type, info FieldTypeInfo) FieldTypeInfo {
+	for {
+		ptr, ok := typ.(*types.Pointer)
+		if !ok {
+			break
+		}
+		info.PointerDepth++
+		typ = ptr.Elem()
+	}
+
+	if named, ok := typ.(*types.Named); ok {
+		info.NamedType = named.Obj().Name()
+		if named.Obj().Pkg() != nil {
+			if named.Obj().Pkg().Path() == "time" && named.Obj().Name() == "Time" {
+				info.UnderlyingKind = FieldKindStruct
+				info.IsTime = true
+				info.IsComparable = true
+				return info
+			}
+		}
+	}
+
+	switch underlying := typ.Underlying().(type) {
+	case *types.Basic:
+		return basicTypeInfo(underlying, info)
+	case *types.Slice, *types.Array:
+		info.UnderlyingKind = FieldKindSlice
+	case *types.Map:
+		info.UnderlyingKind = FieldKindMap
+	case *types.Struct:
+		info.UnderlyingKind = FieldKindStruct
+		info.IsComparable = types.Comparable(typ)
+	}
+	return info
+}
+
+func basicTypeInfo(basic *types.Basic, info FieldTypeInfo) FieldTypeInfo {
+	switch basic.Kind() {
+	case types.String:
+		info.UnderlyingKind = FieldKindString
+		info.IsStringLike = true
+		info.IsScalar = true
+		info.IsComparable = true
+	case types.Bool:
+		info.UnderlyingKind = FieldKindBool
+		info.IsScalar = true
+		info.IsComparable = true
+	case types.Int, types.Int8, types.Int16, types.Int32, types.Int64, types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64, types.Uintptr:
+		info.UnderlyingKind = FieldKindInt
+		info.IsScalar = true
+		info.IsComparable = true
+	case types.Float32, types.Float64:
+		info.UnderlyingKind = FieldKindFloat
+		info.IsScalar = true
+		info.IsComparable = true
 	}
 	return info
 }
@@ -749,20 +923,22 @@ func parseDefaultAnnotation(result *FieldAnnotations, parts []string, _ string) 
 // <Name>. A resource that does not appear in the file yields empty annotations
 // rather than an error, matching the previous behaviour of callers.
 func ParseResourceFile(filename, resourceName string) (*ResourceAnnotations, error) {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	file, ctx, err := parsePackageContext(filename)
 	if err != nil {
-		return nil, fmt.Errorf("parse file %s: %w", filename, err)
+		return nil, err
 	}
 
-	return parseResourceFromFile(file, resourceName)
+	return parseResourceFromFileWithContext(file, resourceName, ctx)
 }
 
 // parseResourceFromFile does the two-declaration merge over an already-parsed
 // file. Kept separate so callers that already hold an *ast.File do not reparse.
 func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnotations, error) {
+	return parseResourceFromFileWithContext(file, resourceName, &packageContext{aliases: collectTypeAliases(file)})
+}
+
+func parseResourceFromFileWithContext(file *ast.File, resourceName string, ctx *packageContext) (*ResourceAnnotations, error) {
 	specTypeName := resourceName + "Spec"
-	aliases := collectTypeAliases(file)
 
 	var (
 		resourceAnnots *ResourceAnnotations
@@ -784,14 +960,14 @@ func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnota
 
 			switch typeSpec.Name.Name {
 			case resourceName:
-				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, aliases)
+				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
 				if err != nil {
 					return nil, fmt.Errorf("parse annotations on %s: %w", resourceName, err)
 				}
 				resourceAnnots = annots
 
 			case specTypeName:
-				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, aliases)
+				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
 				if err != nil {
 					return nil, fmt.Errorf("parse annotations on %s: %w", specTypeName, err)
 				}
@@ -855,15 +1031,12 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 		return cached, nil
 	}
 
-	// Parse file
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	file, ctx, err := parsePackageContext(filename)
 	if err != nil {
-		return nil, fmt.Errorf("parse file: %w", err)
+		return nil, err
 	}
 
 	result := make(map[string]*ResourceAnnotations)
-	aliases := collectTypeAliases(file)
 
 	// Walk declarations
 	for _, decl := range file.Decls {
@@ -878,7 +1051,7 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 				continue
 			}
 
-			annotations, err := parseResourceAnnotations(typeSpec, genDecl.Doc, aliases)
+			annotations, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -888,7 +1061,7 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 	}
 
 	mergeSpecFields(result)
-	globalCache.Set(filename, result)
+	globalCache.SetWithDependencies(filename, result, ctx.files)
 
 	return result, nil
 }

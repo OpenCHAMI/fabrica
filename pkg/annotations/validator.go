@@ -292,7 +292,7 @@ func validateFieldAnnotations(fieldName string, annotations *FieldAnnotations) e
 		return &ValidationError{
 			Field:      fieldName,
 			Annotation: fmt.Sprintf("field %s size", fieldName),
-			Message:    fmt.Sprintf("size requires a string field, got %s", annotations.FieldType),
+			Message:    fmt.Sprintf("size requires a string field, got %s", fieldTypeDescription(annotations)),
 		}
 	}
 
@@ -398,7 +398,7 @@ func validateStorageConfig(fieldName string, annotations *FieldAnnotations) erro
 			return &ValidationError{
 				Field:      fieldName,
 				Annotation: fmt.Sprintf("field %s storage", fieldName),
-				Message:    fmt.Sprintf("hashed storage requires a string field, got %s", annotations.FieldType),
+				Message:    fmt.Sprintf("hashed storage requires a string field, got %s", fieldTypeDescription(annotations)),
 			}
 		}
 		if config.Encryption != nil {
@@ -421,7 +421,7 @@ func validateStorageConfig(fieldName string, annotations *FieldAnnotations) erro
 			return &ValidationError{
 				Field:      fieldName,
 				Annotation: fmt.Sprintf("field %s storage", fieldName),
-				Message:    fmt.Sprintf("encrypted storage requires a string field, got %s", annotations.FieldType),
+				Message:    fmt.Sprintf("encrypted storage requires a string field, got %s", fieldTypeDescription(annotations)),
 			}
 		}
 		if config.Hash != nil {
@@ -468,6 +468,19 @@ func isStringLikeField(annotations *FieldAnnotations) bool {
 	default:
 		return false
 	}
+}
+
+func fieldTypeDescription(annotations *FieldAnnotations) string {
+	if annotations.TypeInfo.Syntax != "" {
+		if !annotations.TypeInfo.IsResolved {
+			return fmt.Sprintf("%s (unresolved type)", annotations.TypeInfo.Syntax)
+		}
+		return annotations.TypeInfo.Syntax
+	}
+	if annotations.FieldType != "" {
+		return annotations.FieldType
+	}
+	return "unknown"
 }
 
 // validateHashConfig validates hash configuration
