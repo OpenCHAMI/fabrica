@@ -1085,7 +1085,19 @@ func ParseFileAnnotations(filename string) (map[string]*ResourceAnnotations, err
 	}
 
 	mergeSpecFields(result)
-	globalCache.SetWithDependencies(filename, result, ctx.files)
+	// SetWithDependencies needs the list of all package Go files (excluding the target)
+	// for cache invalidation when files are added/removed. ctx.files contains all parsed
+	// files; the first is the target, the rest are siblings.
+	var deps []string
+	if len(ctx.files) > 0 {
+		// ctx.files[0] is the target file; the rest are siblings
+		if len(ctx.files) > 1 {
+			deps = ctx.files[1:]
+		} else {
+			deps = []string{} // no siblings at parse time
+		}
+	}
+	globalCache.SetWithDependencies(filename, result, deps)
 
 	return result, nil
 }

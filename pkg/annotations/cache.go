@@ -64,14 +64,18 @@ func (c *AnnotationCache) Get(filename string) (map[string]*ResourceAnnotations,
 		}
 	}
 
-	// Check whether the package file set has changed (files added or removed)
-	currentFiles, err := packageFiles(filename)
-	if err != nil {
-		// Cannot enumerate; conservatively invalidate
-		return nil, false
-	}
-	if !equalStringSlices(cached.PackageFiles, currentFiles) {
-		return nil, false
+	// Check whether the package file set has changed (files added or removed).
+	// PackageFiles records the sibling Go files at parse time (excluding the target).
+	// An empty slice means no siblings existed; nil means unknown (legacy Set path).
+	if cached.PackageFiles != nil {
+		currentFiles, err := packageFiles(filename)
+		if err != nil {
+			// Cannot enumerate; conservatively invalidate
+			return nil, false
+		}
+		if !equalStringSlices(cached.PackageFiles, currentFiles) {
+			return nil, false
+		}
 	}
 
 	return cached.Annotations, true
@@ -86,7 +90,7 @@ func packageFiles(filename string) ([]string, error) {
 		return nil, err
 	}
 
-	var files []string
+	files := []string{}
 	base := filepath.Base(filename)
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -135,16 +139,27 @@ func (c *AnnotationCache) SetWithDependencies(filename string, anns map[string]*
 
 	// Defend against missing entries on stat errors: record every dependency so
 	// that any future stat error on a previously-missing file triggers invalidation.
-	// Sort to ensure a deterministic order for comparison.
 	sortedDeps := make([]string, len(dependencies))
 	copy(sortedDeps, dependencies)
 	sort.Strings(sortedDeps)
+
+	// Record the package file set at parse time so we can detect added/removed files.
+	// Always enumerate the current package files from the filesystem, as this is
+	// the ground truth for detecting additions/removals regardless of what was
+	// passed as dependencies.
+	pkgFiles, err := packageFiles(filename)
+	if err != nil {
+		// Cannot enumerate; leave pkgFiles as nil to skip file-set check
+		pkgFiles = nil
+	}
+	// Sort to ensure deterministic comparison
+	sort.Strings(pkgFiles)
 
 	c.cache[filename] = &CachedResult{
 		Annotations:  anns,
 		ModTime:      modTime,
 		Dependencies: dependencyTimes,
-		PackageFiles: sortedDeps,
+		PackageFiles: pkgFiles,
 		ParseTime:    time.Now(),
 	}
 }
