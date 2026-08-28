@@ -37,7 +37,8 @@ func ParseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGr
 type packageContext struct {
 	aliases  map[string]FieldTypeInfo
 	typeInfo map[ast.Expr]FieldTypeInfo
-	files    []string
+	files    []string    // absolute paths of package Go files
+	astFiles []*ast.File // corresponding parsed AST files
 }
 
 func parseResourceAnnotations(typeSpec *ast.TypeSpec, docComments *ast.CommentGroup, ctx *packageContext) (*ResourceAnnotations, error) {
@@ -363,6 +364,7 @@ func parsePackageContext(filename string) (*ast.File, *packageContext, error) {
 
 	ctx := buildPackageContext(fset, target.Name.Name, files)
 	ctx.files = filenames
+	ctx.astFiles = files
 	return target, ctx, nil
 }
 
@@ -932,13 +934,15 @@ func parseDefaultAnnotation(result *FieldAnnotations, parts []string, _ string) 
 // Declaration order does not matter: <Name>Spec may appear before or after
 // <Name>. A resource that does not appear in the file yields empty annotations
 // rather than an error, matching the previous behaviour of callers.
+//
+// The companion <Name>Spec may live in a different file within the same package;
+// all package files are searched to locate both declarations.
 func ParseResourceFile(filename, resourceName string) (*ResourceAnnotations, error) {
-	file, ctx, err := parsePackageContext(filename)
+	_, ctx, err := parsePackageContext(filename)
 	if err != nil {
 		return nil, err
 	}
-
-	return parseResourceFromFileWithContext(file, resourceName, ctx)
+	return parseResourceFromFilesWithContext(ctx.astFiles, resourceName, ctx)
 }
 
 // parseResourceFromFile does the two-declaration merge over an already-parsed
@@ -947,7 +951,9 @@ func parseResourceFromFile(file *ast.File, resourceName string) (*ResourceAnnota
 	return parseResourceFromFileWithContext(file, resourceName, &packageContext{aliases: collectTypeAliases(file)})
 }
 
-func parseResourceFromFileWithContext(file *ast.File, resourceName string, ctx *packageContext) (*ResourceAnnotations, error) {
+// parseResourceFromFilesWithContext walks all provided files to find the named
+// resource and its companion <Name>Spec, then merges field annotations from both.
+func parseResourceFromFilesWithContext(files []*ast.File, resourceName string, ctx *packageContext) (*ResourceAnnotations, error) {
 	specTypeName := resourceName + "Spec"
 
 	var (
@@ -956,44 +962,46 @@ func parseResourceFromFileWithContext(file *ast.File, resourceName string, ctx *
 		specFieldNames map[string]bool
 	)
 
-	for _, decl := range file.Decls {
-		genDecl, ok := decl.(*ast.GenDecl)
-		if !ok || genDecl.Tok != token.TYPE {
-			continue
-		}
-
-		for _, spec := range genDecl.Specs {
-			typeSpec, ok := spec.(*ast.TypeSpec)
-			if !ok {
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.TYPE {
 				continue
 			}
 
-			switch typeSpec.Name.Name {
-			case resourceName:
-				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
-				if err != nil {
-					return nil, fmt.Errorf("parse annotations on %s: %w", resourceName, err)
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
 				}
-				resourceAnnots = annots
 
-			case specTypeName:
-				annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
-				if err != nil {
-					return nil, fmt.Errorf("parse annotations on %s: %w", specTypeName, err)
+				switch typeSpec.Name.Name {
+				case resourceName:
+					annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
+					if err != nil {
+						return nil, fmt.Errorf("parse annotations on %s: %w", resourceName, err)
+					}
+					resourceAnnots = annots
+
+				case specTypeName:
+					annots, err := parseResourceAnnotations(typeSpec, genDecl.Doc, ctx)
+					if err != nil {
+						return nil, fmt.Errorf("parse annotations on %s: %w", specTypeName, err)
+					}
+					if specFields == nil {
+						specFields = make(map[string]*FieldAnnotations)
+					}
+					if specFieldNames == nil {
+						specFieldNames = make(map[string]bool)
+					}
+					maps.Copy(specFields, annots.Fields)
+					maps.Copy(specFieldNames, annots.SpecFields)
 				}
-				if specFields == nil {
-					specFields = make(map[string]*FieldAnnotations)
-				}
-				if specFieldNames == nil {
-					specFieldNames = make(map[string]bool)
-				}
-				maps.Copy(specFields, annots.Fields)
-				maps.Copy(specFieldNames, annots.SpecFields)
 			}
 		}
 	}
 
-	// Merge after the whole file is walked, so <Name>Spec declared before
+	// Merge after all files are walked, so <Name>Spec declared before
 	// <Name> is not discarded when the resource declaration is reached.
 	if resourceAnnots == nil {
 		if specFields == nil {
@@ -1006,6 +1014,12 @@ func parseResourceFromFileWithContext(file *ast.File, resourceName string, ctx *
 	maps.Copy(resourceAnnots.SpecFields, specFieldNames)
 
 	return resourceAnnots, nil
+}
+
+// parseResourceFromFileWithContext is the single-file variant for backward
+// compatibility with callers that already hold a single *ast.File.
+func parseResourceFromFileWithContext(file *ast.File, resourceName string, ctx *packageContext) (*ResourceAnnotations, error) {
+	return parseResourceFromFilesWithContext([]*ast.File{file}, resourceName, ctx)
 }
 
 // mergeSpecFields folds each <Name>Spec's field annotations into <Name> so that

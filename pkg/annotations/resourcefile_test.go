@@ -299,6 +299,40 @@ type UserSpec struct {
 	}
 }
 
+func TestParseResourceFile_ResourceAndSpecInSeparateFiles(t *testing.T) {
+	GetGlobalCache().Clear()
+	path := writePackageFiles(t, map[string]string{
+		"user_types.go": `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+`,
+		"user_spec.go": `package v1
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email string ` + "`json:\"email\"`" + `
+}
+`,
+	})
+
+	annots, err := ParseResourceFile(path, "User")
+	if err != nil {
+		t.Fatalf("ParseResourceFile: %v", err)
+	}
+	if err := Validate(annots); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !annots.SpecFields["Email"] {
+		t.Fatalf("SpecFields[Email] = %v, want true", annots.SpecFields["Email"])
+	}
+	field := annots.Fields["Email"]
+	if field == nil || field.Size != 253 {
+		t.Fatalf("Fields[Email] = %+v, want Size=253", field)
+	}
+}
+
 // TestParseFileAnnotationsValidatesDedicatedResource pins the second fix: the
 // public API used to return a dedicated resource with zero fields, which always
 // failed validation.
