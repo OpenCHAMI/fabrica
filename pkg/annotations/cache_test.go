@@ -215,3 +215,113 @@ type UserSpec struct {
 		t.Fatalf("expected cache miss and non-string validation error, got %v", err)
 	}
 }
+
+func TestAnnotationCache_InvalidatesOnAddedPackageFile(t *testing.T) {
+	cache := NewAnnotationCache()
+
+	dir := t.TempDir()
+	typesPath := filepath.Join(dir, "types.go")
+	aliasPath := filepath.Join(dir, "aliases.go")
+
+	// Write only types.go initially; Email is unresolved
+	if err := os.WriteFile(typesPath, []byte(`package test
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache with unresolved Email; record that only types.go existed at parse time
+	anns := map[string]*ResourceAnnotations{
+		"User": {
+			IsResource:  true,
+			StorageMode: StorageModeDedicated,
+			Fields: map[string]*FieldAnnotations{
+				"Email": {FieldName: "Email", Size: 253, TypeInfo: FieldTypeInfo{Syntax: "Email", UnderlyingKind: FieldKindUnknown}},
+			},
+			SpecFields: map[string]bool{"Email": true},
+		},
+	}
+	// Simulate what parsePackageContext would have recorded: all non-test Go files except the target
+	cache.SetWithDependencies(typesPath, anns, []string{})
+
+	// Verify cache hit for the invalid state
+	if _, ok := cache.Get(typesPath); !ok {
+		t.Fatal("expected cache hit for initial state")
+	}
+
+	// Add aliases.go with Email definition
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(aliasPath, []byte("package test\n\ntype Email string\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache should miss because package file set changed
+	if _, ok := cache.Get(typesPath); ok {
+		t.Fatal("expected cache miss after adding package file")
+	}
+}
+
+func TestAnnotationCache_InvalidatesOnRemovedPackageFile(t *testing.T) {
+	cache := NewAnnotationCache()
+
+	dir := t.TempDir()
+	typesPath := filepath.Join(dir, "types.go")
+	aliasPath := filepath.Join(dir, "aliases.go")
+
+	// Write both files initially; Email is resolved
+	if err := os.WriteFile(aliasPath, []byte("package test\n\ntype Email string\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(typesPath, []byte(`package test
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache with resolved Email; record that both files existed at parse time
+	anns := map[string]*ResourceAnnotations{
+		"User": {
+			IsResource:  true,
+			StorageMode: StorageModeDedicated,
+			Fields: map[string]*FieldAnnotations{
+				"Email": {FieldName: "Email", Size: 253, TypeInfo: FieldTypeInfo{Syntax: "Email", UnderlyingKind: FieldKindString, IsStringLike: true}},
+			},
+			SpecFields: map[string]bool{"Email": true},
+		},
+	}
+	// Simulate what parsePackageContext would have recorded: aliases.go as a sibling file
+	cache.SetWithDependencies(typesPath, anns, []string{aliasPath})
+
+	// Verify cache hit for the valid state
+	if _, ok := cache.Get(typesPath); !ok {
+		t.Fatal("expected cache hit for initial state")
+	}
+
+	// Remove aliases.go
+	time.Sleep(10 * time.Millisecond)
+	if err := os.Remove(aliasPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache should miss because package file set changed
+	if _, ok := cache.Get(typesPath); ok {
+		t.Fatal("expected cache miss after removing package file")
+	}
+}

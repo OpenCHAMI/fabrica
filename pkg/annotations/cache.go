@@ -6,6 +6,9 @@ package annotations
 
 import (
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,6 +23,7 @@ type CachedResult struct {
 	Annotations  map[string]*ResourceAnnotations
 	ModTime      time.Time
 	Dependencies map[string]time.Time
+	PackageFiles []string // sorted list of Go source files in the package at parse time
 	ParseTime    time.Time
 }
 
@@ -51,6 +55,8 @@ func (c *AnnotationCache) Get(filename string) (map[string]*ResourceAnnotations,
 	if err != nil || stat.ModTime().After(cached.ModTime) {
 		return nil, false
 	}
+
+	// Check every tracked dependency's modification time
 	for dependency, modTime := range cached.Dependencies {
 		stat, err := os.Stat(dependency)
 		if err != nil || stat.ModTime().After(modTime) {
@@ -58,7 +64,48 @@ func (c *AnnotationCache) Get(filename string) (map[string]*ResourceAnnotations,
 		}
 	}
 
+	// Check whether the package file set has changed (files added or removed)
+	currentFiles, err := packageFiles(filename)
+	if err != nil {
+		// Cannot enumerate; conservatively invalidate
+		return nil, false
+	}
+	if !equalStringSlices(cached.PackageFiles, currentFiles) {
+		return nil, false
+	}
+
 	return cached.Annotations, true
+}
+
+// packageFiles returns a sorted list of Go source file paths in the same package
+// as filename, excluding test files and the filename itself.
+func packageFiles(filename string) ([]string, error) {
+	dir := filepath.Dir(filename)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	base := filepath.Base(filename)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if name == base {
+			continue
+		}
+		files = append(files, filepath.Join(dir, name))
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 // Set stores parsed annotations in cache
@@ -83,14 +130,36 @@ func (c *AnnotationCache) SetWithDependencies(filename string, anns map[string]*
 		if err == nil {
 			dependencyTimes[dependency] = stat.ModTime()
 		}
+		// If stat fails, omit the dependency; Get will see a stat error and invalidate.
 	}
+
+	// Defend against missing entries on stat errors: record every dependency so
+	// that any future stat error on a previously-missing file triggers invalidation.
+	// Sort to ensure a deterministic order for comparison.
+	sortedDeps := make([]string, len(dependencies))
+	copy(sortedDeps, dependencies)
+	sort.Strings(sortedDeps)
 
 	c.cache[filename] = &CachedResult{
 		Annotations:  anns,
 		ModTime:      modTime,
 		Dependencies: dependencyTimes,
+		PackageFiles: sortedDeps,
 		ParseTime:    time.Now(),
 	}
+}
+
+// equalStringSlices reports whether a and b contain the same elements in the same order.
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Invalidate removes a file from cache
