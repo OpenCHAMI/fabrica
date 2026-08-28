@@ -199,6 +199,43 @@ type UserSpec struct {
 	}
 }
 
+func TestParseResourceFileIgnoresBuildExcludedSiblingAliases(t *testing.T) {
+	path := writePackageFiles(t, map[string]string{
+		"aliases.go": `package v1
+
+type Email string
+`,
+		"ignored_aliases.go": `//go:build fabrica_ignore
+
+package v1
+
+type Email int
+`,
+		"user_types.go": `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email ` + "`json:\"email\"`" + `
+}
+`,
+	})
+
+	annots, err := ParseResourceFile(path, "User")
+	if err != nil {
+		t.Fatalf("ParseResourceFile: %v", err)
+	}
+	if err := Validate(annots); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got := annots.Fields["Email"].TypeInfo; !got.IsStringLike || !got.IsResolved || got.NamedType != "Email" {
+		t.Fatalf("Email TypeInfo = %+v", got)
+	}
+}
+
 func TestParseFileAnnotationsResolvesPackageSiblingAliases(t *testing.T) {
 	GetGlobalCache().Clear()
 	path := writePackageFiles(t, map[string]string{

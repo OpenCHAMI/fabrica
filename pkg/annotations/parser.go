@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/format"
 	"go/importer"
 	"go/parser"
@@ -341,6 +342,13 @@ func parsePackageContext(filename string) (*ast.File, *packageContext, error) {
 		}
 		path := filepath.Join(dir, entry.Name())
 		if sameFile(path, absFilename) {
+			continue
+		}
+		match, err := build.Default.MatchFile(dir, entry.Name())
+		if err != nil {
+			return nil, nil, fmt.Errorf("check build constraints for %s: %w", path, err)
+		}
+		if !match {
 			continue
 		}
 		file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
