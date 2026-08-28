@@ -377,6 +377,31 @@ type MetricSpec struct {
 	}
 }
 
+func TestUnresolvedTypeDiagnostics(t *testing.T) {
+	// Verify that validation distinguishes unresolved types with helpful guidance
+	a := dedicatedResource()
+	field := NewFieldAnnotations("Value")
+	field.FieldType = "external.PackageType"
+	// Simulate unresolved imported type: IsResolved=false, IsStringLike=false
+	field.TypeInfo = FieldTypeInfo{
+		Syntax:         "external.PackageType",
+		UnderlyingKind: FieldKindUnknown,
+		IsResolved:     false,
+		IsStringLike:   false,
+	}
+	field.Size = 100
+	a.Fields["Value"] = field
+
+	err := Validate(a)
+	if err == nil {
+		t.Fatal("expected validation error for unresolved type")
+	}
+	// Check that the message includes the helpful hint
+	if !strings.Contains(err.Error(), "unresolved type; ensure the package is available in the module cache") {
+		t.Fatalf("expected unresolved type hint, got: %v", err)
+	}
+}
+
 func TestValidateCompositeIndex(t *testing.T) {
 	tests := []struct {
 		name    string

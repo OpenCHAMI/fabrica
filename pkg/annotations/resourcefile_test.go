@@ -294,7 +294,7 @@ type UserSpec struct {
 		t.Fatalf("ParseResourceFile: %v", err)
 	}
 	err = Validate(annots)
-	if err == nil || !strings.Contains(err.Error(), "common.Email (unresolved type)") {
+	if err == nil || !strings.Contains(err.Error(), "common.Email (unresolved type; ensure the package is available in the module cache)") {
 		t.Fatalf("expected unresolved imported type validation error, got %v", err)
 	}
 }
