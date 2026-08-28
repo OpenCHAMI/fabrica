@@ -386,6 +386,8 @@ func buildPackageContext(fset *token.FileSet, pkgName string, files []*ast.File)
 		Importer: importer.Default(),
 		Error:    func(error) {},
 	}
+
+	// Ignore the Check result because we only need its best-effort population of typesInfo; unresolved/invalid types are marked unknown and fail closed in validation.
 	_, _ = conf.Check(pkgName, fset, files, typesInfo)
 	for expr, typeAndValue := range typesInfo.Types {
 		if typeAndValue.Type != nil {
