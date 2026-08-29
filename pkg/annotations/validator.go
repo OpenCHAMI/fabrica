@@ -460,37 +460,6 @@ func validateStorageConfig(fieldName string, annotations *FieldAnnotations) erro
 	}
 }
 
-func isStringLikeField(annotations *FieldAnnotations) bool {
-	if annotations.TypeInfo.Syntax != "" {
-		// If we have type info but it is unresolved, treat as non-string.
-		// Callers should distinguish "unresolved" from "non-string" for diagnostics.
-		if !annotations.TypeInfo.IsResolved {
-			return false
-		}
-		return annotations.TypeInfo.IsStringLike
-	}
-
-	switch annotations.FieldType {
-	case "", "string", "*string":
-		return true
-	default:
-		return false
-	}
-}
-
-func fieldTypeDescription(annotations *FieldAnnotations) string {
-	if annotations.TypeInfo.Syntax != "" {
-		if !annotations.TypeInfo.IsResolved {
-			return fmt.Sprintf("%s (unresolved type; ensure the package is available in the module cache)", annotations.TypeInfo.Syntax)
-		}
-		return annotations.TypeInfo.Syntax
-	}
-	if annotations.FieldType != "" {
-		return annotations.FieldType
-	}
-	return "unknown"
-}
-
 // isStringLikeFieldWithDiagnostic returns whether the field is string-like and,
 // if not, a more descriptive message distinguishing between unresolved types
 // and definitively non-string types.
