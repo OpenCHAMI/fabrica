@@ -23,6 +23,20 @@ func writeTypesFile(t *testing.T, src string) string {
 	return path
 }
 
+func writePackageFiles(t *testing.T, files map[string]string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	for name, src := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	return filepath.Join(dir, "user_types.go")
+}
+
 const resourceFirstSrc = `package v1
 
 // +fabrica:resource
@@ -144,6 +158,178 @@ func TestParseResourceFileBothOrdersAgree(t *testing.T) {
 		if a.Immutable != b.Immutable || a.Sensitive != b.Sensitive || a.Unique != b.Unique {
 			t.Errorf("field %q differs between orderings", name)
 		}
+	}
+}
+
+func TestParseResourceFileResolvesPackageSiblingAliases(t *testing.T) {
+	path := writePackageFiles(t, map[string]string{
+		"aliases.go": `package v1
+
+type Email string
+type SecretEmail Email
+`,
+		"user_types.go": `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email ` + "`json:\"email\"`" + `
+
+	// +fabrica:field:storage=hashed:sha256
+	BackupEmail *SecretEmail ` + "`json:\"backup_email\"`" + `
+}
+`,
+	})
+
+	annots, err := ParseResourceFile(path, "User")
+	if err != nil {
+		t.Fatalf("ParseResourceFile: %v", err)
+	}
+	if err := Validate(annots); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got := annots.Fields["Email"].TypeInfo; !got.IsStringLike || !got.IsResolved || got.NamedType != "Email" {
+		t.Fatalf("Email TypeInfo = %+v", got)
+	}
+	if got := annots.Fields["BackupEmail"].TypeInfo; !got.IsStringLike || !got.IsResolved || got.PointerDepth != 1 || got.NamedType != "SecretEmail" {
+		t.Fatalf("BackupEmail TypeInfo = %+v", got)
+	}
+}
+
+func TestParseResourceFileIgnoresBuildExcludedSiblingAliases(t *testing.T) {
+	path := writePackageFiles(t, map[string]string{
+		"aliases.go": `package v1
+
+type Email string
+`,
+		"ignored_aliases.go": `//go:build fabrica_ignore
+
+package v1
+
+type Email int
+`,
+		"user_types.go": `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email ` + "`json:\"email\"`" + `
+}
+`,
+	})
+
+	annots, err := ParseResourceFile(path, "User")
+	if err != nil {
+		t.Fatalf("ParseResourceFile: %v", err)
+	}
+	if err := Validate(annots); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got := annots.Fields["Email"].TypeInfo; !got.IsStringLike || !got.IsResolved || got.NamedType != "Email" {
+		t.Fatalf("Email TypeInfo = %+v", got)
+	}
+}
+
+func TestParseFileAnnotationsResolvesPackageSiblingAliases(t *testing.T) {
+	GetGlobalCache().Clear()
+	path := writePackageFiles(t, map[string]string{
+		"aliases.go": `package v1
+
+type Email string
+`,
+		"user_types.go": `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email Email ` + "`json:\"email\"`" + `
+}
+`,
+	})
+
+	byType, err := ParseFileAnnotations(path)
+	if err != nil {
+		t.Fatalf("ParseFileAnnotations: %v", err)
+	}
+	user := byType["User"]
+	if user == nil {
+		t.Fatal("User annotations missing")
+	}
+	if err := Validate(user); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got := user.Fields["Email"].TypeInfo; !got.IsStringLike || !got.IsResolved || got.NamedType != "Email" {
+		t.Fatalf("Email TypeInfo = %+v", got)
+	}
+}
+
+func TestParseResourceFileFailsClosedForUnresolvedImportedTypes(t *testing.T) {
+	path := writePackageFiles(t, map[string]string{
+		"user_types.go": `package v1
+
+import "example.com/common"
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email common.Email ` + "`json:\"email\"`" + `
+}
+`,
+	})
+
+	annots, err := ParseResourceFile(path, "User")
+	if err != nil {
+		t.Fatalf("ParseResourceFile: %v", err)
+	}
+	err = Validate(annots)
+	if err == nil || !strings.Contains(err.Error(), "common.Email (unresolved type; ensure the package is available in the module cache)") {
+		t.Fatalf("expected unresolved imported type validation error, got %v", err)
+	}
+}
+
+func TestParseResourceFile_ResourceAndSpecInSeparateFiles(t *testing.T) {
+	GetGlobalCache().Clear()
+	path := writePackageFiles(t, map[string]string{
+		"user_types.go": `package v1
+
+// +fabrica:resource
+// +fabrica:storage=dedicated
+type User struct { Spec UserSpec }
+`,
+		"user_spec.go": `package v1
+
+type UserSpec struct {
+	// +fabrica:field:size=253
+	Email string ` + "`json:\"email\"`" + `
+}
+`,
+	})
+
+	annots, err := ParseResourceFile(path, "User")
+	if err != nil {
+		t.Fatalf("ParseResourceFile: %v", err)
+	}
+	if err := Validate(annots); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !annots.SpecFields["Email"] {
+		t.Fatalf("SpecFields[Email] = %v, want true", annots.SpecFields["Email"])
+	}
+	field := annots.Fields["Email"]
+	if field == nil || field.Size != 253 {
+		t.Fatalf("Fields[Email] = %+v, want Size=253", field)
 	}
 }
 
