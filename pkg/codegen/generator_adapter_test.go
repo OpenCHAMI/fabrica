@@ -149,6 +149,9 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 	if err := gen.RegisterResource(&testfixtures.MappedToken{}); err != nil {
 		t.Fatalf("RegisterResource failed: %v", err)
 	}
+	if err := gen.RegisterResource(&testfixtures.AliasToken{}); err != nil {
+		t.Fatalf("RegisterResource AliasToken failed: %v", err)
+	}
 	annots := annotations.NewResourceAnnotations()
 	annots.IsResource = true
 	annots.StorageMode = annotations.StorageModeDedicated
@@ -159,6 +162,15 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 	annots.Fields["ReplayAttempts"] = annotations.NewFieldAnnotations("ReplayAttempts")
 	annots.Fields["Labels"] = annotations.NewFieldAnnotations("Labels")
 	gen.SetResourceAnnotations("MappedToken", annots)
+	aliasAnnots := annotations.NewResourceAnnotations()
+	aliasAnnots.IsResource = true
+	aliasAnnots.StorageMode = annotations.StorageModeDedicated
+	aliasAnnots.Fields["Subject"] = annotations.NewFieldAnnotations("Subject")
+	aliasAnnots.Fields["UsageCount"] = annotations.NewFieldAnnotations("UsageCount")
+	aliasAnnots.Fields["Revoked"] = annotations.NewFieldAnnotations("Revoked")
+	aliasAnnots.Fields["SequenceNumber"] = annotations.NewFieldAnnotations("SequenceNumber")
+	aliasAnnots.Fields["Weight"] = annotations.NewFieldAnnotations("Weight")
+	gen.SetResourceAnnotations("AliasToken", aliasAnnots)
 
 	if err := gen.GenerateEntSchemas(); err != nil {
 		t.Fatalf("GenerateEntSchemas failed: %v", err)
@@ -204,6 +216,7 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/internal/storage/ent"
+	"github.com/openchami/fabrica/internal/storage/ent/aliastoken"
 	"github.com/openchami/fabrica/internal/storage/ent/mappedtoken"
 	"github.com/openchami/fabrica/pkg/codegen/testfixtures"
 	"github.com/openchami/fabrica/pkg/resource"
@@ -305,6 +318,93 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 	}
 	if updated.ConsumedAt == nil || !updated.ConsumedAt.Equal(updatedConsumedAt) {
 		t.Fatalf("updated ConsumedAt = %v, want %v", updated.ConsumedAt, updatedConsumedAt)
+	}
+
+	token.Spec.ConsumedAt = nil
+	update = client.MappedToken.UpdateOneID(entity.ID)
+	if err := UpdateMappedTokenFromResource(ctx, update, token); err != nil {
+		t.Fatalf("UpdateMappedTokenFromResource clear consumed at: %v", err)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		t.Fatalf("save cleared token: %v", err)
+	}
+	cleared, err := client.MappedToken.Query().Where(mappedtoken.UIDEQ("tok-1")).Only(ctx)
+	if err != nil {
+		t.Fatalf("query cleared token: %v", err)
+	}
+	if cleared.ConsumedAt != nil {
+		t.Fatalf("cleared ConsumedAt = %v, want nil", cleared.ConsumedAt)
+	}
+}
+
+func TestGeneratedDedicatedAdapterAliasTypesRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	client, err := ent.Open("sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
+	if err != nil {
+		t.Fatalf("open ent client: %v", err)
+	}
+	defer client.Close()
+	if err := client.Schema.Create(ctx); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+
+	now := time.Date(2026, 8, 27, 9, 0, 0, 0, time.UTC)
+	token := &testfixtures.AliasToken{
+		Resource: resource.Resource{
+			APIVersion: "v1",
+			Kind:       "AliasToken",
+			Metadata: resource.Metadata{
+				Name:      "alias-token",
+				UID:       "alias-1",
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		},
+		Spec: testfixtures.AliasTokenSpec{
+			Subject:        testfixtures.AliasSubject("user-1"),
+			UsageCount:     testfixtures.AliasUsageCount(7),
+			Revoked:        testfixtures.AliasRevoked(true),
+			SequenceNumber: testfixtures.AliasSequenceNumber(42),
+			Weight:         testfixtures.AliasWeight(3.5),
+		},
+	}
+
+	created, err := ToEntAliasToken(ctx, client, token)
+	if err != nil {
+		t.Fatalf("ToEntAliasToken: %v", err)
+	}
+	entity, err := created.Save(ctx)
+	if err != nil {
+		t.Fatalf("save alias token: %v", err)
+	}
+	got, err := FromEntAliasToken(ctx, entity)
+	if err != nil {
+		t.Fatalf("FromEntAliasToken: %v", err)
+	}
+	if got.Spec != token.Spec {
+		t.Fatalf("roundtrip alias spec = %#v, want %#v", got.Spec, token.Spec)
+	}
+
+	token.Spec.UsageCount = testfixtures.AliasUsageCount(11)
+	token.Spec.Revoked = testfixtures.AliasRevoked(false)
+	token.Spec.Weight = testfixtures.AliasWeight(4.25)
+	update := client.AliasToken.UpdateOneID(entity.ID)
+	if err := UpdateAliasTokenFromResource(ctx, update, token); err != nil {
+		t.Fatalf("UpdateAliasTokenFromResource: %v", err)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		t.Fatalf("save updated alias token: %v", err)
+	}
+	updated, err := client.AliasToken.Query().Where(aliastoken.UIDEQ("alias-1")).Only(ctx)
+	if err != nil {
+		t.Fatalf("query updated alias token: %v", err)
+	}
+	got, err = FromEntAliasToken(ctx, updated)
+	if err != nil {
+		t.Fatalf("FromEntAliasToken updated: %v", err)
+	}
+	if got.Spec != token.Spec {
+		t.Fatalf("updated alias spec = %#v, want %#v", got.Spec, token.Spec)
 	}
 }
 `)

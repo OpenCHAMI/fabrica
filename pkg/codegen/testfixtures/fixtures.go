@@ -32,3 +32,33 @@ type MappedTokenSpec struct {
 	ReplayAttempts []time.Time       `json:"replay_attempts"`
 	Labels         map[string]string `json:"labels"`
 }
+
+// AliasSubject is a named string fixture for adapter conversion tests.
+type AliasSubject string
+
+// AliasUsageCount is a named int fixture for adapter conversion tests.
+type AliasUsageCount int
+
+// AliasRevoked is a named bool fixture for adapter conversion tests.
+type AliasRevoked bool
+
+// AliasSequenceNumber is a named int64 fixture for adapter conversion tests.
+type AliasSequenceNumber int64
+
+// AliasWeight is a named float64 fixture for adapter conversion tests.
+type AliasWeight float64
+
+// AliasToken exercises generated adapters for named scalar field aliases.
+type AliasToken struct {
+	resource.Resource
+	Spec AliasTokenSpec `json:"spec"`
+}
+
+// AliasTokenSpec contains named scalar field aliases used by codegen tests.
+type AliasTokenSpec struct {
+	Subject        AliasSubject        `json:"subject" validate:"required"`
+	UsageCount     AliasUsageCount     `json:"usage_count"`
+	Revoked        AliasRevoked        `json:"revoked"`
+	SequenceNumber AliasSequenceNumber `json:"sequence_number"`
+	Weight         AliasWeight         `json:"weight"`
+}

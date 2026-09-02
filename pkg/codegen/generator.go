@@ -391,6 +391,12 @@ func entSetExpr(field SpecField, expr string) string {
 	switch field.EntType {
 	case "duration":
 		return "int64(" + expr + ")"
+	case "string", "int", "bool", "int64", "float64":
+		valueType := entValueType(field)
+		if field.Type != valueType {
+			return valueType + "(" + expr + ")"
+		}
+		return expr
 	default:
 		return expr
 	}
@@ -399,9 +405,31 @@ func entSetExpr(field SpecField, expr string) string {
 func resourceSetExpr(field SpecField, expr string) string {
 	switch field.EntType {
 	case "duration":
-		return "time.Duration(" + expr + ")"
+		return field.Type + "(" + expr + ")"
+	case "string", "int", "bool", "int64", "float64":
+		if field.Type != entValueType(field) {
+			return field.Type + "(" + expr + ")"
+		}
+		return expr
 	default:
 		return expr
+	}
+}
+
+func entValueType(field SpecField) string {
+	switch field.EntType {
+	case "string":
+		return "string"
+	case "int":
+		return "int"
+	case "bool":
+		return "bool"
+	case "int64", "duration":
+		return "int64"
+	case "float64":
+		return "float64"
+	default:
+		return ""
 	}
 }
 
@@ -720,7 +748,7 @@ func entTypeForReflect(t reflect.Type) string {
 	}
 	if t.Kind() == reflect.Slice {
 		switch {
-		case t.Elem().Kind() == reflect.Uint8:
+		case t.Elem() == reflect.TypeOf(byte(0)):
 			return "bytes"
 		case t.Elem().Kind() == reflect.String && t.Elem().PkgPath() == "":
 			return "strings"
@@ -732,9 +760,6 @@ func entTypeForReflect(t reflect.Type) string {
 	}
 	if t.Kind() == reflect.Map && t.Key().Kind() == reflect.String && t.Key().PkgPath() == "" && t.Elem().Kind() == reflect.String && t.Elem().PkgPath() == "" {
 		return "string_map"
-	}
-	if t.PkgPath() != "" {
-		return ""
 	}
 	switch t.Kind() {
 	case reflect.String:

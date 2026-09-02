@@ -159,12 +159,26 @@ func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}Updat
 	if resource.Spec.{{.Name}} != "" {
 		update = update.Set{{.Name}}(resource.Spec.{{.Name}})
 	}
+	{{else if eq .EntType "time_ptr"}}
+	if resource.Spec.{{.Name}} == nil {
+		update = update.Clear{{.Name}}()
+	} else {
+		update = update.Set{{.Name}}(*resource.Spec.{{.Name}})
+	}
 	{{else}}
 	update = update.{{entSetter .}}({{entSetExpr . $specExpr}})
 	{{end}}
 	{{else}}
 	// {{.Name}} (no immutability constraint)
+	{{if eq .EntType "time_ptr"}}
+	if resource.Spec.{{.Name}} == nil {
+		update = update.Clear{{.Name}}()
+	} else {
+		update = update.Set{{.Name}}(*resource.Spec.{{.Name}})
+	}
+	{{else}}
 	update = update.{{entSetter .}}({{entSetExpr . $specExpr}})
+	{{end}}
 	{{end}}
 	{{end}}
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/pkg/annotations"
+	"github.com/openchami/fabrica/pkg/codegen/testfixtures"
 )
 
 // updateGolden rewrites the golden files instead of comparing against them.
@@ -319,6 +320,48 @@ func TestGenerateDedicatedSchemaRejectsUnsupportedType(t *testing.T) {
 	err := generateDedicatedSchemaError(t, &UnsupportedToken{}, "UnsupportedToken", annots)
 	if err == nil || !strings.Contains(err.Error(), `unsupported dedicated Ent field type "[]int"`) {
 		t.Fatalf("expected unsupported type error, got %v", err)
+	}
+}
+
+func TestGoldenDedicatedSchemaNamedScalarAliases(t *testing.T) {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Subject"] = annotations.NewFieldAnnotations("Subject")
+
+	got := generateDedicatedSchema(t, &testfixtures.AliasToken{}, "AliasToken", annots)
+
+	for _, want := range []string{
+		`field.String("subject")`,
+		`field.Int("usage_count")`,
+		`field.Bool("revoked")`,
+		`field.Int64("sequence_number")`,
+		`field.Float("weight")`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("generated schema missing %q", want)
+		}
+	}
+}
+
+func TestGenerateDedicatedSchemaRejectsNamedByteSlice(t *testing.T) {
+	type namedByte byte
+	type UnsupportedTokenSpec struct {
+		Fingerprint []namedByte `json:"fingerprint"`
+	}
+
+	type UnsupportedToken struct {
+		Spec UnsupportedTokenSpec
+	}
+
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Fingerprint"] = annotations.NewFieldAnnotations("Fingerprint")
+
+	err := generateDedicatedSchemaError(t, &UnsupportedToken{}, "UnsupportedToken", annots)
+	if err == nil || !strings.Contains(err.Error(), `unsupported dedicated Ent field type`) {
+		t.Fatalf("expected unsupported named byte slice error, got %v", err)
 	}
 }
 
