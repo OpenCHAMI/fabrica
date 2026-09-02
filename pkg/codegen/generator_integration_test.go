@@ -116,18 +116,18 @@ func TestIntegrationTokenService(t *testing.T) {
 		t.Error("expected Value field to be immutable")
 	}
 
-	// Validate Name field annotations (unique + index)
-	nameField, ok := annots.Fields["Name"]
+	// Validate DisplayName field annotations (unique + index)
+	nameField, ok := annots.Fields["DisplayName"]
 	if !ok {
-		t.Fatal("expected Name field annotations")
+		t.Fatal("expected DisplayName field annotations")
 	}
 
 	if !nameField.Unique {
-		t.Error("expected Name field to be unique")
+		t.Error("expected DisplayName field to be unique")
 	}
 
 	if nameField.Index == nil {
-		t.Error("expected Name field to have index")
+		t.Error("expected DisplayName field to have index")
 	}
 
 	// Validate Revoked field annotations (default value)
@@ -156,7 +156,7 @@ func TestIntegrationTokenService(t *testing.T) {
 		Tags:         make(map[string]string),
 		SpecFields: []SpecField{
 			{Name: "Value", JSONName: "value", Type: "string", Required: true},
-			{Name: "Name", JSONName: "name", Type: "string", Required: true},
+			{Name: "DisplayName", JSONName: "display_name", Type: "string", Required: true},
 			{Name: "Description", JSONName: "description", Type: "string", Required: false},
 			{Name: "ExpiresAt", JSONName: "expiresAt", Type: "int64", Required: false},
 			{Name: "Revoked", JSONName: "revoked", Type: "bool", Required: false},
@@ -196,8 +196,8 @@ func TestIntegrationTokenService(t *testing.T) {
 		{"bcrypt", "bcrypt reference for Value field"},
 		{"Sensitive()", "Sensitive() for Value field"},
 		{"Immutable()", "Immutable() for Value field"},
-		{"Unique()", "Unique() for Name field"},
-		{"index.Fields(\"name\")", "index on Name field"},
+		{"Unique()", "Unique() for DisplayName field"},
+		{"index.Fields(\"display_name\")", "index on DisplayName field"},
 		{"Default(false)", "Default(false) for Revoked field"},
 	}
 

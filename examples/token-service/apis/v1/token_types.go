@@ -26,10 +26,10 @@ type TokenSpec struct {
 	// +fabrica:field:immutable
 	Value string `json:"value" validate:"required"`
 
-	// Human-readable token name
+	// Human-readable token display name
 	// +fabrica:field:index
 	// +fabrica:field:unique
-	Name string `json:"name" validate:"required"`
+	DisplayName string `json:"displayName" validate:"required"`
 
 	// Optional description of token purpose
 	Description string `json:"description,omitempty"`

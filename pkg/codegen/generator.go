@@ -43,6 +43,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -341,7 +342,49 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"UniqueImports":         uniqueImports,
 		"ModulePath":            g.ModulePath,
 		"Annotations":           resource.Annotations,
+		"EntSchema":             entSchemaMetadata(resource),
 	})
+}
+
+type entSchemaData struct {
+	HasHashedFields    bool
+	HasBcryptFields    bool
+	HasSHA256Fields    bool
+	HasNonBTreeIndexes bool
+}
+
+func entSchemaMetadata(resource ResourceMetadata) entSchemaData {
+	var data entSchemaData
+	if resource.Annotations == nil {
+		return data
+	}
+
+	for _, field := range resource.SpecFields {
+		annots := resource.Annotations.Fields[field.Name]
+		if annots == nil {
+			continue
+		}
+		if annots.Storage != nil && annots.Storage.Type == annotations.StorageTypeHashed {
+			data.HasHashedFields = true
+			switch annots.Storage.Hash.Algorithm {
+			case annotations.HashAlgorithmBcrypt:
+				data.HasBcryptFields = true
+			case annotations.HashAlgorithmSHA256:
+				data.HasSHA256Fields = true
+			}
+		}
+		if annots.Index != nil && annots.Index.Type != annotations.IndexTypeBTree {
+			data.HasNonBTreeIndexes = true
+		}
+	}
+
+	for _, idx := range resource.Annotations.Indexes {
+		if idx != nil && idx.Type != annotations.IndexTypeBTree {
+			data.HasNonBTreeIndexes = true
+		}
+	}
+
+	return data
 }
 
 // globalTemplateData creates template data for templates that process all resources at once
@@ -1534,6 +1577,10 @@ func (g *Generator) GenerateEntSchemas() error {
 
 	for _, resource := range g.Resources {
 		if resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated {
+			if err := g.validateDedicatedEntResource(resource); err != nil {
+				return err
+			}
+
 			data := g.templateData(resource, "ent/schema/resource_dedicated.go.tmpl")
 			schemaFile := filepath.Join(schemaDir, strings.ToLower(resource.Name)+".go")
 
@@ -1543,6 +1590,56 @@ func (g *Generator) GenerateEntSchemas() error {
 
 			fmt.Printf("  ✓ Generated dedicated schema for %s\n", resource.Name)
 		}
+	}
+
+	return nil
+}
+
+func (g *Generator) validateDedicatedEntResource(resource ResourceMetadata) error {
+	annots := resource.Annotations
+	for _, field := range resource.SpecFields {
+		if annots.SpecFields != nil {
+			annots.SpecFields[field.Name] = true
+		}
+		fieldAnnots := annots.Fields[field.Name]
+		if fieldAnnots == nil {
+			continue
+		}
+		if fieldAnnots.FieldType == "" {
+			fieldAnnots.FieldType = field.Type
+		}
+		if fieldAnnots.Storage == nil {
+			continue
+		}
+		switch fieldAnnots.Storage.Type {
+		case annotations.StorageTypeEncrypted:
+			return fmt.Errorf("resource %s field %s: encrypted storage is not emitted yet", resource.Name, field.Name)
+		case annotations.StorageTypeHashed:
+			if fieldAnnots.Storage.Hash != nil && fieldAnnots.Storage.Hash.Algorithm == annotations.HashAlgorithmArgon2 {
+				return fmt.Errorf("resource %s field %s: argon2 hashing is not emitted yet", resource.Name, field.Name)
+			}
+		}
+	}
+
+	if err := annotations.ValidateForDatabase(annots, g.DBDriver); err != nil {
+		return fmt.Errorf("validate dedicated Ent annotations for %s: %w", resource.Name, err)
+	}
+
+	seenColumns := map[string]bool{
+		"uid":              true,
+		"name":             true,
+		"namespace":        true,
+		"api_version":      true,
+		"kind":             true,
+		"created_at":       true,
+		"updated_at":       true,
+		"resource_version": true,
+	}
+	for _, field := range resource.SpecFields {
+		if seenColumns[field.JSONName] {
+			return fmt.Errorf("resource %s field %s: JSON name %q collides with a dedicated Ent metadata column", resource.Name, field.Name, field.JSONName)
+		}
+		seenColumns[field.JSONName] = true
 	}
 
 	return nil
@@ -1876,6 +1973,10 @@ var templateFuncs = template.FuncMap{
 	},
 	"split": func(sep, s string) []string {
 		return strings.Split(s, sep)
+	},
+	"goString": strconv.Quote,
+	"entIndexType": func(indexType interface{}) string {
+		return strings.ToUpper(fmt.Sprint(indexType))
 	},
 	"last": func(s []string) string {
 		if len(s) == 0 {
