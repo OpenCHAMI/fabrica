@@ -144,7 +144,7 @@ func ({{.Name}}) Fields() []ent.Field {
 			Comment("{{.Name}} (encrypted with {{$fieldAnnots.Storage.Encryption.Algorithm}})"),
 		{{- else }}
 		// Standard field (no special storage)
-		{{- if eq .Type "string" }}
+		{{- if eq .EntType "string" }}
 		field.String("{{.JSONName}}").
 			{{- if $fieldAnnots.Immutable }}
 			Immutable().
@@ -167,7 +167,7 @@ func ({{.Name}}) Fields() []ent.Field {
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
-		{{- else if eq .Type "int" }}
+		{{- else if eq .EntType "int" }}
 		field.Int("{{.JSONName}}").
 			{{- if $fieldAnnots.Immutable }}
 			Immutable().
@@ -185,7 +185,7 @@ func ({{.Name}}) Fields() []ent.Field {
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
-		{{- else if eq .Type "bool" }}
+		{{- else if eq .EntType "bool" }}
 		field.Bool("{{.JSONName}}").
 			{{- if $fieldAnnots.Immutable }}
 			Immutable().
@@ -200,18 +200,134 @@ func ({{.Name}}) Fields() []ent.Field {
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
-		{{- else }}
-		// Fallback for other types
-		field.String("{{.JSONName}}").
-			{{- if not .Required }}
+		{{- else if eq .EntType "int64" }}
+		field.Int64("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.Unique }}
+			Unique().
+			{{- end }}
+			{{- if $fieldAnnots.Default }}
+			Default({{$fieldAnnots.Default}}).
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
 			Optional().
 			{{- end }}
-			Comment("{{.Name}} ({{.Type}})"),
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "float64" }}
+		field.Float("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.Default }}
+			Default({{$fieldAnnots.Default}}).
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "duration" }}
+		// time.Duration is stored as int64 nanoseconds, matching Go's internal
+		// representation, so round-tripping is exact and no unit is implied.
+		field.Int64("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.Default }}
+			Default({{$fieldAnnots.Default}}).
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}} (time.Duration, nanoseconds)"),
+		{{- else if eq .EntType "time" }}
+		field.Time("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "time_ptr" }}
+		// Pointer field: nullable regardless of annotations, and Nillable so a
+		// NULL round-trips back to nil rather than the zero time.
+		field.Time("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			Optional().
+			Nillable().
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "strings" }}
+		field.Strings("{{.JSONName}}").
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "bytes" }}
+		field.Bytes("{{.JSONName}}").
+			{{- if $fieldAnnots.Sensitive }}
+			Sensitive().
+			{{- end }}
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "time_slice" }}
+		field.JSON("{{.JSONName}}", []time.Time{}).
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "string_map" }}
+		field.JSON("{{.JSONName}}", map[string]string{}).
+			{{- if $fieldAnnots.Immutable }}
+			Immutable().
+			{{- end }}
+			{{- if $fieldAnnots.NotNull }}
+			{{- else if $fieldAnnots.Nullable }}
+			Optional().
+			{{- else if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
 		{{- end }}
 		{{- end }}
 		{{- else }}
 		// Field {{.Name}} has no annotations
-		{{- if eq .Type "string" }}
+		{{- if eq .EntType "string" }}
 		field.String("{{.JSONName}}").
 			{{- if .Required }}
 			NotEmpty().
@@ -219,24 +335,75 @@ func ({{.Name}}) Fields() []ent.Field {
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
-		{{- else if eq .Type "int" }}
+		{{- else if eq .EntType "int" }}
 		field.Int("{{.JSONName}}").
 			{{- if not .Required }}
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
-		{{- else if eq .Type "bool" }}
+		{{- else if eq .EntType "bool" }}
 		field.Bool("{{.JSONName}}").
 			{{- if not .Required }}
 			Optional().
 			{{- end }}
 			Comment("{{.Name}}"),
-		{{- else }}
-		field.String("{{.JSONName}}").
+		{{- else if eq .EntType "int64" }}
+		field.Int64("{{.JSONName}}").
 			{{- if not .Required }}
 			Optional().
 			{{- end }}
-			Comment("{{.Name}} ({{.Type}})"),
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "float64" }}
+		field.Float("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "duration" }}
+		// time.Duration is stored as int64 nanoseconds, matching Go's internal
+		// representation, so round-tripping is exact and no unit is implied.
+		field.Int64("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}} (time.Duration, nanoseconds)"),
+		{{- else if eq .EntType "time" }}
+		field.Time("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "time_ptr" }}
+		// Pointer field: nullable, and Nillable so a NULL round-trips back to
+		// nil rather than the zero time.
+		field.Time("{{.JSONName}}").
+			Optional().
+			Nillable().
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "strings" }}
+		field.Strings("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "bytes" }}
+		field.Bytes("{{.JSONName}}").
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "time_slice" }}
+		field.JSON("{{.JSONName}}", []time.Time{}).
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
+		{{- else if eq .EntType "string_map" }}
+		field.JSON("{{.JSONName}}", map[string]string{}).
+			{{- if not .Required }}
+			Optional().
+			{{- end }}
+			Comment("{{.Name}}"),
 		{{- end }}
 		{{- end }}
 		{{- end }}

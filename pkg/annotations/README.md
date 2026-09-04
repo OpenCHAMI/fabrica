@@ -945,6 +945,46 @@ func ({{ .Name }}) Fields() []ent.Field {
 
 ---
 
+## Go Type → Ent Field Mapping
+
+For `+fabrica:storage=dedicated`, each Spec field's Go type selects an Ent field
+constructor:
+
+| Go type | Ent field | Notes |
+|---|---|---|
+| `string` | `field.String` | |
+| `int` | `field.Int` | |
+| `int64` | `field.Int64` | |
+| `float64` | `field.Float` | |
+| `bool` | `field.Bool` | |
+| `time.Time` | `field.Time` | |
+| `*time.Time` | `field.Time().Optional().Nillable()` | NULL round-trips to `nil`, not the zero time |
+| `time.Duration` | `field.Int64` | **int64 nanoseconds**, matching Go's internal representation — exact round-trip, no implied unit |
+| `[]string` | `field.Strings` | |
+| `[]byte` | `field.Bytes` | |
+| `[]time.Time` | `field.JSON(name, []time.Time{})` | |
+| `map[string]string` | `field.JSON(name, map[string]string{})` | |
+| anything else | rejected during generation | Add an explicit mapping before using dedicated storage |
+
+### Unmapped types fail closed
+
+A type with no mapping now fails dedicated Ent generation with the resource,
+field, and Go type in the error. Fabrica no longer silently stores unsupported
+types as text because that breaks ordering, range queries, indexes, and generated
+adapter conversions.
+
+Previously every non-`string`/`int`/`bool` type took a text-column path with no
+warning, so timestamps and slices became text columns silently.
+
+### Reserved column names
+
+The generated schema always emits `uid`, `name`, `namespace`, `api_version`,
+`kind`, `created_at`, `updated_at` and `resource_version`. A Spec field whose
+JSON name collides with one of these produces a **duplicate column** and Ent
+will reject the schema. Rename the field or its `json` tag.
+
+---
+
 ## Database Compatibility
 
 ### Index Types

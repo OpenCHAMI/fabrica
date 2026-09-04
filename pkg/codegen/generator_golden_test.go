@@ -12,8 +12,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openchami/fabrica/pkg/annotations"
+	"github.com/openchami/fabrica/pkg/codegen/testfixtures"
 )
 
 // updateGolden rewrites the golden files instead of comparing against them.
@@ -230,6 +232,139 @@ func TestGoldenDedicatedSchemaFullVocabulary(t *testing.T) {
 	assertGolden(t, "token_dedicated_full.go.golden", got)
 }
 
+type TypedTokenSpec struct {
+	Subject        string            `json:"subject" validate:"required"`
+	UsageCount     int               `json:"usage_count"`
+	Revoked        bool              `json:"revoked"`
+	SequenceNumber int64             `json:"sequence_number"`
+	Weight         float64           `json:"weight"`
+	TTL            time.Duration     `json:"ttl"`
+	IssuedAt       time.Time         `json:"issued_at" validate:"required"`
+	ConsumedAt     *time.Time        `json:"consumed_at"`
+	Scopes         []string          `json:"scopes"`
+	Fingerprint    []byte            `json:"fingerprint"`
+	ReplayAttempts []time.Time       `json:"replay_attempts"`
+	Labels         map[string]string `json:"labels"`
+}
+
+type TypedToken struct {
+	Spec TypedTokenSpec
+}
+
+func typeMappingAnnotations() *annotations.ResourceAnnotations {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+
+	issuedAt := annotations.NewFieldAnnotations("IssuedAt")
+	issuedAt.Immutable = true
+	annots.Fields["IssuedAt"] = issuedAt
+
+	scopes := annotations.NewFieldAnnotations("Scopes")
+	scopes.Immutable = true
+	annots.Fields["Scopes"] = scopes
+
+	fingerprint := annotations.NewFieldAnnotations("Fingerprint")
+	fingerprint.Sensitive = true
+	annots.Fields["Fingerprint"] = fingerprint
+
+	return annots
+}
+
+func TestGoldenDedicatedSchemaTypeMapping(t *testing.T) {
+	annots := typeMappingAnnotations()
+
+	if err := annotations.Validate(annots); err != nil {
+		t.Fatalf("fixture failed validation: %v", err)
+	}
+
+	got := generateDedicatedSchema(t, &TypedToken{}, "TypedToken", annots)
+	assertGolden(t, "token_dedicated_types.go.golden", got)
+
+	for _, want := range []string{
+		`field.Int64("sequence_number")`,
+		`field.Float("weight")`,
+		`field.Int64("ttl")`,
+		`field.Time("issued_at")`,
+		`field.Time("consumed_at")`,
+		`Nillable()`,
+		`field.Strings("scopes")`,
+		`field.Bytes("fingerprint")`,
+		`field.JSON("replay_attempts", []time.Time{})`,
+		`field.JSON("labels", map[string]string{})`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("generated schema missing %q", want)
+		}
+	}
+
+	if strings.Contains(string(got), `field.String("ttl")`) {
+		t.Error("time.Duration was emitted as a string column")
+	}
+}
+
+func TestGenerateDedicatedSchemaRejectsUnsupportedType(t *testing.T) {
+	type UnsupportedTokenSpec struct {
+		Unmapped []int `json:"unmapped"`
+	}
+
+	type UnsupportedToken struct {
+		Spec UnsupportedTokenSpec
+	}
+
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Unmapped"] = annotations.NewFieldAnnotations("Unmapped")
+
+	err := generateDedicatedSchemaError(t, &UnsupportedToken{}, "UnsupportedToken", annots)
+	if err == nil || !strings.Contains(err.Error(), `unsupported dedicated Ent field type "[]int"`) {
+		t.Fatalf("expected unsupported type error, got %v", err)
+	}
+}
+
+func TestGoldenDedicatedSchemaNamedScalarAliases(t *testing.T) {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Subject"] = annotations.NewFieldAnnotations("Subject")
+
+	got := generateDedicatedSchema(t, &testfixtures.AliasToken{}, "AliasToken", annots)
+
+	for _, want := range []string{
+		`field.String("subject")`,
+		`field.Int("usage_count")`,
+		`field.Bool("revoked")`,
+		`field.Int64("sequence_number")`,
+		`field.Float("weight")`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("generated schema missing %q", want)
+		}
+	}
+}
+
+func TestGenerateDedicatedSchemaRejectsNamedByteSlice(t *testing.T) {
+	type namedByte byte
+	type UnsupportedTokenSpec struct {
+		Fingerprint []namedByte `json:"fingerprint"`
+	}
+
+	type UnsupportedToken struct {
+		Spec UnsupportedTokenSpec
+	}
+
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+	annots.Fields["Fingerprint"] = annotations.NewFieldAnnotations("Fingerprint")
+
+	err := generateDedicatedSchemaError(t, &UnsupportedToken{}, "UnsupportedToken", annots)
+	if err == nil || !strings.Contains(err.Error(), `unsupported dedicated Ent field type`) {
+		t.Fatalf("expected unsupported named byte slice error, got %v", err)
+	}
+}
+
 type BaselineTokenSpec struct {
 	Value       string `json:"value" validate:"required"`
 	DisplayName string `json:"display_name"`
@@ -298,6 +433,7 @@ func TestGeneratedDedicatedEntSchemasCompile(t *testing.T) {
 
 	schemas := map[string][]byte{
 		"goldentoken.go":   generateDedicatedSchema(t, &GoldenToken{}, "GoldenToken", fullVocabularyAnnotations()),
+		"typedtoken.go":    generateDedicatedSchema(t, &TypedToken{}, "TypedToken", typeMappingAnnotations()),
 		"baselinetoken.go": generateDedicatedSchema(t, &BaselineToken{}, "BaselineToken", baselineAnnotations()),
 		"plaintoken.go":    generateDedicatedSchema(t, &PlainToken{}, "PlainToken", plainAnnotations()),
 	}

@@ -82,6 +82,7 @@ type SpecField struct {
 	Name         string // Field name (e.g., "Description")
 	JSONName     string // JSON tag name (e.g., "description")
 	Type         string // Go type (e.g., "string", "int")
+	EntType      string // Ent storage type selected for dedicated schemas
 	Required     bool   // Whether field is required
 	ExampleValue string // Example value for documentation
 }
@@ -335,7 +336,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"Tags":                  resource.Tags,
 		"PerResourceVersioning": perResVersioning,
 		"IsVersioned":           isVersioned,
-		"SpecFields":            resource.SpecFields,
+		"SpecFields":            normalizeSpecFields(resource.SpecFields),
 		"Versions":              resource.Versions,
 		"DefaultVersion":        resource.DefaultVersion,
 		"APIGroupVersion":       resource.APIGroupVersion,
@@ -343,6 +344,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"ModulePath":            g.ModulePath,
 		"Annotations":           resource.Annotations,
 		"EntSchema":             entSchemaMetadata(resource),
+		"EntAdapter":            entAdapterMetadata(resource),
 	})
 }
 
@@ -353,13 +355,112 @@ type entSchemaData struct {
 	HasNonBTreeIndexes bool
 }
 
+type entAdapterData struct {
+	HasDurationFields bool
+}
+
+func entAdapterMetadata(resource ResourceMetadata) entAdapterData {
+	var data entAdapterData
+	for _, field := range normalizeSpecFields(resource.SpecFields) {
+		if field.EntType == "duration" {
+			data.HasDurationFields = true
+		}
+	}
+	return data
+}
+
+func normalizeSpecFields(fields []SpecField) []SpecField {
+	normalized := make([]SpecField, len(fields))
+	for i, field := range fields {
+		normalized[i] = field
+		if normalized[i].EntType == "" {
+			normalized[i].EntType = entTypeForTypeString(field.Type)
+		}
+	}
+	return normalized
+}
+
+func entSetter(field SpecField) string {
+	if field.EntType == "time_ptr" {
+		return "SetNillable" + field.Name
+	}
+	return "Set" + field.Name
+}
+
+func entSetExpr(field SpecField, expr string) string {
+	switch field.EntType {
+	case "duration":
+		return "int64(" + expr + ")"
+	case "string", "int", "bool", "int64", "float64":
+		valueType := entValueType(field)
+		if field.Type != valueType {
+			return valueType + "(" + expr + ")"
+		}
+		return expr
+	default:
+		return expr
+	}
+}
+
+func resourceSetExpr(field SpecField, expr string) string {
+	switch field.EntType {
+	case "duration":
+		return field.Type + "(" + expr + ")"
+	case "string", "int", "bool", "int64", "float64":
+		if field.Type != entValueType(field) {
+			return field.Type + "(" + expr + ")"
+		}
+		return expr
+	default:
+		return expr
+	}
+}
+
+func entValueType(field SpecField) string {
+	switch field.EntType {
+	case "string":
+		return "string"
+	case "int":
+		return "int"
+	case "bool":
+		return "bool"
+	case "int64", "duration":
+		return "int64"
+	case "float64":
+		return "float64"
+	default:
+		return ""
+	}
+}
+
+func optionalSpecCondition(field SpecField, expr string) string {
+	switch field.EntType {
+	case "string":
+		return expr + ` != ""`
+	case "int", "int64", "float64", "duration":
+		return expr + " != 0"
+	case "bool":
+		return expr
+	case "time":
+		return "!" + expr + ".IsZero()"
+	case "time_ptr", "strings", "bytes", "time_slice", "string_map":
+		return expr + " != nil"
+	default:
+		return "false"
+	}
+}
+
+func hasOptionalSpecCondition(field SpecField) bool {
+	return optionalSpecCondition(field, "") != "false"
+}
+
 func entSchemaMetadata(resource ResourceMetadata) entSchemaData {
 	var data entSchemaData
 	if resource.Annotations == nil {
 		return data
 	}
 
-	for _, field := range resource.SpecFields {
+	for _, field := range normalizeSpecFields(resource.SpecFields) {
 		annots := resource.Annotations.Fields[field.Name]
 		if annots == nil {
 			continue
@@ -623,6 +724,7 @@ func extractSpecFields(resourceType reflect.Type) []SpecField {
 					Name:         specField.Name,
 					JSONName:     jsonName,
 					Type:         specField.Type.String(),
+					EntType:      entTypeForReflect(specField.Type),
 					Required:     required,
 					ExampleValue: exampleValue,
 				})
@@ -632,6 +734,78 @@ func extractSpecFields(resourceType reflect.Type) []SpecField {
 	}
 
 	return fields
+}
+
+func entTypeForReflect(t reflect.Type) string {
+	if t == reflect.TypeOf(time.Duration(0)) {
+		return "duration"
+	}
+	if t == reflect.TypeOf(time.Time{}) {
+		return "time"
+	}
+	if t.Kind() == reflect.Pointer && t.Elem() == reflect.TypeOf(time.Time{}) {
+		return "time_ptr"
+	}
+	if t.Kind() == reflect.Slice {
+		switch {
+		case t.Elem() == reflect.TypeOf(byte(0)):
+			return "bytes"
+		case t.Elem().Kind() == reflect.String && t.Elem().PkgPath() == "":
+			return "strings"
+		case t.Elem() == reflect.TypeOf(time.Time{}):
+			return "time_slice"
+		default:
+			return ""
+		}
+	}
+	if t.Kind() == reflect.Map && t.Key().Kind() == reflect.String && t.Key().PkgPath() == "" && t.Elem().Kind() == reflect.String && t.Elem().PkgPath() == "" {
+		return "string_map"
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return "string"
+	case reflect.Int:
+		return "int"
+	case reflect.Bool:
+		return "bool"
+	case reflect.Int64:
+		return "int64"
+	case reflect.Float64:
+		return "float64"
+	default:
+		return ""
+	}
+}
+
+func entTypeForTypeString(typeName string) string {
+	switch typeName {
+	case "string":
+		return "string"
+	case "int":
+		return "int"
+	case "bool":
+		return "bool"
+	case "int64":
+		return "int64"
+	case "float64":
+		return "float64"
+	case "time.Duration":
+		return "duration"
+	case "time.Time":
+		return "time"
+	case "*time.Time":
+		return "time_ptr"
+	case "[]string":
+		return "strings"
+	case "[]byte", "[]uint8":
+		return "bytes"
+	case "[]time.Time":
+		return "time_slice"
+	case "map[string]string":
+		return "string_map"
+	default:
+		return ""
+	}
 }
 
 // generateExampleValue creates an example value based on the field type and name
@@ -1597,13 +1771,19 @@ func (g *Generator) GenerateEntSchemas() error {
 
 func (g *Generator) validateDedicatedEntResource(resource ResourceMetadata) error {
 	annots := resource.Annotations
-	for _, field := range resource.SpecFields {
+	for _, field := range normalizeSpecFields(resource.SpecFields) {
+		if field.EntType == "" {
+			return fmt.Errorf("resource %s field %s: unsupported dedicated Ent field type %q", resource.Name, field.Name, field.Type)
+		}
 		if annots.SpecFields != nil {
 			annots.SpecFields[field.Name] = true
 		}
 		fieldAnnots := annots.Fields[field.Name]
 		if fieldAnnots == nil {
 			continue
+		}
+		if field.EntType == "time_ptr" && fieldAnnots.NotNull {
+			return fmt.Errorf("resource %s field %s: notnull is not supported on pointer time fields", resource.Name, field.Name)
 		}
 		if fieldAnnots.FieldType == "" {
 			fieldAnnots.FieldType = field.Type
@@ -1701,6 +1881,10 @@ func (g *Generator) GenerateEntAdapter() error {
 
 // generateDedicatedAdapter generates a dedicated adapter for a single resource
 func (g *Generator) generateDedicatedAdapter(resource ResourceMetadata) error {
+	if err := g.validateDedicatedEntResource(resource); err != nil {
+		return err
+	}
+
 	var buf bytes.Buffer
 	data := g.templateData(resource, "storage/adapter_dedicated.go.tmpl")
 
@@ -1978,6 +2162,11 @@ var templateFuncs = template.FuncMap{
 	"entIndexType": func(indexType interface{}) string {
 		return strings.ToUpper(fmt.Sprint(indexType))
 	},
+	"entSetter":                entSetter,
+	"entSetExpr":               entSetExpr,
+	"resourceSetExpr":          resourceSetExpr,
+	"optionalSpecCondition":    optionalSpecCondition,
+	"hasOptionalSpecCondition": hasOptionalSpecCondition,
 	"last": func(s []string) string {
 		if len(s) == 0 {
 			return ""
