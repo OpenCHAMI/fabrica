@@ -2,6 +2,7 @@
 // Copyright © <year> OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
+
 package schema
 
 import (
@@ -182,7 +183,7 @@ func (GoldenToken) Indexes() []ent.Index {
 // Hooks of the GoldenToken.
 func (GoldenToken) Hooks() []ent.Hook {
 	return []ent.Hook{
-		// Hash Value field with bcrypt on create.
+		// Hash Value field with bcrypt on create and update.
 		//
 		// The mutation is matched structurally rather than as *ent.GoldenTokenMutation:
 		// that type is generated FROM this package, so naming it here would be a
@@ -190,7 +191,7 @@ func (GoldenToken) Hooks() []ent.Hook {
 		// with no import of the generated package.
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-				if m.Op().Is(ent.OpCreate) {
+				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
 					if mut, ok := m.(interface {
 						Value() (string, bool)
 						SetValue(string)
@@ -207,7 +208,7 @@ func (GoldenToken) Hooks() []ent.Hook {
 				return next.Mutate(ctx, m)
 			})
 		},
-		// Hash Checksum field with sha256 on create.
+		// Hash Checksum field with sha256 on create and update.
 		//
 		// The mutation is matched structurally rather than as *ent.GoldenTokenMutation:
 		// that type is generated FROM this package, so naming it here would be a
@@ -215,7 +216,7 @@ func (GoldenToken) Hooks() []ent.Hook {
 		// with no import of the generated package.
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-				if m.Op().Is(ent.OpCreate) {
+				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
 					if mut, ok := m.(interface {
 						Checksum() (string, bool)
 						SetChecksum(string)

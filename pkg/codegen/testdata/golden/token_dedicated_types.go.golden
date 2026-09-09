@@ -2,6 +2,7 @@
 // Copyright © <year> OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
+
 package schema
 
 import (

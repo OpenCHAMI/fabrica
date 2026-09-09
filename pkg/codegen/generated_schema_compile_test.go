@@ -230,3 +230,22 @@ func TestHooksDoNotReferenceGeneratedPackage(t *testing.T) {
 		t.Errorf("hook should match the mutation structurally:\n%s", got)
 	}
 }
+
+func TestHashHooksRunForCreateAndUpdateOperations(t *testing.T) {
+	annots := annotations.NewResourceAnnotations()
+	annots.IsResource = true
+	annots.StorageMode = annotations.StorageModeDedicated
+
+	token := annotations.NewFieldAnnotations("Token")
+	token.Storage = &annotations.StorageConfig{
+		Type: annotations.StorageTypeHashed,
+		Hash: &annotations.HashConfig{Algorithm: annotations.HashAlgorithmSHA256},
+	}
+	annots.Fields["Token"] = token
+
+	got := string(generateDedicatedSchema(t, &sha256Resource{}, "sha256Resource", annots))
+	want := "m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne)"
+	if !strings.Contains(got, want) {
+		t.Errorf("hash hook should cover create, update, and update-one operations:\n%s", got)
+	}
+}

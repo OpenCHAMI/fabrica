@@ -39,6 +39,7 @@ import (
 // "no schema found".
 type RoundTripSpec struct {
 	Subject        string            `json:"subject" validate:"required"`
+	Secret         string            `json:"secret" validate:"required"`
 	UsageCount     int               `json:"usage_count"`
 	Revoked        bool              `json:"revoked"`
 	SequenceNumber int64             `json:"sequence_number"`
@@ -63,7 +64,9 @@ const crudProgram = `package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"time"
@@ -71,8 +74,14 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"roundtrip/ent"
+	_ "roundtrip/ent/runtime"
 	_ "modernc.org/sqlite"
 )
+
+func sha256Hex(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
 
 func main() {
 	db, err := sql.Open("sqlite", "file:ent?mode=memory&cache=shared&_fk=1")
@@ -95,6 +104,7 @@ func main() {
 		SetUID("uid-1").
 		SetName("row-1").
 		SetSubject("boot-service").
+		SetSecret("create-secret").
 		SetTTL(int64(ttl)).
 		SetIssuedAt(issued).
 		SetScopes([]string{"read", "write"}).
@@ -136,6 +146,24 @@ func main() {
 	check("float64", got.Weight == 1.5, fmt.Sprint(got.Weight))
 	check("int", got.UsageCount == 3, fmt.Sprint(got.UsageCount))
 	check("bool", !got.Revoked, fmt.Sprint(got.Revoked))
+	check("hash-create", got.Secret == sha256Hex("create-secret"), got.Secret)
+
+	if _, err := client.RoundTrip.Update().SetSecret("update-secret").Save(ctx); err != nil {
+		log.Fatalf("UPDATE HASHED FIELD FAILED: %v", err)
+	}
+	got, err = client.RoundTrip.Get(ctx, created.ID)
+	if err != nil {
+		log.Fatalf("READ AFTER UPDATE FAILED: %v", err)
+	}
+	check("hash-update", got.Secret == sha256Hex("update-secret"), got.Secret)
+
+	got, err = got.Update().SetSecret("update-one-secret").Save(ctx)
+	if err != nil {
+		log.Fatalf("UPDATE ONE HASHED FIELD FAILED: %v", err)
+	}
+	check("hash-update-one", got.Secret == sha256Hex("update-one-secret"), got.Secret)
+
+	beforeUnrelatedUpdate := got.Secret
 
 	consumed := issued.Add(time.Minute)
 	upd, err := got.Update().SetConsumedAt(consumed).Save(ctx)
@@ -143,6 +171,7 @@ func main() {
 		log.Fatalf("UPDATE FAILED: %v", err)
 	}
 	check("ptr-set", upd.ConsumedAt != nil && upd.ConsumedAt.UTC().Equal(consumed), fmt.Sprint(upd.ConsumedAt))
+	check("hash-untouched", upd.Secret == beforeUnrelatedUpdate, upd.Secret)
 
 	if fail > 0 {
 		log.Fatalf("%d field(s) did not round-trip", fail)
@@ -205,6 +234,14 @@ func TestGeneratedSchemaRoundTripsThroughEnt(t *testing.T) {
 	subject.NotNull = true
 	subject.Index = &annotations.IndexConfig{Type: annotations.IndexTypeBTree}
 	annots.Fields["Subject"] = subject
+
+	secret := annotations.NewFieldAnnotations("Secret")
+	secret.Storage = &annotations.StorageConfig{
+		Type: annotations.StorageTypeHashed,
+		Hash: &annotations.HashConfig{Algorithm: annotations.HashAlgorithmSHA256},
+	}
+	secret.Sensitive = true
+	annots.Fields["Secret"] = secret
 
 	issued := annotations.NewFieldAnnotations("IssuedAt")
 	issued.Immutable = true
