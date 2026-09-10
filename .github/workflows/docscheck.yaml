@@ -1,0 +1,53 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+name: Documentation Tests
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+jobs:
+  check-dead-links:
+    name: Check for dead links
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Use `lychee` to scan for dead links
+        id: lychee
+        uses: lycheeverse/lychee-action@v2
+        with: {fail: false}
+      - name: Find existing dead-links report
+        id: find_issue
+        if: ''
+        env: {GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
+        run: |
+          SQUERY=$(gh api repos/${{ github.repository }}/issues)
+          issue_number=$(echo "${SQUERY}" | jq '
+            [ .[]
+                | select(
+                    any(.labels[]; .name == "automated-issue")
+                    and any(.labels[]; .name == "documentation")
+                    and any(.labels[]; .name == "dead-links"))
+                | {html_url, number, title, labels}
+            ] | .[0].number // empty
+          ')
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
+      - name: Update existing issue, if exists
+        if: steps.lychee.outputs.exit_code != 0 && steps.find_issue.outputs.issue_number != ''
+        env: {GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
+        run: |
+          # GitHub CLI api: https://cli.github.com/manual/gh_api
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            /repos/${{ github.repository }}/issues/${{ steps.find_issue.outputs.issue_number }} \
+            -f body="$(cat ./lychee/out.md)"
+      - name: Create new issue, otherwise
+        if: steps.lychee.outputs.exit_code != 0 && steps.find_issue.outputs.issue_number == ''
+        uses: peter-evans/create-issue-from-file@v6
+        with:
+          title: Dead documentation links
+          content-filepath: ./lychee/out.md
+          labels: automated-issue, documentation, dead-links
