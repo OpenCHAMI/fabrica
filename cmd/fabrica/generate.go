@@ -221,7 +221,12 @@ Examples:
 			}
 
 			// Check if reconciliation is enabled in config
-			if config != nil && config.Features.Reconciliation.Enabled {
+			config, err := readFabricaConfig()
+			if err == nil && config != nil && config.Features.Reconciliation.Enabled {
+				if !config.Features.Events.Enabled {
+					return fmt.Errorf("reconciliation requires events to be enabled. Please set features.events.enabled to true in .fabrica.yaml")
+				}
+				
 				fmt.Println("🔄 Generating reconciliation code...")
 				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
