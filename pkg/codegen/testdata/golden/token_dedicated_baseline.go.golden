@@ -101,22 +101,25 @@ func (BaselineToken) Indexes() []ent.Index {
 // Hooks of the BaselineToken.
 func (BaselineToken) Hooks() []ent.Hook {
 	return []ent.Hook{
-		// Hash Value field with bcrypt on create and update
+		// Hash Value field with bcrypt on create and update.
+		//
+		// The mutation is matched structurally rather than as *ent.BaselineTokenMutation:
+		// that type is generated FROM this package, so naming it here would be a
+		// circular reference. An anonymous interface gets the same typed access
+		// with no import of the generated package.
 		func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
 				if m.Op().Is(ent.OpCreate | ent.OpUpdate | ent.OpUpdateOne) {
-					if value, exists := m.Field("value"); exists {
-						plain, ok := value.(string)
-						if !ok {
-							return nil, fmt.Errorf("hash Value: expected string, got %T", value)
-						}
-						hashed, err := bcrypt.GenerateFromPassword([]byte(plain), 12)
-						if err != nil {
-							return nil, fmt.Errorf("hash Value: %w", err)
-						}
-						hashedValue := string(hashed)
-						if err := m.SetField("value", hashedValue); err != nil {
-							return nil, fmt.Errorf("set hashed Value: %w", err)
+					if mut, ok := m.(interface {
+						Value() (string, bool)
+						SetValue(string)
+					}); ok {
+						if value, exists := mut.Value(); exists {
+							hashed, err := bcrypt.GenerateFromPassword([]byte(value), 12)
+							if err != nil {
+								return nil, fmt.Errorf("hash Value: %w", err)
+							}
+							mut.SetValue(string(hashed))
 						}
 					}
 				}

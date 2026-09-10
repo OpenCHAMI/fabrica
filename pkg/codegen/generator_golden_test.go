@@ -6,6 +6,8 @@ package codegen
 
 import (
 	"flag"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,7 +64,7 @@ func assertGolden(t *testing.T, name string, got []byte) {
 
 // generateDedicatedSchema runs the real generation path in a temp dir and
 // returns the emitted dedicated Ent schema for the resource.
-func generateDedicatedSchema(t *testing.T, resource interface{}, name string, annots *annotations.ResourceAnnotations) []byte {
+func generateDedicatedSchema(t *testing.T, resource any, name string, annots *annotations.ResourceAnnotations) []byte {
 	t.Helper()
 
 	content, err := generateDedicatedSchemaContent(t, resource, name, annots)
@@ -73,14 +75,14 @@ func generateDedicatedSchema(t *testing.T, resource interface{}, name string, an
 	return content
 }
 
-func generateDedicatedSchemaError(t *testing.T, resource interface{}, name string, annots *annotations.ResourceAnnotations) error {
+func generateDedicatedSchemaError(t *testing.T, resource any, name string, annots *annotations.ResourceAnnotations) error {
 	t.Helper()
 
 	_, err := generateDedicatedSchemaContent(t, resource, name, annots)
 	return err
 }
 
-func generateDedicatedSchemaContent(t *testing.T, resource interface{}, name string, annots *annotations.ResourceAnnotations) ([]byte, error) {
+func generateDedicatedSchemaContent(t *testing.T, resource any, name string, annots *annotations.ResourceAnnotations) ([]byte, error) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -424,6 +426,23 @@ func TestGoldenDedicatedSchemaBaseline(t *testing.T) {
 
 	got := generateDedicatedSchema(t, &BaselineToken{}, "BaselineToken", annots)
 	assertGolden(t, "token_dedicated_baseline.go.golden", got)
+}
+
+func TestGeneratedDedicatedSchemaSPDXHeaderIsNotPackageComment(t *testing.T) {
+	annots := baselineAnnotations()
+
+	if err := annotations.Validate(annots); err != nil {
+		t.Fatalf("fixture failed validation: %v", err)
+	}
+
+	got := generateDedicatedSchema(t, &BaselineToken{}, "BaselineToken", annots)
+	file, err := parser.ParseFile(token.NewFileSet(), "baselinetoken.go", got, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse generated schema: %v", err)
+	}
+	if file.Doc != nil {
+		t.Fatalf("generated SPDX header is attached as the package comment:\n%s", file.Doc.Text())
+	}
 }
 
 func TestGeneratedDedicatedEntSchemasCompile(t *testing.T) {
