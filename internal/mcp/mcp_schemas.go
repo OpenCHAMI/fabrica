@@ -100,8 +100,8 @@ func validateMCPArgType(key string, value interface{}, kind string) error {
 			return toolError("invalid_arguments", key+" must be memory", "Use events_bus=memory", nil)
 		}
 	case "storage_type":
-		if s, ok := value.(string); !ok || (s != "file" && s != "ent") {
-			return toolError("invalid_arguments", key+" must be file or ent", "Pass storage_type as file or ent", nil)
+		if s, ok := value.(string); !ok || (s != "file" && s != "ent" && s != "custom") {
+			return toolError("invalid_arguments", key+" must be file, ent, or custom", "Pass storage_type as file, ent, or custom", nil)
 		}
 	case "db":
 		if s, ok := value.(string); !ok || (s != "sqlite" && s != "postgres" && s != "mysql") {
