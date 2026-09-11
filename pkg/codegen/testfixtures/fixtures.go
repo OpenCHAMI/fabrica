@@ -86,3 +86,35 @@ type Widget struct {
 	Spec   WidgetSpec   `json:"spec"`
 	Status WidgetStatus `json:"status"`
 }
+
+// BadWidgetSpec intentionally contains an unsupported JSON field for adapter
+// error-path tests.
+type BadWidgetSpec struct {
+	Broken chan int `json:"broken"`
+}
+
+// BadWidgetStatus is present so the generated generic adapter can compile the
+// same status-handling code path as normal resources.
+type BadWidgetStatus struct{}
+
+// BadWidget exercises ToEntResource marshal-error handling.
+type BadWidget struct {
+	resource.Resource
+	Spec   BadWidgetSpec   `json:"spec"`
+	Status BadWidgetStatus `json:"status"`
+}
+
+// VersionedWidget exercises generic adapter generation when project API
+// versioning is enabled.
+type VersionedWidget struct {
+	APIVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   resource.Metadata `json:"metadata"`
+	Spec       WidgetSpec        `json:"spec"`
+	Status     WidgetStatus      `json:"status"`
+}
+
+// GetUID returns the fixture metadata UID for generated storage helpers.
+func (v *VersionedWidget) GetUID() string {
+	return v.Metadata.UID
+}
