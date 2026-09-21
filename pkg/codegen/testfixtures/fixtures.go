@@ -62,3 +62,59 @@ type AliasTokenSpec struct {
 	SequenceNumber AliasSequenceNumber `json:"sequence_number"`
 	Weight         AliasWeight         `json:"weight"`
 }
+
+// WidgetSpec is the desired state of a Widget.
+type WidgetSpec struct {
+	Name string `json:"name"`
+	Size int    `json:"size"`
+}
+
+// WidgetStatus is the observed state of a Widget.
+type WidgetStatus struct {
+	Phase string `json:"phase,omitempty"`
+}
+
+// Widget models a resource the way a real service does: embedding
+// resource.Resource, which supplies APIVersion, Kind and Metadata.
+//
+// The generated adapter expects that embedded type in non-versioned mode. A
+// resource declaring those fields directly, without the embed, produces an
+// adapter that references fields the resource does not have, which compiles
+// in fabrica and fails only in the generated project.
+type Widget struct {
+	resource.Resource
+	Spec   WidgetSpec   `json:"spec"`
+	Status WidgetStatus `json:"status"`
+}
+
+// BadWidgetSpec intentionally contains an unsupported JSON field for adapter
+// error-path tests.
+type BadWidgetSpec struct {
+	Broken chan int `json:"broken"`
+}
+
+// BadWidgetStatus is present so the generated generic adapter can compile the
+// same status-handling code path as normal resources.
+type BadWidgetStatus struct{}
+
+// BadWidget exercises ToEntResource marshal-error handling.
+type BadWidget struct {
+	resource.Resource
+	Spec   BadWidgetSpec   `json:"spec"`
+	Status BadWidgetStatus `json:"status"`
+}
+
+// VersionedWidget exercises generic adapter generation when project API
+// versioning is enabled.
+type VersionedWidget struct {
+	APIVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   resource.Metadata `json:"metadata"`
+	Spec       WidgetSpec        `json:"spec"`
+	Status     WidgetStatus      `json:"status"`
+}
+
+// GetUID returns the fixture metadata UID for generated storage helpers.
+func (v *VersionedWidget) GetUID() string {
+	return v.Metadata.UID
+}
