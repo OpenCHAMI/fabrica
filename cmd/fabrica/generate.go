@@ -501,12 +501,16 @@ func ensureCustomStorageHasNoGeneratedArtifacts(projectRoot string) error {
 		path := filepath.Join(projectRoot, rel)
 		info, err := os.Stat(path)
 		switch {
-		case err == nil && (info.IsDir() || isFabricaGeneratedFile(path)):
-			stale = append(stale, rel)
 		case err == nil:
-			// A project-owned file at one of these paths should be inspected by the
-			// maintainer before custom mode is enabled; do not overwrite or delete it.
-			stale = append(stale, rel)
+			// Custom storage may reuse these paths for project-owned code; only
+			// Fabrica-generated files are stale artifacts that must be removed.
+			generated, err := pathContainsFabricaGeneratedArtifact(path, info)
+			if err != nil {
+				return fmt.Errorf("checking stale generated storage artifact %s: %w", rel, err)
+			}
+			if generated {
+				stale = append(stale, rel)
+			}
 		case os.IsNotExist(err):
 			continue
 		case err != nil:
@@ -517,7 +521,31 @@ func ensureCustomStorageHasNoGeneratedArtifacts(projectRoot string) error {
 		return nil
 	}
 	sort.Strings(stale)
-	return fmt.Errorf("custom storage is selected, but generated storage artifacts still exist: %s; remove or replace these files with project-owned storage before regenerating", strings.Join(stale, ", "))
+	return fmt.Errorf("custom storage is selected, but Fabrica-generated storage artifacts still exist: %s; remove these generated artifacts or replace them with project-owned storage before regenerating", strings.Join(stale, ", "))
+}
+
+func pathContainsFabricaGeneratedArtifact(path string, info os.FileInfo) (bool, error) {
+	if !info.IsDir() {
+		return isFabricaGeneratedFile(path), nil
+	}
+
+	found := false
+	err := filepath.WalkDir(path, func(candidate string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if found || entry.IsDir() {
+			return nil
+		}
+		if isFabricaGeneratedFile(candidate) {
+			found = true
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return found, nil
 }
 
 func isFabricaGeneratedFile(path string) bool {
