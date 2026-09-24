@@ -52,7 +52,13 @@ func validateInitOptions(opts *initOptions) error {
 		return fmt.Errorf("init options are required")
 	}
 	if !opts.withStorage {
-		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file or --storage-type ent")
+		return fmt.Errorf("storage is required for generated CRUD APIs; omit --storage=false and use --storage-type file, --storage-type ent, or --storage-type custom")
+	}
+	if opts.storageType == "" {
+		opts.storageType = "file"
+	}
+	if opts.storageType != "file" && opts.storageType != "ent" && opts.storageType != "custom" {
+		return fmt.Errorf("unsupported storage type %q: use file, ent, or custom", opts.storageType)
 	}
 	if opts.withEvents && opts.eventBusType != "memory" {
 		return fmt.Errorf("unsupported events bus %q: only memory is implemented", opts.eventBusType)

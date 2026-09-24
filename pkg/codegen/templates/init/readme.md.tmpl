@@ -17,7 +17,12 @@ Generated: {{.GeneratedAt}}
 
 1. Add resources: fabrica add resource <ResourceName>
 2. Generate code: fabrica generate
+{{- if eq .StorageType "custom" }}
+3. Implement project-owned storage in `internal/storage`
+4. Run the server: go run ./cmd/server/
+{{- else }}
 3. Run the server: go run ./cmd/server/
+{{- end }}
 
 ## Configuration
 
@@ -87,6 +92,10 @@ Where to customize classification:
 ```bash
 # Install dependencies
 go mod tidy
+
+{{- if eq .StorageType "custom" }}
+# Implement project-owned storage functions in internal/storage before building
+{{- end }}
 
 # Run the server
 go run ./cmd/server/ serve

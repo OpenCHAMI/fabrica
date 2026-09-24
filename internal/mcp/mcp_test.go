@@ -64,6 +64,32 @@ func TestMCPToolsList_HasExpectedTools(t *testing.T) {
 	}
 }
 
+func TestMCPToolsList_CreateServiceAllowsCustomStorage(t *testing.T) {
+	srv := &mcpServer{workspaceRoot: t.TempDir()}
+	tool, ok := findToolDef(srv.tools(), "create_service")
+	if !ok {
+		t.Fatalf("expected create_service tool in tools/list")
+	}
+
+	properties, ok := tool.InputSchema["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("create_service schema missing properties: %#v", tool.InputSchema)
+	}
+	storageType, ok := properties["storage_type"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("create_service schema missing storage_type: %#v", properties)
+	}
+	enumValues, ok := storageType["enum"].([]string)
+	if !ok {
+		t.Fatalf("storage_type enum has unexpected type %T: %#v", storageType["enum"], storageType["enum"])
+	}
+
+	want := []string{"file", "ent", "custom"}
+	if strings.Join(enumValues, ",") != strings.Join(want, ",") {
+		t.Fatalf("storage_type enum = %v, want %v", enumValues, want)
+	}
+}
+
 func TestMCPAutoReader_ContentLengthInput(t *testing.T) {
 	mode := &mcpWireMode{}
 	payload := `{"jsonrpc":"2.0","id":0,"method":"initialize"}`
@@ -221,6 +247,19 @@ func TestMCPCallTool_CreateServiceDryRun_HasPlannedFiles(t *testing.T) {
 	}
 	if len(planned) == 0 {
 		t.Fatalf("expected planned_files to be populated")
+	}
+}
+
+func TestMCPValidateInitOptions_RejectsUnknownStorageType(t *testing.T) {
+	err := validateInitOptions(&initOptions{
+		withStorage: true,
+		storageType: "oracle",
+	})
+	if err == nil {
+		t.Fatalf("expected unknown storage type to be rejected")
+	}
+	if !strings.Contains(err.Error(), "unsupported storage type") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -582,12 +621,17 @@ func TestMCPExecuteFlow_CreateAddVersionAndInspect(t *testing.T) {
 }
 
 func hasToolName(tools []mcpToolDef, name string) bool {
+	_, ok := findToolDef(tools, name)
+	return ok
+}
+
+func findToolDef(tools []mcpToolDef, name string) (mcpToolDef, bool) {
 	for _, t := range tools {
 		if t.Name == name {
-			return true
+			return t, true
 		}
 	}
-	return false
+	return mcpToolDef{}, false
 }
 
 func issuesContainCode(raw interface{}, code string) bool {

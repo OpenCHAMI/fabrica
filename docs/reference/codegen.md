@@ -614,6 +614,27 @@ and append-only enforcement in service-owned migrations, commonly under
 `migrations/`. Do not reuse Fabrica-owned schema filenames for supplemental
 tables; collisions are treated as generated-file ownership conflicts.
 
+### Custom Storage Mode
+
+Use `features.storage.type: custom` when a resource needs persistence semantics
+that Fabrica cannot safely generate. Custom storage keeps Fabrica-owned API,
+route, model, client, OpenAPI, and version artifacts, but suppresses generated
+persistence files: no Ent schemas, no Ent adapter, no Ent helpers, and no
+`internal/storage/storage_generated.go`.
+
+In custom mode, the service owns the `internal/storage` package and must provide
+the functions/types referenced by generated handlers. This is the intended path
+for security-sensitive stores that need project-owned repositories, custom SQL,
+triggers, row-level security, append-only audit records, or vendor-specific DDL.
+Fabrica does not generate migrations for custom storage.
+
+When converting an existing file- or Ent-backed project to custom storage,
+remove or replace Fabrica-generated storage artifacts before regenerating. The
+generator fails fast if files such as `internal/storage/storage_generated.go`,
+`internal/storage/ent/`, or generated import/export commands are still present,
+so a service cannot accidentally continue running the previous generated backend
+after declaring `storage.type: custom`.
+
 ## Advanced Features
 
 ### Multi-Version Support
