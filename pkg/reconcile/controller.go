@@ -53,7 +53,17 @@ func NewController(eventBus events.EventBus, storage storage.StorageBackend) *Co
 		ctx:         ctx,
 		cancel:      cancel,
 		logger:      NewDefaultLogger(),
-		workerCount: 5, // Default worker count
+		workerCount: 1, // Default to 1 to avoid SQLite concurrency issues
+	}
+}
+
+// SetWorkerCount configures the number of concurrent workers processing the queue.
+//
+// Parameters:
+//   - count: The number of concurrent worker goroutines to run
+func (c *Controller) SetWorkerCount(count int) {
+	if count > 0 {
+		c.workerCount = count
 	}
 }
 
