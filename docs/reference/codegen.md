@@ -628,6 +628,13 @@ for security-sensitive stores that need project-owned repositories, custom SQL,
 triggers, row-level security, append-only audit records, or vendor-specific DDL.
 Fabrica does not generate migrations for custom storage.
 
+When converting an existing file- or Ent-backed project to custom storage,
+remove or replace Fabrica-generated storage artifacts before regenerating. The
+generator fails fast if files such as `internal/storage/storage_generated.go`,
+`internal/storage/ent/`, or generated import/export commands are still present,
+so a service cannot accidentally continue running the previous generated backend
+after declaring `storage.type: custom`.
+
 ## Advanced Features
 
 ### Multi-Version Support

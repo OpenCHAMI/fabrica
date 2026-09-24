@@ -374,8 +374,14 @@ func runInit(projectName string, opts *initOptions) error {
 		fmt.Println("  1. Define your resources in apis/<group>/<version>/*_types.go")
 	}
 	fmt.Println("  3. Run 'fabrica generate' to generate code")
-	fmt.Println("  4. Run 'go mod tidy' to update dependencies")
-	fmt.Println("  5. Start development with 'go run ./cmd/server/'")
+	if opts.storageType == "custom" {
+		fmt.Println("  4. Implement project-owned storage in internal/storage")
+		fmt.Println("  5. Run 'go mod tidy' to update dependencies")
+		fmt.Println("  6. Start development with 'go run ./cmd/server/'")
+	} else {
+		fmt.Println("  4. Run 'go mod tidy' to update dependencies")
+		fmt.Println("  5. Start development with 'go run ./cmd/server/'")
+	}
 	fmt.Println()
 
 	// Additional guidance for reconciliation

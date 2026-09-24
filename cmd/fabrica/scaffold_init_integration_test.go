@@ -131,6 +131,13 @@ func TestInitScaffold_CustomStorageIsProjectOwned(t *testing.T) {
 	if strings.Contains(string(runtimeContent), "internal/storage/ent") || strings.Contains(string(runtimeContent), "InitFileBackend") {
 		t.Fatalf("custom runtime helper should not initialize generated storage:\n%s", runtimeContent)
 	}
+	readmeContent, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(README.md): %v", err)
+	}
+	if !strings.Contains(string(readmeContent), "Implement project-owned storage in `internal/storage`") {
+		t.Fatalf("custom README should require storage implementation before startup:\n%s", readmeContent)
+	}
 
 	fset := token.NewFileSet()
 	if _, err := parser.ParseFile(fset, runtimePath, nil, parser.AllErrors); err != nil {

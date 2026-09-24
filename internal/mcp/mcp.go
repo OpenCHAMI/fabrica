@@ -412,7 +412,7 @@ func (s *mcpServer) tools() []mcpToolDef {
 				"reconcile":         map[string]interface{}{"type": "boolean"},
 				"reconcile_workers": map[string]interface{}{"type": "number"},
 				"reconcile_requeue": map[string]interface{}{"type": "number"},
-				"storage_type":      map[string]interface{}{"type": "string", "enum": []string{"file", "ent"}},
+				"storage_type":      map[string]interface{}{"type": "string", "enum": []string{"file", "ent", "custom"}},
 				"db":                map[string]interface{}{"type": "string", "enum": []string{"sqlite", "postgres", "mysql"}},
 				"validation_mode":   map[string]interface{}{"type": "string", "enum": []string{"strict", "warn", "disabled"}},
 			}, []string{"project_name"}),
