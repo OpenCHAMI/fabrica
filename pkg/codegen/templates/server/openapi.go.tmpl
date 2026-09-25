@@ -107,6 +107,52 @@ func GenerateOpenAPISpec() *openapi3.T {
 	// Register all resource paths
 {{range .Resources}}	register{{.Name}}Paths(spec)
 {{end}}
+	// Register the standardized service status response schema. The enum is
+	// explicit because ServiceStatus is a named Go string type and schema
+	// reflection alone cannot infer its closed vocabulary.
+	serviceStatusValueSchema := openapi3.NewStringSchema()
+	serviceStatusValueSchema.Enum = []interface{}{
+		"ok",
+		"degraded",
+		"down",
+		"initializing",
+	}
+	serviceStatusValueSchema.Description = "Supplemental service state; use the HTTP response status as the primary availability signal"
+	serviceStatusResponseSchema := openapi3.NewObjectSchema().
+		WithProperty("status", serviceStatusValueSchema).
+		WithProperty("service", openapi3.NewStringSchema()).
+		WithRequired([]string{"status", "service"})
+	spec.Components.Schemas["ServiceStatusResponse"] = &openapi3.SchemaRef{Value: serviceStatusResponseSchema}
+
+	// Register /service/status endpoint. The public base response intentionally
+	// excludes build metadata until an authenticated extension can expose it.
+	serviceStatusExample := map[string]interface{}{
+		"status":  "ok",
+		"service": "{{.ServiceName}}",
+	}
+	serviceStatusOp := openapi3.NewOperation()
+	serviceStatusOp.OperationID = "getServiceStatus"
+	serviceStatusOp.Summary = "Get standardized service status"
+	serviceStatusOp.Description = "Returns public service status. Clients must use HTTP status as the primary availability signal."
+	serviceStatusOp.Tags = []string{"Service"}
+	serviceStatusOp.Responses = openapi3.NewResponses()
+	serviceStatusOp.Responses.Set("200", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Service is available (status is ok or degraded)").
+			WithContent(map[string]*openapi3.MediaType{
+				"application/json": {
+					Schema:  &openapi3.SchemaRef{Ref: "#/components/schemas/ServiceStatusResponse"},
+					Example: serviceStatusExample,
+				},
+			}),
+	})
+	serviceStatusOp.Responses.Set("503", &openapi3.ResponseRef{
+		Value: openapi3.NewResponse().
+			WithDescription("Service is unavailable (status is down or initializing)").
+			WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/ServiceStatusResponse"}),
+	})
+	spec.Paths.Set("/service/status", &openapi3.PathItem{Get: serviceStatusOp})
+
 	// Register /health endpoint
 	healthOp := openapi3.NewOperation()
 	healthOp.OperationID = "health"

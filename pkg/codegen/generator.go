@@ -525,6 +525,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"Resources":            g.Resources,
 		"UniqueImports":        uniqueImports,
 		"ProjectName":          g.extractProjectName(),
+		"ServiceName":          g.extractServiceName(),
 		"StorageType":          g.StorageType,
 		"DBDriver":             g.DBDriver,
 		"Config":               g.Config,
@@ -2279,6 +2280,14 @@ func (g *Generator) extractProjectName() string {
 		return strings.ReplaceAll(strings.ReplaceAll(projectName, "-", "_"), ".", "_")
 	}
 	return "app" // fallback
+}
+
+func (g *Generator) extractServiceName() string {
+	parts := strings.Split(g.ModulePath, "/")
+	if len(parts) > 0 && parts[len(parts)-1] != "" {
+		return parts[len(parts)-1]
+	}
+	return "app"
 }
 
 // Template functions
