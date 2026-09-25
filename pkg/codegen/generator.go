@@ -348,6 +348,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"Tags":                  resource.Tags,
 		"PerResourceVersioning": perResVersioning,
 		"IsVersioned":           isVersioned,
+		"ConditionalEnabled":    g.Config.ConditionalEnabled,
 		"SpecFields":            normalizeSpecFields(resource.SpecFields),
 		"Versions":              resource.Versions,
 		"DefaultVersion":        resource.DefaultVersion,

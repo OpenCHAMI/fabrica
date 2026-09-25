@@ -1,0 +1,119 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	v1 "example.com/test/apis/v1"
+	"example.com/test/internal/storage"
+)
+
+func TestGeneratedGetNodeConditionalBehavior(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+
+	first := httptest.NewRecorder()
+	GetNode(first, httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first GET status = %d, want %d", first.Code, http.StatusOK)
+	}
+	etag := first.Header().Get("ETag")
+	if len(etag) < 2 || etag[0] != '"' || etag[len(etag)-1] != '"' {
+		t.Fatalf("ETag = %q, want quoted strong validator", etag)
+	}
+
+	conditionalRequest := httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil)
+	conditionalRequest.Header.Set("If-None-Match", etag)
+	conditional := httptest.NewRecorder()
+	GetNode(conditional, conditionalRequest)
+	if conditional.Code != http.StatusNotModified {
+		t.Fatalf("conditional GET status = %d, want %d", conditional.Code, http.StatusNotModified)
+	}
+	if conditional.Body.Len() != 0 {
+		t.Fatalf("conditional GET body = %q, want empty", conditional.Body.String())
+	}
+}
+
+func TestGeneratedUpdateNodeIfMatchBehavior(t *testing.T) {
+	tests := []struct {
+		name       string
+		header     func(string) string
+		wantStatus int
+		wantValue  string
+	}{
+		{
+			name:       "absent If-Match proceeds",
+			header:     func(string) string { return "" },
+			wantStatus: http.StatusOK,
+			wantValue:  "updated",
+		},
+		{
+			name:       "matching If-Match proceeds",
+			header:     func(etag string) string { return etag },
+			wantStatus: http.StatusOK,
+			wantValue:  "updated",
+		},
+		{
+			name:       "stale If-Match fails",
+			header:     func(string) string { return `"stale"` },
+			wantStatus: http.StatusPreconditionFailed,
+			wantValue:  "initial",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storage.SeedNode(testNode("initial"))
+			etag := currentNodeETag(t)
+			request := httptest.NewRequest(
+				http.MethodPut,
+				"/nodes/node-1",
+				bytes.NewBufferString(`{"spec":{"value":"updated"}}`),
+			)
+			if header := tt.header(etag); header != "" {
+				request.Header.Set("If-Match", header)
+			}
+			response := httptest.NewRecorder()
+
+			UpdateNode(response, request)
+
+			if response.Code != tt.wantStatus {
+				t.Fatalf("PUT status = %d, want %d; body=%s", response.Code, tt.wantStatus, response.Body.String())
+			}
+			if got := storage.NodeForTest("node-1").Spec.Value; got != tt.wantValue {
+				t.Fatalf("stored value = %q, want %q", got, tt.wantValue)
+			}
+		})
+	}
+}
+
+func currentNodeETag(t *testing.T) string {
+	t.Helper()
+	response := httptest.NewRecorder()
+	GetNode(response, httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want %d", response.Code, http.StatusOK)
+	}
+	return response.Header().Get("ETag")
+}
+
+func testNode(value string) v1.Node {
+	stamp := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	return v1.Node{
+		APIVersion: "v1",
+		Kind:       "Node",
+		Metadata: v1.Metadata{
+			UID:       "node-1",
+			Name:      "node",
+			CreatedAt: stamp,
+			UpdatedAt: stamp,
+		},
+		Spec: v1.NodeSpec{Value: value},
+	}
+}
