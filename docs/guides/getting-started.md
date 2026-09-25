@@ -22,6 +22,9 @@ Install the Fabrica CLI:
 go install github.com/openchami/fabrica/cmd/fabrica@v0.4.9
 ```
 
+> [!NOTE]
+> Binaries installed via `go install` are built from source and may report a `dev` version depending on the environment. Use the official [POSIX installer](../../README.md#latest-stable-release) for release-built binaries with tagged versions.
+
 Verify installation:
 
 ```bash

@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/internal/constants"
+	"github.com/openchami/fabrica/internal/resourcepath"
 	"github.com/openchami/fabrica/pkg/annotations"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -57,6 +58,10 @@ import (
 
 //go:embed templates/**
 var embeddedTemplates embed.FS
+
+// DefaultOpenAPIServerURL is used when a project does not configure an
+// OpenAPI server URL.
+const DefaultOpenAPIServerURL = "http://localhost:8080"
 
 // GetEmbeddedTemplates returns the embedded template filesystem
 // This allows other packages (like cmd/fabrica/init.go) to access init templates
@@ -113,6 +118,8 @@ type ResourceMetadata struct {
 // GeneratorConfig holds configuration values for code generation
 // These values are passed to templates and affect what code is generated
 type GeneratorConfig struct {
+	OpenAPIServerURL string
+
 	// Validation configuration
 	ValidationEnabled bool
 	ValidationMode    string // strict, warn, disabled
@@ -175,6 +182,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 		StorageType: "file", // Default to file storage
 		DBDriver:    "sqlite",
 		Config: &GeneratorConfig{
+			OpenAPIServerURL:     DefaultOpenAPIServerURL,
 			ValidationEnabled:    true,
 			ValidationMode:       "strict",
 			ConditionalEnabled:   true,
@@ -517,6 +525,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"Resources":            g.Resources,
 		"UniqueImports":        uniqueImports,
 		"ProjectName":          g.extractProjectName(),
+		"ServiceName":          g.extractServiceName(),
 		"StorageType":          g.StorageType,
 		"DBDriver":             g.DBDriver,
 		"Config":               g.Config,
@@ -659,6 +668,25 @@ func (g *Generator) SetResourceTag(resourceName, key, value string) {
 			return
 		}
 	}
+}
+
+// SetResourcePath overrides the generated HTTP path for a registered resource.
+func (g *Generator) SetResourcePath(resourceName, resourcePath string) error {
+	if err := resourcepath.Validate(resourcePath); err != nil {
+		return err
+	}
+	for i := range g.Resources {
+		if g.Resources[i].Name == resourceName {
+			for j := range g.Resources {
+				if j != i && g.Resources[j].URLPath == resourcePath {
+					return fmt.Errorf("resource path %s for %s collides with %s", resourcePath, resourceName, g.Resources[j].Name)
+				}
+			}
+			g.Resources[i].URLPath = resourcePath
+			return nil
+		}
+	}
+	return fmt.Errorf("resource %s is not registered", resourceName)
 }
 
 // SetResourceAnnotations sets Fabrica annotations on a registered resource
@@ -2252,6 +2280,14 @@ func (g *Generator) extractProjectName() string {
 		return strings.ReplaceAll(strings.ReplaceAll(projectName, "-", "_"), ".", "_")
 	}
 	return "app" // fallback
+}
+
+func (g *Generator) extractServiceName() string {
+	parts := strings.Split(g.ModulePath, "/")
+	if len(parts) > 0 && parts[len(parts)-1] != "" {
+		return parts[len(parts)-1]
+	}
+	return "app"
 }
 
 // Template functions
