@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2026 OpenCHAMI Contributors
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
 //
 // SPDX-License-Identifier: MIT
 
@@ -76,6 +76,7 @@ func (r Reference) SelectorOrDefault() Selector {
 // Metadata describes one immutable revision record.
 type Metadata struct {
 	UID          string    `json:"uid" yaml:"uid"`
+	SeriesName   string    `json:"seriesName" yaml:"seriesName"`
 	RevisionName string    `json:"revisionName,omitempty" yaml:"revisionName,omitempty"`
 	Number       uint64    `json:"number" yaml:"number"`
 	Digest       string    `json:"digest" yaml:"digest"`
