@@ -151,7 +151,7 @@ func TestGenerateCommand_ModulePreflightRunsBeforeRegistrationMutation(t *testin
 
 	fakeBinDir := t.TempDir()
 	fakeGo := filepath.Join(fakeBinDir, "go")
-	if err := os.WriteFile(fakeGo, []byte("#!/bin/sh\nprintf '%s\\n' 'github.com/openchami/fabrica v9.9.9'\n"), 0o755); err != nil {
+	if err := os.WriteFile(fakeGo, []byte("#!/bin/sh\nprintf '%s\\n' 'github.com/openchami/fabrica v0.0.0-00010101000000-000000000000'\n"), 0o755); err != nil {
 		t.Fatalf("write fake go command: %v", err)
 	}
 	t.Setenv("PATH", fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
