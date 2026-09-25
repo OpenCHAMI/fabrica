@@ -409,9 +409,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	}
 
 	// Add paths to spec
-	spec.Paths.Set("{{.URLPath}}", collectionPath)
-	spec.Paths.Set("{{.URLPath}}/{uid}", itemPath)
-	spec.Paths.Set("{{.URLPath}}/{uid}/status", statusPath)
+	spec.Paths.Set({{printf "%q" .URLPath}}, collectionPath)
+	spec.Paths.Set({{printf "%q" (printf "%s/{uid}" .URLPath)}}, itemPath)
+	spec.Paths.Set({{printf "%q" (printf "%s/{uid}/status" .URLPath)}}, statusPath)
 
 	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 	// Versions endpoints
@@ -451,8 +451,8 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 
 	versionsBase := &openapi3.PathItem{Get: listVersionsOp}
 	versionItem := &openapi3.PathItem{Get: getVersionOp, Delete: deleteVersionOp}
-	spec.Paths.Set("{{.URLPath}}/{uid}/versions", versionsBase)
-	spec.Paths.Set("{{.URLPath}}/{uid}/versions/{versionID}", versionItem)
+	spec.Paths.Set({{printf "%q" (printf "%s/{uid}/versions" .URLPath)}}, versionsBase)
+	spec.Paths.Set({{printf "%q" (printf "%s/{uid}/versions/{versionID}" .URLPath)}}, versionItem)
 	{{- end}}{{- end}}
 }
 {{end}}

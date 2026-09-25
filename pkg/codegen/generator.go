@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/openchami/fabrica/internal/constants"
+	"github.com/openchami/fabrica/internal/resourcepath"
 	"github.com/openchami/fabrica/pkg/annotations"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -666,6 +667,25 @@ func (g *Generator) SetResourceTag(resourceName, key, value string) {
 			return
 		}
 	}
+}
+
+// SetResourcePath overrides the generated HTTP path for a registered resource.
+func (g *Generator) SetResourcePath(resourceName, resourcePath string) error {
+	if err := resourcepath.Validate(resourcePath); err != nil {
+		return err
+	}
+	for i := range g.Resources {
+		if g.Resources[i].Name == resourceName {
+			for j := range g.Resources {
+				if j != i && g.Resources[j].URLPath == resourcePath {
+					return fmt.Errorf("resource path %s for %s collides with %s", resourcePath, resourceName, g.Resources[j].Name)
+				}
+			}
+			g.Resources[i].URLPath = resourcePath
+			return nil
+		}
+	}
+	return fmt.Errorf("resource %s is not registered", resourceName)
 }
 
 // SetResourceAnnotations sets Fabrica annotations on a registered resource
