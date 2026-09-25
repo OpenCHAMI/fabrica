@@ -51,8 +51,9 @@
 //
 {{/* Determine if any resource has versioning enabled to gate time import */}}
 {{$hasVersioning := false}}
+{{$hasRevisioning := false}}
 {{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}{{/* set flag */}}
-{{$hasVersioning = true}}{{end}}{{end}}{{end}}
+{{$hasVersioning = true}}{{end}}{{end}}{{if .RevisioningEnabled}}{{$hasRevisioning = true}}{{end}}{{end}}
 
 package {{.PackageName}}
 
@@ -70,6 +71,7 @@ import (
 {{if $hasVersioning}}	"time"{{end}}
 
 	"github.com/openchami/fabrica/pkg/fabrica"
+{{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 {{if .UniqueImports}}
@@ -137,6 +139,24 @@ type ErrorResponse struct {
 // HealthResponse represents a generic service health payload.
 // Services may return additional fields beyond the common ones.
 type HealthResponse map[string]interface{}
+
+{{if $hasRevisioning}}
+// ReferenceSelector identifies a movable revision alias.
+type ReferenceSelector = revision.Selector
+
+const (
+	ReferenceSelectorDefault = revision.SelectorDefault
+	ReferenceSelectorLatest  = revision.SelectorLatest
+	RevisionUIDExample       = revision.UIDExample
+)
+
+type ResourceReference = revision.Reference
+type RevisionMetadata = revision.Metadata
+type RevisionSeriesStatus = revision.SeriesStatus
+type RevisionResolveResponse = revision.ResolveResponse
+type RevisionConflictResponse = revision.ConflictResponse
+type RevisionPreconditionResponse = revision.PreconditionResponse
+{{end}}
 
 // NewClient creates a new API client
 func NewClient(baseURL string, httpClient *http.Client, logger zerolog.Logger) (*Client, error) {

@@ -1414,6 +1414,12 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *config.API
 			fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to configure path for %s: %%w\", err)\n", resource)
 			registrations.WriteString("\t}\n")
 		}
+		revisioning := group.RevisioningFor(resource)
+		if revisioning.Enabled {
+			fmt.Fprintf(&registrations, "\tif err := gen.SetResourceRevisioning(%s, %s); err != nil {\n", strconv.Quote(resourceStruct), strconv.Quote(revisioning.BareNameSelector))
+			fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to configure revisioning for %s: %%w\", err)\n", resource)
+			registrations.WriteString("\t}\n")
+		}
 	}
 
 	return fmt.Sprintf(`%spackage resources
