@@ -38,7 +38,7 @@ func ConditionalMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// GenerateETag generates an ETag for the given data
+// GenerateETag generates a strong ETag for the given data
 func GenerateETag(data interface{}) (string, error) {
 	// Marshal to JSON for consistent hashing
 	jsonData, err := json.Marshal(data)
@@ -58,8 +58,8 @@ func GenerateETag(data interface{}) (string, error) {
 		return "", fmt.Errorf("unknown ETag algorithm: %s", ETagAlgorithm)
 	}
 
-	// Format as W/"<hash>" (weak ETag)
-	return fmt.Sprintf(`W/"%s"`, hash[:16]), nil
+	// Format as "<hash>" (strong ETag)
+	return fmt.Sprintf(`"%s"`, hash[:16]), nil
 }
 
 // CheckIfMatch validates If-Match header for conditional updates
