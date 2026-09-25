@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+#
+# SPDX-License-Identifier: MIT
+
+name: Docs Link Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'README.md'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Check for dead links
+        id: lychee
+        uses: lycheeverse/lychee-action@22134d37a1fff6c2974df9c92a7c7e1e86a08f9c
+        with:
+          args: '--output ./lychee-report.md --format markdown docs/ README.md'
+        continue-on-error: true
+
+      - name: Create or update dead-links issue
+        if: github.event_name == 'push' && steps.lychee.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title='Docs link check found broken links'
+          body_file='./lychee-report.md'
+          if [ ! -s "$body_file" ]; then
+            printf 'Lychee reported broken links, but did not write a report. See workflow run: %s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$body_file"
+          fi
+          issue_number=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+          if [ -n "$issue_number" ]; then
+            gh issue edit "$issue_number" --title "$title" --body-file "$body_file"
+          else
+            gh issue create --title "$title" --body-file "$body_file"
+          fi
