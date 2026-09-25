@@ -16,6 +16,104 @@ import (
 	"time"
 )
 
+type ClusterDefaults struct {
+	Spec   ClusterDefaultsSpec
+	Status ClusterDefaultsStatus
+}
+
+type ClusterDefaultsSpec struct{}
+type ClusterDefaultsStatus struct{}
+
+func TestRegisterResourcePreservesDefaultPath(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+
+	if err := gen.RegisterResource(&ClusterDefaults{}); err != nil {
+		t.Fatalf("RegisterResource() error = %v", err)
+	}
+
+	if got, want := gen.Resources[0].URLPath, "/clusterdefaultss"; got != want {
+		t.Fatalf("URLPath = %q, want %q", got, want)
+	}
+}
+
+func TestConfiguredResourcePathIsSharedByRoutesOpenAPIAndClient(t *testing.T) {
+	outDir := t.TempDir()
+	gen := NewGenerator(outDir, "main", "example.com/test")
+	if err := gen.RegisterResource(&ClusterDefaults{}); err != nil {
+		t.Fatalf("RegisterResource() error = %v", err)
+	}
+	if err := gen.SetResourcePath("ClusterDefaults", "/boot/configs"); err != nil {
+		t.Fatalf("SetResourcePath() error = %v", err)
+	}
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates() error = %v", err)
+	}
+
+	for name, generate := range map[string]func() error{
+		"routes":  gen.GenerateRoutes,
+		"openapi": gen.GenerateOpenAPI,
+		"client":  gen.GenerateClient,
+	} {
+		if err := generate(); err != nil {
+			t.Fatalf("Generate%s() error = %v", name, err)
+		}
+	}
+
+	for _, file := range []string{"routes_generated.go", "openapi_generated.go", "client_generated.go"} {
+		generated, err := os.ReadFile(filepath.Join(outDir, file))
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		if !strings.Contains(string(generated), "/boot/configs") {
+			t.Errorf("%s does not use configured resource path", file)
+		}
+	}
+}
+
+func TestSetResourcePathRejectsInvalidReservedAndCollidingPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "invalid quoted path", path: "/boot\"; panic(\"boom\") //"},
+		{name: "invalid newline path", path: "/boot\nconfigs"},
+		{name: "reserved service status path", path: "/service/status"},
+		{name: "reserved docs path", path: "/docs"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+			if err := gen.RegisterResource(&ClusterDefaults{}); err != nil {
+				t.Fatalf("RegisterResource() error = %v", err)
+			}
+
+			if err := gen.SetResourcePath("ClusterDefaults", tt.path); err == nil {
+				t.Fatalf("SetResourcePath(%q) succeeded, want error", tt.path)
+			}
+		})
+	}
+}
+
+func TestSetResourcePathRejectsPathCollision(t *testing.T) {
+	type BootConfig struct {
+		Spec   struct{}
+		Status struct{}
+	}
+
+	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
+	if err := gen.RegisterResource(&ClusterDefaults{}); err != nil {
+		t.Fatalf("RegisterResource(ClusterDefaults) error = %v", err)
+	}
+	if err := gen.RegisterResource(&BootConfig{}); err != nil {
+		t.Fatalf("RegisterResource(BootConfig) error = %v", err)
+	}
+
+	if err := gen.SetResourcePath("ClusterDefaults", "/bootconfigs"); err == nil {
+		t.Fatal("SetResourcePath collision succeeded, want error")
+	}
+}
+
 func TestTemplateDataIncludesCopyrightYear(t *testing.T) {
 	gen := NewGenerator(t.TempDir(), "main", "example.com/test")
 	gen.Version = "test"

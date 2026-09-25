@@ -28,7 +28,7 @@ func TestTemplate_RouterGrouping_PublicAndProtected(t *testing.T) {
 	if strings.Contains(got, "r.Group(func(protected chi.Router)") {
 		t.Fatalf("routes template must NOT use nested r.Group() - causes middleware shadowing bug")
 	}
-	if !strings.Contains(got, "r.Route(\"{{.URLPath}}\"") {
+	if !strings.Contains(got, "r.Route({{printf \"%q\" .URLPath}}") {
 		t.Fatalf("resource routes should be mounted using r.Route (parameter router, not nested group)")
 	}
 

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/openchami/fabrica/internal/resourcepath"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,11 +36,21 @@ type APIsConfig struct {
 // Currently, only a single API group per project is supported. Multiple
 // groups may be added in future versions.
 type APIGroup struct {
-	Name           string      `yaml:"name"`
-	StorageVersion string      `yaml:"storageVersion"`
-	Versions       []string    `yaml:"versions"`
-	Resources      []string    `yaml:"resources,omitempty"`
-	Imports        []APIImport `yaml:"imports,omitempty"`
+	Name           string            `yaml:"name"`
+	StorageVersion string            `yaml:"storageVersion"`
+	Versions       []string          `yaml:"versions"`
+	Resources      []string          `yaml:"resources,omitempty"`
+	ResourcePaths  map[string]string `yaml:"resourcePaths,omitempty"`
+	Imports        []APIImport       `yaml:"imports,omitempty"`
+}
+
+// ResourcePath returns the configured path for a resource or Fabrica's legacy
+// lowercase-name-plus-s default when no override is configured.
+func (g APIGroup) ResourcePath(resource string) string {
+	if configured := g.ResourcePaths[resource]; configured != "" {
+		return configured
+	}
+	return resourcepath.Default(resource)
 }
 
 // APIImport exposes external types for reuse in generated APIs.
@@ -232,6 +243,25 @@ func (c *APIsConfig) Validate() error {
 		}
 		if !found {
 			return fmt.Errorf("storageVersion %s must appear in versions for group %s", g.StorageVersion, g.Name)
+		}
+
+		resources := make(map[string]struct{}, len(g.Resources))
+		paths := make(map[string]string, len(g.Resources))
+		for _, resource := range g.Resources {
+			resources[resource] = struct{}{}
+			resolvedPath := g.ResourcePath(resource)
+			if existing, ok := paths[resolvedPath]; ok {
+				return fmt.Errorf("resource path %s for %s collides with %s in group %s", resolvedPath, resource, existing, g.Name)
+			}
+			paths[resolvedPath] = resource
+		}
+		for resource, configuredPath := range g.ResourcePaths {
+			if _, ok := resources[resource]; !ok {
+				return fmt.Errorf("resourcePaths entry %s does not match a resource in group %s", resource, g.Name)
+			}
+			if err := resourcepath.Validate(configuredPath); err != nil {
+				return fmt.Errorf("invalid path for resource %s in group %s: %w", resource, g.Name, err)
+			}
 		}
 	}
 

@@ -51,3 +51,15 @@ func TestRegistrationGeneratorsProduceGofmtStableOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestVersionedRegistrationConfiguresCustomResourcePath(t *testing.T) {
+	apisConfig := configpkg.DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
+	apisConfig.Groups[0].Resources = []string{"ClusterDefaults"}
+	apisConfig.Groups[0].ResourcePaths = map[string]string{"ClusterDefaults": "/boot/configs"}
+
+	content := generateVersionedRegistrationCode("example.com/test", apisConfig, []string{"ClusterDefaults"})
+
+	if !strings.Contains(content, `gen.SetResourcePath("ClusterDefaults", "/boot/configs")`) {
+		t.Fatalf("versioned registration does not configure custom resource path:\n%s", content)
+	}
+}

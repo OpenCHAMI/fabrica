@@ -56,7 +56,7 @@ func RegisterGeneratedRoutes(r chi.Router) {
 	// Routes inherit middleware from the router passed by main.go
 {{range .Resources}}
 	// {{.Name}} routes
-	r.Route("{{.URLPath}}", func(resource chi.Router) {
+	r.Route({{printf "%q" .URLPath}}, func(resource chi.Router) {
 		resource.Get("/", Get{{.Name}}s)
 		resource.Post("/", Create{{.Name}})
 		resource.Route("/{uid}", func(item chi.Router) {

@@ -20,6 +20,8 @@ groups:
       - v1
     resources:                   # Populated automatically by `fabrica add resource`
       - Device
+    resourcePaths:                # Optional per-resource HTTP path overrides
+      Device: /hardware/devices
     imports:                     # Optional: reuse external Spec/Status types
       - module: github.com/org/pkg
         tag: v1.0.0
@@ -37,6 +39,7 @@ Fields:
 - `storageVersion`: hub version used for storage and conversions.
 - `versions`: ordered list of all versions (hub + spokes). The hub must be included.
 - `resources`: maintained by CLI commands; reflects resources under the hub directory.
+- `resourcePaths`: optional map from resource kind to an absolute HTTP path. When omitted, Fabrica preserves the existing `/<lowercase-kind>s` path. Paths must contain lowercase alphanumeric or hyphenated segments and must not collide with another resource path.
 - `imports`: optional remote type imports exposed to generated APIs.
 
 ## Initial workflow

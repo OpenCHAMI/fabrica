@@ -1409,6 +1409,11 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *config.API
 		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
 		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
+		if resourcePath, ok := group.ResourcePaths[resource]; ok {
+			fmt.Fprintf(&registrations, "\tif err := gen.SetResourcePath(%s, %s); err != nil {\n", strconv.Quote(resourceStruct), strconv.Quote(resourcePath))
+			fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to configure path for %s: %%w\", err)\n", resource)
+			registrations.WriteString("\t}\n")
+		}
 	}
 
 	return fmt.Sprintf(`%spackage resources
