@@ -43,6 +43,9 @@ func TestTemplate_MainRouterHasPublicProtectedGroups(t *testing.T) {
 	if !strings.Contains(got, "public.Get(\"/health\"") {
 		t.Fatalf("main template should register /health on the public group")
 	}
+	if !strings.Contains(got, "RegisterGeneratedPublicRoutes(public)") {
+		t.Fatalf("main template should register generated service routes on the public group")
+	}
 	if !strings.Contains(got, "public.Get(\"/openapi.json\"") {
 		t.Fatalf("main template should register /openapi.json on the public group")
 	}
