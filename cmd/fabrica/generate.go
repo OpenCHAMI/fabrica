@@ -881,7 +881,8 @@ import (
 
 // FabricaConfig structures to load .fabrica.yaml
 type FabricaConfig struct {
-	Features FeaturesConfig `+"`yaml:\"features\"`"+`
+	Features   FeaturesConfig   `+"`yaml:\"features\"`"+`
+	Generation GenerationConfig `+"`yaml:\"generation\"`"+`
 }
 
 type FeaturesConfig struct {
@@ -930,6 +931,10 @@ type AuthNConfig struct {
 	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
+type GenerationConfig struct {
+	OpenAPIServerURL string `+"`yaml:\"openapi_server_url,omitempty\"`"+`
+}
+
 func loadConfig() (*FabricaConfig, error) {
 	data, err := os.ReadFile(".fabrica.yaml")
 	if err != nil {
@@ -971,6 +976,9 @@ func main() {
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
 		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
+		if config.Generation.OpenAPIServerURL != "" {
+			gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL
+		}
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {
