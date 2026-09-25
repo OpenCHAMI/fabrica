@@ -58,6 +58,10 @@ import (
 //go:embed templates/**
 var embeddedTemplates embed.FS
 
+// DefaultOpenAPIServerURL is used when a project does not configure an
+// OpenAPI server URL.
+const DefaultOpenAPIServerURL = "http://localhost:8080"
+
 // GetEmbeddedTemplates returns the embedded template filesystem
 // This allows other packages (like cmd/fabrica/init.go) to access init templates
 func GetEmbeddedTemplates() embed.FS {
@@ -113,6 +117,8 @@ type ResourceMetadata struct {
 // GeneratorConfig holds configuration values for code generation
 // These values are passed to templates and affect what code is generated
 type GeneratorConfig struct {
+	OpenAPIServerURL string
+
 	// Validation configuration
 	ValidationEnabled bool
 	ValidationMode    string // strict, warn, disabled
@@ -175,6 +181,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 		StorageType: "file", // Default to file storage
 		DBDriver:    "sqlite",
 		Config: &GeneratorConfig{
+			OpenAPIServerURL:     DefaultOpenAPIServerURL,
 			ValidationEnabled:    true,
 			ValidationMode:       "strict",
 			ConditionalEnabled:   true,

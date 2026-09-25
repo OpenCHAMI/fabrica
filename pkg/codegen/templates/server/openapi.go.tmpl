@@ -94,7 +94,7 @@ func GenerateOpenAPISpec() *openapi3.T {
 		},
 		Servers: openapi3.Servers{
 			{
-				URL:         "http://localhost:8080",
+				URL:         {{printf "%q" .Config.OpenAPIServerURL}},
 				Description: "Development server",
 			},
 		},

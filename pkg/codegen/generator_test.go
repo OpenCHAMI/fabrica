@@ -52,6 +52,49 @@ func TestGlobalAndMiddlewareTemplateDataIncludeCopyrightYear(t *testing.T) {
 	}
 }
 
+func TestGenerateOpenAPIUsesConfiguredServerURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		serverURL string
+		want      string
+	}{
+		{
+			name: "default server URL when unset",
+			want: `URL:         "http://localhost:8080"`,
+		},
+		{
+			name:      "configured server URL",
+			serverURL: "https://api.example.com/fabrica",
+			want:      `URL:         "https://api.example.com/fabrica"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outDir := t.TempDir()
+			gen := NewGenerator(outDir, "main", "example.com/test")
+			if tt.serverURL != "" {
+				gen.Config.OpenAPIServerURL = tt.serverURL
+			}
+
+			if err := gen.LoadTemplates(); err != nil {
+				t.Fatalf("LoadTemplates: %v", err)
+			}
+			if err := gen.GenerateOpenAPI(); err != nil {
+				t.Fatalf("GenerateOpenAPI: %v", err)
+			}
+
+			generated, err := os.ReadFile(filepath.Join(outDir, "openapi_generated.go"))
+			if err != nil {
+				t.Fatalf("read generated OpenAPI: %v", err)
+			}
+			if !strings.Contains(string(generated), tt.want) {
+				t.Fatalf("generated OpenAPI missing %q", tt.want)
+			}
+		})
+	}
+}
+
 func TestGenerateClientUsesPerClientTokenVisibility(t *testing.T) {
 	outDir := t.TempDir()
 	gen := NewGenerator(outDir, "client", "example.com/test")
