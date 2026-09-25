@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: © 2026 OpenCHAMI Contributors
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
 //
 // SPDX-License-Identifier: MIT
 
 package codegen
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -120,6 +121,27 @@ func TestRevisionUIDExampleDoesNotChangeResourceUIDFormat(t *testing.T) {
 	}
 	if !strings.HasPrefix(uid, "dev-") {
 		t.Fatalf("resource UID = %q, want existing dev- prefix format", uid)
+	}
+}
+
+func TestRevisionMetadataIncludesSeriesLinkage(t *testing.T) {
+	metadata := revision.Metadata{
+		UID:        revision.UIDExample,
+		SeriesName: "production",
+	}
+
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var wire struct {
+		SeriesName string `json:"seriesName"`
+	}
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if got, want := wire.SeriesName, "production"; got != want {
+		t.Fatalf("seriesName = %q, want %q", got, want)
 	}
 }
 

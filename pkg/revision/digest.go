@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2026 OpenCHAMI Contributors
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
 //
 // SPDX-License-Identifier: MIT
 
