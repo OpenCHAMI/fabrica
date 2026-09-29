@@ -455,9 +455,129 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	}
 
 	// Add paths to spec
+	{{if .RevisioningEnabled}}
+	_ = collectionPath
+	_ = itemPath
+	_ = statusPath
+	revisionSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.Name}}Revision{}, spec.Components.Schemas)
+	spec.Components.Schemas["{{.Name}}Revision"] = revisionSchema
+	seriesSchema, _ := openapi3gen.NewSchemaRefForValue(&RevisionSeriesStatus{}, spec.Components.Schemas)
+	spec.Components.Schemas["RevisionSeriesStatus"] = seriesSchema
+	resolveSchema, _ := openapi3gen.NewSchemaRefForValue(&RevisionResolveResponse{}, spec.Components.Schemas)
+	spec.Components.Schemas["RevisionResolveResponse"] = resolveSchema
+	conflictSchema, _ := openapi3gen.NewSchemaRefForValue(&RevisionConflictResponse{}, spec.Components.Schemas)
+	spec.Components.Schemas["RevisionConflictResponse"] = conflictSchema
+	preconditionSchema, _ := openapi3gen.NewSchemaRefForValue(&RevisionPreconditionResponse{}, spec.Components.Schemas)
+	spec.Components.Schemas["RevisionPreconditionResponse"] = preconditionSchema
+	promoteRequestSchema, _ := openapi3gen.NewSchemaRefForValue(&Promote{{.Name}}DefaultRequest{}, spec.Components.Schemas)
+	spec.Components.Schemas["Promote{{.Name}}DefaultRequest"] = promoteRequestSchema
+
+	createOp.Responses.Set("201", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series and first revision created").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"})})
+	createOp.Responses.Set("409", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series already exists").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionConflictResponse"})})
+	spec.Paths.Set({{printf "%q" .URLPath}}, &openapi3.PathItem{Post: createOp})
+
+	nameParam := openapi3.NewPathParameter("name").WithRequired(true).WithSchema(openapi3.NewStringSchema())
+	revisionNameParam := openapi3.NewPathParameter("revisionName").WithRequired(true).WithSchema(openapi3.NewStringSchema())
+	revisionUIDParam := openapi3.NewPathParameter("revisionUID").WithRequired(true).WithSchema(openapi3.NewStringSchema())
+
+	getSeriesOp := openapi3.NewOperation()
+	getSeriesOp.OperationID = "get{{.Name}}Series"
+	getSeriesOp.Summary = "Get {{.Name}} revision series state"
+	getSeriesOp.Tags = []string{"{{.Name}} Revisions"}
+	getSeriesOp.Responses = openapi3.NewResponses()
+	getSeriesOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series state").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionSeriesStatus"})})
+	getSeriesOp.Responses.Set("404", errorResponse())
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}" .URLPath)}}, &openapi3.PathItem{Get: getSeriesOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
+
+	listRevisionsOp := openapi3.NewOperation()
+	listRevisionsOp.OperationID = "list{{.Name}}Revisions"
+	listRevisionsOp.Summary = "List immutable {{.Name}} revisions"
+	listRevisionsOp.Tags = []string{"{{.Name}} Revisions"}
+	listRevisionsOp.Responses = openapi3.NewResponses()
+	revisionArray := openapi3.NewArraySchema()
+	revisionArray.Items = &openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"}
+	listRevisionsOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision records").WithJSONSchemaRef(&openapi3.SchemaRef{Value: revisionArray})})
+	createRevisionOp := openapi3.NewOperation()
+	createRevisionOp.OperationID = "create{{.Name}}Revision"
+	createRevisionOp.Summary = "Create an unnamed immutable revision"
+	createRevisionOp.Tags = []string{"{{.Name}} Revisions"}
+	createRevisionOp.RequestBody = createOp.RequestBody
+	createRevisionOp.Responses = openapi3.NewResponses()
+	createRevisionOp.Responses.Set("201", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision created").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"})})
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}/revisions" .URLPath)}}, &openapi3.PathItem{Get: listRevisionsOp, Post: createRevisionOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
+
+	ensureRevisionOp := openapi3.NewOperation()
+	ensureRevisionOp.OperationID = "ensure{{.Name}}Revision"
+	ensureRevisionOp.Summary = "Idempotently ensure a named immutable revision"
+	ensureRevisionOp.Tags = []string{"{{.Name}} Revisions"}
+	ensureRevisionOp.RequestBody = createOp.RequestBody
+	ensureRevisionOp.Responses = openapi3.NewResponses()
+	ensureRevisionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Existing identical revision").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"})})
+	ensureRevisionOp.Responses.Set("201", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision created").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"})})
+	ensureRevisionOp.Responses.Set("409", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision name is bound to different content").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionConflictResponse"})})
+	ensureRevisionOp.Responses.Set("410", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision name is permanently bound to a retired revision")})
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}/revisions/{revisionName}" .URLPath)}}, &openapi3.PathItem{Put: ensureRevisionOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam}, {Value: revisionNameParam} }})
+
+	getRevisionOp := openapi3.NewOperation()
+	getRevisionOp.OperationID = "get{{.Name}}Revision"
+	getRevisionOp.Summary = "Get an immutable revision by UID"
+	getRevisionOp.Tags = []string{"{{.Name}} Revisions"}
+	getRevisionOp.Responses = openapi3.NewResponses()
+	getRevisionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision record").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"})})
+	getRevisionOp.Responses.Set("404", errorResponse())
+	getRevisionOp.Responses.Set("410", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision is retired")})
+	retireRevisionOp := openapi3.NewOperation()
+	retireRevisionOp.OperationID = "retire{{.Name}}Revision"
+	retireRevisionOp.Summary = "Retire an immutable revision without releasing its identity"
+	retireRevisionOp.Tags = []string{"{{.Name}} Revisions"}
+	retireRevisionOp.Responses = openapi3.NewResponses()
+	retireRevisionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision tombstoned").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Revision"})})
+	retireRevisionOp.Responses.Set("404", errorResponse())
+	retireRevisionOp.Responses.Set("409", errorResponse())
+	retireRevisionOp.Responses.Set("410", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision is already retired")})
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}/revisions/by-uid/{revisionUID}" .URLPath)}}, &openapi3.PathItem{Get: getRevisionOp, Delete: retireRevisionOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam}, {Value: revisionUIDParam} }})
+
+	resolveRevisionOp := openapi3.NewOperation()
+	resolveRevisionOp.OperationID = "resolve{{.Name}}Revision"
+	resolveRevisionOp.Summary = "Resolve a revision reference"
+	resolveRevisionOp.Tags = []string{"{{.Name}} Revisions"}
+	selectorQuerySchema := openapi3.NewStringSchema()
+	selectorQuerySchema.Enum = []interface{}{"default", "latest"}
+	resolveRevisionOp.Parameters = []*openapi3.ParameterRef{
+		{Value: openapi3.NewParameter().WithName("uid").WithIn("query").WithSchema(openapi3.NewStringSchema())},
+		{Value: openapi3.NewParameter().WithName("revisionName").WithIn("query").WithSchema(openapi3.NewStringSchema())},
+		{Value: openapi3.NewParameter().WithName("selector").WithIn("query").WithSchema(selectorQuerySchema)},
+	}
+	resolveRevisionOp.Responses = openapi3.NewResponses()
+	resolveRevisionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Resolved revision metadata").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionResolveResponse"})})
+	resolveRevisionOp.Responses.Set("404", errorResponse())
+	resolveRevisionOp.Responses.Set("410", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Referenced revision is retired")})
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}/resolve" .URLPath)}}, &openapi3.PathItem{Get: resolveRevisionOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
+
+	promoteDefaultOp := openapi3.NewOperation()
+	promoteDefaultOp.OperationID = "promote{{.Name}}Default"
+	promoteDefaultOp.Summary = "Promote the default revision alias"
+	promoteDefaultOp.Tags = []string{"{{.Name}} Revisions"}
+	promoteDefaultOp.Parameters = []*openapi3.ParameterRef{ {Value: openapi3.NewParameter().WithName("If-Match").WithIn("header").WithRequired(true).WithSchema(openapi3.NewStringSchema())} }
+	promoteDefaultOp.RequestBody = &openapi3.RequestBodyRef{Value: openapi3.NewRequestBody().WithRequired(true).WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/Promote{{.Name}}DefaultRequest"})}
+	promoteDefaultOp.Responses = openapi3.NewResponses()
+	promoteDefaultOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Default alias promoted").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionSeriesStatus"})})
+	promoteDefaultOp.Responses.Set("404", errorResponse())
+	promoteDefaultOp.Responses.Set("410", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Target revision is retired")})
+	promoteDefaultOp.Responses.Set("412", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series ETag precondition failed").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionPreconditionResponse"})})
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}/default" .URLPath)}}, &openapi3.PathItem{Put: promoteDefaultOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
+	updateStatusOp.OperationID = "update{{.Name}}SeriesStatus"
+	updateStatusOp.Description = "Updates mutable status shared by the named revision series"
+	updateStatusOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series status updated").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Status"})})
+	patchStatusOp.OperationID = "patch{{.Name}}SeriesStatus"
+	patchStatusOp.Description = "Patches mutable status shared by the named revision series"
+	patchStatusOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series status patched").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/{{.Name}}Status"})})
+	spec.Paths.Set({{printf "%q" (printf "%s/{name}/status" .URLPath)}}, &openapi3.PathItem{Put: updateStatusOp, Patch: patchStatusOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
+	{{else}}
 	spec.Paths.Set({{printf "%q" .URLPath}}, collectionPath)
 	spec.Paths.Set({{printf "%q" (printf "%s/{uid}" .URLPath)}}, itemPath)
 	spec.Paths.Set({{printf "%q" (printf "%s/{uid}/status" .URLPath)}}, statusPath)
+	{{end}}
 
 	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 	// Versions endpoints

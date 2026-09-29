@@ -71,3 +71,5 @@ Fields:
 - `apis.yaml` must be in the project root.
 - `fabrica init` creates it; `fabrica add resource` and `fabrica add version` keep it updated.
 - `fabrica generate` enables versioned generation automatically when `apis.yaml` exists; `.fabrica.yaml` no longer carries versioning settings.
+
+Revision-enabled resources support both file and Ent storage. See [Immutable resource revisions](guides/resource-revisions.md) for routes, selectors, idempotent apply behavior, client examples, and file-backend durability limits.

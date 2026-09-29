@@ -75,12 +75,13 @@ func (r Reference) SelectorOrDefault() Selector {
 
 // Metadata describes one immutable revision record.
 type Metadata struct {
-	UID          string    `json:"uid" yaml:"uid"`
-	SeriesName   string    `json:"seriesName" yaml:"seriesName"`
-	RevisionName string    `json:"revisionName,omitempty" yaml:"revisionName,omitempty"`
-	Number       uint64    `json:"number" yaml:"number"`
-	Digest       string    `json:"digest" yaml:"digest"`
-	CreatedAt    time.Time `json:"createdAt" yaml:"createdAt"`
+	UID          string     `json:"uid" yaml:"uid"`
+	SeriesName   string     `json:"seriesName" yaml:"seriesName"`
+	RevisionName string     `json:"revisionName,omitempty" yaml:"revisionName,omitempty"`
+	Number       uint64     `json:"number" yaml:"number"`
+	Digest       string     `json:"digest" yaml:"digest"`
+	CreatedAt    time.Time  `json:"createdAt" yaml:"createdAt"`
+	RetiredAt    *time.Time `json:"retiredAt,omitempty" yaml:"retiredAt,omitempty"`
 }
 
 // SeriesStatus records the movable aliases for a named resource series.
