@@ -84,6 +84,13 @@ type RevisionPreconditionResponse = revision.PreconditionResponse
 {{end}}
 
 {{range .Resources}}
+{{if .RevisioningEnabled}}
+type {{.Name}}Revision = revision.Record[{{.TypeName}}]
+
+type Promote{{.Name}}DefaultRequest struct {
+	RevisionUID string `json:"revisionUid" yaml:"revisionUid" validate:"required"`
+}
+{{end}}
 // {{.Name}}Response represents the response for {{.Name}} operations
 type {{.Name}}Response = {{.PackageAlias}}.{{.Name}}
 

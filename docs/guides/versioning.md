@@ -698,6 +698,7 @@ func (dst *Device) ConvertFrom(srcRaw interface{}) error {
 
 ## See Also
 
+- [Immutable Resource Revisions](resource-revisions.md) — opt-in immutable content history; distinct from API schema versioning
 - [Resource Model Guide](resource-model.md)
 - [Getting Started](getting-started.md)
 - [API YAML Configuration](../apis-yaml.md)

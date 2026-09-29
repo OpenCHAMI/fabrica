@@ -139,6 +139,10 @@ Fabrica generates several middleware templates for common functionality:
 
 For custom authorization, implement your own middleware in `internal/middleware/`.
 
+### Revision-enabled resources
+
+When a resource opts into `apis.yaml` revisioning, server, file storage, Ent storage, OpenAPI, Go client, CLI, authorization, and event templates emit the immutable series contract together. Disabled resources keep ordinary CRUD output. See [Immutable resource revisions](../guides/resource-revisions.md) for generated operations, storage semantics, and file-backend durability limits.
+
 ### Template Variables
 
 Templates have access to resource metadata:

@@ -18,8 +18,9 @@ package storage
 
 {{/* Determine if any resource has versioning enabled to gate extra imports */}}
 {{$hasVersioning := false}}
+{{$hasRevisioning := false}}
 {{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
-{{$hasVersioning = true}}{{end}}{{end}}{{end}}
+{{$hasVersioning = true}}{{end}}{{end}}{{if .RevisioningEnabled}}{{$hasRevisioning = true}}{{end}}{{end}}
 
 import (
 	"context"
@@ -33,6 +34,7 @@ import (
 
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
+{{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{- end}}
@@ -52,6 +54,9 @@ import (
 //   }
 //   storage.Init(backend)
 var Backend fabricaStorage.StorageBackend
+
+{{range .Resources}}{{if .RevisioningEnabled}}var {{camelCase .Name}}RevisionStore *revision.FileStore[{{.TypeName}}]
+{{end}}{{end}}
 
 {{if .WithMetrics}}
 var (
@@ -86,7 +91,15 @@ func InitFileBackend(dataDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file backend: %w", err)
 	}
+	{{range .Resources}}{{if .RevisioningEnabled}}
+	{{camelCase .Name}}Store, err := revision.NewFileStore[{{.TypeName}}](dataDir, "{{.Name}}")
+	if err != nil {
+		return fmt.Errorf("failed to create {{.Name}} revision store: %w", err)
+	}
+	{{end}}{{end}}
 	Backend = backend
+	{{range .Resources}}{{if .RevisioningEnabled}}{{camelCase .Name}}RevisionStore = {{camelCase .Name}}Store
+	{{end}}{{end}}
 	return nil
 }
 
@@ -97,6 +110,111 @@ func ensureBackend() {
 		panic("storage backend not initialized: call storage.Init() or storage.InitFileBackend() in main.go")
 	}
 }
+
+{{range .Resources}}{{if .RevisioningEnabled}}
+func ensure{{.Name}}RevisionStore() error {
+	if {{camelCase .Name}}RevisionStore == nil {
+		return fmt.Errorf("{{.Name}} revision store not initialized: call storage.InitFileBackend")
+	}
+	return nil
+}
+
+func {{.Name}}RevisionDigest(res {{.TypeName}}) (string, error) {
+	return revision.ContentDigest(revision.Content[{{.SpecType}}, {{.StatusType}}]{
+		APIVersion: res.APIVersion,
+		Kind: res.Kind,
+		Metadata: res.Metadata,
+		Spec: res.Spec,
+		Status: res.Status,
+	})
+}
+
+func Create{{.Name}}Series(ctx context.Context, name, revisionName string, res {{.TypeName}}) (revision.Record[{{.TypeName}}], string, error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.Record[{{.TypeName}}]{}, "", err
+	}
+	digest, err := {{.Name}}RevisionDigest(res)
+	if err != nil {
+		return revision.Record[{{.TypeName}}]{}, "", err
+	}
+	return {{camelCase .Name}}RevisionStore.CreateSeriesWithStatus(ctx, name, revisionName, digest, res, res.Status)
+}
+
+func Ensure{{.Name}}RevisionByName(ctx context.Context, name, revisionName string, res {{.TypeName}}) (revision.Record[{{.TypeName}}], bool, string, error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.Record[{{.TypeName}}]{}, false, "", err
+	}
+	digest, err := {{.Name}}RevisionDigest(res)
+	if err != nil {
+		return revision.Record[{{.TypeName}}]{}, false, "", err
+	}
+	return {{camelCase .Name}}RevisionStore.EnsureRevision(ctx, name, revisionName, digest, res)
+}
+
+func Create{{.Name}}Revision(ctx context.Context, name string, res {{.TypeName}}) (revision.Record[{{.TypeName}}], bool, string, error) {
+	return Ensure{{.Name}}RevisionByName(ctx, name, "", res)
+}
+
+func Get{{.Name}}Series(ctx context.Context, name string) (revision.SeriesStatus, string, error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.SeriesStatus{}, "", err
+	}
+	return {{camelCase .Name}}RevisionStore.GetSeries(ctx, name)
+}
+
+func List{{.Name}}Revisions(ctx context.Context, name string) ([]revision.Record[{{.TypeName}}], error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return nil, err
+	}
+	return {{camelCase .Name}}RevisionStore.ListRevisions(ctx, name)
+}
+
+func Get{{.Name}}Revision(ctx context.Context, name, uid string) (revision.Record[{{.TypeName}}], error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.Record[{{.TypeName}}]{}, err
+	}
+	return {{camelCase .Name}}RevisionStore.GetRevision(ctx, name, uid)
+}
+
+func Retire{{.Name}}Revision(ctx context.Context, name, uid string) (revision.Record[{{.TypeName}}], error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.Record[{{.TypeName}}]{}, err
+	}
+	return {{camelCase .Name}}RevisionStore.RetireRevision(ctx, name, uid)
+}
+
+func Resolve{{.Name}}Revision(ctx context.Context, reference revision.Reference) (revision.Record[{{.TypeName}}], error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.Record[{{.TypeName}}]{}, err
+	}
+	return {{camelCase .Name}}RevisionStore.Resolve(ctx, reference)
+}
+
+func Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (revision.SeriesStatus, string, error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return revision.SeriesStatus{}, "", err
+	}
+	return {{camelCase .Name}}RevisionStore.PromoteDefault(ctx, name, revisionUID, ifMatch)
+}
+
+func Get{{.Name}}SeriesStatus(ctx context.Context, name string) ({{.StatusType}}, error) {
+	var status {{.StatusType}}
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return status, err
+	}
+	if err := {{camelCase .Name}}RevisionStore.GetStatus(ctx, name, &status); err != nil {
+		return status, err
+	}
+	return status, nil
+}
+
+func Update{{.Name}}SeriesStatus(ctx context.Context, name string, status {{.StatusType}}) (string, error) {
+	if err := ensure{{.Name}}RevisionStore(); err != nil {
+		return "", err
+	}
+	return {{camelCase .Name}}RevisionStore.UpdateStatus(ctx, name, status)
+}
+{{end}}{{end}}
 
 {{range .Resources}}
 // {{.Name}} storage operations

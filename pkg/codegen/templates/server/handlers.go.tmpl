@@ -42,6 +42,7 @@ package main
 
 import (
 	"encoding/json"
+	{{if .RevisioningEnabled}}"errors"{{end}}
 	"fmt"
 	"io"
 	"net/http"
@@ -51,6 +52,7 @@ import (
 	"github.com/openchami/fabrica/pkg/events"
 	"github.com/openchami/fabrica/pkg/patch"
 	"github.com/openchami/fabrica/pkg/resource"
+	{{if .RevisioningEnabled}}"github.com/openchami/fabrica/pkg/revision"{{end}}
 	"github.com/openchami/fabrica/pkg/validation"
 	"github.com/openchami/fabrica/pkg/versioning"
 	{{if .ConditionalEnabled -}}
@@ -809,3 +811,348 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		UID:     uid,
 	})
 }
+
+{{if .RevisioningEnabled}}
+func new{{.Name}}RevisionResource(r *http.Request, name string, req Create{{.Name}}Request) ({{.TypeName}}, error) {
+	uid, err := resource.GenerateUIDForResource("{{.Name}}")
+	if err != nil {
+		return nil, fmt.Errorf("generate {{.Name}} UID: %w", err)
+	}
+	versionCtx := versioning.GetVersionContext(r.Context())
+	res := &{{.PackageAlias}}.{{.Name}}{
+		APIVersion: versionCtx.ServeVersion,
+		Kind: "{{.Name}}",
+		Spec: req.AsSpec(),
+	}
+	res.Metadata = req.Metadata
+	res.Metadata.Name = name
+	res.Metadata.UID = uid
+	res.Metadata.Labels = req.Labels
+	res.Metadata.Annotations = req.Annotations
+	now := time.Now().UTC()
+	res.Metadata.CreatedAt = now
+	res.Metadata.UpdatedAt = now
+	return res, nil
+}
+
+func Create{{.Name}}Series(w http.ResponseWriter, r *http.Request) {
+	var req Create{{.Name}}Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	if err := validation.ValidateResource(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	name := req.Metadata.Name
+	if name == "" {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("series name is required"))
+		return
+	}
+	res, err := new{{.Name}}RevisionResource(r, name, req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	record, etag, err := storage.Create{{.Name}}Series(r.Context(), name, r.URL.Query().Get("revisionName"), res)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	_ = events.PublishRevisionEvent(r.Context(), "series-created", "{{.Name}}", events.RevisionEventData{SeriesName: name, RevisionUID: record.Metadata.UID, Resource: record})
+	respondJSON(w, http.StatusCreated, record)
+}
+
+func Get{{.Name}}Series(w http.ResponseWriter, r *http.Request) {
+	status, etag, err := storage.Get{{.Name}}Series(r.Context(), chi.URLParam(r, "name"))
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	{{if .ConditionalEnabled}}
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
+	respondJSON(w, http.StatusOK, status)
+}
+
+func Ensure{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var req Create{{.Name}}Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	if err := validation.ValidateResource(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	res, err := new{{.Name}}RevisionResource(r, name, req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	record, created, etag, err := storage.Ensure{{.Name}}RevisionByName(r.Context(), name, chi.URLParam(r, "revisionName"), res)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+		_ = events.PublishRevisionEvent(r.Context(), "revision-created", "{{.Name}}", events.RevisionEventData{SeriesName: name, RevisionUID: record.Metadata.UID, Resource: record})
+	}
+	respondJSON(w, status, record)
+}
+
+func Create{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var req Create{{.Name}}Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	if err := validation.ValidateResource(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	res, err := new{{.Name}}RevisionResource(r, name, req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	record, _, etag, err := storage.Create{{.Name}}Revision(r.Context(), name, res)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	_ = events.PublishRevisionEvent(r.Context(), "revision-created", "{{.Name}}", events.RevisionEventData{SeriesName: name, RevisionUID: record.Metadata.UID, Resource: record})
+	respondJSON(w, http.StatusCreated, record)
+}
+
+func List{{.Name}}Revisions(w http.ResponseWriter, r *http.Request) {
+	records, err := storage.List{{.Name}}Revisions(r.Context(), chi.URLParam(r, "name"))
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	etag, err := revision.ValueETag(records)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("generate revision list ETag: %w", err))
+		return
+	}
+	w.Header().Set("ETag", etag)
+	{{if .ConditionalEnabled}}
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
+	respondJSON(w, http.StatusOK, records)
+}
+
+func Get{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
+	record, err := storage.Get{{.Name}}Revision(r.Context(), chi.URLParam(r, "name"), chi.URLParam(r, "revisionUID"))
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	etag, err := revision.ValueETag(record)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("generate revision ETag: %w", err))
+		return
+	}
+	w.Header().Set("ETag", etag)
+	{{if .ConditionalEnabled}}
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
+	respondJSON(w, http.StatusOK, record)
+}
+
+func Retire{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
+	record, err := storage.Retire{{.Name}}Revision(r.Context(), chi.URLParam(r, "name"), chi.URLParam(r, "revisionUID"))
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	_ = events.PublishRevisionEvent(r.Context(), "revision-retired", "{{.Name}}", events.RevisionEventData{SeriesName: record.Metadata.SeriesName, RevisionUID: record.Metadata.UID, Resource: record})
+	respondJSON(w, http.StatusOK, record)
+}
+
+func Resolve{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
+	reference := revision.Reference{
+		Name: chi.URLParam(r, "name"),
+		UID: r.URL.Query().Get("uid"),
+		RevisionName: r.URL.Query().Get("revisionName"),
+		Selector: revision.Selector(r.URL.Query().Get("selector")),
+	}
+	record, err := storage.Resolve{{.Name}}Revision(r.Context(), reference)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	etag, err := revision.ValueETag(record)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("generate resolved revision ETag: %w", err))
+		return
+	}
+	w.Header().Set("ETag", etag)
+	{{if .ConditionalEnabled}}
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
+	respondJSON(w, http.StatusOK, RevisionResolveResponse{SeriesName: reference.Name, Selector: reference.SelectorOrDefault(), Revision: record.Metadata})
+}
+
+func Promote{{.Name}}Default(w http.ResponseWriter, r *http.Request) {
+	var req Promote{{.Name}}DefaultRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	if err := validation.ValidateResource(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	name := chi.URLParam(r, "name")
+	previous, _, err := storage.Get{{.Name}}Series(r.Context(), name)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	status, etag, err := storage.Promote{{.Name}}Default(r.Context(), name, req.RevisionUID, r.Header.Get("If-Match"))
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	_ = events.PublishRevisionEvent(r.Context(), "alias-promoted", "{{.Name}}", events.RevisionEventData{SeriesName: name, RevisionUID: req.RevisionUID, Alias: "default", PreviousUID: previous.DefaultRevisionUID, NewUID: req.RevisionUID})
+	respondJSON(w, http.StatusOK, status)
+}
+
+func Update{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	{{if .ConditionalEnabled}}
+	_, currentETag, err := storage.Get{{.Name}}Series(r.Context(), name)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	if r.Header.Get("If-Match") != "" && !conditionalmiddleware.CheckIfMatch(w, r, currentETag) {
+		return
+	}
+	{{end}}
+	var status {{.StatusType}}
+	if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid status body: %w", err))
+		return
+	}
+	if err := validation.ValidateWithContext(r.Context(), &status); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	etag, err := storage.Update{{.Name}}SeriesStatus(r.Context(), name, status)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	_ = events.PublishRevisionEvent(r.Context(), "status-updated", "{{.Name}}", events.RevisionEventData{SeriesName: name, Resource: status})
+	respondJSON(w, http.StatusOK, status)
+}
+
+func Patch{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	current, err := storage.Get{{.Name}}SeriesStatus(r.Context(), name)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	patchData, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("read status patch: %w", err))
+		return
+	}
+	currentJSON, err := json.Marshal(current)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("marshal status: %w", err))
+		return
+	}
+	patched, err := patch.ApplyPatchWithOptions(currentJSON, patchData, patch.DetectPatchType(r.Header.Get("Content-Type")), patch.PatchOptions{AllowAddFields: true, AllowRemoveFields: false})
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("patch status: %w", err))
+		return
+	}
+	var status {{.StatusType}}
+	if err := json.Unmarshal(patched.Updated, &status); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("decode patched status: %w", err))
+		return
+	}
+	if err := validation.ValidateWithContext(r.Context(), &status); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
+	etag, err := storage.Update{{.Name}}SeriesStatus(r.Context(), name, status)
+	if err != nil {
+		respond{{.Name}}RevisionError(w, err)
+		return
+	}
+	w.Header().Set("ETag", etag)
+	_ = events.PublishRevisionEvent(r.Context(), "status-updated", "{{.Name}}", events.RevisionEventData{SeriesName: name, Resource: status})
+	respondJSON(w, http.StatusOK, status)
+}
+
+func respond{{.Name}}RevisionError(w http.ResponseWriter, err error) {
+	var conflict *revision.ConflictError
+	if errors.As(err, &conflict) {
+		respondJSON(w, http.StatusConflict, RevisionConflictResponse{
+			Error: err.Error(), ExistingRevisionUID: conflict.ExistingRevisionUID,
+			ExistingDigest: conflict.ExistingDigest, RequestedDigest: conflict.RequestedDigest,
+		})
+		return
+	}
+	var precondition *revision.PreconditionError
+	if errors.As(err, &precondition) {
+		respondJSON(w, http.StatusPreconditionFailed, RevisionPreconditionResponse{Error: err.Error(), CurrentETag: precondition.CurrentETag})
+		return
+	}
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, revision.ErrSeriesExists), errors.Is(err, revision.ErrRevisionNameConflict):
+		respondJSON(w, http.StatusConflict, RevisionConflictResponse{Error: err.Error()})
+		return
+	case errors.Is(err, revision.ErrRevisionInUse):
+		status = http.StatusConflict
+	case errors.Is(err, revision.ErrRevisionRetired):
+		status = http.StatusGone
+	case errors.Is(err, revision.ErrPreconditionFailed):
+		respondJSON(w, http.StatusPreconditionFailed, RevisionPreconditionResponse{Error: err.Error()})
+		return
+	case errors.Is(err, revision.ErrSeriesNotFound), errors.Is(err, revision.ErrRevisionNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, revision.ErrInvalidReference), errors.Is(err, revision.ErrUnsupportedSelector):
+		status = http.StatusBadRequest
+	}
+	respondError(w, status, err)
+}
+{{end}}
