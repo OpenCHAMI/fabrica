@@ -122,7 +122,7 @@ func TestWorkflow(t *testing.T) {
 	retired := request(t, router, http.MethodDelete, "/nodes/production/revisions/by-uid/"+first.Metadata.UID, "", ""); if retired.Code != http.StatusOK || !bytes.Contains(retired.Body.Bytes(), []byte("retiredAt")) { t.Fatalf("retire = %d: %s", retired.Code, retired.Body.String()) }
 	retiredGet := request(t, router, http.MethodGet, "/nodes/production/revisions/by-uid/"+first.Metadata.UID, "", ""); if retiredGet.Code != http.StatusGone { t.Fatalf("retired get = %d: %s", retiredGet.Code, retiredGet.Body.String()) }
  invalidRevision := request(t, router, http.MethodPost, "/nodes/production/revisions", "{\"metadata\":{},\"spec\":{}}", ""); if invalidRevision.Code != http.StatusBadRequest { t.Fatalf("invalid revision = %d: %s", invalidRevision.Code, invalidRevision.Body.String()) }
- 	third := request(t, router, http.MethodPost, "/nodes/production/revisions", "{\"metadata\":{},\"spec\":{\"value\":\"three\"}}", ""); if third.Code != http.StatusCreated || decodeRecord(t, third).Metadata.Number != 3 { t.Fatalf("third = %d: %s", third.Code, third.Body.String()) }
+	third := request(t, router, http.MethodPost, "/nodes/production/revisions", "{\"metadata\":{},\"spec\":{\"value\":\"three\"}}", ""); if third.Code != http.StatusCreated || decodeRecord(t, third).Metadata.Number != 3 { t.Fatalf("third = %d: %s", third.Code, third.Body.String()) }
 }
 `,
 	}
