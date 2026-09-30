@@ -946,6 +946,9 @@ func (g *Generator) GenerateAll() error {
 	if err := g.LoadTemplates(); err != nil {
 		return err
 	}
+	if g.StorageType == "ent" && g.revisioningEnabled() {
+		return fmt.Errorf("revision-enabled resources require file storage")
+	}
 
 	// Generate based on package type
 	switch g.PackageName {
@@ -1238,15 +1241,12 @@ func (g *Generator) LoadTemplates() error {
 		"generate":            "storage/generate.go.tmpl",
 		"entQueries":          "storage/ent_queries.go.tmpl",
 		"entTransactions":     "storage/ent_transactions.go.tmpl",
-		"storageEntRevisions": "storage/ent_revisions.go.tmpl",
 
 		// Ent schema templates
 		"entSchemaResource":          "ent/schema/resource.go.tmpl",
 		"entSchemaResourceDedicated": "ent/schema/resource_dedicated.go.tmpl",
 		"entSchemaLabel":             "ent/schema/label.go.tmpl",
 		"entSchemaAnnotation":        "ent/schema/annotation.go.tmpl",
-		"entSchemaRevisionSeries":    "ent/schema/revision_series.go.tmpl",
-		"entSchemaRevisionRecord":    "ent/schema/revision_record.go.tmpl",
 
 		// Middleware templates
 		"middlewareValidation":  "middleware/validation.go.tmpl",
@@ -1803,15 +1803,6 @@ func (g *Generator) GenerateEntSchemas() error {
 	if err := g.executeTemplate("entSchemaAnnotation", filepath.Join(schemaDir, "annotation.go"), nil); err != nil {
 		return err
 	}
-	if g.revisioningEnabled() {
-		if err := g.executeTemplate("entSchemaRevisionSeries", filepath.Join(schemaDir, "revisionseries.go"), nil); err != nil {
-			return err
-		}
-		if err := g.executeTemplate("entSchemaRevisionRecord", filepath.Join(schemaDir, "revisionrecord.go"), nil); err != nil {
-			return err
-		}
-	}
-
 	for _, resource := range g.Resources {
 		if resource.Annotations == nil || resource.Annotations.StorageMode != annotations.StorageModeDedicated {
 			continue
@@ -2026,12 +2017,6 @@ func (g *Generator) GenerateEntHelpers() error {
 	if err := g.executeTemplate("entTransactions", filepath.Join(storageDir, "ent_transactions_generated.go"), g.globalTemplateData("storage/ent_transactions.go.tmpl")); err != nil {
 		return fmt.Errorf("failed to generate ent transactions: %w", err)
 	}
-	if g.revisioningEnabled() {
-		if err := g.executeTemplate("storageEntRevisions", filepath.Join(storageDir, "ent_revisions_generated.go"), g.globalTemplateData("storage/ent_revisions.go.tmpl")); err != nil {
-			return fmt.Errorf("failed to generate ent revision storage: %w", err)
-		}
-	}
-
 	return nil
 }
 
