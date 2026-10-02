@@ -36,6 +36,34 @@ func TestRevisionImportExportGeneratedRuntimeFailsClosed(t *testing.T) {
 	}
 }
 
+func TestRevisionImportExportGeneratedAllRevisionCompiles(t *testing.T) {
+	dir := t.TempDir()
+	gen := revisionTestGenerator(dir)
+	for i := range gen.Resources {
+		gen.Resources[i].RevisioningEnabled = true
+	}
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates() error = %v", err)
+	}
+	if err := gen.GenerateExportCommand(); err != nil {
+		t.Fatalf("GenerateExportCommand() error = %v", err)
+	}
+	if err := gen.GenerateImportCommand(); err != nil {
+		t.Fatalf("GenerateImportCommand() error = %v", err)
+	}
+
+	writeRevisionImportExportFixture(t, dir)
+	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-run", "^$", "-count=1", "./..."}} {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.6")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("compile all-revision generated import/export go %v: %v\n%s", args, err, output)
+		}
+	}
+}
+
 func writeRevisionImportExportFixture(t *testing.T, dir string) {
 	t.Helper()
 	files := map[string]string{
