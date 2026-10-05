@@ -43,3 +43,9 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
+
+retract (
+	v1.4.12 // Contains retractions.
+	v1.4.11 // Published by mistake; project is still on the v0.x line.
+	v0.4.12 // Published by mistake; this version should be skipped.
+)
