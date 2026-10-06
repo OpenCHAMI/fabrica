@@ -1,0 +1,242 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package storage
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"example.com/atomic-ent/internal/storage/ent"
+	entresource "example.com/atomic-ent/internal/storage/ent/resource"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/openchami/fabrica/pkg/codegen/testfixtures"
+	"github.com/openchami/fabrica/pkg/resource"
+	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestAtomicEntAcrossConnections(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	dsn := "file:" + filepath.Join(t.TempDir(), "resources.db") + "?_fk=1&_busy_timeout=5000"
+	first, err := ent.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := ent.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if err := first.Schema.Create(ctx); err != nil {
+		t.Fatal(err)
+	}
+	SetEntClient(first)
+	stamp := time.Now().UTC()
+	token := &testfixtures.MappedToken{Resource: resource.Resource{APIVersion: "v1", Kind: "MappedToken", Metadata: resource.Metadata{UID: "token-1", Name: "token", CreatedAt: stamp, UpdatedAt: stamp, Labels: map[string]string{"state": "initial"}, Annotations: map[string]string{"note": "initial"}}}}
+	token.Spec.Subject = "initial"
+	if err := SaveMappedToken(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := Backend.Load(ctx, "MappedToken", "token-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected := errors.New("precondition failed")
+	var calls atomic.Int32
+	ready := make(chan struct{})
+	results := make(chan error, 2)
+	// Both transactions must read the original version before either writes.
+	// A retry must use the newly committed data and reject its stale validator.
+	for _, client := range []*ent.Client{first, second} {
+		go func() {
+			b := &entStorageBackend{client: client}
+			_, err := b.Mutate(ctx, "MappedToken", "token-1", func(raw json.RawMessage) (json.RawMessage, bool, error) {
+				n := calls.Add(1)
+				if n <= 2 {
+					if n == 2 {
+						close(ready)
+					}
+					select {
+					case <-ready:
+					case <-ctx.Done():
+						return nil, false, ctx.Err()
+					}
+				}
+				if string(raw) != string(initial) {
+					return nil, false, rejected
+				}
+				var current testfixtures.MappedToken
+				if err := json.Unmarshal(raw, &current); err != nil {
+					return nil, false, err
+				}
+				current.Spec.Subject = "committed"
+				current.Metadata.Labels["state"] = "committed"
+				current.Metadata.Annotations["note"] = "committed"
+				next, err := json.Marshal(&current)
+				return next, false, err
+			})
+			results <- err
+		}()
+	}
+	a, b := <-results, <-results
+	if a != nil {
+		a, b = b, a
+	}
+	if a != nil || !errors.Is(b, rejected) {
+		t.Fatalf("competing results=%v,%v", a, b)
+	}
+	if calls.Load() < 3 {
+		t.Fatal("conflicting callback was not retried")
+	}
+	current, err := LoadMappedToken(ctx, "token-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Spec.Subject != "committed" || current.Metadata.Labels["state"] != "committed" || current.Metadata.Annotations["note"] != "committed" {
+		t.Fatalf("partial transaction: %#v", current)
+	}
+	// An ordinary Save must invalidate a transaction's internal guard too.
+	entity, err := first.Resource.Query().Where(entresource.UIDEQ("token-1")).Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldVersion := entity.ResourceVersion
+	if err := SaveMappedToken(ctx, current); err != nil {
+		t.Fatal(err)
+	}
+	entity, err = first.Resource.Query().Where(entresource.UIDEQ("token-1")).Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entity.ResourceVersion == oldVersion {
+		t.Fatal("unconditional save did not advance CAS token")
+	}
+	newVersionBeforeRollback := entity.ResourceVersion
+	// Force a label write to fail after updating the resource. All changes must
+	// roll back, including fields and the CAS token.
+	first.Label.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Op().Is(ent.OpCreate) {
+				return nil, errors.New("label write rejected")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	committed, err := Backend.Load(ctx, "MappedToken", "token-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Backend.(fabricaStorage.AtomicMutationBackend).Mutate(ctx, "MappedToken", "token-1", func(raw json.RawMessage) (json.RawMessage, bool, error) {
+		var current testfixtures.MappedToken
+		if err := json.Unmarshal(raw, &current); err != nil {
+			return nil, false, err
+		}
+		current.Spec.Subject = "should roll back"
+		next, err := json.Marshal(&current)
+		return next, false, err
+	})
+	if err == nil {
+		t.Fatal("metadata failure committed")
+	}
+	actual, err := Backend.Load(ctx, "MappedToken", "token-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(actual) != string(committed) {
+		t.Fatalf("failed mutation changed data: %s", actual)
+	}
+	entity, err = first.Resource.Query().Where(entresource.UIDEQ("token-1")).Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entity.ResourceVersion != newVersionBeforeRollback {
+		t.Fatal("failed metadata mutation advanced token")
+	}
+	newVersion := entity.ResourceVersion
+	if _, err := Backend.(fabricaStorage.AtomicMutationBackend).Mutate(ctx, "MappedToken", "token-1", func(json.RawMessage) (json.RawMessage, bool, error) { return nil, true, rejected }); !errors.Is(err, rejected) {
+		t.Fatalf("rejected delete=%v", err)
+	}
+	exists, err := Backend.Exists(ctx, "MappedToken", "token-1")
+	if err != nil || !exists {
+		t.Fatal("rejected delete removed resource")
+	}
+	entity, err = first.Resource.Query().Where(entresource.UIDEQ("token-1")).Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entity.ResourceVersion != newVersion {
+		t.Fatal("rejected delete advanced token")
+	}
+	if _, err := Backend.(fabricaStorage.AtomicMutationBackend).Mutate(ctx, "MappedToken", "token-1", func(json.RawMessage) (json.RawMessage, bool, error) { return nil, true, nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEntMutationRetryLimit(t *testing.T) {
+	client, err := ent.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "attempts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	t.Run("exhaustion", func(t *testing.T) {
+		calls := 0
+		_, err := retryEntMutation(context.Background(), client, func(*ent.Client) (json.RawMessage, error) { calls++; return nil, errConcurrentMutation })
+		if !errors.Is(err, errConcurrentMutation) || calls != entMutationMaxAttempts {
+			t.Fatalf("calls=%d want=%d error=%v", calls, entMutationMaxAttempts, err)
+		}
+	})
+	t.Run("non retryable", func(t *testing.T) {
+		rejected := errors.New("validation failed")
+		calls := 0
+		_, err := retryEntMutation(context.Background(), client, func(*ent.Client) (json.RawMessage, error) { calls++; return nil, rejected })
+		if !errors.Is(err, rejected) || calls != 1 {
+			t.Fatalf("calls=%d error=%v", calls, err)
+		}
+	})
+	t.Run("success", func(t *testing.T) {
+		calls := 0
+		raw, err := retryEntMutation(context.Background(), client, func(*ent.Client) (json.RawMessage, error) {
+			calls++
+			if calls == 1 {
+				return nil, errConcurrentMutation
+			}
+			return json.RawMessage(`{"committed":true}`), nil
+		})
+		if entMutationMaxAttempts == 1 {
+			if !errors.Is(err, errConcurrentMutation) || calls != 1 {
+				t.Fatalf("single attempt calls=%d error=%v", calls, err)
+			}
+		} else if err != nil || calls != 2 || string(raw) != `{"committed":true}` {
+			t.Fatalf("success calls=%d data=%s error=%v", calls, raw, err)
+		}
+	})
+	t.Run("cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		calls := 0
+		_, err := retryEntMutation(ctx, client, func(*ent.Client) (json.RawMessage, error) { calls++; cancel(); return nil, errConcurrentMutation })
+		want := context.Canceled
+		if entMutationMaxAttempts == 1 {
+			want = errConcurrentMutation
+		}
+		if !errors.Is(err, want) || calls != 1 {
+			t.Fatalf("cancel calls=%d error=%v want=%v", calls, err, want)
+		}
+	})
+	t.Run("already canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		calls := 0
+		_, err := retryEntMutation(ctx, client, func(*ent.Client) (json.RawMessage, error) { calls++; return nil, nil })
+		if !errors.Is(err, context.Canceled) || calls != 0 {
+			t.Fatalf("canceled transaction calls=%d error=%v", calls, err)
+		}
+	})
+}

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/openchami/fabrica/internal/constants"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -120,6 +122,8 @@ type StorageConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Type     string `yaml:"type"`                // file, ent, custom
 	DBDriver string `yaml:"db_driver,omitempty"` // postgres, mysql, sqlite, sqlite3
+	// MutationMaxAttempts includes the initial Ent transaction. Zero selects the default of 8.
+	MutationMaxAttempts int `yaml:"mutation_max_attempts,omitempty"`
 }
 
 // MetricsConfig controls metrics/observability.
@@ -279,6 +283,10 @@ func ValidateConfig(config *FabricaConfig) error {
 			config.Features.Storage.Type)
 	}
 
+	if config.Features.Storage.MutationMaxAttempts < 0 {
+		return fmt.Errorf("invalid storage.mutation_max_attempts: %d (must be non-negative; zero uses the default)", config.Features.Storage.MutationMaxAttempts)
+	}
+
 	// Validate DB driver if using ent
 	if config.Features.Storage.Type == "ent" && config.Features.Storage.DBDriver != "" {
 		validDrivers := map[string]bool{"postgres": true, "mysql": true, "sqlite": true, "sqlite3": true}
@@ -334,8 +342,9 @@ func NewDefaultConfig(name, module string) *FabricaConfig {
 				AuthZ: AuthZConfig{Enabled: false, Mode: SecurityModeEnforce},
 			},
 			Storage: StorageConfig{
-				Enabled: true,
-				Type:    "file",
+				Enabled:             true,
+				Type:                "file",
+				MutationMaxAttempts: constants.DefaultMutationMaxAttempts,
 			},
 			Metrics: MetricsConfig{
 				Enabled:  false,

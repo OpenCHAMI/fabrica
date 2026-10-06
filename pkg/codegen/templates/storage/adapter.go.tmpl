@@ -24,6 +24,10 @@ import (
 // ToEntResource converts a Fabrica resource to an Ent resource entity for storage.
 // This function extracts the Resource fields and marshals Spec/Status to JSON.
 func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string]string, map[string]string, error) {
+	return ToEntResourceWithClient(entClient, fabricaResource)
+}
+
+func ToEntResourceWithClient(client *ent.Client, fabricaResource interface{}) (*ent.ResourceCreate, map[string]string, map[string]string, error) {
 	// Type assertion to get Resource fields
 	var apiVersion, kind, name, uid string
 	var spec, status json.RawMessage
@@ -58,7 +62,7 @@ func ToEntResource(fabricaResource interface{}) (*ent.ResourceCreate, map[string
 	}
 
 	// Create Ent entity (return create builder, caller will handle labels/annotations separately)
-	create := entClient.Resource.Create().
+	create := client.Resource.Create().
 		SetUID(uid).
 		SetName(name).
 		SetAPIVersion(apiVersion).
@@ -146,8 +150,12 @@ func FromEntResource(ctx context.Context, entResource *ent.Resource) (interface{
 
 // saveLabels saves or updates labels for a resource
 func saveLabels(ctx context.Context, resourceID int, labels map[string]string) error {
+	return saveLabelsWithClient(ctx, entClient, resourceID, labels)
+}
+
+func saveLabelsWithClient(ctx context.Context, client *ent.Client, resourceID int, labels map[string]string) error {
 	// Delete existing labels
-	_, err := entClient.Label.Delete().
+	_, err := client.Label.Delete().
 		Where(label.HasResourceWith(entresource.IDEQ(resourceID))).
 		Exec(ctx)
 	if err != nil {
@@ -156,7 +164,7 @@ func saveLabels(ctx context.Context, resourceID int, labels map[string]string) e
 
 	// Create new labels
 	for key, value := range labels {
-		_, err := entClient.Label.Create().
+		_, err := client.Label.Create().
 			SetKey(key).
 			SetValue(value).
 			SetResourceID(resourceID).
@@ -171,8 +179,12 @@ func saveLabels(ctx context.Context, resourceID int, labels map[string]string) e
 
 // saveAnnotations saves or updates annotations for a resource
 func saveAnnotations(ctx context.Context, resourceID int, annotations map[string]string) error {
+	return saveAnnotationsWithClient(ctx, entClient, resourceID, annotations)
+}
+
+func saveAnnotationsWithClient(ctx context.Context, client *ent.Client, resourceID int, annotations map[string]string) error {
 	// Delete existing annotations
-	_, err := entClient.Annotation.Delete().
+	_, err := client.Annotation.Delete().
 		Where(annotation.HasResourceWith(entresource.IDEQ(resourceID))).
 		Exec(ctx)
 	if err != nil {
@@ -181,7 +193,7 @@ func saveAnnotations(ctx context.Context, resourceID int, annotations map[string
 
 	// Create new annotations
 	for key, value := range annotations {
-		_, err := entClient.Annotation.Create().
+		_, err := client.Annotation.Create().
 			SetKey(key).
 			SetValue(value).
 			SetResourceID(resourceID).

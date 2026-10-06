@@ -14,6 +14,10 @@ import (
 	"sync"
 )
 
+// fileBackendLocks serializes all instances using the same canonical directory.
+// File storage is intended for a single server process.
+var fileBackendLocks sync.Map
+
 // FileBackend implements StorageBackend using file-based storage.
 //
 // This implementation stores each resource as a separate JSON file
@@ -30,7 +34,7 @@ import (
 //	    └── order-def.json
 //
 // Features:
-//   - Thread-safe: Uses file locking for concurrent access
+//   - Thread-safe: Serializes instances in this process sharing a directory
 //   - Atomic writes: Uses temp files + rename for atomicity
 //   - Auto-creation: Creates directories as needed
 //   - Validation: Checks JSON format before saving
@@ -40,7 +44,7 @@ import (
 //   - Performance: Not optimized for large numbers of resources
 //   - Scalability: File system limits apply
 //   - Consistency: No transactions across multiple resources
-//   - Locking: File locking may not work on all file systems
+//   - Locking: Writers in other processes are not synchronized
 //
 // This backend is suitable for:
 //   - Development and testing
@@ -49,7 +53,7 @@ import (
 //   - Situations where human-readable storage is valuable
 type FileBackend struct {
 	baseDir         string
-	mu              sync.RWMutex
+	mu              *sync.RWMutex
 	closed          bool
 	versionRegistry VersionRegistry // Version registry for conversion support
 }
@@ -96,9 +100,16 @@ func NewFileBackend(baseDir string) (*FileBackend, error) {
 		return nil, fmt.Errorf("failed to create base directory %s: %w", baseDir, err)
 	}
 
-	backend := &FileBackend{
-		baseDir: baseDir,
+	canonical, err := filepath.Abs(baseDir)
+	if err != nil {
+		return nil, err
 	}
+	canonical, err = filepath.EvalSymlinks(canonical)
+	if err != nil {
+		return nil, err
+	}
+	lock, _ := fileBackendLocks.LoadOrStore(canonical, &sync.RWMutex{})
+	backend := &FileBackend{baseDir: canonical, mu: lock.(*sync.RWMutex)}
 
 	return backend, nil
 }
@@ -170,6 +181,10 @@ func (f *FileBackend) checkClosed() error {
 func (f *FileBackend) LoadAll(ctx context.Context, resourceType string) ([]json.RawMessage, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	return f.loadAllLocked(ctx, resourceType)
+}
+
+func (f *FileBackend) loadAllLocked(ctx context.Context, resourceType string) ([]json.RawMessage, error) {
 
 	if err := f.checkClosed(); err != nil {
 		return nil, err
@@ -231,6 +246,10 @@ func (f *FileBackend) LoadAll(ctx context.Context, resourceType string) ([]json.
 func (f *FileBackend) Load(ctx context.Context, resourceType, uid string) (json.RawMessage, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	return f.loadLocked(ctx, resourceType, uid)
+}
+
+func (f *FileBackend) loadLocked(ctx context.Context, resourceType, uid string) (json.RawMessage, error) {
 
 	if err := f.checkClosed(); err != nil {
 		return nil, err
@@ -268,6 +287,10 @@ func (f *FileBackend) Load(ctx context.Context, resourceType, uid string) (json.
 func (f *FileBackend) Save(ctx context.Context, resourceType, uid string, data json.RawMessage) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.saveLocked(ctx, resourceType, uid, data)
+}
+
+func (f *FileBackend) saveLocked(ctx context.Context, resourceType, uid string, data json.RawMessage) error {
 
 	if err := f.checkClosed(); err != nil {
 		return err
@@ -316,6 +339,10 @@ func (f *FileBackend) Save(ctx context.Context, resourceType, uid string, data j
 func (f *FileBackend) Delete(ctx context.Context, resourceType, uid string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.deleteLocked(ctx, resourceType, uid)
+}
+
+func (f *FileBackend) deleteLocked(ctx context.Context, resourceType, uid string) error {
 
 	if err := f.checkClosed(); err != nil {
 		return err
@@ -468,7 +495,7 @@ func (f *FileBackend) LoadWithVersion(ctx context.Context, resourceType, uid, ve
 	}
 
 	// Load the raw resource (stored in default version)
-	rawData, err := f.Load(ctx, resourceType, uid)
+	rawData, err := f.loadLocked(ctx, resourceType, uid)
 	if err != nil {
 		return nil, "", err
 	}
@@ -543,7 +570,7 @@ func (f *FileBackend) LoadAllWithVersion(ctx context.Context, resourceType, vers
 	}
 
 	// Load all resources in default version
-	rawResources, err := f.LoadAll(ctx, resourceType)
+	rawResources, err := f.loadAllLocked(ctx, resourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -635,12 +662,12 @@ func (f *FileBackend) SaveWithVersion(ctx context.Context, resourceType, uid str
 	defaultVersion := f.versionRegistry.GetDefaultVersion(resourceType)
 	if defaultVersion == "" {
 		// No versioning configured, save as-is
-		return f.Save(ctx, resourceType, uid, data)
+		return f.saveLocked(ctx, resourceType, uid, data)
 	}
 
 	// If data is already in default version, save as-is
 	if version == "" || version == defaultVersion {
-		return f.Save(ctx, resourceType, uid, data)
+		return f.saveLocked(ctx, resourceType, uid, data)
 	}
 
 	// Need to convert to storage version
@@ -672,5 +699,30 @@ func (f *FileBackend) SaveWithVersion(ctx context.Context, resourceType, uid str
 	}
 
 	// Save in storage version
-	return f.Save(ctx, resourceType, uid, json.RawMessage(storageData))
+	return f.saveLocked(ctx, resourceType, uid, json.RawMessage(storageData))
+}
+
+// Mutate atomically reads, checks, and replaces or deletes an existing resource.
+// The callback must not call back into this backend.
+func (f *FileBackend) Mutate(ctx context.Context, kind, uid string, fn Mutation) (json.RawMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	current, err := f.loadLocked(ctx, kind, uid)
+	if err != nil {
+		return nil, err
+	}
+	next, remove, err := fn(current)
+	if err != nil {
+		return nil, err
+	}
+	if remove {
+		if err := f.deleteLocked(ctx, kind, uid); err != nil {
+			return nil, err
+		}
+		return current, nil
+	}
+	if err := f.saveLocked(ctx, kind, uid, next); err != nil {
+		return nil, err
+	}
+	return next, nil
 }

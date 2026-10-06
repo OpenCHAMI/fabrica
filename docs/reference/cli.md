@@ -545,6 +545,7 @@ features:
     enabled: true
     type: ent                 # file | ent | custom
     db_driver: postgres       # sqlite | postgres | mysql
+    mutation_max_attempts: 8  # Ent: initial attempt plus retries; 0 defaults to 8
 
 generation:
   handlers: true

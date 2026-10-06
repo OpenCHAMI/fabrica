@@ -14,6 +14,7 @@
 //   1. Call storage.Init() with a different backend in main.go
 //   2. Options: FileBackend, EntBackend (database), or custom backend
 //
+// Package storage provides typed resource persistence and file version snapshots.
 package storage
 
 {{/* Determine if any resource has versioning enabled to gate extra imports */}}
@@ -367,19 +368,20 @@ func {{toLower .Name}}VersionsDir() string {
 }
 
 func delete{{.Name}}VersionsDir(uid string) error {
-	dir := filepath.Join({{toLower .Name}}VersionsDir(), uid)
-	return os.RemoveAll(dir)
+	return fabricaStorage.WithFileMutation(context.Background(), {{toLower .Name}}VersionsDir(), func() error {
+		return os.RemoveAll(filepath.Join({{toLower .Name}}VersionsDir(), uid))
+	})
 }
 
 // Create{{.Name}}VersionSnapshot saves a new version snapshot for the given resource and returns the new VersionID
 func Create{{.Name}}VersionSnapshot(ctx context.Context, res {{.TypeName}}) (string, error) {
 	// Build snapshot (no status)
 	snap := {{.Name}}VersionSnapshot{
-		VersionID: generateULID(),
-		CreatedAt: time.Now().UTC(),
-		UID:       res.Metadata.UID,
-		Name:      res.Metadata.Name,
-		Labels:    res.Metadata.Labels,
+		VersionID:   generateULID(),
+		CreatedAt:   time.Now().UTC(),
+		UID:         res.Metadata.UID,
+		Name:        res.Metadata.Name,
+		Labels:      res.Metadata.Labels,
 		Annotations: res.Metadata.Annotations,
 	}
 	if spec, ok := any(res.Spec).({{.SpecType}}); ok {
@@ -400,16 +402,19 @@ func Create{{.Name}}VersionSnapshot(ctx context.Context, res {{.TypeName}}) (str
 		return "", fmt.Errorf("failed to marshal snapshot: %w", err)
 	}
 
-	// Write to file: data/<plural>/versions/<uid>/<versionId>.json
-	dir := filepath.Join({{toLower .Name}}VersionsDir(), res.Metadata.UID)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create versions dir: %w", err)
-	}
-	path := filepath.Join(dir, snap.VersionID+".json")
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return "", fmt.Errorf("failed to write version file: %w", err)
-	}
-	return snap.VersionID, nil
+	err = fabricaStorage.WithFileMutation(ctx, {{toLower .Name}}VersionsDir(), func() error {
+		// Write to file: data/<plural>/versions/<uid>/<versionId>.json
+		dir := filepath.Join({{toLower .Name}}VersionsDir(), res.Metadata.UID)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create versions dir: %w", err)
+		}
+		path := filepath.Join(dir, snap.VersionID+".json")
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return fmt.Errorf("failed to write version file: %w", err)
+		}
+		return nil
+	})
+	return snap.VersionID, err
 }
 
 // List{{.Name}}Versions lists version snapshots (metadata) for a resource
@@ -447,7 +452,7 @@ func Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("version not found")
+			return nil, fabricaStorage.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to read version: %w", err)
 	}
@@ -460,14 +465,28 @@ func Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}
 
 // Delete{{.Name}}Version removes a specific version snapshot
 func Delete{{.Name}}Version(ctx context.Context, uid, versionID string) error {
-	path := filepath.Join({{toLower .Name}}VersionsDir(), uid, versionID+".json")
-	if err := os.Remove(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
+	return Delete{{.Name}}VersionChecked(ctx, uid, versionID, nil)
+}
+
+// Delete{{.Name}}VersionChecked validates and removes the same snapshot under
+// the guard used by snapshot writers and resource snapshot cleanup.
+func Delete{{.Name}}VersionChecked(ctx context.Context, uid, versionID string, check func(*{{.Name}}VersionSnapshot) error) error {
+	return fabricaStorage.WithFileMutation(ctx, {{toLower .Name}}VersionsDir(), func() error {
+		if check != nil {
+			snapshot, err := Get{{.Name}}Version(ctx, uid, versionID)
+			if err != nil {
+				return err
+			}
+			if err := check(snapshot); err != nil {
+				return err
+			}
 		}
-		return fmt.Errorf("failed to delete version: %w", err)
-	}
-	return nil
+		path := filepath.Join({{toLower .Name}}VersionsDir(), uid, versionID+".json")
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	})
 }
 
 // generateULID creates a lexicographically sortable unique id

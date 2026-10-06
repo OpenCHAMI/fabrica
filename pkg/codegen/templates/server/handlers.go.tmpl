@@ -42,6 +42,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,6 +55,7 @@ import (
 	"github.com/openchami/fabrica/pkg/validation"
 	"github.com/openchami/fabrica/pkg/versioning"
 	{{if .ConditionalEnabled -}}
+	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	conditionalmiddleware "{{.ModulePath}}/internal/middleware"
 	{{end -}}
 	{{range .UniqueImports -}}
@@ -209,11 +211,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set initial status
-    // This assumes the generator passes an 'IsReconcilable' boolean
-    // to this template, and that the resource has a .Status.Phase field.
-    {{if .IsReconcilable}}
-    {{camelCase .Name}}.Status.Phase = "Pending"
-    {{end}}
+	// This assumes the generator passes an 'IsReconcilable' boolean
+	// to this template, and that the resource has a .Status.Phase field.
+	{{if .IsReconcilable}}
+	{{camelCase .Name}}.Status.Phase = "Pending"
+	{{end}}
 
 	// Save (Layer 1: Ent validation happens automatically if using Ent storage)
 	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
@@ -226,8 +228,11 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
 		fmt.Printf("Warning: failed to create initial version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	} else {
-		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		updated, err := persist{{.Name}}SnapshotVersion(r, uid, {{camelCase .Name}}, verID)
+		if err == nil {
+			{{camelCase .Name}} = updated
+		}
+		if err != nil {
 			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
@@ -257,84 +262,68 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
-	if err != nil {
-		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
-		return
-	}
-	{{if .ConditionalEnabled}}
-	if r.Header.Get("If-Match") != "" {
-		etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
-			return
-		}
-		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
-			return
-		}
-	}
-	{{end}}
-
 	var req Update{{.Name}}Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
-	// Apply updates
-{{if .IsVersioned}}
-	// Versioned mode: direct field access
-	if req.Metadata.Name != "" {
-		{{camelCase .Name}}.Metadata.Name = req.Metadata.Name
-	}
+	{{camelCase .Name}}, err := mutate{{.Name}}(r, uid, func({{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+		// Apply updates
+		{{if .IsVersioned}}
+		// Versioned mode: direct field access
+		if req.Metadata.Name != "" {
+			{{camelCase .Name}}.Metadata.Name = req.Metadata.Name
+		}
 
-	// Update spec fields ONLY - status should use /status subresource
-	{{camelCase .Name}}.Spec = req.AsSpec()
+		// Update spec fields ONLY - status should use /status subresource
+		{{camelCase .Name}}.Spec = req.AsSpec()
 
-	// Update labels and annotations
-	if {{camelCase .Name}}.Metadata.Labels == nil {
-		{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
-	}
-	for k, v := range req.Labels {
-		{{camelCase .Name}}.Metadata.Labels[k] = v
-	}
-	if {{camelCase .Name}}.Metadata.Annotations == nil {
-		{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
-	}
-	for k, v := range req.Annotations {
-		{{camelCase .Name}}.Metadata.Annotations[k] = v
-	}
+		// Update labels and annotations
+		if {{camelCase .Name}}.Metadata.Labels == nil {
+			{{camelCase .Name}}.Metadata.Labels = make(map[string]string)
+		}
+		for k, v := range req.Labels {
+			{{camelCase .Name}}.Metadata.Labels[k] = v
+		}
+		if {{camelCase .Name}}.Metadata.Annotations == nil {
+			{{camelCase .Name}}.Metadata.Annotations = make(map[string]string)
+		}
+		for k, v := range req.Annotations {
+			{{camelCase .Name}}.Metadata.Annotations[k] = v
+		}
 
-	// Update timestamp
-	{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
-{{else}}
-	// Legacy mode: use SetLabel/SetAnnotation methods
-	if req.Metadata.Name != "" {
-		{{camelCase .Name}}.SetName(req.Metadata.Name)
-	}
+		// Update timestamp
+		{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
+		{{else}}
+		// Legacy mode: use SetLabel/SetAnnotation methods
+		if req.Metadata.Name != "" {
+			{{camelCase .Name}}.SetName(req.Metadata.Name)
+		}
 
-	// Update spec fields ONLY - status should use /status subresource
-	{{camelCase .Name}}.Spec = req.AsSpec()
+		// Update spec fields ONLY - status should use /status subresource
+		{{camelCase .Name}}.Spec = req.AsSpec()
 
-	// Update labels and annotations
-	for k, v := range req.Labels {
-		{{camelCase .Name}}.SetLabel(k, v)
-	}
-	for k, v := range req.Annotations {
-		{{camelCase .Name}}.SetAnnotation(k, v)
-	}
+		// Update labels and annotations
+		for k, v := range req.Labels {
+			{{camelCase .Name}}.SetLabel(k, v)
+		}
+		for k, v := range req.Annotations {
+			{{camelCase .Name}}.SetAnnotation(k, v)
+		}
 
-	{{camelCase .Name}}.Touch()
-{{end}}
+		{{camelCase .Name}}.Touch()
+		{{end}}
 
-	// Layer 2: Custom business logic validation
-	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
+		// Layer 2: Custom business logic validation
+		if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
+		}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}}: %w", err))
+		return false, nil
+	})
+	if err != nil {
+		respond{{.Name}}MutationError(w, r, err)
 		return
 	}
 
@@ -343,8 +332,11 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
 		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	} else {
-		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		updated, err := persist{{.Name}}SnapshotVersion(r, uid, {{camelCase .Name}}, verID)
+		if err == nil {
+			{{camelCase .Name}} = updated
+		}
+		if err != nil {
 			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
@@ -377,24 +369,6 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
-	if err != nil {
-		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
-		return
-	}
-	{{if .ConditionalEnabled}}
-	if r.Header.Get("If-Match") != "" {
-		etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
-			return
-		}
-		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
-			return
-		}
-	}
-	{{end}}
-
 	// Read patch document
 	patchData, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -402,49 +376,44 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Marshal current spec to JSON for patching (only allow spec modifications)
-	currentSpecJSON, err := json.Marshal({{camelCase .Name}}.Spec)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current spec: %w", err))
-		return
-	}
+	patchType := patch.DetectPatchType(r.Header.Get("Content-Type"))
+	{{camelCase .Name}}, err := mutate{{.Name}}(r, uid, func({{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+		// Marshal current spec to JSON for patching (only allow spec modifications)
+		currentSpecJSON, err := json.Marshal({{camelCase .Name}}.Spec)
+		if err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusInternalServerError, err: fmt.Errorf("failed to marshal current spec: %w", err)}
+		}
 
-	// Detect patch type from Content-Type header
-	contentType := r.Header.Get("Content-Type")
-	patchType := patch.DetectPatchType(contentType)
+		// Apply patch to spec only
+		patchResult, err := patch.ApplyPatchWithOptions(currentSpecJSON, patchData, patchType, patch.PatchOptions{
+			AllowAddFields:    true,
+			AllowRemoveFields: true,
+		})
+		if err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusUnprocessableEntity, err: fmt.Errorf("failed to apply patch to spec: %w", err)}
+		}
 
-	// Apply patch to spec only
-	patchResult, err := patch.ApplyPatchWithOptions(currentSpecJSON, patchData, patchType, patch.PatchOptions{
-		AllowAddFields:    true,
-		AllowRemoveFields: true,
+		// Unmarshal the patched result back to the spec
+		if err := json.Unmarshal(patchResult.Updated, &{{camelCase .Name}}.Spec); err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusInternalServerError, err: fmt.Errorf("failed to unmarshal patched spec: %w", err)}
+		}
+
+		// Touch to update metadata
+		{{if .IsVersioned}}
+		{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
+		{{else}}
+		{{camelCase .Name}}.Touch()
+		{{end}}
+
+		// Layer 2: Custom business logic validation
+		if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
+		}
+
+		return false, nil
 	})
 	if err != nil {
-		respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("failed to apply patch to spec: %w", err))
-		return
-	}
-
-	// Unmarshal the patched result back to the spec
-	if err := json.Unmarshal(patchResult.Updated, &{{camelCase .Name}}.Spec); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to unmarshal patched spec: %w", err))
-		return
-	}
-
-	// Touch to update metadata
-{{if .IsVersioned}}
-	{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
-{{else}}
-	{{camelCase .Name}}.Touch()
-{{end}}
-
-	// Layer 2: Custom business logic validation
-	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
-
-	// Save the patched resource
-	if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}}: %w", err))
+		respond{{.Name}}MutationError(w, r, err)
 		return
 	}
 
@@ -453,8 +422,11 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	if verID, err := storage.Create{{.Name}}VersionSnapshot(r.Context(), {{camelCase .Name}}); err != nil {
 		fmt.Printf("Warning: failed to create version for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 	} else {
-		{{camelCase .Name}}.Status.Version = verID
-		if err := storage.Save{{.StorageName}}(r.Context(), {{camelCase .Name}}); err != nil {
+		updated, err := persist{{.Name}}SnapshotVersion(r, uid, {{camelCase .Name}}, verID)
+		if err == nil {
+			{{camelCase .Name}} = updated
+		}
+		if err != nil {
 			fmt.Printf("Warning: failed to persist version into status for {{.Name}} %s: %v\n", {{camelCase .Name}}.GetUID(), err)
 		}
 	}
@@ -495,51 +467,37 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status update authorization
 	// Status updates can have different permissions than spec updates
 
-	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
-	if err != nil {
-		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
-		return
-	}
-	{{if .ConditionalEnabled}}
-	if r.Header.Get("If-Match") != "" {
-		etag, err := conditionalmiddleware.GenerateETag(res)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
-			return
-		}
-		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
-			return
-		}
-	}
-	{{end}}
-
 	var statusUpdate {{.PackageAlias}}.{{.Name}}Status
 	if err := json.NewDecoder(r.Body).Decode(&statusUpdate); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid status body: %w", err))
 		return
 	}
 
-	// Preserve spec - only update status
-	res.Status = statusUpdate
-	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
-	// Preserve server-managed version field in status
-	prevVersion := res.Status.Version
-	res.Status.Version = prevVersion
-	{{- end }}{{- end }}
-{{if .IsVersioned}}
-	res.Metadata.UpdatedAt = time.Now()
-{{else}}
-	res.Touch()
-{{end}}
+	res, err := mutate{{.Name}}(r, uid, func(res *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+		// Preserve spec - only update status
+		{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+		prevVersion := res.Status.Version
+		{{- end }}{{- end }}
+		res.Status = statusUpdate
+		{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+		// Preserve server-managed version field in status
+		res.Status.Version = prevVersion
+		{{- end }}{{- end }}
+		{{if .IsVersioned}}
+		res.Metadata.UpdatedAt = time.Now()
+		{{else}}
+		res.Touch()
+		{{end}}
 
-	// Layer 2: Custom business logic validation
-	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
+		// Layer 2: Custom business logic validation
+		if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
+		}
 
-	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save {{.Name}} status: %w", err))
+		return false, nil
+	})
+	if err != nil {
+		respond{{.Name}}MutationError(w, r, err)
 		return
 	}
 
@@ -575,77 +533,56 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 	// Authorization: Add custom middleware for status patch authorization
 	// Status patches can have different permissions than spec patches
 
-	res, err := storage.Load{{.StorageName}}(r.Context(), uid)
-	if err != nil {
-		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
-		return
-	}
-	{{if .ConditionalEnabled}}
-	if r.Header.Get("If-Match") != "" {
-		etag, err := conditionalmiddleware.GenerateETag(res)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
-			return
-		}
-		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
-			return
-		}
-	}
-	{{end}}
-
 	patchData, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("failed to read patch data: %w", err))
 		return
 	}
 
-	// Marshal current status for patching
-	currentStatusJSON, err := json.Marshal(res.Status)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to marshal current status: %w", err))
-		return
-	}
+	patchType := patch.DetectPatchType(r.Header.Get("Content-Type"))
+	res, err := mutate{{.Name}}(r, uid, func(res *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+		{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+		prevVersion := res.Status.Version
+		{{- end }}{{- end }}
+		// Marshal current status for patching
+		currentStatusJSON, err := json.Marshal(res.Status)
+		if err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusInternalServerError, err: fmt.Errorf("failed to marshal current status: %w", err)}
+		}
 
-	contentType := r.Header.Get("Content-Type")
-	patchType := patch.DetectPatchType(contentType)
+		patchResult, err := patch.ApplyPatchWithOptions(currentStatusJSON, patchData, patchType, patch.PatchOptions{
+			AllowAddFields:    true,
+			AllowRemoveFields: false, // Don't allow removing status fields
+		})
+		if err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusUnprocessableEntity, err: fmt.Errorf("failed to apply patch to status: %w", err)}
+		}
 
-	patchResult, err := patch.ApplyPatchWithOptions(currentStatusJSON, patchData, patchType, patch.PatchOptions{
-		AllowAddFields:    true,
-		AllowRemoveFields: false, // Don't allow removing status fields
+		// Unmarshal patched status back
+		if err := json.Unmarshal(patchResult.Updated, &res.Status); err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusInternalServerError, err: fmt.Errorf("failed to unmarshal patched status: %w", err)}
+		}
+
+		{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+		// Ensure server-managed version field is preserved after patch
+		res.Status.Version = prevVersion
+		{{- end }}{{- end }}
+
+		{{if .IsVersioned}}
+		res.Metadata.UpdatedAt = time.Now()
+		{{else}}
+		res.Touch()
+		{{end}}
+
+		// Layer 2: Custom business logic validation
+		if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
+		}
+
+		return false, nil
 	})
 	if err != nil {
-		respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("failed to apply patch to status: %w", err))
-		return
-	}
-
-	// Unmarshal patched status back
-	if err := json.Unmarshal(patchResult.Updated, &res.Status); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to unmarshal patched status: %w", err))
-		return
-	}
-
-	{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
-	// Ensure server-managed version field is preserved after patch
-	// Reload current to get authoritative version and copy it back
-	if current, err := storage.Load{{.StorageName}}(r.Context(), uid); err == nil {
-		res.Status.Version = current.Status.Version
-	}
-	{{- end }}{{- end }}
-
-{{if .IsVersioned}}
-	res.Metadata.UpdatedAt = time.Now()
-{{else}}
-	res.Touch()
-{{end}}
-
-	// Layer 2: Custom business logic validation
-	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
-
-	if err := storage.Save{{.StorageName}}(r.Context(), res); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to save patched {{.Name}} status: %w", err))
+		respond{{.Name}}MutationError(w, r, err)
 		return
 	}
 
@@ -733,22 +670,24 @@ func Delete{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 	}
 	{{if .ConditionalEnabled}}
 	if r.Header.Get("If-Match") != "" {
-		version, err := storage.Get{{.Name}}Version(r.Context(), uid, versionID)
+		err := storage.Delete{{.Name}}VersionChecked(r.Context(), uid, versionID, func(version *storage.{{.Name}}VersionSnapshot) error {
+			etag, err := conditionalmiddleware.GenerateETag(version)
+			if err != nil {
+				return err
+			}
+			if !conditionalmiddleware.MatchesIfMatch(r.Header.Get("If-Match"), etag) {
+				return &{{.Name}}MutationError{status: http.StatusPreconditionFailed, err: fmt.Errorf("precondition failed"), etag: etag}
+			}
+			return nil
+		})
 		if err != nil {
-			respondError(w, http.StatusNotFound, fmt.Errorf("version not found: %w", err))
+			respond{{.Name}}MutationError(w, r, err)
 			return
 		}
-		etag, err := conditionalmiddleware.GenerateETag(version)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
-			return
-		}
-		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
-			return
-		}
+		respondJSON(w, http.StatusOK, DeleteResponse{Message: "version deleted", UID: versionID})
+		return
 	}
 	{{end}}
-
 	if err := storage.Delete{{.Name}}Version(r.Context(), uid, versionID); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete version: %w", err))
 		return
@@ -765,27 +704,10 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load resource before deletion for event publishing
-	{{camelCase .Name}}, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	// Atomically load and delete the resource before publishing the event.
+	{{camelCase .Name}}, err := mutate{{.Name}}(r, uid, func({{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) (bool, error) { return true, nil })
 	if err != nil {
-		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
-		return
-	}
-	{{if .ConditionalEnabled}}
-	if r.Header.Get("If-Match") != "" {
-		etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
-			return
-		}
-		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
-			return
-		}
-	}
-	{{end}}
-
-	if err := storage.Delete{{.StorageName}}(r.Context(), uid); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete {{.Name}}: %w", err))
+		respond{{.Name}}MutationError(w, r, err)
 		return
 	}
 
@@ -809,3 +731,99 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		UID:     uid,
 	})
 }
+
+// {{.Name}}MutationError carries an HTTP status out of a storage callback.
+type {{.Name}}MutationError struct {
+	status int
+	err    error
+	etag   string
+}
+
+func (e *{{.Name}}MutationError) Error() string { return e.err.Error() }
+func (e *{{.Name}}MutationError) Unwrap() error { return e.err }
+
+func respond{{.Name}}MutationError(w http.ResponseWriter, r *http.Request, err error) {
+	var mutationErr *{{.Name}}MutationError
+	if errors.As(err, &mutationErr) {
+		{{if .ConditionalEnabled}}
+		if mutationErr.status == http.StatusPreconditionFailed {
+			conditionalmiddleware.CheckIfMatch(w, r, mutationErr.etag)
+			return
+		}
+		{{end}}
+		respondError(w, mutationErr.status, mutationErr.err)
+		return
+	}
+	{{if .ConditionalEnabled}}
+	if errors.Is(err, fabricaStorage.ErrAtomicMutationUnsupported) {
+		respondError(w, http.StatusNotImplemented, err)
+		return
+	}
+	if errors.Is(err, fabricaStorage.ErrNotFound) {
+		respondError(w, http.StatusNotFound, err)
+		return
+	}
+	{{end}}
+	respondError(w, http.StatusInternalServerError, err)
+}
+
+// mutate{{.Name}} checks the precondition and applies the change to the same stored
+// representation. The callback may be retried and must have no external effects.
+func mutate{{.Name}}(r *http.Request, uid string, apply func(*{{.PackageAlias}}.{{.Name}}) (bool, error), bookkeeping ...bool) (*{{.PackageAlias}}.{{.Name}}, error) {
+	{{if .ConditionalEnabled}}
+	ifMatch := r.Header.Get("If-Match")
+	if len(bookkeeping) > 0 {
+		ifMatch = ""
+	}
+	if _, ok := storage.Backend.(fabricaStorage.AtomicMutationBackend); ok || ifMatch != "" || len(bookkeeping) > 0 {
+		return fabricaStorage.MutateResource[*{{.PackageAlias}}.{{.Name}}](r.Context(), storage.Backend, "{{.Name}}", uid, func(current *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+			if ifMatch != "" {
+				etag, err := conditionalmiddleware.GenerateETag(current)
+				if err != nil {
+					return false, err
+				}
+				if !conditionalmiddleware.MatchesIfMatch(ifMatch, etag) {
+					return false, &{{.Name}}MutationError{status: http.StatusPreconditionFailed, err: fmt.Errorf("precondition failed"), etag: etag}
+				}
+			}
+			return apply(current)
+		})
+	}
+	{{end}}
+	current, err := storage.Load{{.StorageName}}(r.Context(), uid)
+	if err != nil {
+		return nil, &{{.Name}}MutationError{status: http.StatusNotFound, err: err}
+	}
+	remove, err := apply(current)
+	if err != nil {
+		return nil, err
+	}
+	if remove {
+		err = storage.Delete{{.StorageName}}(r.Context(), uid)
+	} else {
+		err = storage.Save{{.StorageName}}(r.Context(), current)
+	}
+	return current, err
+}
+
+{{- if .Tags }}{{- if eq (index .Tags "versioning") "enabled" }}
+// persist{{.Name}}SnapshotVersion updates only the server-managed snapshot field,
+// and refuses to overwrite a resource changed since the spec mutation committed.
+func persist{{.Name}}SnapshotVersion(r *http.Request, uid string, committedResource *{{.PackageAlias}}.{{.Name}}, versionID string) (*{{.PackageAlias}}.{{.Name}}, error) {
+	committed, err := json.Marshal(committedResource)
+	if err != nil {
+		return nil, err
+	}
+	return mutate{{.Name}}(r, uid, func(current *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+		actual, err := json.Marshal(current)
+		if err != nil {
+			return false, err
+		}
+		if string(actual) != string(committed) {
+			return false, fmt.Errorf("resource changed before snapshot bookkeeping")
+		}
+		current.Status.Version = versionID
+		return false, nil
+	}, true)
+}
+{{- end }}{{- end }}

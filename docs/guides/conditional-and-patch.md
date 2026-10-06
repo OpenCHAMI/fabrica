@@ -99,6 +99,49 @@ curl -H "If-Modified-Since: Mon, 01 Jan 2024 00:00:00 GMT" \
 - `200 OK` - Resource modified, return new version
 - `304 Not Modified` - Resource not modified, save bandwidth
 
+### Atomic generated mutations
+
+When conditional requests are enabled, generated spec and status PUT/PATCH
+handlers and resource DELETE handlers evaluate `If-Match` inside an atomic
+storage mutation. A stale validator returns `412 Precondition Failed` without
+saving, deleting, or publishing a mutation event. An absent header preserves
+unconditional behavior; wildcard and comma-separated strong validators are
+supported. Concurrent deletion can return `404 Not Found` when the resource no
+longer exists.
+
+File storage serializes backend instances sharing a canonical directory within
+one server process. Use Ent storage for multiple server processes sharing a
+database. Ent commits resource fields, labels, and annotations together, and
+retries conflicting transactions against freshly loaded state. Its internal
+`resource_version` guard advances on unconditional saves too.
+
+Configure the Ent transaction attempt limit in `.fabrica.yaml`, then regenerate:
+
+```yaml
+features:
+  storage:
+    enabled: true
+    type: ent
+    mutation_max_attempts: 8
+```
+
+The limit includes the initial attempt. Omitted or zero values default to 8;
+1 disables retries, and negative values are rejected. Backoff and retryable-error
+classification are unchanged. This setting does not affect file or custom storage.
+
+
+Custom storage backends can implement the optional
+`storage.AtomicMutationBackend` interface without changing `StorageBackend`.
+Conditional mutations against a backend without this capability return
+`501 Not Implemented`. Unconditional requests retain the existing custom storage
+path. Mutation callbacks, including validation, must tolerate retries, avoid
+external side effects, and must not re-enter the file backend.
+
+Snapshot deletion checks and removes the snapshot under the snapshot writers'
+guard. Snapshot bookkeeping updates `status.version` only if the resource still
+matches the successful spec mutation; it skips the bookkeeping with a warning
+if a newer mutation intervened.
+
 ### ETag Middleware
 
 Automatically add ETags to responses:

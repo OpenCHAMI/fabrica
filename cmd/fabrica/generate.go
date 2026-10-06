@@ -915,8 +915,9 @@ type EventsConfig struct {
 }
 
 type StorageConfig struct {
-	Type     string `+"`yaml:\"type\"`"+`
-	DBDriver string `+"`yaml:\"db_driver\"`"+`
+	Type                string `+"`yaml:\"type\"`"+`
+	DBDriver            string `+"`yaml:\"db_driver\"`"+`
+	MutationMaxAttempts int `+"`yaml:\"mutation_max_attempts\"`"+`
 }
 
 type MetricsConfig struct {
@@ -988,6 +989,10 @@ func main() {
 		if config.Features.Storage.DBDriver != "" {
 			gen.SetDBDriver(config.Features.Storage.DBDriver)
 			gen.Config.DBDriver = config.Features.Storage.DBDriver
+		}
+
+		if config.Features.Storage.MutationMaxAttempts != 0 {
+			gen.Config.MutationMaxAttempts = config.Features.Storage.MutationMaxAttempts
 		}
 
 		// Wire TokenSmith-first security features into generator config.

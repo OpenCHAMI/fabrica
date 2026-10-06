@@ -142,6 +142,9 @@ type GeneratorConfig struct {
 	// Storage configuration
 	StorageType string // file, ent, custom
 	DBDriver    string // postgres, mysql, sqlite
+	// MutationMaxAttempts limits Ent transactions, including the initial attempt.
+	// Zero uses the default of 8; negative limits are invalid.
+	MutationMaxAttempts int
 
 	// TokenSmith-first Security generation toggles.
 	//
@@ -193,6 +196,7 @@ func NewGenerator(outputDir, packageName, modulePath string) *Generator {
 			EventBusType:         "memory",
 			StorageType:          "file",
 			DBDriver:             "sqlite",
+			MutationMaxAttempts:  constants.DefaultMutationMaxAttempts,
 			WithAuth:             false,
 			SecurityAuthNEnabled: false,
 		},
@@ -529,6 +533,7 @@ func (g *Generator) globalTemplateData(templateName string) map[string]interface
 		"ServiceName":          g.extractServiceName(),
 		"StorageType":          g.StorageType,
 		"DBDriver":             g.DBDriver,
+		"MutationMaxAttempts":  g.mutationMaxAttempts(),
 		"Config":               g.Config,
 		"WithAuth":             g.Config.WithAuth,
 	})
@@ -1023,8 +1028,19 @@ func (g *Generator) GenerateAll() error {
 	return nil
 }
 
+// mutationMaxAttempts normalizes legacy and zero-valued generator configuration.
+func (g *Generator) mutationMaxAttempts() int {
+	if g.Config.MutationMaxAttempts == 0 {
+		return constants.DefaultMutationMaxAttempts
+	}
+	return g.Config.MutationMaxAttempts
+}
+
 // GenerateStorage generates storage operations for server
 func (g *Generator) GenerateStorage() error {
+	if g.StorageType == "ent" && g.Config.MutationMaxAttempts < 0 {
+		return fmt.Errorf("storage.mutation_max_attempts must be non-negative")
+	}
 	if g.StorageType == "custom" {
 		fmt.Printf("📁 Skipping storage layer generation (custom storage)\n")
 		return nil

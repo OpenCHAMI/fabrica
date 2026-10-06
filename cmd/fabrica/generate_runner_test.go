@@ -162,3 +162,16 @@ func TestGenerateRunnerCode_OpenAPIOnlyRegeneratesModelDependency(t *testing.T) 
 		t.Fatalf("openapi-only runner should not generate routes or storage")
 	}
 }
+
+func TestGenerateRunnerCode_PassesMutationMaxAttempts(t *testing.T) {
+	runnerCode := generateRunnerCode("/tmp/project", "example.com/test", "cmd/server", "main", true, false, false, false, false, "ent")
+	for _, want := range []string{
+		"MutationMaxAttempts int `yaml:\"mutation_max_attempts\"`",
+		"if config.Features.Storage.MutationMaxAttempts != 0",
+		"gen.Config.MutationMaxAttempts = config.Features.Storage.MutationMaxAttempts",
+	} {
+		if !strings.Contains(runnerCode, want) {
+			t.Fatalf("runner missing mutation setting bridge %q", want)
+		}
+	}
+}
