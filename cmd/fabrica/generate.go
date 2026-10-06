@@ -970,6 +970,12 @@ func main() {
 		log.Fatalf("Failed to register resources: %%v", err)
 	}
 
+	// Attach +fabrica: annotations (storage=dedicated, field constraints) parsed
+	// from resource source files; reflection-based registration cannot see them.
+	if err := callOptionalGenerator(gen, "LoadResourceAnnotations"); err != nil {
+		log.Fatalf("Failed to load resource annotations: %%v", err)
+	}
+
 %s}
 
 // Bridge the shared typed feature model without requiring newer symbols when
