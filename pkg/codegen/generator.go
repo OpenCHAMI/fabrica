@@ -384,11 +384,60 @@ func normalizeSpecFields(fields []SpecField) []SpecField {
 	return normalized
 }
 
+// entAcronyms mirrors the initialisms Ent registers in its default ruleset
+// (entc/gen/func.go ruleset()). Ent uppercases a word only when its all-caps
+// form is one of these; otherwise it merely capitalizes the first rune.
+var entAcronyms = map[string]struct{}{
+	"ACL": {}, "API": {}, "ASCII": {}, "AWS": {}, "CPU": {}, "CSS": {}, "DNS": {},
+	"EOF": {}, "GB": {}, "GUID": {}, "HCL": {}, "HTML": {}, "HTTP": {}, "HTTPS": {},
+	"ID": {}, "IP": {}, "JSON": {}, "KB": {}, "LHS": {}, "MAC": {}, "MB": {},
+	"QPS": {}, "RAM": {}, "RHS": {}, "RPC": {}, "SLA": {}, "SMTP": {}, "SQL": {},
+	"SSH": {}, "SSO": {}, "TCP": {}, "TLS": {}, "TTL": {}, "UDP": {}, "UI": {},
+	"UID": {}, "URI": {}, "URL": {}, "UTF8": {}, "UUID": {}, "VM": {}, "XML": {},
+	"XMPP": {}, "XSRF": {}, "XSS": {},
+}
+
+// entGoName replicates Ent's pascal() applied to a schema field name (the
+// column, which Fabrica sets to the field's JSONName). Ent derives its Go
+// method and accessor names from the column, e.g. column "apiKey" yields
+// method "SetApiKey" and field "ApiKey" (Ent does NOT apply Go initialisms
+// unless the whole word is a registered acronym). This must match Ent exactly
+// so generated adapters reference the correct Ent identifiers.
+func entGoName(jsonName string) string {
+	if jsonName == "" {
+		return ""
+	}
+	words := strings.FieldsFunc(jsonName, func(r rune) bool {
+		return r == '_' || r == '-' || r == ' '
+	})
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		if _, ok := entAcronyms[strings.ToUpper(w)]; ok {
+			words[i] = strings.ToUpper(w)
+		} else {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, "")
+}
+
+// entFieldName returns the Ent-generated Go accessor/method base name for a
+// field (e.g. "ApiKey" for JSONName "apiKey"), used by storage adapters.
+func entFieldName(field SpecField) string {
+	name := field.JSONName
+	if name == "" {
+		name = field.Name
+	}
+	return entGoName(name)
+}
+
 func entSetter(field SpecField) string {
 	if field.EntType == "time_ptr" {
-		return "SetNillable" + field.Name
+		return "SetNillable" + entFieldName(field)
 	}
-	return "Set" + field.Name
+	return "Set" + entFieldName(field)
 }
 
 func entSetExpr(field SpecField, expr string) string {
@@ -682,6 +731,87 @@ func (g *Generator) SetResourceAnnotations(resourceName string, annots *annotati
 			return
 		}
 	}
+}
+
+// LoadResourceAnnotations parses +fabrica: annotations from each registered
+// resource's source package and attaches them.
+//
+// Resources are registered via reflection (RegisterResource), which cannot see
+// Go comments, so without this step every resource's Annotations stays nil and
+// GenerateEntSchemas skips the dedicated-table path — silently dropping
+// storage=dedicated as well as field-level unique/immutable/index/hashing
+// constraints. Callers (the generate runner) invoke this after
+// RegisterAllResources so annotations drive schema, adapter, and hook emission.
+//
+// Resources whose source files cannot be located are left untouched so
+// reflection-only registrations (e.g. in unit tests) keep working.
+func (g *Generator) LoadResourceAnnotations() error {
+	for i := range g.Resources {
+		typesFile := g.resourceTypesFile(g.Resources[i])
+		if typesFile == "" {
+			continue
+		}
+
+		annots, err := g.ParseResourceAnnotations(typesFile, g.Resources[i].Name)
+		if err != nil {
+			return fmt.Errorf("load annotations for %s: %w", g.Resources[i].Name, err)
+		}
+		if annots == nil || !resourceHasAnnotations(annots) {
+			continue
+		}
+
+		g.Resources[i].Annotations = annots
+	}
+
+	return nil
+}
+
+// resourceHasAnnotations reports whether parsed annotations carry anything that
+// affects generation. Un-annotated resources return false so their Annotations
+// field stays nil (preserving the generic-storage code path exactly).
+func resourceHasAnnotations(annots *annotations.ResourceAnnotations) bool {
+	return annots.IsResource ||
+		annots.StorageMode == annotations.StorageModeDedicated ||
+		len(annots.Fields) > 0 ||
+		len(annots.Indexes) > 0
+}
+
+// resourceTypesFile locates a *_types.go file in the resource's package
+// directory, resolved relative to the current working directory (the project
+// root during generation). It returns "" when the directory or a suitable file
+// cannot be found. Any file in the package suffices: ParseResourceAnnotations
+// searches the whole package for both <Name> and <Name>Spec.
+func (g *Generator) resourceTypesFile(resource ResourceMetadata) string {
+	if g.ModulePath == "" || resource.Package == "" {
+		return ""
+	}
+
+	rel := strings.TrimPrefix(resource.Package, g.ModulePath)
+	if rel == resource.Package {
+		// Package is not under the module path; cannot map to a directory.
+		return ""
+	}
+	dir := filepath.FromSlash(strings.TrimPrefix(rel, "/"))
+
+	// Prefer the conventional <name>_types.go emitted by 'fabrica add resource'.
+	candidate := filepath.Join(dir, strings.ToLower(resource.Name)+"_types.go")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, "_types.go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		return filepath.Join(dir, name)
+	}
+
+	return ""
 }
 
 // extractSpecFields uses reflection to extract field information from a Spec struct
@@ -1226,7 +1356,9 @@ func (g *Generator) LoadTemplates() error {
 
 	g.Templates = make(map[string]*template.Template)
 	for name, filename := range templateFiles {
-		templatePath := filepath.Join("templates", filename)
+		// embed.FS always uses forward slashes; filepath.Join would produce
+		// backslashes on Windows and fail the ReadFile lookup.
+		templatePath := "templates/" + filename
 
 		// Read template content from embedded filesystem
 		content, err := embeddedTemplates.ReadFile(templatePath)
@@ -2271,6 +2403,7 @@ var templateFuncs = template.FuncMap{
 		return strings.ToUpper(fmt.Sprint(indexType))
 	},
 	"entSetter":                entSetter,
+	"entFieldName":             entFieldName,
 	"entSetExpr":               entSetExpr,
 	"resourceSetExpr":          resourceSetExpr,
 	"optionalSpecCondition":    optionalSpecCondition,

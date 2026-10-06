@@ -13,7 +13,7 @@ import (
 
 	"{{.ModulePath}}/internal/storage/ent"
 	ent{{toLower .Name}} "{{.ModulePath}}/internal/storage/ent/{{toLower .Name}}"
-	{{if .Config.VersioningEnabled}}"github.com/openchami/fabrica/pkg/fabrica"{{else}}"github.com/openchami/fabrica/pkg/resource"{{end}}
+	{{if .IsVersioned}}"github.com/openchami/fabrica/pkg/fabrica"{{else}}"github.com/openchami/fabrica/pkg/resource"{{end}}
 	"{{.Package}}"
 )
 
@@ -27,11 +27,7 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 		SetKind(resource.Kind).
 		SetCreatedAt(resource.Metadata.CreatedAt).
 		SetUpdatedAt(resource.Metadata.UpdatedAt).
-		{{if $.Config.VersioningEnabled}}
-		SetResourceVersion(resource.Metadata.ResourceVersion)
-		{{else}}
 		SetResourceVersion("1")
-		{{end}}
 
 	{{if .Metadata.Namespace}}
 	if resource.Metadata.Namespace != "" {
@@ -46,10 +42,10 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 	{{if $fieldAnnots}}
 	{{if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
 	// {{.Name}} field will be hashed by Ent hook
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	create = create.Set{{entFieldName .}}(resource.Spec.{{.Name}})
 	{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "encrypted")}}
 	// {{.Name}} field - encryption handled by Ent hook (TODO: Phase 5+)
-	create = create.Set{{.Name}}(resource.Spec.{{.Name}})
+	create = create.Set{{entFieldName .}}(resource.Spec.{{.Name}})
 	{{else}}
 	{{if .Required}}
 	create = create.{{entSetter .}}({{entSetExpr . $specExpr}})
@@ -78,7 +74,7 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 // This adapter maps dedicated table fields back to the resource envelope.
 func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAlias}}.{{.Name}}, error) {
 	resource := &{{.PackageAlias}}.{{.Name}}{
-		{{if $.Config.VersioningEnabled}}
+		{{if $.IsVersioned}}
 		APIVersion: entity.APIVersion,
 		Kind:       entity.Kind,
 		Metadata: fabrica.Metadata{
@@ -86,7 +82,6 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 			UID:             entity.UID,
 			CreatedAt:       entity.CreatedAt,
 			UpdatedAt:       entity.UpdatedAt,
-			ResourceVersion: entity.ResourceVersion,
 			Labels:          make(map[string]string),
 			Annotations:     make(map[string]string),
 		},
@@ -120,10 +115,10 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 		{{if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
 		// {{.Name}}: Hashed field - cannot retrieve plaintext
 		// Users must compare via bcrypt.CompareHashAndPassword
-		{{.Name}}: entity.{{.Name}},
+		{{.Name}}: entity.{{entFieldName .}},
 		{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "encrypted")}}
 		// {{.Name}}: Encrypted field - decryption handled here (TODO: Phase 5+)
-		{{.Name}}: entity.{{.Name}},
+		{{.Name}}: entity.{{entFieldName .}},
 		{{else}}
 		{{.Name}}: {{resourceSetExpr . (printf "entity.%s" .Name)}},
 		{{end}}
@@ -141,11 +136,7 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}UpdateOne, resource *{{.PackageAlias}}.{{.Name}}) error {
 	update = update.
 		SetUpdatedAt(resource.Metadata.UpdatedAt).
-		{{if $.Config.VersioningEnabled}}
-		SetResourceVersion(resource.Metadata.ResourceVersion)
-		{{else}}
 		SetResourceVersion("1")
-		{{end}}
 
 	// Update mutable Spec fields only
 	{{range .SpecFields}}
@@ -157,13 +148,13 @@ func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}Updat
 	{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
 	// {{.Name}} field - hash update will be handled by Ent hook
 	if resource.Spec.{{.Name}} != "" {
-		update = update.Set{{.Name}}(resource.Spec.{{.Name}})
+		update = update.Set{{entFieldName .}}(resource.Spec.{{.Name}})
 	}
 	{{else if eq .EntType "time_ptr"}}
 	if resource.Spec.{{.Name}} == nil {
-		update = update.Clear{{.Name}}()
+		update = update.Clear{{entFieldName .}}()
 	} else {
-		update = update.Set{{.Name}}(*resource.Spec.{{.Name}})
+		update = update.Set{{entFieldName .}}(*resource.Spec.{{.Name}})
 	}
 	{{else}}
 	update = update.{{entSetter .}}({{entSetExpr . $specExpr}})
@@ -172,9 +163,9 @@ func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}Updat
 	// {{.Name}} (no immutability constraint)
 	{{if eq .EntType "time_ptr"}}
 	if resource.Spec.{{.Name}} == nil {
-		update = update.Clear{{.Name}}()
+		update = update.Clear{{entFieldName .}}()
 	} else {
-		update = update.Set{{.Name}}(*resource.Spec.{{.Name}})
+		update = update.Set{{entFieldName .}}(*resource.Spec.{{.Name}})
 	}
 	{{else}}
 	update = update.{{entSetter .}}({{entSetExpr . $specExpr}})
