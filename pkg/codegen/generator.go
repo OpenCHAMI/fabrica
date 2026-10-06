@@ -1,4 +1,4 @@
-// Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+// Copyright Â© 2025 OpenCHAMI a Series of LF Projects, LLC
 //
 // SPDX-License-Identifier: MIT
 
@@ -398,11 +398,60 @@ func normalizeSpecFields(fields []SpecField) []SpecField {
 	return normalized
 }
 
+// entAcronyms mirrors the initialisms Ent registers in its default ruleset
+// (entc/gen/func.go ruleset()). Ent uppercases a word only when its all-caps
+// form is one of these; otherwise it merely capitalizes the first rune.
+var entAcronyms = map[string]struct{}{
+	"ACL": {}, "API": {}, "ASCII": {}, "AWS": {}, "CPU": {}, "CSS": {}, "DNS": {},
+	"EOF": {}, "GB": {}, "GUID": {}, "HCL": {}, "HTML": {}, "HTTP": {}, "HTTPS": {},
+	"ID": {}, "IP": {}, "JSON": {}, "KB": {}, "LHS": {}, "MAC": {}, "MB": {},
+	"QPS": {}, "RAM": {}, "RHS": {}, "RPC": {}, "SLA": {}, "SMTP": {}, "SQL": {},
+	"SSH": {}, "SSO": {}, "TCP": {}, "TLS": {}, "TTL": {}, "UDP": {}, "UI": {},
+	"UID": {}, "URI": {}, "URL": {}, "UTF8": {}, "UUID": {}, "VM": {}, "XML": {},
+	"XMPP": {}, "XSRF": {}, "XSS": {},
+}
+
+// entGoName replicates Ent's pascal() applied to a schema field name (the
+// column, which Fabrica sets to the field's JSONName). Ent derives its Go
+// method and accessor names from the column, e.g. column "apiKey" yields
+// method "SetApiKey" and field "ApiKey" (Ent does NOT apply Go initialisms
+// unless the whole word is a registered acronym). This must match Ent exactly
+// so generated adapters reference the correct Ent identifiers.
+func entGoName(jsonName string) string {
+	if jsonName == "" {
+		return ""
+	}
+	words := strings.FieldsFunc(jsonName, func(r rune) bool {
+		return r == '_' || r == '-' || r == ' '
+	})
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		if _, ok := entAcronyms[strings.ToUpper(w)]; ok {
+			words[i] = strings.ToUpper(w)
+		} else {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, "")
+}
+
+// entFieldName returns the Ent-generated Go accessor/method base name for a
+// field (e.g. "ApiKey" for JSONName "apiKey"), used by storage adapters.
+func entFieldName(field SpecField) string {
+	name := field.JSONName
+	if name == "" {
+		name = field.Name
+	}
+	return entGoName(name)
+}
+
 func entSetter(field SpecField) string {
 	if field.EntType == "time_ptr" {
-		return "SetNillable" + field.Name
+		return "SetNillable" + entFieldName(field)
 	}
-	return "Set" + field.Name
+	return "Set" + entFieldName(field)
 }
 
 func entSetExpr(field SpecField, expr string) string {
@@ -730,6 +779,87 @@ func (g *Generator) SetResourceAnnotations(resourceName string, annots *annotati
 	}
 }
 
+// LoadResourceAnnotations parses +fabrica: annotations from each registered
+// resource's source package and attaches them.
+//
+// Resources are registered via reflection (RegisterResource), which cannot see
+// Go comments, so without this step every resource's Annotations stays nil and
+// GenerateEntSchemas skips the dedicated-table path â€” silently dropping
+// storage=dedicated as well as field-level unique/immutable/index/hashing
+// constraints. Callers (the generate runner) invoke this after
+// RegisterAllResources so annotations drive schema, adapter, and hook emission.
+//
+// Resources whose source files cannot be located are left untouched so
+// reflection-only registrations (e.g. in unit tests) keep working.
+func (g *Generator) LoadResourceAnnotations() error {
+	for i := range g.Resources {
+		typesFile := g.resourceTypesFile(g.Resources[i])
+		if typesFile == "" {
+			continue
+		}
+
+		annots, err := g.ParseResourceAnnotations(typesFile, g.Resources[i].Name)
+		if err != nil {
+			return fmt.Errorf("load annotations for %s: %w", g.Resources[i].Name, err)
+		}
+		if annots == nil || !resourceHasAnnotations(annots) {
+			continue
+		}
+
+		g.Resources[i].Annotations = annots
+	}
+
+	return nil
+}
+
+// resourceHasAnnotations reports whether parsed annotations carry anything that
+// affects generation. Un-annotated resources return false so their Annotations
+// field stays nil (preserving the generic-storage code path exactly).
+func resourceHasAnnotations(annots *annotations.ResourceAnnotations) bool {
+	return annots.IsResource ||
+		annots.StorageMode == annotations.StorageModeDedicated ||
+		len(annots.Fields) > 0 ||
+		len(annots.Indexes) > 0
+}
+
+// resourceTypesFile locates a *_types.go file in the resource's package
+// directory, resolved relative to the current working directory (the project
+// root during generation). It returns "" when the directory or a suitable file
+// cannot be found. Any file in the package suffices: ParseResourceAnnotations
+// searches the whole package for both <Name> and <Name>Spec.
+func (g *Generator) resourceTypesFile(resource ResourceMetadata) string {
+	if g.ModulePath == "" || resource.Package == "" {
+		return ""
+	}
+
+	rel := strings.TrimPrefix(resource.Package, g.ModulePath)
+	if rel == resource.Package {
+		// Package is not under the module path; cannot map to a directory.
+		return ""
+	}
+	dir := filepath.FromSlash(strings.TrimPrefix(rel, "/"))
+
+	// Prefer the conventional <name>_types.go emitted by 'fabrica add resource'.
+	candidate := filepath.Join(dir, strings.ToLower(resource.Name)+"_types.go")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, "_types.go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		return filepath.Join(dir, name)
+	}
+
+	return ""
+}
+
 // extractSpecFields uses reflection to extract field information from a Spec struct
 func extractSpecFields(resourceType reflect.Type) []SpecField {
 	var fields []SpecField
@@ -1042,11 +1172,11 @@ func (g *Generator) GenerateAll() error {
 // GenerateStorage generates storage operations for server
 func (g *Generator) GenerateStorage() error {
 	if g.StorageType == "custom" {
-		fmt.Printf("📁 Skipping storage layer generation (custom storage)\n")
+		fmt.Printf("ðŸ“ Skipping storage layer generation (custom storage)\n")
 		return nil
 	}
 
-	fmt.Printf("📁 Generating storage layer (%s)...\n", g.StorageType)
+	fmt.Printf("ðŸ“ Generating storage layer (%s)...\n", g.StorageType)
 	var buf bytes.Buffer
 
 	// Use appropriate template based on storage type
@@ -1081,7 +1211,7 @@ func (g *Generator) GenerateStorage() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1089,7 +1219,7 @@ func (g *Generator) GenerateStorage() error {
 
 // GenerateClientModels generates models specifically for client package
 func (g *Generator) GenerateClientModels() error {
-	fmt.Printf("📊 Generating client models...\n")
+	fmt.Printf("ðŸ“Š Generating client models...\n")
 	var buf bytes.Buffer
 	data := g.globalTemplateData("client/models.go.tmpl")
 
@@ -1110,7 +1240,7 @@ func (g *Generator) GenerateClientModels() error {
 
 	// Always show client generation output (not just in verbose mode)
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1298,7 +1428,7 @@ func (g *Generator) LoadTemplates() error {
 
 // GenerateHandlers generates REST API handlers for all resources
 func (g *Generator) GenerateHandlers() error {
-	fmt.Printf("🛠️  Generating handlers...\n")
+	fmt.Printf("ðŸ› ï¸  Generating handlers...\n")
 	for _, resource := range g.Resources {
 		var buf bytes.Buffer
 		data := g.templateData(resource, "server/handlers.go.tmpl")
@@ -1319,7 +1449,7 @@ func (g *Generator) GenerateHandlers() error {
 		}
 
 		if written {
-			fmt.Printf("  ✓ Generated %s\n", filename)
+			fmt.Printf("  âœ“ Generated %s\n", filename)
 		}
 	}
 
@@ -1328,7 +1458,7 @@ func (g *Generator) GenerateHandlers() error {
 
 // GenerateMiddleware generates middleware components based on configuration
 func (g *Generator) GenerateMiddleware() error {
-	fmt.Printf("⚙️  Generating middleware...\n")
+	fmt.Printf("âš™ï¸  Generating middleware...\n")
 
 	// Middleware directory
 	middlewareDir := filepath.Join("internal", "middleware")
@@ -1382,11 +1512,11 @@ func (g *Generator) GenerateMetrics() error {
 			if err := os.Remove(metricsFile); err != nil {
 				return fmt.Errorf("failed to remove metrics file: %w", err)
 			}
-			fmt.Printf("  ✓ Removed %s (metrics disabled)\n", metricsFile)
+			fmt.Printf("  âœ“ Removed %s (metrics disabled)\n", metricsFile)
 		}
 
 		// Generate stub metrics_helpers_generated.go that returns nil
-		fmt.Printf("📊 Generating metrics stub (metrics disabled)...\n")
+		fmt.Printf("ðŸ“Š Generating metrics stub (metrics disabled)...\n")
 
 		if err := os.MkdirAll(serverDir, 0755); err != nil {
 			return fmt.Errorf("failed to create server directory: %w", err)
@@ -1408,7 +1538,7 @@ func (g *Generator) GenerateMetrics() error {
 		return nil
 	}
 
-	fmt.Printf("📊 Generating metrics instrumentation...\n")
+	fmt.Printf("ðŸ“Š Generating metrics instrumentation...\n")
 
 	if err := os.MkdirAll(serverDir, 0755); err != nil {
 		return fmt.Errorf("failed to create server directory: %w", err)
@@ -1456,7 +1586,7 @@ func (g *Generator) generateMetricsHelpers(outputDir string, data interface{}) e
 		return fmt.Errorf("failed to write metrics helpers file: %w", err)
 	}
 
-	fmt.Printf("  ✓ Generated %s\n", outputPath)
+	fmt.Printf("  âœ“ Generated %s\n", outputPath)
 	return nil
 }
 
@@ -1480,14 +1610,14 @@ func (g *Generator) generateMiddlewareFile(templateName, filename, outputDir str
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", fullPath)
+		fmt.Printf("  âœ“ Generated %s\n", fullPath)
 	}
 	return nil
 }
 
 // GenerateClient generates API client library
 func (g *Generator) GenerateClient() error {
-	fmt.Printf("🔌 Generating client library...\n")
+	fmt.Printf("ðŸ”Œ Generating client library...\n")
 	var buf bytes.Buffer
 	// Ensure output directory exists
 	if err := os.MkdirAll(g.OutputDir, 0755); err != nil {
@@ -1512,7 +1642,7 @@ func (g *Generator) GenerateClient() error {
 
 	// Always show client generation output (not just in verbose mode)
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1520,7 +1650,7 @@ func (g *Generator) GenerateClient() error {
 
 // GenerateModels generates request/response models
 func (g *Generator) GenerateModels() error {
-	fmt.Printf("📊 Generating models...\n")
+	fmt.Printf("ðŸ“Š Generating models...\n")
 	var buf bytes.Buffer
 
 	data := g.globalTemplateData("server/models.go.tmpl")
@@ -1541,7 +1671,7 @@ func (g *Generator) GenerateModels() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1549,7 +1679,7 @@ func (g *Generator) GenerateModels() error {
 
 // GenerateRoutes generates route registration code
 func (g *Generator) GenerateRoutes() error {
-	fmt.Printf("🛣️  Generating routes...\n")
+	fmt.Printf("ðŸ›£ï¸  Generating routes...\n")
 	var buf bytes.Buffer
 	data := g.globalTemplateData("server/routes.go.tmpl")
 
@@ -1569,7 +1699,7 @@ func (g *Generator) GenerateRoutes() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1581,7 +1711,7 @@ func (g *Generator) GenerateAuthZClassifier() error {
 		return nil
 	}
 
-	fmt.Printf("🔐 Generating AuthZ classifier...\n")
+	fmt.Printf("ðŸ” Generating AuthZ classifier...\n")
 
 	generatedFilename := filepath.Join(g.OutputDir, "authz_classifier_generated.go")
 	if err := g.executeTemplate("authzClassifier", generatedFilename, g.globalTemplateData("server/authz_classifier.go.tmpl")); err != nil {
@@ -1606,7 +1736,7 @@ func (g *Generator) GenerateAuthZStarterFiles() error {
 		return nil
 	}
 
-	fmt.Printf("📜 Generating starter AuthZ policy files...\n")
+	fmt.Printf("ðŸ“œ Generating starter AuthZ policy files...\n")
 
 	authzDir := "authz"
 	if err := os.MkdirAll(authzDir, 0755); err != nil {
@@ -1638,7 +1768,7 @@ func (g *Generator) GenerateAuthZStarterFiles() error {
 
 // GenerateClientCmd generates a Cobra-based CLI client
 func (g *Generator) GenerateClientCmd() error {
-	fmt.Printf("⚡ Generating CLI client...\n")
+	fmt.Printf("âš¡ Generating CLI client...\n")
 	var buf bytes.Buffer
 	data := g.globalTemplateData("client/cmd.go.tmpl")
 	data["PackageName"] = "main" // CLI is always package main
@@ -1666,7 +1796,7 @@ func (g *Generator) GenerateClientCmd() error {
 
 	// Always show client generation output (not just in verbose mode)
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1694,7 +1824,7 @@ func (g *Generator) GenerateServerVersion() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1727,7 +1857,7 @@ func (g *Generator) GenerateClientVersion() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	return nil
@@ -1735,7 +1865,7 @@ func (g *Generator) GenerateClientVersion() error {
 
 // GenerateOpenAPI generates OpenAPI specification code
 func (g *Generator) GenerateOpenAPI() error {
-	fmt.Printf("📋 Generating OpenAPI specification...\n")
+	fmt.Printf("ðŸ“‹ Generating OpenAPI specification...\n")
 	var buf bytes.Buffer
 	data := g.globalTemplateData("server/openapi.go.tmpl")
 
@@ -1755,7 +1885,7 @@ func (g *Generator) GenerateOpenAPI() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", filename)
+		fmt.Printf("  âœ“ Generated %s\n", filename)
 	}
 
 	// Generate the user-editable extensions stub only if it doesn't already exist
@@ -1773,7 +1903,7 @@ func (g *Generator) GenerateOpenAPI() error {
 		if _, err := g.writeGeneratedFile(extStubFilename, extFormatted); err != nil {
 			return fmt.Errorf("failed to write openapi extensions stub: %w", err)
 		}
-		fmt.Printf("  ✓ Generated %s\n", extStubFilename)
+		fmt.Printf("  âœ“ Generated %s\n", extStubFilename)
 	}
 
 	return nil
@@ -1790,7 +1920,7 @@ func (g *Generator) GenerateEntSchemas() error {
 		return nil
 	}
 
-	fmt.Printf("🗄️  Generating Ent schemas...\n")
+	fmt.Printf("ðŸ—„ï¸  Generating Ent schemas...\n")
 
 	schemaDir := filepath.Join("internal", "storage", "ent", "schema")
 	if err := os.MkdirAll(schemaDir, 0755); err != nil {
@@ -1837,7 +1967,7 @@ func (g *Generator) GenerateEntSchemas() error {
 			return fmt.Errorf("generate dedicated schema for %s: %w", resource.Name, err)
 		}
 
-		fmt.Printf("  ✓ Generated dedicated schema for %s\n", resource.Name)
+		fmt.Printf("  âœ“ Generated dedicated schema for %s\n", resource.Name)
 	}
 
 	return nil
@@ -1933,7 +2063,7 @@ func (g *Generator) GenerateEntAdapter() error {
 		return nil
 	}
 
-	fmt.Printf("🔗 Generating Ent adapters...\n")
+	fmt.Printf("ðŸ”— Generating Ent adapters...\n")
 
 	storageDir := filepath.Join("internal", "storage")
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
@@ -1959,7 +2089,7 @@ func (g *Generator) GenerateEntAdapter() error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", adapterPath)
+		fmt.Printf("  âœ“ Generated %s\n", adapterPath)
 	}
 
 	for _, resource := range g.Resources {
@@ -2002,7 +2132,7 @@ func (g *Generator) generateDedicatedAdapter(resource ResourceMetadata) error {
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated dedicated adapter for %s\n", resource.Name)
+		fmt.Printf("  âœ“ Generated dedicated adapter for %s\n", resource.Name)
 	}
 
 	return nil
@@ -2014,7 +2144,7 @@ func (g *Generator) GenerateEntHelpers() error {
 		return nil
 	}
 
-	fmt.Printf("🧰 Generating Ent helpers (queries, transactions)...\n")
+	fmt.Printf("ðŸ§° Generating Ent helpers (queries, transactions)...\n")
 
 	// internal/storage directory
 	storageDir := filepath.Join("internal", "storage")
@@ -2051,7 +2181,7 @@ func (g *Generator) revisioningEnabled() bool {
 
 // GenerateExportCommand generates the server export subcommand
 func (g *Generator) GenerateExportCommand() error {
-	fmt.Printf("📤 Generating export command...\n")
+	fmt.Printf("ðŸ“¤ Generating export command...\n")
 
 	outputPath := filepath.Join(g.OutputDir, "export.go")
 	data := g.globalTemplateData("server/export.go.tmpl")
@@ -2060,13 +2190,13 @@ func (g *Generator) GenerateExportCommand() error {
 		return fmt.Errorf("failed to generate export command: %w", err)
 	}
 
-	fmt.Printf("  ✓ Generated %s\n", outputPath)
+	fmt.Printf("  âœ“ Generated %s\n", outputPath)
 	return nil
 }
 
 // GenerateImportCommand generates the server import subcommand
 func (g *Generator) GenerateImportCommand() error {
-	fmt.Printf("📥 Generating import command...\n")
+	fmt.Printf("ðŸ“¥ Generating import command...\n")
 
 	outputPath := filepath.Join(g.OutputDir, "import.go")
 	data := g.globalTemplateData("server/import.go.tmpl")
@@ -2075,7 +2205,7 @@ func (g *Generator) GenerateImportCommand() error {
 		return fmt.Errorf("failed to generate import command: %w", err)
 	}
 
-	fmt.Printf("  ✓ Generated %s\n", outputPath)
+	fmt.Printf("  âœ“ Generated %s\n", outputPath)
 	return nil
 }
 
@@ -2116,7 +2246,7 @@ func (g *Generator) executeTemplate(templateName, outputPath string, data interf
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", outputPath)
+		fmt.Printf("  âœ“ Generated %s\n", outputPath)
 	}
 
 	return nil
@@ -2163,7 +2293,7 @@ func (g *Generator) writeEmittedFile(file EmittedFile, emitterName string) error
 	}
 
 	if written {
-		fmt.Printf("  ✓ Generated %s\n", file.Path)
+		fmt.Printf("  âœ“ Generated %s\n", file.Path)
 	}
 
 	return nil
@@ -2225,7 +2355,7 @@ func (g *Generator) GenerateAPIVersions() error {
 		return nil // nothing to generate
 	}
 
-	fmt.Printf("🔄 Generating API version registry...\n")
+	fmt.Printf("ðŸ”„ Generating API version registry...\n")
 
 	// Build template data for version registry
 	type regGroup struct {
@@ -2260,7 +2390,7 @@ func (g *Generator) GenerateAPIVersions() error {
 		return fmt.Errorf("failed to generate version registry: %w", err)
 	}
 
-	if err := ensureSPDXHeader(outputPath, "Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC", "MIT"); err != nil {
+	if err := ensureSPDXHeader(outputPath, "Copyright Â© 2025 OpenCHAMI a Series of LF Projects, LLC", "MIT"); err != nil {
 		return fmt.Errorf("failed to ensure SPDX header for version registry: %w", err)
 	}
 
@@ -2352,6 +2482,7 @@ var templateFuncs = template.FuncMap{
 		return strings.ToUpper(fmt.Sprint(indexType))
 	},
 	"entSetter":                entSetter,
+	"entFieldName":             entFieldName,
 	"entSetExpr":               entSetExpr,
 	"resourceSetExpr":          resourceSetExpr,
 	"optionalSpecCondition":    optionalSpecCondition,
