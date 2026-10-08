@@ -594,6 +594,90 @@ Each UID is processed one by one as an individual, atomic delete operation. If a
 	},
 }
 
+{{if .RevisioningEnabled}}
+var {{toLower .Name}}RevisionsCmd = &cobra.Command{Use: "revisions", Short: "Manage immutable {{.Name}} revisions"}
+
+var {{toLower .Name}}RevisionSeriesCmd = &cobra.Command{
+	Use: "series [series-name]", Short: "Get revision series state and current ETag", Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		status, etag, err := c.Get{{.Name}}Series(ctx, args[0]); if err != nil { return err }
+		return printOutput(map[string]interface{}{"series": status, "etag": etag})
+	},
+}
+
+var {{toLower .Name}}RevisionEnsureCmd = &cobra.Command{
+	Use: "ensure [series-name] [revision-name]", Short: "Idempotently ensure a named revision", Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var req client.Create{{.Name}}Request
+		if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil { return fmt.Errorf("decode revision request: %w", err) }
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		record, err := c.Ensure{{.Name}}Revision(ctx, args[0], args[1], req); if err != nil { return err }
+		return printOutput(record)
+	},
+}
+
+var {{toLower .Name}}RevisionListCmd = &cobra.Command{
+	Use: "list [series-name]", Short: "List immutable revisions", Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		records, err := c.List{{.Name}}Revisions(ctx, args[0]); if err != nil { return err }
+		return printOutput(records)
+	},
+}
+
+var {{toLower .Name}}RevisionGetCmd = &cobra.Command{
+	Use: "get [series-name] [revision-uid]", Short: "Get an immutable revision by UID", Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		record, err := c.Get{{.Name}}Revision(ctx, args[0], args[1]); if err != nil { return err }
+		return printOutput(record)
+	},
+}
+
+var {{toLower .Name}}RevisionRetireCmd = &cobra.Command{
+	Use: "retire [series-name] [revision-uid]", Short: "Tombstone an unreferenced revision while preserving its identity", Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		record, err := c.Retire{{.Name}}Revision(ctx, args[0], args[1]); if err != nil { return err }
+		return printOutput(record)
+	},
+}
+
+var {{toLower .Name}}RevisionResolveCmd = &cobra.Command{
+	Use: "resolve [series-name]", Short: "Resolve default, latest, UID, or revision name", Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		selector, _ := cmd.Flags().GetString("selector")
+		revisionName, _ := cmd.Flags().GetString("revision-name")
+		uid, _ := cmd.Flags().GetString("uid")
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		resolved, err := c.Resolve{{.Name}}Revision(ctx, client.ResourceReference{Name: args[0], UID: uid, RevisionName: revisionName, Selector: client.ReferenceSelector(selector)}); if err != nil { return err }
+		return printOutput(resolved)
+	},
+}
+
+var {{toLower .Name}}PromoteDefaultCmd = &cobra.Command{
+	Use: "promote-default [series-name] [revision-uid]", Short: "Promote the default alias with an ETag precondition", Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ifMatch, _ := cmd.Flags().GetString("if-match")
+		c, err := getClient(); if err != nil { return err }
+		ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
+		if ifMatch == "" {
+			_, ifMatch, err = c.Get{{.Name}}Series(ctx, args[0])
+			if err != nil { return fmt.Errorf("get current series ETag: %w", err) }
+		}
+		status, err := c.Promote{{.Name}}Default(ctx, args[0], args[1], ifMatch); if err != nil { return err }
+		return printOutput(status)
+	},
+}
+{{end}}
+
 {{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 // Versions subcommands for {{.Name}}
 var {{toLower .Name}}VersionsCmd = &cobra.Command{
@@ -648,6 +732,14 @@ func init() {
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}UpdateCmd)
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}PatchCmd)
 	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}DeleteCmd)
+	{{if .RevisioningEnabled}}
+	{{toLower .Name}}Cmd.AddCommand({{toLower .Name}}RevisionsCmd)
+{{toLower .Name}}RevisionsCmd.AddCommand({{toLower .Name}}RevisionSeriesCmd, {{toLower .Name}}RevisionEnsureCmd, {{toLower .Name}}RevisionListCmd, {{toLower .Name}}RevisionGetCmd, {{toLower .Name}}RevisionRetireCmd, {{toLower .Name}}RevisionResolveCmd, {{toLower .Name}}PromoteDefaultCmd)
+	{{toLower .Name}}RevisionResolveCmd.Flags().String("selector", "", "revision selector: default or latest")
+	{{toLower .Name}}RevisionResolveCmd.Flags().String("revision-name", "", "deterministic revision name")
+	{{toLower .Name}}RevisionResolveCmd.Flags().String("uid", "", "immutable revision UID")
+	{{toLower .Name}}PromoteDefaultCmd.Flags().String("if-match", "", "current series ETag (required)")
+	{{end}}
 
 	{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 	// Versions subcommands

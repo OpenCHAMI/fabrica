@@ -224,21 +224,36 @@ func (c *Client) WithShowToken(show bool) *Client {
 
 // doRequest performs an HTTP request and handles the response
 func (c *Client) doRequest(ctx context.Context, method, endpoint string, body interface{}, result interface{}) error {
+	_, err := c.doRequestWithResponse(ctx, method, endpoint, body, nil, result)
+	return err
+}
+
+func (c *Client) doRequestWithHeaders(ctx context.Context, method, endpoint string, body interface{}, headers http.Header, result interface{}) error {
+	_, err := c.doRequestWithResponse(ctx, method, endpoint, body, headers, result)
+	return err
+}
+
+func (c *Client) doRequestWithResponse(ctx context.Context, method, endpoint string, body interface{}, headers http.Header, result interface{}) (http.Header, error) {
 	var reqBody io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("failed to marshal request body: %w", err)
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		reqBody = bytes.NewBuffer(jsonData)
 	}
 
+	relative, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid request endpoint: %w", err)
+	}
 	u := *c.baseURL
-	u.Path = path.Join(u.Path, endpoint)
+	u.Path = path.Join(u.Path, relative.Path)
+	u.RawQuery = relative.RawQuery
 
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set Content-Type and Accept headers with optional version
@@ -255,6 +270,11 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 	req.Header.Set("Accept", acceptType)
 	if c.bearerToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.bearerToken))
+	}
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
 	}
 
 	// Debug info for request
@@ -287,7 +307,7 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -326,24 +346,24 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
 		var errorResp ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResp); err != nil {
-			return fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBody))
+			return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBody))
 		}
-		return fmt.Errorf("API error (%d): %s", resp.StatusCode, errorResp.Error)
+		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, errorResp.Error)
 	}
 
 	if result != nil {
 		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("failed to unmarshal response: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 		}
 	}
 
-	return nil
+	return resp.Header.Clone(), nil
 }
 
 // doPatchRequest performs a PATCH request with custom content type
@@ -407,6 +427,13 @@ func (c *Client) GetHealth(ctx context.Context) (HealthResponse, error) {
 }
 
 {{range .Resources}}
+{{if .RevisioningEnabled}}
+type {{.Name}}Revision = revision.Record[{{.TypeName}}]
+
+type Promote{{.Name}}DefaultRequest struct {
+	RevisionUID string `json:"revisionUid" yaml:"revisionUid"`
+}
+{{end}}
 {{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 // {{.Name}}VersionSnapshot is a versioned snapshot of {{.Name}} in the client
 type {{.Name}}VersionSnapshot struct {
@@ -588,6 +615,90 @@ func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
 	}
 	return nil
 }
+
+{{if .RevisioningEnabled}}
+func (c *Client) Get{{.Name}}Series(ctx context.Context, name string) (*RevisionSeriesStatus, string, error) {
+	var result RevisionSeriesStatus
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, url.PathEscape(name))
+	headers, err := c.doRequestWithResponse(ctx, http.MethodGet, endpoint, nil, nil, &result)
+	if err != nil {
+		return nil, "", err
+	}
+	return &result, headers.Get("ETag"), nil
+}
+
+func (c *Client) Create{{.Name}}Series(ctx context.Context, req Create{{.Name}}Request, revisionName string) (*{{.Name}}Revision, error) {
+	var result {{.Name}}Revision
+	endpoint := {{printf "%q" .URLPath}}
+	if revisionName != "" {
+		endpoint += "?revisionName=" + url.QueryEscape(revisionName)
+	}
+	if err := c.doRequest(ctx, http.MethodPost, endpoint, req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) Ensure{{.Name}}Revision(ctx context.Context, name, revisionName string, req Create{{.Name}}Request) (*{{.Name}}Revision, error) {
+	var result {{.Name}}Revision
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/%%s" .URLPath)}}, url.PathEscape(name), url.PathEscape(revisionName))
+	if err := c.doRequest(ctx, http.MethodPut, endpoint, req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) List{{.Name}}Revisions(ctx context.Context, name string) ([]{{.Name}}Revision, error) {
+	var result []{{.Name}}Revision
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions" .URLPath)}}, url.PathEscape(name))
+	if err := c.doRequest(ctx, http.MethodGet, endpoint, nil, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Client) Get{{.Name}}Revision(ctx context.Context, name, revisionUID string) (*{{.Name}}Revision, error) {
+	var result {{.Name}}Revision
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/by-uid/%%s" .URLPath)}}, url.PathEscape(name), url.PathEscape(revisionUID))
+	if err := c.doRequest(ctx, http.MethodGet, endpoint, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) Retire{{.Name}}Revision(ctx context.Context, name, revisionUID string) (*{{.Name}}Revision, error) {
+	var result {{.Name}}Revision
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/by-uid/%%s" .URLPath)}}, url.PathEscape(name), url.PathEscape(revisionUID))
+	if err := c.doRequest(ctx, http.MethodDelete, endpoint, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) Resolve{{.Name}}Revision(ctx context.Context, reference ResourceReference) (*RevisionResolveResponse, error) {
+	query := url.Values{}
+	if reference.UID != "" { query.Set("uid", reference.UID) }
+	if reference.RevisionName != "" { query.Set("revisionName", reference.RevisionName) }
+	if reference.Selector != "" { query.Set("selector", string(reference.Selector)) }
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/resolve?%%s" .URLPath)}}, url.PathEscape(reference.Name), query.Encode())
+	var result RevisionResolveResponse
+	if err := c.doRequest(ctx, http.MethodGet, endpoint, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (*RevisionSeriesStatus, error) {
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/default" .URLPath)}}, url.PathEscape(name))
+	headers := make(http.Header)
+	headers.Set("If-Match", ifMatch)
+	var result RevisionSeriesStatus
+	if err := c.doRequestWithHeaders(ctx, http.MethodPut, endpoint, Promote{{.Name}}DefaultRequest{RevisionUID: revisionUID}, headers, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+{{end}}
 
 {{end}}
 

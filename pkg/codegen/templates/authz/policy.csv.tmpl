@@ -6,6 +6,33 @@
 # form role:<name>. Start simple, then tailor these tuples for your deployment.
 
 {{range .Resources}}# {{.Name}}
+{{if .RevisioningEnabled}}p, role:viewer, {{.URLPath}}/{name}, GET
+p, role:viewer, {{.URLPath}}/{name}/revisions, read-revision
+p, role:viewer, {{.URLPath}}/{name}/revisions/by-uid/{revisionUID}, read-revision
+p, role:viewer, {{.URLPath}}/{name}/resolve, resolve-revision
+
+p, role:editor, {{.URLPath}}, create-series
+p, role:editor, {{.URLPath}}/{name}, GET
+p, role:editor, {{.URLPath}}/{name}/revisions, create-revision
+p, role:editor, {{.URLPath}}/{name}/revisions/{revisionName}, create-revision
+p, role:editor, {{.URLPath}}/{name}/revisions, read-revision
+p, role:editor, {{.URLPath}}/{name}/revisions/by-uid/{revisionUID}, read-revision
+p, role:editor, {{.URLPath}}/{name}/resolve, resolve-revision
+p, role:editor, {{.URLPath}}/{name}/status, update-status
+
+p, role:admin, {{.URLPath}}, create-series
+p, role:admin, {{.URLPath}}/{name}, GET
+p, role:admin, {{.URLPath}}/{name}/revisions, create-revision
+p, role:admin, {{.URLPath}}/{name}/revisions/{revisionName}, create-revision
+p, role:admin, {{.URLPath}}/{name}/revisions, read-revision
+p, role:admin, {{.URLPath}}/{name}/revisions/by-uid/{revisionUID}, read-revision
+p, role:admin, {{.URLPath}}/{name}/revisions/by-uid/{revisionUID}, retire-revision
+p, role:admin, {{.URLPath}}/{name}/resolve, resolve-revision
+p, role:admin, {{.URLPath}}/{name}/default, promote-default
+p, role:admin, {{.URLPath}}/{name}/status, update-status
+# Series retirement and deletion are intentionally not routed; revision retirement uses tombstones.
+
+{{else}}
 p, role:viewer, {{.URLPath}}, GET
 p, role:viewer, {{.URLPath}}/{uid}, GET
 
@@ -25,5 +52,7 @@ p, role:admin, {{.URLPath}}/{uid}, PATCH
 p, role:admin, {{.URLPath}}/{uid}, DELETE
 p, role:admin, {{.URLPath}}/{uid}/status, PUT
 p, role:admin, {{.URLPath}}/{uid}/status, PATCH
+
+{{end}}
 
 {{end}}# Add deployment-specific tuples below.

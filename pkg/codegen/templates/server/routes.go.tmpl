@@ -94,6 +94,21 @@ func RegisterGeneratedRoutes(r chi.Router) {
 {{range .Resources}}
 	// {{.Name}} routes
 	r.Route({{printf "%q" .URLPath}}, func(resource chi.Router) {
+		{{if .RevisioningEnabled}}
+		resource.Post("/", Create{{.Name}}Series)
+		resource.Route("/{name}", func(series chi.Router) {
+			series.Get("/", Get{{.Name}}Series)
+			series.Post("/revisions", Create{{.Name}}Revision)
+			series.Get("/revisions", List{{.Name}}Revisions)
+			series.Put("/revisions/{revisionName}", Ensure{{.Name}}Revision)
+			series.Get("/revisions/by-uid/{revisionUID}", Get{{.Name}}Revision)
+			series.Delete("/revisions/by-uid/{revisionUID}", Retire{{.Name}}Revision)
+			series.Get("/resolve", Resolve{{.Name}}Revision)
+			series.Put("/default", Promote{{.Name}}Default)
+			series.Put("/status", Update{{.Name}}SeriesStatus)
+			series.Patch("/status", Patch{{.Name}}SeriesStatus)
+		})
+		{{else}}
 		resource.Get("/", Get{{.Name}}s)
 		resource.Post("/", Create{{.Name}})
 		resource.Route("/{uid}", func(item chi.Router) {
@@ -117,6 +132,7 @@ func RegisterGeneratedRoutes(r chi.Router) {
 			})
 			{{- end }}{{- end }}
 		})
+		{{end}}
 	})
 {{end}}
 }
