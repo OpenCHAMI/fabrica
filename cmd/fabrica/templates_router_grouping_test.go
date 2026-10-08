@@ -28,7 +28,7 @@ func TestTemplate_RouterGrouping_PublicAndProtected(t *testing.T) {
 	if strings.Contains(got, "r.Group(func(protected chi.Router)") {
 		t.Fatalf("routes template must NOT use nested r.Group() - causes middleware shadowing bug")
 	}
-	if !strings.Contains(got, "r.Route(\"{{.URLPath}}\"") {
+	if !strings.Contains(got, "r.Route({{printf \"%q\" .URLPath}}") {
 		t.Fatalf("resource routes should be mounted using r.Route (parameter router, not nested group)")
 	}
 
@@ -42,6 +42,9 @@ func TestTemplate_MainRouterHasPublicProtectedGroups(t *testing.T) {
 	got := mustReadFile(t, "pkg/codegen/templates/init/main.go.tmpl")
 	if !strings.Contains(got, "public.Get(\"/health\"") {
 		t.Fatalf("main template should register /health on the public group")
+	}
+	if !strings.Contains(got, "RegisterGeneratedPublicRoutes(public)") {
+		t.Fatalf("main template should register generated service routes on the public group")
 	}
 	if !strings.Contains(got, "public.Get(\"/openapi.json\"") {
 		t.Fatalf("main template should register /openapi.json on the public group")

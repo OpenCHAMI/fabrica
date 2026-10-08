@@ -53,6 +53,9 @@ import (
 	"github.com/openchami/fabrica/pkg/resource"
 	"github.com/openchami/fabrica/pkg/validation"
 	"github.com/openchami/fabrica/pkg/versioning"
+	{{if .ConditionalEnabled -}}
+	conditionalmiddleware "{{.ModulePath}}/internal/middleware"
+	{{end -}}
 	{{range .UniqueImports -}}
 	{{.Alias}} "{{.Path}}"
 	{{end}}
@@ -69,6 +72,17 @@ func Get{{.Name}}s(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to load {{.PluralName}}: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	etag, err := conditionalmiddleware.GenerateETag({{camelCase .PluralName}})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+		return
+	}
+	conditionalmiddleware.SetETag(w, etag)
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
 	respondJSON(w, http.StatusOK, {{camelCase .PluralName}})
 }
 
@@ -93,6 +107,17 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+		return
+	}
+	conditionalmiddleware.SetETag(w, etag)
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
 	respondJSON(w, http.StatusOK, {{camelCase .Name}})
 }
 
@@ -237,6 +262,18 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	if r.Header.Get("If-Match") != "" {
+		etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+			return
+		}
+		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
+			return
+		}
+	}
+	{{end}}
 
 	var req Update{{.Name}}Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -345,6 +382,18 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	if r.Header.Get("If-Match") != "" {
+		etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+			return
+		}
+		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
+			return
+		}
+	}
+	{{end}}
 
 	// Read patch document
 	patchData, err := io.ReadAll(r.Body)
@@ -451,6 +500,18 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	if r.Header.Get("If-Match") != "" {
+		etag, err := conditionalmiddleware.GenerateETag(res)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+			return
+		}
+		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
+			return
+		}
+	}
+	{{end}}
 
 	var statusUpdate {{.PackageAlias}}.{{.Name}}Status
 	if err := json.NewDecoder(r.Body).Decode(&statusUpdate); err != nil {
@@ -519,6 +580,18 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	if r.Header.Get("If-Match") != "" {
+		etag, err := conditionalmiddleware.GenerateETag(res)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+			return
+		}
+		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
+			return
+		}
+	}
+	{{end}}
 
 	patchData, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -608,6 +681,17 @@ func List{{.Name}}Versions(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to list versions: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	etag, err := conditionalmiddleware.GenerateETag(versions)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+		return
+	}
+	conditionalmiddleware.SetETag(w, etag)
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
 	respondJSON(w, http.StatusOK, versions)
 }
 
@@ -625,6 +709,17 @@ func Get{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("version not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	etag, err := conditionalmiddleware.GenerateETag(version)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+		return
+	}
+	conditionalmiddleware.SetETag(w, etag)
+	if !conditionalmiddleware.CheckIfNoneMatch(w, r, etag) {
+		return
+	}
+	{{end}}
 	respondJSON(w, http.StatusOK, version)
 }
 
@@ -636,6 +731,23 @@ func Delete{{.Name}}Version(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("uid and versionID are required"))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	if r.Header.Get("If-Match") != "" {
+		version, err := storage.Get{{.Name}}Version(r.Context(), uid, versionID)
+		if err != nil {
+			respondError(w, http.StatusNotFound, fmt.Errorf("version not found: %w", err))
+			return
+		}
+		etag, err := conditionalmiddleware.GenerateETag(version)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+			return
+		}
+		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
+			return
+		}
+	}
+	{{end}}
 
 	if err := storage.Delete{{.Name}}Version(r.Context(), uid, versionID); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete version: %w", err))
@@ -659,6 +771,18 @@ func Delete{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, fmt.Errorf("{{.Name}} not found: %w", err))
 		return
 	}
+	{{if .ConditionalEnabled}}
+	if r.Header.Get("If-Match") != "" {
+		etag, err := conditionalmiddleware.GenerateETag({{camelCase .Name}})
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate ETag: %w", err))
+			return
+		}
+		if !conditionalmiddleware.CheckIfMatch(w, r, etag) {
+			return
+		}
+	}
+	{{end}}
 
 	if err := storage.Delete{{.StorageName}}(r.Context(), uid); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete {{.Name}}: %w", err))

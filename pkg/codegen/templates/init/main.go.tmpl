@@ -296,6 +296,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	r.Group(func(public chi.Router) {
 		// Service health (always public)
 		public.Get("/health", healthHandler)
+		// Standardized service status (always public)
+		RegisterGeneratedPublicRoutes(public)
 		public.Get("/openapi.json", ServeOpenAPISpec)
 		public.Get("/docs", ServeSwaggerUI)
 		// Metrics endpoint (available when metrics enabled in .fabrica.yaml)

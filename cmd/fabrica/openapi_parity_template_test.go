@@ -44,7 +44,7 @@ func TestTemplate_OpenAPIIncludesPatchAndStatusSubresourcePaths(t *testing.T) {
 	if !strings.Contains(got, "Patch:      patchOp") {
 		t.Fatalf("resource item path should include PATCH operation")
 	}
-	if !strings.Contains(got, "spec.Paths.Set(\"{{.URLPath}}/{uid}/status\", statusPath)") {
+	if !strings.Contains(got, "spec.Paths.Set({{printf \"%q\" (printf \"%s/{uid}/status\" .URLPath)}}, statusPath)") {
 		t.Fatalf("openapi template should include status subresource path")
 	}
 	if !strings.Contains(got, "update{{.Name}}Status") {

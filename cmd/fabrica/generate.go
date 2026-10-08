@@ -881,7 +881,8 @@ import (
 
 // FabricaConfig structures to load .fabrica.yaml
 type FabricaConfig struct {
-	Features FeaturesConfig `+"`yaml:\"features\"`"+`
+	Features   FeaturesConfig   `+"`yaml:\"features\"`"+`
+	Generation GenerationConfig `+"`yaml:\"generation\"`"+`
 }
 
 type FeaturesConfig struct {
@@ -930,6 +931,10 @@ type AuthNConfig struct {
 	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
+type GenerationConfig struct {
+	OpenAPIServerURL string `+"`yaml:\"openapi_server_url,omitempty\"`"+`
+}
+
 func loadConfig() (*FabricaConfig, error) {
 	data, err := os.ReadFile(".fabrica.yaml")
 	if err != nil {
@@ -971,6 +976,9 @@ func main() {
 		gen.Config.EventsEnabled = config.Features.Events.Enabled
 		gen.Config.EventBusType = config.Features.Events.BusType
 		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
+		if config.Generation.OpenAPIServerURL != "" {
+			gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL
+		}
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {
@@ -1401,6 +1409,11 @@ func generateVersionedRegistrationCode(modulePath string, apisConfig *config.API
 		fmt.Fprintf(&registrations, "\tif err := gen.RegisterResource(&%s.%s{}); err != nil {\n", pkg, resourceStruct)
 		fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to register %s: %%w\", err)\n", resource)
 		registrations.WriteString("\t}\n")
+		if resourcePath, ok := group.ResourcePaths[resource]; ok {
+			fmt.Fprintf(&registrations, "\tif err := gen.SetResourcePath(%s, %s); err != nil {\n", strconv.Quote(resourceStruct), strconv.Quote(resourcePath))
+			fmt.Fprintf(&registrations, "\t\treturn fmt.Errorf(\"failed to configure path for %s: %%w\", err)\n", resource)
+			registrations.WriteString("\t}\n")
+		}
 	}
 
 	return fmt.Sprintf(`%spackage resources

@@ -94,6 +94,8 @@ fabrica version
 ```bash
 go install github.com/openchami/fabrica/cmd/fabrica@latest
 ```
+> [!NOTE]
+> Binaries installed via `go install` are built from source and may report a `dev` version. For the official tagged release version, use the [POSIX installer](#latest-stable-release).
 
 ### Development Version
 
