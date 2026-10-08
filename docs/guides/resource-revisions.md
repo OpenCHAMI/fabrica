@@ -27,9 +27,9 @@ groups:
 Resources not listed under `revisioning`, or configured with `enabled: false`, retain the existing CRUD routes and generated artifacts. `bareNameSelector` currently accepts only `default`.
 
 > [!IMPORTANT]
-> Revision-enabled generation currently requires file storage. Fabrica rejects revision-enabled Ent generation rather than emitting a service with an incomplete storage contract.
+> Revision-enabled generation supports both file and Ent storage. Choose the backend according to the deployment's durability and concurrency requirements; the externally visible series and revision behavior is the same.
 
-Initialize generated services with `storage.InitFileBackend(dataDir)`. Generic `storage.Init` does not provide the data-directory boundary needed by the revision index.
+For file storage, initialize generated services with `storage.InitFileBackend(dataDir)`. Generic `storage.Init` does not provide the data-directory boundary needed by the revision index. For Ent storage, generate and apply the revision-series and revision-record schemas, then initialize the generated Ent client with `storage.SetEntClient`.
 
 ### File-storage concurrency and durability
 
@@ -38,6 +38,10 @@ All `FileStore` instances in one process that resolve to the same canonical revi
 Series state contains the authoritative ordered revision UID list. Revision listing and lookup use that list rather than scanning record files, so a record written immediately before a failed series-state update is an ignored orphan and cannot claim a revision number or become resolvable. Orphan files are retained; this release does not run automatic garbage collection.
 
 Each JSON file is replaced atomically with a temporary-file rename, but a revision mutation spans a record file and a series-state file. The file backend does not provide a filesystem transaction or call `fsync` across both files and their directories. A process crash between the two renames can leave an ignored orphan. Sudden host or storage-device failure can still require restoring the data directory from backup.
+
+### Ent-storage concurrency and durability
+
+The Ent backend stores series state and immutable revision records in database transactions. Unique constraints preserve revision-name, UID, and series-local number bindings. Compare-and-swap updates serialize monotonic allocation and default promotion, and returned ETags are calculated from reloaded committed database state so database timestamp precision is authoritative. Transaction retries handle uniqueness races, serialization/deadlock failures, and SQLite lock contention. Use Ent for multi-process writers or deployments requiring database transaction durability.
 
 ## Series and revisions
 
@@ -123,4 +127,4 @@ Series retirement and deletion are intentionally unsupported in this release bec
 
 ## Backup and restore
 
-Back up and restore the complete file-storage data directory for revision-enabled resources. Copying only resource records omits series pointers, revision names, retirement tombstones, and the authoritative revision order.
+The generated Ent import/export commands fail closed for revision-enabled resource kinds in this release. The mutable-resource format cannot preserve revision UIDs, series-local numbers, aliases, digests, or retirement tombstones, and replaying it would silently create a different history. Back up and restore the backing database for revision-enabled resources. Native revision import/export is deferred until Fabrica has a transactional restore primitive that preserves those identities and makes repeated imports idempotent.

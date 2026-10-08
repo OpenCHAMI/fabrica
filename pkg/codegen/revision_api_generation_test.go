@@ -193,14 +193,42 @@ func TestGenerateRevisionImportExportFailsClosed(t *testing.T) {
 	}
 }
 
-func TestGenerateAllRejectsRevisionEntStorage(t *testing.T) {
+func TestGenerateRevisionEntStorageParity(t *testing.T) {
 	t.Parallel()
 
 	gen := revisionTestGenerator(t.TempDir())
 	gen.SetStorageType("ent")
-	err := gen.GenerateAll()
-	if err == nil || !strings.Contains(err.Error(), "revision-enabled resources require file storage") {
-		t.Fatalf("GenerateAll() error = %v, want unsupported Ent revision error", err)
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatalf("LoadTemplates() error = %v", err)
+	}
+
+	var storage bytes.Buffer
+	if err := gen.Templates["storageEntRevisions"].Execute(&storage, gen.globalTemplateData("storage/ent_revisions.go.tmpl")); err != nil {
+		t.Fatalf("render Ent revision storage: %v", err)
+	}
+	for _, marker := range []string{
+		"CreateBootConfigSeries", "EnsureBootConfigRevisionByName", "ResolveBootConfigRevision",
+		"PromoteBootConfigDefault", "RetireBootConfigRevision", "revisionseries.RevisionCountEQ",
+		"revisionrecord.RevisionNameEQ", "revision.NewUID()",
+	} {
+		if !strings.Contains(storage.String(), marker) {
+			t.Errorf("generated Ent revision storage missing %q", marker)
+		}
+	}
+
+	for templateName, markers := range map[string][]string{
+		"entSchemaRevisionSeries": {"default_revision_uid", "latest_revision_uid", "revision_count"},
+		"entSchemaRevisionRecord": {"revision_name", "number", "uid", "retired_at"},
+	} {
+		var schema bytes.Buffer
+		if err := gen.Templates[templateName].Execute(&schema, gen.globalTemplateData("test")); err != nil {
+			t.Fatalf("render %s: %v", templateName, err)
+		}
+		for _, marker := range markers {
+			if !strings.Contains(schema.String(), marker) {
+				t.Errorf("%s missing %q", templateName, marker)
+			}
+		}
 	}
 }
 
