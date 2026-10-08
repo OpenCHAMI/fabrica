@@ -106,6 +106,9 @@ type ResourceMetadata struct {
 	Tags         map[string]string // Additional metadata
 	SpecFields   []SpecField       // Fields in the Spec struct
 
+	RevisioningEnabled bool
+	BareNameSelector   string
+
 	// Multi-version support
 	Versions        []SchemaVersion // Multiple schema versions
 	DefaultVersion  string          // Default schema version
@@ -669,6 +672,18 @@ func (g *Generator) SetResourceTag(resourceName, key, value string) {
 			return
 		}
 	}
+}
+
+// SetResourceRevisioning enables immutable revision model generation for a resource.
+func (g *Generator) SetResourceRevisioning(resourceName, bareNameSelector string) error {
+	for i := range g.Resources {
+		if g.Resources[i].Name == resourceName {
+			g.Resources[i].RevisioningEnabled = true
+			g.Resources[i].BareNameSelector = bareNameSelector
+			return nil
+		}
+	}
+	return fmt.Errorf("resource %s is not registered", resourceName)
 }
 
 // SetResourcePath overrides the generated HTTP path for a registered resource.

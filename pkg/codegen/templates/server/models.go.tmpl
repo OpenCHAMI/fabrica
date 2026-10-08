@@ -33,12 +33,16 @@
 //
 package {{.PackageName}}
 
+{{$hasRevisioning := false}}
+{{range .Resources}}{{if .RevisioningEnabled}}{{$hasRevisioning = true}}{{end}}{{end}}
+
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/openchami/fabrica/pkg/fabrica"
+{{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
 {{range .UniqueImports}}
 	"{{.Path}}"
 {{end}}
@@ -60,6 +64,24 @@ type ServiceStatusResponse struct {
 	Status  ServiceStatus `json:"status"`
 	Service string        `json:"service"`
 }
+
+{{if $hasRevisioning}}
+// ReferenceSelector identifies a movable revision alias.
+type ReferenceSelector = revision.Selector
+
+const (
+	ReferenceSelectorDefault = revision.SelectorDefault
+	ReferenceSelectorLatest  = revision.SelectorLatest
+	RevisionUIDExample       = revision.UIDExample
+)
+
+type ResourceReference = revision.Reference
+type RevisionMetadata = revision.Metadata
+type RevisionSeriesStatus = revision.SeriesStatus
+type RevisionResolveResponse = revision.ResolveResponse
+type RevisionConflictResponse = revision.ConflictResponse
+type RevisionPreconditionResponse = revision.PreconditionResponse
+{{end}}
 
 {{range .Resources}}
 // {{.Name}}Response represents the response for {{.Name}} operations
