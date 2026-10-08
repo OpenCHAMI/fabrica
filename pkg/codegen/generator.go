@@ -440,6 +440,23 @@ func entSetter(field SpecField) string {
 	return "Set" + entFieldName(field)
 }
 
+// isDedicatedResource reports whether a resource uses a dedicated Ent table
+// (storage=dedicated) rather than the generic JSON resources table.
+func isDedicatedResource(resource ResourceMetadata) bool {
+	return resource.Annotations != nil &&
+		resource.Annotations.StorageMode == annotations.StorageModeDedicated
+}
+
+// anyGenericResource reports whether any resource uses the generic resources table.
+func anyGenericResource(resources []ResourceMetadata) bool {
+	for _, r := range resources {
+		if !isDedicatedResource(r) {
+			return true
+		}
+	}
+	return false
+}
+
 func entSetExpr(field SpecField, expr string) string {
 	switch field.EntType {
 	case "duration":
@@ -2404,6 +2421,8 @@ var templateFuncs = template.FuncMap{
 	},
 	"entSetter":                entSetter,
 	"entFieldName":             entFieldName,
+	"isDedicated":              isDedicatedResource,
+	"anyGenericResource":       anyGenericResource,
 	"entSetExpr":               entSetExpr,
 	"resourceSetExpr":          resourceSetExpr,
 	"optionalSpecCondition":    optionalSpecCondition,

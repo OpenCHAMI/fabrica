@@ -13,13 +13,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
+	{{if anyGenericResource .Resources}}"time"{{end}}
 
 	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	"github.com/openchami/fabrica/pkg/reconcile"
 
 	"{{.ModulePath}}/internal/storage/ent"
-	entresource "{{.ModulePath}}/internal/storage/ent/resource"
+	{{if anyGenericResource .Resources}}entresource "{{.ModulePath}}/internal/storage/ent/resource"{{end}}
+	{{range .Resources}}{{if isDedicated .}}ent{{toLower .Name}} "{{$.ModulePath}}/internal/storage/ent/{{toLower .Name}}"
+	{{end}}{{end}}
 	{{range .UniqueImports}}
 	{{.Alias}} "{{.Path}}"
 	{{end}}
@@ -37,6 +39,105 @@ func SetEntClient(client *ent.Client) {
 }
 
 {{range .Resources}}
+{{if isDedicated .}}
+// LoadAll{{.StorageName}}s loads all {{.Name}} resources from the dedicated {{.Name}} table
+func LoadAll{{.StorageName}}s(ctx context.Context) ([]*{{.PackageAlias}}.{{.Name}}, error) {
+	if entClient == nil {
+		return nil, fmt.Errorf("ent client not initialized")
+	}
+
+	entities, err := entClient.{{.Name}}.Query().All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load {{.Name}} resources: %w", err)
+	}
+
+	resources := make([]*{{.PackageAlias}}.{{.Name}}, 0, len(entities))
+	for _, entity := range entities {
+		resource, err := FromEnt{{.Name}}(ctx, entity)
+		if err != nil {
+			// Log error but continue with other resources
+			continue
+		}
+		resources = append(resources, resource)
+	}
+
+	return resources, nil
+}
+
+// Load{{.StorageName}} loads a single {{.Name}} resource by UID from the dedicated {{.Name}} table
+func Load{{.StorageName}}(ctx context.Context, uid string) (*{{.PackageAlias}}.{{.Name}}, error) {
+	if entClient == nil {
+		return nil, fmt.Errorf("ent client not initialized")
+	}
+
+	entity, err := entClient.{{.Name}}.Query().
+		Where(ent{{toLower .Name}}.UIDEQ(uid)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to load {{.Name}} %s: %w", uid, err)
+	}
+
+	return FromEnt{{.Name}}(ctx, entity)
+}
+
+// Save{{.StorageName}} saves a {{.Name}} resource to the dedicated {{.Name}} table.
+// Unique and other column constraints are enforced by the database.
+func Save{{.StorageName}}(ctx context.Context, resource *{{.PackageAlias}}.{{.Name}}) error {
+	if entClient == nil {
+		return fmt.Errorf("ent client not initialized")
+	}
+
+	existing, err := entClient.{{.Name}}.Query().
+		Where(ent{{toLower .Name}}.UIDEQ(resource.GetUID())).
+		Only(ctx)
+	if err != nil && !ent.IsNotFound(err) {
+		return fmt.Errorf("failed to check {{.Name}} existence: %w", err)
+	}
+
+	if ent.IsNotFound(err) {
+		createBuilder, err := ToEnt{{.Name}}(ctx, entClient, resource)
+		if err != nil {
+			return fmt.Errorf("failed to convert {{.Name}} to ent: %w", err)
+		}
+		if _, err := createBuilder.Save(ctx); err != nil {
+			return fmt.Errorf("failed to create {{.Name}}: %w", err)
+		}
+		return nil
+	}
+
+	update := entClient.{{.Name}}.UpdateOne(existing)
+	if err := Update{{.Name}}FromResource(ctx, update, resource); err != nil {
+		return fmt.Errorf("failed to prepare {{.Name}} update: %w", err)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		return fmt.Errorf("failed to update {{.Name}}: %w", err)
+	}
+
+	return nil
+}
+
+// Delete{{.StorageName}} deletes a {{.Name}} resource from the dedicated {{.Name}} table
+func Delete{{.StorageName}}(ctx context.Context, uid string) error {
+	if entClient == nil {
+		return fmt.Errorf("ent client not initialized")
+	}
+
+	deleted, err := entClient.{{.Name}}.Delete().
+		Where(ent{{toLower .Name}}.UIDEQ(uid)).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete {{.Name}} %s: %w", uid, err)
+	}
+	if deleted == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+{{else}}
 // LoadAll{{.StorageName}}s loads all {{.Name}} resources from Ent storage
 func LoadAll{{.StorageName}}s(ctx context.Context) ([]*{{.PackageAlias}}.{{.Name}}, error) {
 	if entClient == nil {
@@ -180,7 +281,7 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 
 	return nil
 }
-
+{{end}}
 {{end}}
 
 var Backend fabricaStorage.StorageBackend = &entStorageBackend{}
