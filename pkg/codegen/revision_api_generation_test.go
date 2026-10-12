@@ -57,7 +57,10 @@ func TestGenerateRevisionFileBackendAPI(t *testing.T) {
 	assertGeneratedMarkers(t, filepath.Join(dir, "openapi_generated.go"), []string{
 		`/boot-configs/{name}/revisions/{revisionName}`, `/boot-configs/{name}/resolve`, `/boot-configs/{name}/default`,
 		`Responses.Set("409"`, `Responses.Set("410"`, `Responses.Set("412"`, "RevisionSeriesStatus", "RevisionResolveResponse",
-		`WithName("uid").WithIn("query")`, `WithName("revisionName").WithIn("query")`, `WithName("selector").WithIn("query")`,
+		`openapi3.NewQueryParameter("uid").WithSchema(`,
+		`openapi3.NewQueryParameter("revisionName").WithSchema(`,
+		`openapi3.NewQueryParameter("selector").WithSchema(`,
+		`openapi3.NewHeaderParameter("If-Match").WithRequired(true).WithSchema(`,
 		`ensureRevisionOp.Responses.Set("410"`, `getRevisionOp.Responses.Set("410"`, `retireRevisionOp.Responses.Set("410"`,
 		`resolveRevisionOp.Responses.Set("410"`, `promoteDefaultOp.Responses.Set("410"`,
 		"promoteDefaultOp.RequestBody", "PromoteBootConfigDefaultRequest",

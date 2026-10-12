@@ -544,9 +544,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	selectorQuerySchema := openapi3.NewStringSchema()
 	selectorQuerySchema.Enum = []interface{}{"default", "latest"}
 	resolveRevisionOp.Parameters = []*openapi3.ParameterRef{
-		{Value: openapi3.NewParameter().WithName("uid").WithIn("query").WithSchema(openapi3.NewStringSchema())},
-		{Value: openapi3.NewParameter().WithName("revisionName").WithIn("query").WithSchema(openapi3.NewStringSchema())},
-		{Value: openapi3.NewParameter().WithName("selector").WithIn("query").WithSchema(selectorQuerySchema)},
+		{Value: openapi3.NewQueryParameter("uid").WithSchema(openapi3.NewStringSchema())},
+		{Value: openapi3.NewQueryParameter("revisionName").WithSchema(openapi3.NewStringSchema())},
+		{Value: openapi3.NewQueryParameter("selector").WithSchema(selectorQuerySchema)},
 	}
 	resolveRevisionOp.Responses = openapi3.NewResponses()
 	resolveRevisionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Resolved revision metadata").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionResolveResponse"})})
@@ -558,7 +558,7 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	promoteDefaultOp.OperationID = "promote{{.Name}}Default"
 	promoteDefaultOp.Summary = "Promote the default revision alias"
 	promoteDefaultOp.Tags = []string{"{{.Name}} Revisions"}
-	promoteDefaultOp.Parameters = []*openapi3.ParameterRef{ {Value: openapi3.NewParameter().WithName("If-Match").WithIn("header").WithRequired(true).WithSchema(openapi3.NewStringSchema())} }
+	promoteDefaultOp.Parameters = []*openapi3.ParameterRef{ {Value: openapi3.NewHeaderParameter("If-Match").WithRequired(true).WithSchema(openapi3.NewStringSchema())} }
 	promoteDefaultOp.RequestBody = &openapi3.RequestBodyRef{Value: openapi3.NewRequestBody().WithRequired(true).WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/Promote{{.Name}}DefaultRequest"})}
 	promoteDefaultOp.Responses = openapi3.NewResponses()
 	promoteDefaultOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Default alias promoted").WithJSONSchemaRef(&openapi3.SchemaRef{Ref: "#/components/schemas/RevisionSeriesStatus"})})
