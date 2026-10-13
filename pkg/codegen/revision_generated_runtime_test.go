@@ -35,6 +35,7 @@ func TestRevisionWorkflowGeneratedAPI(t *testing.T) {
 	}
 	for name, generate := range map[string]func() error{
 		"models": gen.GenerateModels, "handlers": gen.GenerateHandlers, "routes": gen.GenerateRoutes,
+		"openapi": gen.GenerateOpenAPI,
 	} {
 		if err := generate(); err != nil {
 			t.Fatalf("generate %s: %v", name, err)
@@ -81,6 +82,7 @@ type Node struct { APIVersion string ` + "`json:\"apiVersion\"`" + `; Kind strin
 		"revision_workflow_test.go": `package main
 import (
  "bytes"
+ "context"
  "encoding/json"
  "net/http"
  "net/http/httptest"
@@ -93,6 +95,7 @@ import (
 func request(t *testing.T, router http.Handler, method, path, body, ifMatch string) *httptest.ResponseRecorder { t.Helper(); req := httptest.NewRequest(method, path, bytes.NewBufferString(body)); req.Header.Set("Content-Type", "application/json"); if ifMatch != "" { req.Header.Set("If-Match", ifMatch) }; response := httptest.NewRecorder(); router.ServeHTTP(response, req); return response }
 func decodeRecord(t *testing.T, response *httptest.ResponseRecorder) revision.Record[*v1.Node] { t.Helper(); var record revision.Record[*v1.Node]; if err := json.Unmarshal(response.Body.Bytes(), &record); err != nil { t.Fatal(err) }; return record }
 func TestWorkflow(t *testing.T) {
+ if err := GenerateOpenAPISpec().Validate(context.Background()); err != nil { t.Fatalf("validate generated OpenAPI: %v", err) }
  if err := storage.InitFileBackend(t.TempDir()); err != nil { t.Fatal(err) }
  if err := registerResourcePrefixes(); err != nil { t.Fatal(err) }
  router := chi.NewRouter(); RegisterGeneratedRoutes(router)
