@@ -60,7 +60,7 @@ func TestRevisionWorkflowGeneratedAPI(t *testing.T) {
 	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}} {
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.6")
+		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.9")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("execute generated revision API go %v: %v\n%s", args, err, output)
@@ -71,7 +71,7 @@ func TestRevisionWorkflowGeneratedAPI(t *testing.T) {
 func writeRevisionFixture(t *testing.T, dir, root string) {
 	t.Helper()
 	files := map[string]string{
-		"go.mod": fmt.Sprintf("module example.com/revisionfixture\n\ngo 1.26.6\n\nrequire (\n github.com/go-chi/chi/v5 v5.2.3\n github.com/openchami/fabrica v0.0.0\n)\n\nreplace github.com/openchami/fabrica => %s\n", root),
+		"go.mod": fmt.Sprintf("module example.com/revisionfixture\n\ngo 1.26.9\n\nrequire (\n github.com/go-chi/chi/v5 v5.2.3\n github.com/openchami/fabrica v0.0.0\n)\n\nreplace github.com/openchami/fabrica => %s\n", root),
 		"apis/v1/types.go": `package v1
 import "github.com/openchami/fabrica/pkg/resource"
 type NodeSpec struct { Value string ` + "`json:\"value\" validate:\"required\"`" + ` }

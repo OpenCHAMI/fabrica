@@ -54,7 +54,7 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 
 	cmd := exec.Command("go", "test", "-count=1", "./...")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.6")
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.9")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute generated handlers: %v\n%s", err, output)
