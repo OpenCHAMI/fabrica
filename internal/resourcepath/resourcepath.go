@@ -16,6 +16,7 @@ var pattern = regexp.MustCompile(`^/[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-
 var reserved = map[string]struct{}{
 	"/docs":           {},
 	"/health":         {},
+	"/metrics":        {},
 	"/openapi.json":   {},
 	"/service/status": {},
 }
