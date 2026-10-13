@@ -72,3 +72,34 @@ fabrica migrate yaml-tags --dir /path/to/service
 If the migration reports a parse error, fix the Go syntax in the referenced `*_types.go` file and rerun the command. The migration intentionally refuses to rewrite files that cannot be parsed safely.
 
 If the dry-run reports no changes, the resource files already have YAML tags, do not have JSON tags to mirror, or are not listed under the configured API groups and versions in `apis.yaml`.
+
+## Public Service Status Route
+
+Fabrica v0.4.12 adds a generated public `/service/status` route. Existing Fabrica-generated services only need this migration if they already own that path with handwritten code.
+
+Regenerating the service rewires `cmd/server/main.go` so `RegisterGeneratedPublicRoutes(public)` is called during public route setup. If your service already defines `/service/status`, remove or rename the handwritten route before deployment so the regenerated binary does not collide with it.
+
+Use this checklist:
+
+1. Regenerate the service.
+
+   ```bash
+   fabrica generate
+   ```
+
+2. Review the route wiring and generated changes.
+
+   ```bash
+   git diff
+   ```
+
+3. Check for a handwritten `/service/status` handler in `cmd/server` or nearby HTTP setup code. If one exists, rename it or remove it before deployment.
+
+4. Run focused tests and a build for the affected service.
+
+   ```bash
+   go test ./cmd/server ./internal/...
+   go build ./cmd/server
+   ```
+
+New services do not need a migration for this change. They get the generated public status route from the start.
