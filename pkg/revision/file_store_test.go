@@ -7,6 +7,7 @@ package revision
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -104,15 +105,15 @@ func TestFileStoreRevisionWorkflow(t *testing.T) {
 		t.Fatalf("Resolve(revisionName) UID = %q, want %q", byName.Metadata.UID, second.Metadata.UID)
 	}
 
-	promoted, etag3, err := store.PromoteDefault(ctx, "production", second.Metadata.UID, etag2)
+	promoted, err := store.PromoteDefault(ctx, "production", second.Metadata.UID, etag2)
 	if err != nil {
 		t.Fatalf("PromoteDefault() error = %v", err)
 	}
-	if promoted.DefaultRevisionUID != second.Metadata.UID || etag3 == etag2 {
-		t.Fatalf("promotion = default %q etag %q, want %q and changed ETag", promoted.DefaultRevisionUID, etag3, second.Metadata.UID)
+	if !promoted.Changed || promoted.PreviousRevisionUID != first.Metadata.UID || promoted.Status.DefaultRevisionUID != second.Metadata.UID || promoted.ETag == etag2 {
+		t.Fatalf("promotion = %#v, want changed default %q from %q with changed ETag", promoted, second.Metadata.UID, first.Metadata.UID)
 	}
 
-	if _, _, err := store.PromoteDefault(ctx, "production", first.Metadata.UID, etag2); !errors.Is(err, ErrPreconditionFailed) {
+	if _, err := store.PromoteDefault(ctx, "production", first.Metadata.UID, etag2); !errors.Is(err, ErrPreconditionFailed) {
 		t.Fatalf("stale PromoteDefault() error = %v, want ErrPreconditionFailed", err)
 	}
 	series, _, err = store.GetSeries(ctx, "production")
@@ -121,6 +122,50 @@ func TestFileStoreRevisionWorkflow(t *testing.T) {
 	}
 	if series.DefaultRevisionUID != second.Metadata.UID {
 		t.Fatalf("default after stale promotion = %q, want %q", series.DefaultRevisionUID, second.Metadata.UID)
+	}
+}
+
+func TestFileStorePromoteDefaultIsNoOpWhenRevisionIsAlreadyDefault(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store, err := NewFileStore[testResource](t.TempDir(), "BootConfig")
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	first, etag, err := store.CreateSeries(ctx, "production", "release-a", "sha256:first", testResource{Value: "first"})
+	if err != nil {
+		t.Fatalf("CreateSeries() error = %v", err)
+	}
+	before, err := os.ReadFile(store.seriesPath("production"))
+	if err != nil {
+		t.Fatalf("read series before promotion: %v", err)
+	}
+	beforeStatus, beforeETag, err := store.GetSeries(ctx, "production")
+	if err != nil {
+		t.Fatalf("GetSeries() before promotion: %v", err)
+	}
+
+	result, err := store.PromoteDefault(ctx, "production", first.Metadata.UID, etag)
+	if err != nil {
+		t.Fatalf("PromoteDefault() error = %v", err)
+	}
+	after, err := os.ReadFile(store.seriesPath("production"))
+	if err != nil {
+		t.Fatalf("read series after promotion: %v", err)
+	}
+
+	if result.Changed || result.PreviousRevisionUID != first.Metadata.UID || result.Status.DefaultRevisionUID != first.Metadata.UID {
+		t.Fatalf("promotion result = %#v, want unchanged default %q", result, first.Metadata.UID)
+	}
+	if result.ETag != etag || result.ETag != beforeETag {
+		t.Fatalf("ETag = %q, want unchanged %q", result.ETag, etag)
+	}
+	if !result.Status.UpdatedAt.Equal(beforeStatus.UpdatedAt) {
+		t.Fatalf("UpdatedAt = %s, want unchanged %s", result.Status.UpdatedAt, beforeStatus.UpdatedAt)
+	}
+	if string(after) != string(before) {
+		t.Fatal("same-target promotion rewrote persisted series state")
 	}
 }
 

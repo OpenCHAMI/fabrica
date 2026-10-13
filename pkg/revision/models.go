@@ -93,6 +93,14 @@ type SeriesStatus struct {
 	UpdatedAt          time.Time `json:"updatedAt" yaml:"updatedAt"`
 }
 
+// DefaultPromotionResult reports the state observed while atomically promoting the default alias.
+type DefaultPromotionResult struct {
+	Status              SeriesStatus
+	ETag                string
+	PreviousRevisionUID string
+	Changed             bool
+}
+
 // ResolveResponse reports the immutable revision selected from a series.
 type ResolveResponse struct {
 	SeriesName string   `json:"seriesName" yaml:"seriesName"`

@@ -49,8 +49,21 @@ func TestGenerateRevisionFileBackendAPI(t *testing.T) {
 	assertGeneratedMarkers(t, filepath.Join(dir, "bootconfig_handlers_generated.go"), []string{
 		"CreateBootConfigSeries", "EnsureBootConfigRevision", "ResolveBootConfigRevision", "PromoteBootConfigDefault", "RetireBootConfigRevision",
 		"http.StatusConflict", "http.StatusPreconditionFailed", "PublishRevisionEvent",
+		"if result.Changed", "PreviousUID: result.PreviousRevisionUID", "NewUID: req.RevisionUID",
 		"RevisionConflictResponse{", "RevisionPreconditionResponse{", "revision.ValueETag(records)",
 	})
+	handlerSource, err := os.ReadFile(filepath.Join(dir, "bootconfig_handlers_generated.go"))
+	if err != nil {
+		t.Fatalf("read generated handler: %v", err)
+	}
+	start := strings.Index(string(handlerSource), "func PromoteBootConfigDefault")
+	end := strings.Index(string(handlerSource[start+1:]), "\nfunc ")
+	if start < 0 || end < 0 {
+		t.Fatal("generated promotion handler boundaries not found")
+	}
+	if strings.Contains(string(handlerSource)[start:start+end+1], "storage.GetBootConfigSeries") {
+		t.Fatal("generated promotion handler performs a non-atomic series pre-read")
+	}
 	assertGeneratedMarkers(t, filepath.Join(dir, "routes_generated.go"), []string{
 		`resource.Route("/{name}"`, `series.Put("/revisions/{revisionName}"`, `series.Delete("/revisions/by-uid/{revisionUID}"`, `series.Get("/resolve"`, `series.Put("/default"`,
 	})

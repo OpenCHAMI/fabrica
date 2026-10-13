@@ -69,6 +69,108 @@ func TestRevisionWorkflowGeneratedAPI(t *testing.T) {
 	}
 }
 
+func TestGeneratedOpenAPISpecValidatesAcrossResourceModes(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolve project root: %v", err)
+	}
+
+	tests := []struct {
+		name              string
+		versioningEnabled bool
+		resources         []ResourceMetadata
+	}{
+		{
+			name: "ordinary only resources",
+			resources: []ResourceMetadata{{
+				Name: "Node", PluralName: "nodes", Package: "example.com/openapifixture/apis/v1", PackageAlias: "v1",
+				TypeName: "*v1.Node", SpecType: "v1.NodeSpec", StatusType: "v1.NodeStatus", URLPath: "/nodes",
+				StorageName: "Node",
+			}},
+		},
+		{
+			name:              "mixed revision and ordinary resources",
+			versioningEnabled: true,
+			resources: []ResourceMetadata{
+				{
+					Name: "BootConfig", PluralName: "bootConfigs", Package: "example.com/openapifixture/apis/v1", PackageAlias: "v1",
+					TypeName: "*v1.BootConfig", SpecType: "v1.BootConfigSpec", StatusType: "v1.BootConfigStatus", URLPath: "/boot-configs",
+					StorageName: "BootConfig", RevisioningEnabled: true, BareNameSelector: "default",
+				},
+				{
+					Name: "Node", PluralName: "nodes", Package: "example.com/openapifixture/apis/v1", PackageAlias: "v1",
+					TypeName: "*v1.Node", SpecType: "v1.NodeSpec", StatusType: "v1.NodeStatus", URLPath: "/nodes",
+					StorageName: "Node",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeOpenAPIValidationFixture(t, dir, root)
+
+			gen := NewGenerator(dir, "main", "example.com/openapifixture")
+			gen.Config.VersioningEnabled = tt.versioningEnabled
+			gen.Resources = tt.resources
+			if err := gen.LoadTemplates(); err != nil {
+				t.Fatalf("LoadTemplates() error = %v", err)
+			}
+			if err := gen.GenerateModels(); err != nil {
+				t.Fatalf("GenerateModels() error = %v", err)
+			}
+			if err := gen.GenerateOpenAPI(); err != nil {
+				t.Fatalf("GenerateOpenAPI() error = %v", err)
+			}
+
+			for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}} {
+				cmd := exec.Command("go", args...)
+				cmd.Dir = dir
+				cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.9")
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("execute generated OpenAPI mode go %v: %v\n%s", args, err, output)
+				}
+			}
+		})
+	}
+}
+
+func writeOpenAPIValidationFixture(t *testing.T, dir, root string) {
+	t.Helper()
+	files := map[string]string{
+		"go.mod": fmt.Sprintf("module example.com/openapifixture\n\ngo 1.26.9\n\nrequire github.com/openchami/fabrica v0.0.0\n\nreplace github.com/openchami/fabrica => %s\n", root),
+		"apis/v1/types.go": `package v1
+import "github.com/openchami/fabrica/pkg/resource"
+type NodeSpec struct { Value string ` + "`json:\"value\"`" + ` }
+type NodeStatus struct { Phase string ` + "`json:\"phase,omitempty\"`" + ` }
+type Node struct { APIVersion string ` + "`json:\"apiVersion\"`" + `; Kind string ` + "`json:\"kind\"`" + `; Metadata resource.Metadata ` + "`json:\"metadata\"`" + `; Spec NodeSpec ` + "`json:\"spec\"`" + `; Status NodeStatus ` + "`json:\"status\"`" + ` }
+type BootConfigSpec struct { Kernel string ` + "`json:\"kernel\"`" + ` }
+type BootConfigStatus struct { Phase string ` + "`json:\"phase,omitempty\"`" + ` }
+type BootConfig struct { APIVersion string ` + "`json:\"apiVersion\"`" + `; Kind string ` + "`json:\"kind\"`" + `; Metadata resource.Metadata ` + "`json:\"metadata\"`" + `; Spec BootConfigSpec ` + "`json:\"spec\"`" + `; Status BootConfigStatus ` + "`json:\"status\"`" + ` }
+`,
+		"openapi_validation_test.go": `package main
+import (
+ "context"
+ "testing"
+)
+func TestGeneratedOpenAPISpec(t *testing.T) {
+ if err := GenerateOpenAPISpec().Validate(context.Background()); err != nil { t.Fatalf("validate generated OpenAPI: %v", err) }
+}
+`,
+	}
+	for relative, content := range files {
+		path := filepath.Join(dir, relative)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create fixture directory: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write fixture %s: %v", relative, err)
+		}
+	}
+}
+
 func writeRevisionFixture(t *testing.T, dir, root string) {
 	t.Helper()
 	files := map[string]string{
@@ -87,11 +189,18 @@ import (
  "net/http"
  "net/http/httptest"
  "testing"
- "github.com/go-chi/chi/v5"
- "github.com/openchami/fabrica/pkg/revision"
- "example.com/revisionfixture/internal/storage"
- v1 "example.com/revisionfixture/apis/v1"
-)
+  "github.com/go-chi/chi/v5"
+  "github.com/openchami/fabrica/pkg/events"
+  "github.com/openchami/fabrica/pkg/revision"
+  "example.com/revisionfixture/internal/storage"
+  v1 "example.com/revisionfixture/apis/v1"
+ )
+type captureRevisionEventBus struct { events []events.Event }
+func (*captureRevisionEventBus) Start() {}
+func (b *captureRevisionEventBus) Publish(_ context.Context, event events.Event) error { b.events = append(b.events, event); return nil }
+func (*captureRevisionEventBus) Subscribe(string, events.EventHandler) (events.SubscriptionID, error) { return "", nil }
+func (*captureRevisionEventBus) Unsubscribe(events.SubscriptionID) error { return nil }
+func (*captureRevisionEventBus) Close() error { return nil }
 func request(t *testing.T, router http.Handler, method, path, body, ifMatch string) *httptest.ResponseRecorder { t.Helper(); req := httptest.NewRequest(method, path, bytes.NewBufferString(body)); req.Header.Set("Content-Type", "application/json"); if ifMatch != "" { req.Header.Set("If-Match", ifMatch) }; response := httptest.NewRecorder(); router.ServeHTTP(response, req); return response }
 func decodeRecord(t *testing.T, response *httptest.ResponseRecorder) revision.Record[*v1.Node] { t.Helper(); var record revision.Record[*v1.Node]; if err := json.Unmarshal(response.Body.Bytes(), &record); err != nil { t.Fatal(err) }; return record }
 func TestWorkflow(t *testing.T) {
@@ -115,12 +224,17 @@ func TestWorkflow(t *testing.T) {
  revisionGet := request(t, router, http.MethodGet, "/nodes/production/revisions/by-uid/"+second.Metadata.UID, "", ""); if revisionGet.Code != http.StatusOK || revisionGet.Header().Get("ETag") == "" { t.Fatalf("revision get = %d ETag %q", revisionGet.Code, revisionGet.Header().Get("ETag")) }
  conflict := request(t, router, http.MethodPut, "/nodes/production/revisions/release-b", "{\"metadata\":{},\"spec\":{\"value\":\"changed\"}}", ""); if conflict.Code != http.StatusConflict { t.Fatalf("conflict = %d", conflict.Code) }
  var conflictBody revision.ConflictResponse; if err := json.Unmarshal(conflict.Body.Bytes(), &conflictBody); err != nil { t.Fatal(err) }; if conflictBody.ExistingRevisionUID != second.Metadata.UID || conflictBody.ExistingDigest == "" || conflictBody.RequestedDigest == "" { t.Fatalf("conflict body = %#v", conflictBody) }
- defaultResolved := request(t, router, http.MethodGet, "/nodes/production/resolve", "", ""); if defaultResolved.Code != http.StatusOK || defaultResolved.Header().Get("ETag") == "" || !bytes.Contains(defaultResolved.Body.Bytes(), []byte(first.Metadata.UID)) { t.Fatalf("default resolve = %d ETag %q: %s", defaultResolved.Code, defaultResolved.Header().Get("ETag"), defaultResolved.Body.String()) }
- latestResolved := request(t, router, http.MethodGet, "/nodes/production/resolve?selector=latest", "", ""); if latestResolved.Code != http.StatusOK || latestResolved.Header().Get("ETag") == "" || !bytes.Contains(latestResolved.Body.Bytes(), []byte(second.Metadata.UID)) { t.Fatalf("latest resolve = %d ETag %q: %s", latestResolved.Code, latestResolved.Header().Get("ETag"), latestResolved.Body.String()) }
-  promotionBody := "{\"revisionUid\":\"" + second.Metadata.UID + "\"}"
+  defaultResolved := request(t, router, http.MethodGet, "/nodes/production/resolve", "", ""); if defaultResolved.Code != http.StatusOK || defaultResolved.Header().Get("ETag") == "" || !bytes.Contains(defaultResolved.Body.Bytes(), []byte(first.Metadata.UID)) { t.Fatalf("default resolve = %d ETag %q: %s", defaultResolved.Code, defaultResolved.Header().Get("ETag"), defaultResolved.Body.String()) }
+  latestResolved := request(t, router, http.MethodGet, "/nodes/production/resolve?selector=latest", "", ""); if latestResolved.Code != http.StatusOK || latestResolved.Header().Get("ETag") == "" || !bytes.Contains(latestResolved.Body.Bytes(), []byte(second.Metadata.UID)) { t.Fatalf("latest resolve = %d ETag %q: %s", latestResolved.Code, latestResolved.Header().Get("ETag"), latestResolved.Body.String()) }
+   promotionBody := "{\"revisionUid\":\"" + second.Metadata.UID + "\"}"
 	for _, invalidPromotionBody := range []string{"{}", "{\"revisionUid\":\"\"}"} { invalidPromotion := request(t, router, http.MethodPut, "/nodes/production/default", invalidPromotionBody, etag); if invalidPromotion.Code != http.StatusBadRequest { t.Fatalf("invalid promotion body %s = %d: %s", invalidPromotionBody, invalidPromotion.Code, invalidPromotion.Body.String()) } }
-  promoted := request(t, router, http.MethodPut, "/nodes/production/default", promotionBody, etag); if promoted.Code != http.StatusOK { t.Fatalf("promote = %d: %s", promoted.Code, promoted.Body.String()) }
-	stale := request(t, router, http.MethodPut, "/nodes/production/default", "{\"revisionUid\":\"" + first.Metadata.UID + "\"}", etag); if stale.Code != http.StatusPreconditionFailed { t.Fatalf("stale = %d", stale.Code) }
+  previousConfig, previousBus := events.GetEventConfig(), events.GetGlobalEventBus(); t.Cleanup(func() { events.SetEventConfig(previousConfig); events.SetGlobalEventBus(previousBus) }); bus := &captureRevisionEventBus{}; events.SetEventConfig(&events.EventConfig{Enabled: true, EventTypePrefix: "io.test", Source: "test-api"}); events.SetGlobalEventBus(bus)
+   promoted := request(t, router, http.MethodPut, "/nodes/production/default", promotionBody, etag); if promoted.Code != http.StatusOK { t.Fatalf("promote = %d: %s", promoted.Code, promoted.Body.String()) }
+	if len(bus.events) != 1 { t.Fatalf("promotion event count = %d, want 1", len(bus.events)) }; var eventData events.RevisionEventData; if err := bus.events[0].DataAs(&eventData); err != nil { t.Fatal(err) }; if eventData.PreviousUID != first.Metadata.UID || eventData.NewUID != second.Metadata.UID { t.Fatalf("promotion event = %#v", eventData) }
+	var promotedStatus revision.SeriesStatus; if err := json.Unmarshal(promoted.Body.Bytes(), &promotedStatus); err != nil { t.Fatal(err) }; promotedETag := promoted.Header().Get("ETag"); if promotedETag == "" { t.Fatal("promotion response omitted ETag") }
+	bus.events = nil
+	repeatedPromotion := request(t, router, http.MethodPut, "/nodes/production/default", promotionBody, promotedETag); if repeatedPromotion.Code != http.StatusOK { t.Fatalf("repeat promotion = %d: %s", repeatedPromotion.Code, repeatedPromotion.Body.String()) }; if repeatedPromotion.Header().Get("ETag") != promotedETag { t.Fatalf("repeat promotion ETag = %q, want %q", repeatedPromotion.Header().Get("ETag"), promotedETag) }; var repeatedStatus revision.SeriesStatus; if err := json.Unmarshal(repeatedPromotion.Body.Bytes(), &repeatedStatus); err != nil { t.Fatal(err) }; if repeatedStatus != promotedStatus { t.Fatalf("repeat promotion status = %#v, want %#v", repeatedStatus, promotedStatus) }; if len(bus.events) != 0 { t.Fatalf("repeat promotion event count = %d, want 0", len(bus.events)) }
+  stale := request(t, router, http.MethodPut, "/nodes/production/default", "{\"revisionUid\":\"" + first.Metadata.UID + "\"}", etag); if stale.Code != http.StatusPreconditionFailed { t.Fatalf("stale = %d", stale.Code) }
 	var staleBody revision.PreconditionResponse; if err := json.Unmarshal(stale.Body.Bytes(), &staleBody); err != nil { t.Fatal(err) }; if staleBody.CurrentETag == "" { t.Fatalf("stale body = %#v", staleBody) }
 	retired := request(t, router, http.MethodDelete, "/nodes/production/revisions/by-uid/"+first.Metadata.UID, "", ""); if retired.Code != http.StatusOK || !bytes.Contains(retired.Body.Bytes(), []byte("retiredAt")) { t.Fatalf("retire = %d: %s", retired.Code, retired.Body.String()) }
 	retiredGet := request(t, router, http.MethodGet, "/nodes/production/revisions/by-uid/"+first.Metadata.UID, "", ""); if retiredGet.Code != http.StatusGone { t.Fatalf("retired get = %d: %s", retiredGet.Code, retiredGet.Body.String()) }

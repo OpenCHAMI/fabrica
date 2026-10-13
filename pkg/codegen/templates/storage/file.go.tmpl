@@ -190,9 +190,9 @@ func Resolve{{.Name}}Revision(ctx context.Context, reference revision.Reference)
 	return {{camelCase .Name}}RevisionStore.Resolve(ctx, reference)
 }
 
-func Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (revision.SeriesStatus, string, error) {
+func Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (revision.DefaultPromotionResult, error) {
 	if err := ensure{{.Name}}RevisionStore(); err != nil {
-		return revision.SeriesStatus{}, "", err
+		return revision.DefaultPromotionResult{}, err
 	}
 	return {{camelCase .Name}}RevisionStore.PromoteDefault(ctx, name, revisionUID, ifMatch)
 }

@@ -1035,19 +1035,16 @@ func Promote{{.Name}}Default(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := chi.URLParam(r, "name")
-	previous, _, err := storage.Get{{.Name}}Series(r.Context(), name)
+	result, err := storage.Promote{{.Name}}Default(r.Context(), name, req.RevisionUID, r.Header.Get("If-Match"))
 	if err != nil {
 		respond{{.Name}}RevisionError(w, err)
 		return
 	}
-	status, etag, err := storage.Promote{{.Name}}Default(r.Context(), name, req.RevisionUID, r.Header.Get("If-Match"))
-	if err != nil {
-		respond{{.Name}}RevisionError(w, err)
-		return
+	w.Header().Set("ETag", result.ETag)
+	if result.Changed {
+		_ = events.PublishRevisionEvent(r.Context(), "alias-promoted", "{{.Name}}", events.RevisionEventData{SeriesName: name, RevisionUID: req.RevisionUID, Alias: "default", PreviousUID: result.PreviousRevisionUID, NewUID: req.RevisionUID})
 	}
-	w.Header().Set("ETag", etag)
-	_ = events.PublishRevisionEvent(r.Context(), "alias-promoted", "{{.Name}}", events.RevisionEventData{SeriesName: name, RevisionUID: req.RevisionUID, Alias: "default", PreviousUID: previous.DefaultRevisionUID, NewUID: req.RevisionUID})
-	respondJSON(w, http.StatusOK, status)
+	respondJSON(w, http.StatusOK, result.Status)
 }
 
 func Update{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {

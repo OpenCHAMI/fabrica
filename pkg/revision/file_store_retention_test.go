@@ -26,7 +26,7 @@ func TestFileStoreRetireRevisionPreservesIdentityAndSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureRevision(two) error = %v", err)
 	}
-	if _, _, err := store.PromoteDefault(ctx, "production", second.Metadata.UID, etag); err != nil {
+	if _, err := store.PromoteDefault(ctx, "production", second.Metadata.UID, etag); err != nil {
 		t.Fatalf("PromoteDefault() error = %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestFileStoreConcurrentNamedEnsureAndPromotion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore(second) error = %v", err)
 	}
-	first, _, err := firstStore.CreateSeries(ctx, "production", "one", "sha256:one", testResource{Value: "one"})
+	_, _, err = firstStore.CreateSeries(ctx, "production", "one", "sha256:one", testResource{Value: "one"})
 	if err != nil {
 		t.Fatalf("CreateSeries() error = %v", err)
 	}
@@ -138,14 +138,21 @@ func TestFileStoreConcurrentNamedEnsureAndPromotion(t *testing.T) {
 	if createdCount != 1 {
 		t.Fatalf("concurrent named ensure created count = %d, want 1", createdCount)
 	}
+	third, created, etag, err := firstStore.EnsureRevision(ctx, "production", "three", "sha256:three", testResource{Value: "three"})
+	if err != nil {
+		t.Fatalf("EnsureRevision(three) error = %v", err)
+	}
+	if !created {
+		t.Fatal("EnsureRevision(three) did not create a revision")
+	}
 
 	promotionResults := make(chan error, 2)
 	var promotionWG sync.WaitGroup
-	for _, uid := range []string{first.Metadata.UID, second.Metadata.UID} {
+	for _, uid := range []string{second.Metadata.UID, third.Metadata.UID} {
 		promotionWG.Add(1)
 		go func() {
 			defer promotionWG.Done()
-			_, _, err := firstStore.PromoteDefault(ctx, "production", uid, etag)
+			_, err := firstStore.PromoteDefault(ctx, "production", uid, etag)
 			promotionResults <- err
 		}()
 	}

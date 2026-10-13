@@ -95,29 +95,40 @@ func (s *FileStore[T]) Resolve(ctx context.Context, reference Reference) (Record
 }
 
 // PromoteDefault atomically moves the default alias when the supplied ETag matches.
-func (s *FileStore[T]) PromoteDefault(ctx context.Context, name, revisionUID, ifMatch string) (SeriesStatus, string, error) {
+func (s *FileStore[T]) PromoteDefault(ctx context.Context, name, revisionUID, ifMatch string) (DefaultPromotionResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return SeriesStatus{}, "", err
+		return DefaultPromotionResult{}, err
 	}
 	series, err := s.readSeries(name)
 	if err != nil {
-		return SeriesStatus{}, "", err
+		return DefaultPromotionResult{}, err
 	}
 	currentETag := seriesETag(series)
 	if ifMatch == "" || ifMatch != currentETag {
-		return SeriesStatus{}, currentETag, &PreconditionError{CurrentETag: currentETag}
+		return DefaultPromotionResult{ETag: currentETag}, &PreconditionError{CurrentETag: currentETag}
 	}
 	if _, err := s.readAuthoritativeRecord(series, revisionUID); err != nil {
-		return SeriesStatus{}, currentETag, err
+		return DefaultPromotionResult{ETag: currentETag}, err
+	}
+	result := DefaultPromotionResult{
+		Status:              series.Status,
+		ETag:                currentETag,
+		PreviousRevisionUID: series.Status.DefaultRevisionUID,
+	}
+	if revisionUID == result.PreviousRevisionUID {
+		return result, nil
 	}
 	series.Status.DefaultRevisionUID = revisionUID
 	series.Status.UpdatedAt = s.now()
 	if err := s.writeSeries(name, series); err != nil {
-		return SeriesStatus{}, currentETag, err
+		return DefaultPromotionResult{ETag: currentETag}, err
 	}
-	return series.Status, seriesETag(series), nil
+	result.Status = series.Status
+	result.ETag = seriesETag(series)
+	result.Changed = true
+	return result, nil
 }
 
 func (s *FileStore[T]) newRecord(seriesName, revisionName, digest string, number uint64, resource T) (Record[T], error) {

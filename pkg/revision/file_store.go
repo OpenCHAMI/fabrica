@@ -93,7 +93,11 @@ func NewFileStore[T any](baseDir, resourceKind string) (*FileStore[T], error) {
 			return nil, fmt.Errorf("revision: create store directory: %w", err)
 		}
 	}
-	canonicalRoot, err := filepath.EvalSymlinks(root)
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("revision: resolve absolute store directory: %w", err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(absoluteRoot)
 	if err != nil {
 		return nil, fmt.Errorf("revision: resolve store directory: %w", err)
 	}
