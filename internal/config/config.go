@@ -145,13 +145,14 @@ type ReconciliationConfig struct {
 // This allows incremental regeneration (e.g., regenerate only handlers
 // without touching storage code).
 type GenerationConfig struct {
-	Handlers       bool `yaml:"handlers"`
-	Storage        bool `yaml:"storage"`
-	Client         bool `yaml:"client"`
-	OpenAPI        bool `yaml:"openapi"`
-	Events         bool `yaml:"events"`
-	Middleware     bool `yaml:"middleware"`
-	Reconciliation bool `yaml:"reconciliation"`
+	Handlers         bool   `yaml:"handlers"`
+	Storage          bool   `yaml:"storage"`
+	Client           bool   `yaml:"client"`
+	OpenAPI          bool   `yaml:"openapi"`
+	OpenAPIServerURL string `yaml:"openapi_server_url,omitempty"`
+	Events           bool   `yaml:"events"`
+	Middleware       bool   `yaml:"middleware"`
+	Reconciliation   bool   `yaml:"reconciliation"`
 }
 
 // LoadConfig reads and parses .fabrica.yaml from the specified directory.
