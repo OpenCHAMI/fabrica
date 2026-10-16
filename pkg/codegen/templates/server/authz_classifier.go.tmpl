@@ -82,6 +82,29 @@ func DefaultClassifyRequestForAuthZ(r *http.Request) (subject, object, action st
 		return subject, "", action, protected, false, "missing object"
 	}
 
+	{{range .Resources}}{{if .RevisioningEnabled}}
+	switch {
+	case object == {{printf "%q" .URLPath}} && action == http.MethodPost:
+		action = "create-series"
+	case object == {{printf "%q" (printf "%s/{name}/revisions" .URLPath)}} && action == http.MethodPost:
+		action = "create-revision"
+	case object == {{printf "%q" (printf "%s/{name}/revisions" .URLPath)}} && action == http.MethodGet:
+		action = "read-revision"
+	case object == {{printf "%q" (printf "%s/{name}/revisions/{revisionName}" .URLPath)}} && action == http.MethodPut:
+		action = "create-revision"
+case object == {{printf "%q" (printf "%s/{name}/revisions/by-uid/{revisionUID}" .URLPath)}} && action == http.MethodGet:
+	action = "read-revision"
+case object == {{printf "%q" (printf "%s/{name}/revisions/by-uid/{revisionUID}" .URLPath)}} && action == http.MethodDelete:
+	action = "retire-revision"
+	case object == {{printf "%q" (printf "%s/{name}/resolve" .URLPath)}} && action == http.MethodGet:
+		action = "resolve-revision"
+	case object == {{printf "%q" (printf "%s/{name}/default" .URLPath)}} && action == http.MethodPut:
+		action = "promote-default"
+	case object == {{printf "%q" (printf "%s/{name}/status" .URLPath)}} && (action == http.MethodPut || action == http.MethodPatch):
+		action = "update-status"
+	}
+	{{end}}{{end}}
+
 	// Subject is required for stable policy enforcement.
 	if subject == "" {
 		return subject, object, action, protected, false, "missing subject"

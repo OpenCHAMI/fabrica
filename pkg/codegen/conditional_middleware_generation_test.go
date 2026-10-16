@@ -25,7 +25,7 @@ func TestGeneratedConditionalMiddlewareBehavior(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	writeConditionalFixtureFile(t, dir, "go.mod", "module example.com/conditionalfixture\n\ngo 1.26.6\n")
+	writeConditionalFixtureFile(t, dir, "go.mod", "module example.com/conditionalfixture\n\ngo 1.26.9\n")
 	writeConditionalFixtureFile(t, dir, "conditional_generated.go", generated.String())
 	writeConditionalFixtureFile(t, dir, "conditional_generated_test.go", generatedConditionalBehaviorTest)
 

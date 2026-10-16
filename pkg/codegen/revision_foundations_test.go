@@ -68,9 +68,6 @@ func TestGenerateRevisionReferenceModels(t *testing.T) {
 				t.Errorf("%s missing %q", file, marker)
 			}
 		}
-		if strings.Contains(content, "EnsureBootConfigRevision") {
-			t.Errorf("%s exposes revision endpoints in foundations-only generation", file)
-		}
 	}
 }
 

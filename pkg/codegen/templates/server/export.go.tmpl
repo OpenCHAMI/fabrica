@@ -106,6 +106,9 @@ func exportResourceKind(ctx context.Context, kind, output, format string, perTyp
 	switch kind {
 	{{- range .Resources}}
 	case "{{.Name}}":
+		{{- if .RevisioningEnabled}}
+		return 0, fmt.Errorf("export for revision-enabled resource {{.Name}} is unsupported; back up the backing database to preserve revision identity and tombstones")
+		{{- else}}
 		items, e := storage.Query{{.PluralName}}(ctx).All(ctx)
 		if e != nil {
 			return 0, fmt.Errorf("failed to query {{.PluralName}}: %w", e)
@@ -113,6 +116,7 @@ func exportResourceKind(ctx context.Context, kind, output, format string, perTyp
 		for _, item := range items {
 			resources = append(resources, item)
 		}
+		{{- end}}
 	{{- end}}
 	default:
 		return 0, fmt.Errorf("unknown resource kind: %s", kind)

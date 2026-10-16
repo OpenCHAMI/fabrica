@@ -338,6 +338,40 @@ func PublishResourceEvent(ctx context.Context, action, resourceKind, resourceUID
 	return bus.Publish(ctx, *event)
 }
 
+// RevisionEventData is the stable payload shared by revision lifecycle events.
+type RevisionEventData struct {
+	SeriesName  string      `json:"seriesName"`
+	RevisionUID string      `json:"revisionUid,omitempty"`
+	Alias       string      `json:"alias,omitempty"`
+	PreviousUID string      `json:"previousUid,omitempty"`
+	NewUID      string      `json:"newUid,omitempty"`
+	Resource    interface{} `json:"resource,omitempty"`
+}
+
+// PublishRevisionEvent publishes a series, revision, or alias lifecycle event.
+func PublishRevisionEvent(ctx context.Context, action, resourceKind string, data RevisionEventData) error {
+	if !IsEnabled() {
+		return nil
+	}
+	bus := GetGlobalEventBus()
+	if bus == nil {
+		return fmt.Errorf("no event bus configured")
+	}
+	event, err := NewEvent(
+		fmt.Sprintf("%s.%s.revision.%s", GetEventConfig().EventTypePrefix, strings.ToLower(resourceKind), strings.ToLower(action)),
+		fmt.Sprintf("%s/resources/%s/%s/revisions/%s", GetEventConfig().Source, resourceKind, data.SeriesName, data.RevisionUID),
+		data,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create revision event: %w", err)
+	}
+	event.SetExtension("resourcekind", resourceKind)
+	event.SetExtension("seriesname", data.SeriesName)
+	event.SetExtension("revisionuid", data.RevisionUID)
+	event.SetExtension("action", action)
+	return bus.Publish(ctx, *event)
+}
+
 // PublishConditionEvent publishes a condition change event if condition events are enabled
 //
 // This function is called automatically when conditions change on resources.
