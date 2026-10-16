@@ -63,3 +63,17 @@ func TestVersionedRegistrationConfiguresCustomResourcePath(t *testing.T) {
 		t.Fatalf("versioned registration does not configure custom resource path:\n%s", content)
 	}
 }
+
+func TestVersionedRegistrationConfiguresRevisioning(t *testing.T) {
+	apisConfig := configpkg.DefaultAPIsConfig("example.fabrica.dev", "v1", []string{"v1"})
+	apisConfig.Groups[0].Resources = []string{"BootConfig"}
+	apisConfig.Groups[0].Revisioning = map[string]configpkg.ResourceRevisioning{
+		"BootConfig": {Enabled: true},
+	}
+
+	content := generateVersionedRegistrationCode("example.com/test", apisConfig, []string{"BootConfig"})
+
+	if !strings.Contains(content, `gen.SetResourceRevisioning("BootConfig", "default")`) {
+		t.Fatalf("versioned registration does not configure revisioning:\n%s", content)
+	}
+}

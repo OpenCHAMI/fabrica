@@ -65,6 +65,63 @@ func TestAPIsConfigValidateRejectsResourcePathCollision(t *testing.T) {
 	}
 }
 
+func TestAPIsConfigRevisioningDisabledByDefault(t *testing.T) {
+	cfg := validAPIsConfigWithResources("BootConfig")
+
+	revisioning := cfg.Groups[0].RevisioningFor("BootConfig")
+
+	if revisioning.Enabled {
+		t.Fatal("RevisioningFor().Enabled = true, want false")
+	}
+	if got, want := revisioning.BareNameSelector, RevisionSelectorDefault; got != want {
+		t.Fatalf("RevisioningFor().BareNameSelector = %q, want %q", got, want)
+	}
+}
+
+func TestAPIsConfigValidateRevisioningEnabled(t *testing.T) {
+	cfg := validAPIsConfigWithResources("BootConfig")
+	cfg.Groups[0].Revisioning = map[string]ResourceRevisioning{
+		"BootConfig": {
+			Enabled:          true,
+			BareNameSelector: RevisionSelectorDefault,
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if revisioning := cfg.Groups[0].RevisioningFor("BootConfig"); !revisioning.Enabled {
+		t.Fatal("RevisioningFor().Enabled = false, want true")
+	}
+}
+
+func TestAPIsConfigValidateRejectsUnknownRevisioningResource(t *testing.T) {
+	cfg := validAPIsConfigWithResources("BootConfig")
+	cfg.Groups[0].Revisioning = map[string]ResourceRevisioning{
+		"Missing": {Enabled: true},
+	}
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "revisioning entry Missing") {
+		t.Fatalf("Validate() error = %v, want unknown revisioning resource error", err)
+	}
+}
+
+func TestAPIsConfigValidateRejectsUnsupportedRevisionSelector(t *testing.T) {
+	cfg := validAPIsConfigWithResources("BootConfig")
+	cfg.Groups[0].Revisioning = map[string]ResourceRevisioning{
+		"BootConfig": {
+			Enabled:          true,
+			BareNameSelector: "newest",
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "unsupported bareNameSelector") {
+		t.Fatalf("Validate() error = %v, want unsupported selector error", err)
+	}
+}
+
 func validAPIsConfigWithResources(resources ...string) *APIsConfig {
 	return &APIsConfig{Groups: []APIGroup{{
 		Name:           "example.fabrica.dev",

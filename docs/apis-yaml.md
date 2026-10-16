@@ -22,6 +22,10 @@ groups:
       - Device
     resourcePaths:                # Optional per-resource HTTP path overrides
       Device: /hardware/devices
+    revisioning:                  # Optional; disabled unless enabled per resource
+      Device:
+        enabled: true
+        bareNameSelector: default
     imports:                     # Optional: reuse external Spec/Status types
       - module: github.com/org/pkg
         tag: v1.0.0
@@ -40,6 +44,7 @@ Fields:
 - `versions`: ordered list of all versions (hub + spokes). The hub must be included.
 - `resources`: maintained by CLI commands; reflects resources under the hub directory.
 - `resourcePaths`: optional map from resource kind to an absolute HTTP path. When omitted, Fabrica preserves the existing `/<lowercase-kind>s` path. Paths must contain lowercase alphanumeric or hyphenated segments and must not collide with another resource path.
+- `revisioning`: optional map from resource kind to immutable-revision settings. `enabled` defaults to `false`; `bareNameSelector` defaults to and currently supports only `default`. Revisioning is separate from hub/spoke API schema versions.
 - `imports`: optional remote type imports exposed to generated APIs.
 
 ## Initial workflow

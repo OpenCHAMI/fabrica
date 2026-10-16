@@ -19,6 +19,9 @@ import (
 // API versioning, hub/spoke configuration, and external type imports.
 const APIsConfigFileName = "apis.yaml"
 
+// RevisionSelectorDefault is the only supported selector for bare resource names.
+const RevisionSelectorDefault = "default"
+
 // APIsConfig defines API groups and versions for hub/spoke generation.
 // It is the root configuration structure stored in apis.yaml and drives all
 // versioned code generation. Each project should have exactly one apis.yaml
@@ -36,12 +39,29 @@ type APIsConfig struct {
 // Currently, only a single API group per project is supported. Multiple
 // groups may be added in future versions.
 type APIGroup struct {
-	Name           string            `yaml:"name"`
-	StorageVersion string            `yaml:"storageVersion"`
-	Versions       []string          `yaml:"versions"`
-	Resources      []string          `yaml:"resources,omitempty"`
-	ResourcePaths  map[string]string `yaml:"resourcePaths,omitempty"`
-	Imports        []APIImport       `yaml:"imports,omitempty"`
+	Name           string                         `yaml:"name"`
+	StorageVersion string                         `yaml:"storageVersion"`
+	Versions       []string                       `yaml:"versions"`
+	Resources      []string                       `yaml:"resources,omitempty"`
+	ResourcePaths  map[string]string              `yaml:"resourcePaths,omitempty"`
+	Revisioning    map[string]ResourceRevisioning `yaml:"revisioning,omitempty"`
+	Imports        []APIImport                    `yaml:"imports,omitempty"`
+}
+
+// ResourceRevisioning configures immutable revisions for one resource kind.
+// The zero value leaves revisioning disabled and resolves a bare name to default.
+type ResourceRevisioning struct {
+	Enabled          bool   `yaml:"enabled"`
+	BareNameSelector string `yaml:"bareNameSelector,omitempty"`
+}
+
+// RevisioningFor returns normalized revisioning configuration for a resource.
+func (g APIGroup) RevisioningFor(resource string) ResourceRevisioning {
+	revisioning := g.Revisioning[resource]
+	if revisioning.BareNameSelector == "" {
+		revisioning.BareNameSelector = RevisionSelectorDefault
+	}
+	return revisioning
 }
 
 // ResourcePath returns the configured path for a resource or Fabrica's legacy
@@ -261,6 +281,14 @@ func (c *APIsConfig) Validate() error {
 			}
 			if err := resourcepath.Validate(configuredPath); err != nil {
 				return fmt.Errorf("invalid path for resource %s in group %s: %w", resource, g.Name, err)
+			}
+		}
+		for resource, revisioning := range g.Revisioning {
+			if _, ok := resources[resource]; !ok {
+				return fmt.Errorf("revisioning entry %s does not match a resource in group %s", resource, g.Name)
+			}
+			if selector := g.RevisioningFor(resource).BareNameSelector; selector != RevisionSelectorDefault {
+				return fmt.Errorf("unsupported bareNameSelector %q for resource %s in group %s", revisioning.BareNameSelector, resource, g.Name)
 			}
 		}
 	}
