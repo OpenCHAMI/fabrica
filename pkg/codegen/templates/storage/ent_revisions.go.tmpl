@@ -346,49 +346,57 @@ func Resolve{{.Name}}Revision(ctx context.Context, reference revision.Reference)
 	return Get{{.Name}}Revision(ctx, reference.Name, uid)
 }
 
-func Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (revision.SeriesStatus, string, error) {
+func Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (revision.DefaultPromotionResult, error) {
 	if err := ensureBackendReady(); err != nil {
-		return revision.SeriesStatus{}, "", err
+		return revision.DefaultPromotionResult{}, err
 	}
 	var lastErr error
 	for range 8 {
-		status, etag, err := promote{{.Name}}DefaultEnt(ctx, name, revisionUID, ifMatch)
+		result, err := promote{{.Name}}DefaultEnt(ctx, name, revisionUID, ifMatch)
 		if !isRetryableRevisionMutation(err) {
-			return status, etag, err
+			return result, err
 		}
 		lastErr = err
 	}
 	series, err := committedRevisionSeries(ctx, "{{.Name}}", name)
 	if err != nil {
-		return revision.SeriesStatus{}, "", fmt.Errorf("reload {{.Name}} revision series after promotion retries: %w", err)
+		return revision.DefaultPromotionResult{}, fmt.Errorf("reload {{.Name}} revision series after promotion retries: %w", err)
 	}
 	currentETag := entRevisionETag(series)
-	return revision.SeriesStatus{}, currentETag, fmt.Errorf("promote {{.Name}} default after retries (%v): %w", lastErr, &revision.PreconditionError{CurrentETag: currentETag})
+	return revision.DefaultPromotionResult{ETag: currentETag}, fmt.Errorf("promote {{.Name}} default after retries (%v): %w", lastErr, &revision.PreconditionError{CurrentETag: currentETag})
 }
 
-func promote{{.Name}}DefaultEnt(ctx context.Context, name, revisionUID, ifMatch string) (revision.SeriesStatus, string, error) {
+func promote{{.Name}}DefaultEnt(ctx context.Context, name, revisionUID, ifMatch string) (revision.DefaultPromotionResult, error) {
 	series, err := entClient.RevisionSeries.Query().Where(revisionseries.ResourceKindEQ("{{.Name}}"), revisionseries.NameEQ(name)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return revision.SeriesStatus{}, "", revision.ErrSeriesNotFound
+			return revision.DefaultPromotionResult{}, revision.ErrSeriesNotFound
 		}
-		return revision.SeriesStatus{}, "", err
+		return revision.DefaultPromotionResult{}, err
 	}
 	currentETag := entRevisionETag(series)
 	if ifMatch == "" || ifMatch != currentETag {
-		return revision.SeriesStatus{}, currentETag, &revision.PreconditionError{CurrentETag: currentETag}
+		return revision.DefaultPromotionResult{ETag: currentETag}, &revision.PreconditionError{CurrentETag: currentETag}
 	}
 	entity, err := entClient.RevisionRecord.Query().Where(
 		revisionrecord.ResourceKindEQ("{{.Name}}"), revisionrecord.SeriesNameEQ(name), revisionrecord.UIDEQ(revisionUID),
 	).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return revision.SeriesStatus{}, currentETag, revision.ErrRevisionNotFound
+			return revision.DefaultPromotionResult{ETag: currentETag}, revision.ErrRevisionNotFound
 		}
-		return revision.SeriesStatus{}, currentETag, err
+		return revision.DefaultPromotionResult{ETag: currentETag}, err
 	}
 	if entity.RetiredAt != nil {
-		return revision.SeriesStatus{}, currentETag, revision.ErrRevisionRetired
+		return revision.DefaultPromotionResult{ETag: currentETag}, revision.ErrRevisionRetired
+	}
+	result := revision.DefaultPromotionResult{
+		Status:              {{camelCase .Name}}SeriesStatus(series),
+		ETag:                currentETag,
+		PreviousRevisionUID: series.DefaultRevisionUID,
+	}
+	if revisionUID == result.PreviousRevisionUID {
+		return result, nil
 	}
 	now := time.Now().UTC()
 	updated, err := entClient.RevisionSeries.Update().Where(
@@ -396,20 +404,23 @@ func promote{{.Name}}DefaultEnt(ctx context.Context, name, revisionUID, ifMatch 
 		revisionseries.DefaultRevisionUIDEQ(series.DefaultRevisionUID), revisionseries.UpdatedAtEQ(series.UpdatedAt),
 	).SetDefaultRevisionUID(revisionUID).SetUpdatedAt(now).Save(ctx)
 	if err != nil {
-		return revision.SeriesStatus{}, currentETag, err
+		return revision.DefaultPromotionResult{ETag: currentETag}, err
 	}
 	if updated != 1 {
 		current, queryErr := entClient.RevisionSeries.Query().Where(revisionseries.ResourceKindEQ("{{.Name}}"), revisionseries.NameEQ(name)).Only(ctx)
 		if queryErr == nil {
 			currentETag = entRevisionETag(current)
 		}
-		return revision.SeriesStatus{}, currentETag, &revision.PreconditionError{CurrentETag: currentETag}
+		return revision.DefaultPromotionResult{ETag: currentETag}, &revision.PreconditionError{CurrentETag: currentETag}
 	}
 	series, err = committedRevisionSeries(ctx, "{{.Name}}", name)
 	if err != nil {
-		return revision.SeriesStatus{}, currentETag, fmt.Errorf("reload committed {{.Name}} revision series: %w", err)
+		return revision.DefaultPromotionResult{ETag: currentETag}, fmt.Errorf("reload committed {{.Name}} revision series: %w", err)
 	}
-	return {{camelCase .Name}}SeriesStatus(series), entRevisionETag(series), nil
+	result.Status = {{camelCase .Name}}SeriesStatus(series)
+	result.ETag = entRevisionETag(series)
+	result.Changed = true
+	return result, nil
 }
 
 func Get{{.Name}}SeriesStatus(ctx context.Context, name string) ({{.StatusType}}, error) {

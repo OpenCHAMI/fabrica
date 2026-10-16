@@ -37,6 +37,7 @@ func TestRevisionEntGeneratedRuntimeParity(t *testing.T) {
 	gen.SetStorageType("ent")
 	gen.DBDriver = "sqlite3"
 	gen.Config.VersioningEnabled = true
+	gen.Config.ConditionalEnabled = false
 	gen.Resources = []ResourceMetadata{{
 		Name: "Node", PluralName: "nodes", Package: "example.com/entrevisionfixture/apis/v1", PackageAlias: "v1",
 		TypeName: "*v1.Node", SpecType: "v1.NodeSpec", StatusType: "v1.NodeStatus", URLPath: "/nodes",
@@ -48,15 +49,22 @@ func TestRevisionEntGeneratedRuntimeParity(t *testing.T) {
 	if err := gen.GenerateEntSchemas(); err != nil {
 		t.Fatalf("GenerateEntSchemas() error = %v", err)
 	}
-	storageDir := filepath.Join(dir, "internal", "storage")
-	if err := gen.executeTemplate("storageEntRevisions", filepath.Join(storageDir, "ent_revisions_generated.go"), gen.globalTemplateData("storage/ent_revisions.go.tmpl")); err != nil {
-		t.Fatalf("generate Ent revision storage: %v", err)
+	for name, generate := range map[string]func() error{
+		"Ent adapter": gen.GenerateEntAdapter,
+		"Ent helpers": gen.GenerateEntHelpers,
+		"storage":     gen.GenerateStorage,
+		"models":      gen.GenerateModels,
+		"handlers":    gen.GenerateHandlers,
+	} {
+		if err := generate(); err != nil {
+			t.Fatalf("generate %s: %v", name, err)
+		}
 	}
 
 	for _, args := range [][]string{
 		{"run", "-mod=mod", "entgo.io/ent/cmd/ent", "generate", "./internal/storage/ent/schema"},
 		{"mod", "tidy"},
-		{"test", "-count=1", "./internal/storage"},
+		{"test", "-count=1", "./..."},
 	} {
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
@@ -88,14 +96,7 @@ import "github.com/openchami/fabrica/pkg/resource"
 type NodeSpec struct { Value string ` + "`json:\"value\"`" + ` }
 type NodeStatus struct { Phase string ` + "`json:\"phase,omitempty\"`" + ` }
 type Node struct { APIVersion string ` + "`json:\"apiVersion\"`" + `; Kind string ` + "`json:\"kind\"`" + `; Metadata resource.Metadata ` + "`json:\"metadata\"`" + `; Spec NodeSpec ` + "`json:\"spec\"`" + `; Status NodeStatus ` + "`json:\"status\"`" + ` }
-`,
-		"internal/storage/support.go": `package storage
-import (
-	"fmt"
-	"example.com/entrevisionfixture/internal/storage/ent"
-)
-var entClient *ent.Client
-func ensureBackendReady() error { if entClient == nil { return fmt.Errorf("ent client not initialized") }; return nil }
+func (n *Node) GetUID() string { return n.Metadata.UID }
 `,
 		"internal/storage/revision_runtime_test.go": `package storage
 import (
@@ -153,7 +154,7 @@ func TestEntRevisionParity(t *testing.T) {
 	promotions := make(chan error, 2)
 	var promoteWG sync.WaitGroup
 	promoteStart := make(chan struct{})
-	for _, uid := range []string{first.Metadata.UID, second.Metadata.UID} { promoteWG.Add(1); go func(){ defer promoteWG.Done(); <-promoteStart; _, returnedETag, err := PromoteNodeDefault(ctx, "production", uid, promotionETag); if err == nil { _, storedETag, getErr := GetNodeSeries(ctx, "production"); if getErr != nil { err = getErr } else if returnedETag != storedETag { err = errors.New("promotion ETag does not match committed series") } }; promotions <- err }() }
+	for _, uid := range []string{second.Metadata.UID, third.Metadata.UID} { promoteWG.Add(1); go func(){ defer promoteWG.Done(); <-promoteStart; result, err := PromoteNodeDefault(ctx, "production", uid, promotionETag); if err == nil { _, storedETag, getErr := GetNodeSeries(ctx, "production"); if getErr != nil { err = getErr } else if result.ETag != storedETag { err = errors.New("promotion ETag does not match committed series") } }; promotions <- err }() }
 	close(promoteStart)
 	promoteWG.Wait(); close(promotions)
 	succeeded, preconditioned := 0, 0
@@ -162,8 +163,11 @@ func TestEntRevisionParity(t *testing.T) {
 	if succeeded != 1 || preconditioned != 1 { t.Fatalf("concurrent promotions succeeded=%d preconditioned=%d errors=%v", succeeded, preconditioned, promotionErrors) }
 	current, currentETag, err := GetNodeSeries(ctx, "production")
 	if err != nil { t.Fatal(err) }
-	if current.DefaultRevisionUID != second.Metadata.UID { if _, currentETag, err = PromoteNodeDefault(ctx, "production", second.Metadata.UID, currentETag); err != nil { t.Fatal(err) } }
-	if _, _, err := PromoteNodeDefault(ctx, "production", first.Metadata.UID, etag); !errors.Is(err, revision.ErrPreconditionFailed) { t.Fatalf("stale promotion error = %v", err) }
+	if current.DefaultRevisionUID != second.Metadata.UID { result, promoteErr := PromoteNodeDefault(ctx, "production", second.Metadata.UID, currentETag); if promoteErr != nil { t.Fatal(promoteErr) }; current, currentETag = result.Status, result.ETag }
+	unchanged, err := PromoteNodeDefault(ctx, "production", second.Metadata.UID, currentETag)
+	if err != nil { t.Fatal(err) }
+	if unchanged.Changed || unchanged.ETag != currentETag || unchanged.Status != current { t.Fatalf("same-default promotion = %#v, want unchanged status %#v and ETag %q", unchanged, current, currentETag) }
+	if _, err := PromoteNodeDefault(ctx, "production", first.Metadata.UID, etag); !errors.Is(err, revision.ErrPreconditionFailed) { t.Fatalf("stale promotion error = %v", err) }
 	retired, err := RetireNodeRevision(ctx, "production", first.Metadata.UID)
 	if err != nil || retired.Metadata.RetiredAt == nil { t.Fatalf("retired = %#v err=%v", retired.Metadata, err) }
 	if _, err := GetNodeRevision(ctx, "production", first.Metadata.UID); !errors.Is(err, revision.ErrRevisionRetired) { t.Fatalf("retired get error = %v", err) }
