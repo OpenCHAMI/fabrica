@@ -44,6 +44,23 @@ import (
 {{end}}
 )
 
+// ServiceStatus is the standardized service-level status vocabulary.
+type ServiceStatus string
+
+const (
+	ServiceStatusOK           ServiceStatus = "ok"
+	ServiceStatusDegraded     ServiceStatus = "degraded"
+	ServiceStatusDown         ServiceStatus = "down"
+	ServiceStatusInitializing ServiceStatus = "initializing"
+)
+
+// ServiceStatusResponse is the public base response for GET /service/status.
+// Clients must use the HTTP response status as the primary availability signal.
+type ServiceStatusResponse struct {
+	Status  ServiceStatus `json:"status"`
+	Service string        `json:"service"`
+}
+
 {{range .Resources}}
 // {{.Name}}Response represents the response for {{.Name}} operations
 type {{.Name}}Response = {{.PackageAlias}}.{{.Name}}

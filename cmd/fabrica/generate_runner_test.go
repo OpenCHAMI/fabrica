@@ -55,6 +55,32 @@ func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 	}
 }
 
+func TestGenerateRunnerCode_ConfiguresOpenAPIServerURLWhenSet(t *testing.T) {
+	runnerCode := generateRunnerCode(
+		"/tmp/project",
+		"github.com/example/project",
+		"cmd/server",
+		"main",
+		false,
+		false,
+		true,
+		false,
+		false,
+		"file",
+	)
+
+	for _, want := range []string{
+		"Generation GenerationConfig `yaml:\"generation\"`",
+		"OpenAPIServerURL string `yaml:\"openapi_server_url,omitempty\"`",
+		`if config.Generation.OpenAPIServerURL != ""`,
+		"gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL",
+	} {
+		if !strings.Contains(runnerCode, want) {
+			t.Fatalf("runner code should contain %q", want)
+		}
+	}
+}
+
 func TestGenerateRunnerCode_StorageOnlyDoesNotRegenerateRoutesOrModels(t *testing.T) {
 	runnerCode := generateRunnerCode(
 		"/tmp/project",
