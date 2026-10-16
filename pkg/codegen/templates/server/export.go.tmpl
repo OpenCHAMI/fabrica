@@ -17,7 +17,15 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	{{- $hasNonRevision := false}}
+	{{- range .Resources}}
+	{{- if not .RevisioningEnabled}}
+	{{- $hasNonRevision = true}}
+	{{- end}}
+	{{- end}}
+	{{- if $hasNonRevision}}
 	"{{.ModulePath}}/internal/storage"
+	{{- end}}
 )
 
 func newExportCommand() *cobra.Command {
@@ -69,11 +77,6 @@ func runExport(ctx context.Context, format, output string, kinds []string, perTy
 		return fmt.Errorf("unsupported format: %s (use 'json' or 'yaml')", format)
 	}
 
-	// Create output directory
-	if err := os.MkdirAll(output, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
 	// Determine resource kinds to export
 	var resourceKinds []string
 	if len(kinds) > 0 {
@@ -81,6 +84,14 @@ func runExport(ctx context.Context, format, output string, kinds []string, perTy
 	} else {
 		// Export all known resource types
 		resourceKinds = []string{ {{- range $i, $r := .Resources}}{{if $i}}, {{end}}"{{$r.Name}}"{{end}} }
+	}
+	if err := validateExportKinds(resourceKinds); err != nil {
+		return err
+	}
+
+	// Create output directory only after every requested kind passes preflight.
+	if err := os.MkdirAll(output, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	totalExported := 0
@@ -95,6 +106,22 @@ func runExport(ctx context.Context, format, output string, kinds []string, perTy
 	}
 
 	fmt.Printf("✅ Export complete. Exported %d resources.\n", totalExported)
+	return nil
+}
+
+func validateExportKinds(kinds []string) error {
+	for _, kind := range kinds {
+		switch kind {
+		{{- range .Resources}}
+		case "{{.Name}}":
+			{{- if .RevisioningEnabled}}
+			return fmt.Errorf("export for revision-enabled resource {{.Name}} is unsupported; back up the backing database to preserve revision identity and tombstones")
+			{{- end}}
+		{{- end}}
+		default:
+			return fmt.Errorf("unknown resource kind: %s", kind)
+		}
+	}
 	return nil
 }
 
