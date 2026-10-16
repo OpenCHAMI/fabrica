@@ -20,7 +20,7 @@ This example demonstrates Fabrica's Prometheus metrics instrumentation for produ
 ## Prerequisites
 
 - Fabrica CLI installed
-- Go 1.26.4+ installed
+- Go 1.26.9+ installed
 - (Optional) Prometheus and Grafana for visualization
 
 ## Quick Start
