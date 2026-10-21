@@ -402,7 +402,7 @@ type MyResource struct {
 
 - [Quick Start](quickstart.md) - 30-minute tutorial
 - [Resource Model](resource-model.md) - Deep dive into resources
-- [Code Generation](codegen.md) - How generation works
+- [Code Generation](../reference/codegen.md) - How generation works
 - [Validation](validation.md) - Request validation
 - [Events](events.md) - Event-driven architecture
 - [API Reference](https://pkg.go.dev/github.com/openchami/fabrica)
@@ -410,5 +410,5 @@ type MyResource struct {
 ## Get Help
 
 - [GitHub Issues](https://github.com/openchami/fabrica/issues)
-- [Discussions](https://github.com/openchami/fabrica/discussions)
+- [GitHub Issues](https://github.com/openchami/fabrica/issues)
 - [Documentation](https://github.com/openchami/fabrica/tree/main/docs)

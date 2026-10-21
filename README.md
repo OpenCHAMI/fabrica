@@ -366,7 +366,7 @@ We welcome contributions from the community! Here's how to get involved:
 - Submit a pull request with a clear description
 
 **💬 Community:**
-- [GitHub Discussions](https://github.com/openchami/fabrica/discussions) - Ask questions and share ideas
+- [GitHub Issues](https://github.com/openchami/fabrica/issues) - Ask questions and share ideas
 
 ## 🏷️ Releases & Roadmap
 

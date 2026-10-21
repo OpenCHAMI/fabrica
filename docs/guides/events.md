@@ -627,5 +627,5 @@ func main() {
 ## Next Steps
 
 - [Reconciliation](reconciliation.md) - Use events to trigger reconciliation
-- [Architecture](architecture.md) - Event system design
-- [Examples](examples.md) - Real-world event patterns
+- [Architecture](../reference/architecture.md) - Event system design
+- [Examples](../../examples/README.md) - Real-world event patterns

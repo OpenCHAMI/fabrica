@@ -449,7 +449,7 @@ What are you building?
 
 ### Huma
 - **Docs**: [huma.rocks](https://huma.rocks/)
-- **Tutorial**: [Building APIs with Huma](https://huma.rocks/tutorial/)
+- **Tutorial**: [Building APIs with Huma](https://huma.rocks/tutorial/installation/)
 - **Best for**: Enterprise REST APIs with OpenAPI 3.1
 
 ### Go-Fuego
@@ -459,7 +459,7 @@ What are you building?
 
 ### Goa
 - **Docs**: [goa.design](https://goa.design/)
-- **Tutorial**: [Getting Started](https://goa.design/learn/getting-started/)
+- **Tutorial**: [Getting Started](https://goa.design/docs/1-goa/quickstart/)
 - **Best for**: Design-first microservices
 
 ### Buffalo
@@ -467,7 +467,7 @@ What are you building?
 - **Best for**: Full-stack web applications
 
 ### Beego
-- **Docs**: [beego.wiki](https://beego.wiki/)
+- **Docs**: [Beego Wiki](https://github.com/beego/beego/wiki)
 - **Best for**: Enterprise MVC applications
 
 ### Ogen

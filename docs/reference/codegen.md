@@ -55,18 +55,18 @@ make dev                        # Clean, init, generate, and build
 
 The code generator consists of several key parts:
 
-**[pkg/codegen/generator.go](../pkg/codegen/generator.go)**
+**[pkg/codegen/generator.go](../../pkg/codegen/generator.go)**
 - Core generator logic
 - Template loading and execution
 - Resource registration
 - Output file management
 
-**[pkg/codegen/templates/](../pkg/codegen/templates/)**
+**[pkg/codegen/templates/](../../pkg/codegen/templates/)**
 - Go templates for each code artifact
 - Embedded in binary using `//go:embed`
 - Cannot reference parent directories (must be in package dir)
 
-**[cmd/fabrica/generate.go](../cmd/fabrica/generate.go)**
+**[cmd/fabrica/generate.go](../../cmd/fabrica/generate.go)**
 - CLI command implementation
 - Resource discovery via AST parsing
 - Orchestrates generation for different targets
@@ -97,7 +97,7 @@ type MyResource struct {
 
 ### Template Files
 
-All templates are located in [pkg/codegen/templates/](../pkg/codegen/templates/):
+All templates are located in [pkg/codegen/templates/](../../pkg/codegen/templates/):
 
 | Template | Purpose | Output Location | Used By |
 |----------|---------|-----------------|---------|
@@ -841,10 +841,10 @@ This is acceptable for generated code and provides good readability.
 
 ## Related Documentation
 
-- [Getting Started Guide](getting-started.md) - Learn Fabrica basics
-- [Resource Guide](resources.md) - Define custom resources
-- [Storage Guide](storage.md) - Choose storage backends
-- [Templates README](../pkg/codegen/templates/README.md) - Template development
+- [Getting Started Guide](../guides/getting-started.md) - Learn Fabrica basics
+- [Resource Guide](../guides/resource-model.md) - Define custom resources
+- [Storage Guide](../guides/storage.md) - Choose storage backends
+- [Templates README](../../pkg/codegen/templates/README.md) - Template development
 
 ## Contributing
 

@@ -640,7 +640,7 @@ To migrate existing file-based projects to Ent:
 
 - [Validation Guide](validation.md) - Three-layer validation in depth
 - [Storage Guide](storage.md) - Storage abstraction overview
-- [Architecture](architecture.md) - System design
+- [Architecture](../reference/architecture.md) - System design
 
 ## Advanced Features (v0.4.0+)
 

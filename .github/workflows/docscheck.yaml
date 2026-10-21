@@ -12,11 +12,13 @@ on:
       - 'docs/**'
       - 'README.md'
       - '.github/workflows/docscheck.yaml'
+      - '.lycheeignore'
   pull_request:
     paths:
       - 'docs/**'
       - 'README.md'
       - '.github/workflows/docscheck.yaml'
+      - '.lycheeignore'
   workflow_dispatch:
 
 permissions:
