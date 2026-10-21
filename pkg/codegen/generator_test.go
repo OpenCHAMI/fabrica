@@ -6,6 +6,8 @@ package codegen
 
 import (
 	"bytes"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -192,6 +194,44 @@ func TestGenerateOpenAPIUsesConfiguredServerURL(t *testing.T) {
 			}
 			if strings.Contains(string(generated), `"Development server"`) {
 				t.Fatal("generated OpenAPI labels the server as a development server")
+			}
+		})
+	}
+}
+
+func TestGenerateOpenAPIOptionalServerDescription(t *testing.T) {
+	for name, description := range map[string]string{
+		"omitted by default": "",
+		"configured":         "Production API",
+		"escaped":            "Production \"west\"\nAPI",
+	} {
+		t.Run(name, func(t *testing.T) {
+			outDir := t.TempDir()
+			gen := NewGenerator(outDir, "main", "example.com/test")
+			gen.Config.OpenAPIServerDescription = description
+			if err := gen.LoadTemplates(); err != nil {
+				t.Fatal(err)
+			}
+			if err := gen.GenerateOpenAPI(); err != nil {
+				t.Fatal(err)
+			}
+			generated, err := os.ReadFile(filepath.Join(outDir, "openapi_generated.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := parser.ParseFile(token.NewFileSet(), "openapi_generated.go", generated, parser.AllErrors); err != nil {
+				t.Fatalf("generated OpenAPI is invalid Go: %v", err)
+			}
+			server := regexp.MustCompile(`(?s)Servers:.*?Paths:`).Find(generated)
+			if len(server) == 0 {
+				t.Fatal("generated OpenAPI is missing its server entry")
+			}
+			if description == "" {
+				if bytes.Contains(server, []byte("Description:")) {
+					t.Fatalf("default server includes a description: %s", server)
+				}
+			} else if !bytes.Contains(server, []byte("Description: "+strconv.Quote(description))) {
+				t.Fatalf("server is missing configured description %q: %s", description, server)
 			}
 		})
 	}

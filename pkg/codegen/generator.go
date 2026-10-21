@@ -121,7 +121,8 @@ type ResourceMetadata struct {
 // GeneratorConfig holds configuration values for code generation
 // These values are passed to templates and affect what code is generated
 type GeneratorConfig struct {
-	OpenAPIServerURL string
+	OpenAPIServerURL         string
+	OpenAPIServerDescription string
 
 	// Validation configuration
 	ValidationEnabled bool

@@ -206,8 +206,17 @@ Generates complete server-side code:
 - `GenerateMiddleware()` - Validation, versioning, conditional requests
 
 The OpenAPI server URL defaults to `http://localhost:8080`. Override it with
-`generation.openapi_server_url` in `.fabrica.yaml`. Generated server entries omit
-the optional description so deployment URLs are not labeled as development servers.
+`generation.openapi_server_url` in `.fabrica.yaml`. The optional
+`generation.openapi_server_description` defaults to blank and is omitted from the
+generated server entry unless configured:
+
+```yaml
+generation:
+  openapi_server_url: https://api.example.com
+  openapi_server_description: Production API
+```
+
+Run `fabrica generate --openapi` to update `cmd/server/openapi_generated.go`.
 
 **Output:** Files in `cmd/server/`, `internal/storage/`, and `internal/middleware/`
 

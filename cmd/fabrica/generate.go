@@ -933,6 +933,7 @@ type AuthNConfig struct {
 
 type GenerationConfig struct {
 	OpenAPIServerURL string `+"`yaml:\"openapi_server_url,omitempty\"`"+`
+	OpenAPIServerDescription string `+"`yaml:\"openapi_server_description,omitempty\"`"+`
 }
 
 func loadConfig() (*FabricaConfig, error) {
@@ -979,6 +980,7 @@ func main() {
 		if config.Generation.OpenAPIServerURL != "" {
 			gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL
 		}
+		gen.Config.OpenAPIServerDescription = config.Generation.OpenAPIServerDescription
 
 		// Override storage config from .fabrica.yaml if present
 		if config.Features.Storage.Type != "" {
