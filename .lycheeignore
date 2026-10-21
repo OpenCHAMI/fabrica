@@ -4,3 +4,6 @@
 
 ^http://localhost
 ^https://localhost
+
+# Jekyll expands this blog link during site generation; it is not a source file.
+(?:\{\{|%7B%7B).*post\.url.*relative_url.*(?:\}\}|%7D%7D)$

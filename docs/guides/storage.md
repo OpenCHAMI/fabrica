@@ -437,4 +437,4 @@ Fabrica storage provides:
 
 ---
 
-**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
+**Questions?** [GitHub Issues](https://github.com/openchami/fabrica/issues)

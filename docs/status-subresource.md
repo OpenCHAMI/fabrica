@@ -657,13 +657,13 @@ paths:
 
 ## Further Reading
 
-- [Resource Model Guide](resource-model.md) - Resource structure and metadata
-- [Events Guide](events.md) - Event system and CloudEvents
-- [Reconciliation Guide](reconciliation.md) - Building reconcilers
+- [Resource Model Guide](guides/resource-model.md) - Resource structure and metadata
+- [Events Guide](guides/events.md) - Event system and CloudEvents
+- [Reconciliation Guide](guides/reconciliation.md) - Building reconcilers
 - [Kubernetes Status Subresources](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#status-subresource)
 
 ---
 
 **Implementation Status:** ✅ Complete
 **Version:** Fabrica 0.3.1+
-**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
+**Questions?** [GitHub Issues](https://github.com/openchami/fabrica/issues)

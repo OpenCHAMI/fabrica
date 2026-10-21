@@ -72,8 +72,10 @@ func TestGenerateRunnerCode_ConfiguresOpenAPIServerURLWhenSet(t *testing.T) {
 	for _, want := range []string{
 		"Generation GenerationConfig `yaml:\"generation\"`",
 		"OpenAPIServerURL string `yaml:\"openapi_server_url,omitempty\"`",
+		"OpenAPIServerDescription string `yaml:\"openapi_server_description,omitempty\"`",
 		`if config.Generation.OpenAPIServerURL != ""`,
 		"gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL",
+		"gen.Config.OpenAPIServerDescription = config.Generation.OpenAPIServerDescription",
 	} {
 		if !strings.Contains(runnerCode, want) {
 			t.Fatalf("runner code should contain %q", want)

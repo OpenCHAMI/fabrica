@@ -598,7 +598,7 @@ if err := validation.ValidateWithContext(ctx, &resource); err != nil {
 
 ## Additional Resources
 
-- [Package Documentation](../pkg/validation/README.md)
+- [Package Documentation](../../pkg/validation/README.md)
 - [go-playground/validator Documentation](https://github.com/go-playground/validator)
 - [Kubernetes API Conventions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md)
 - [RFC 1123: DNS Requirements](https://tools.ietf.org/html/rfc1123)

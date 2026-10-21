@@ -468,7 +468,7 @@ func TestGeneratedDedicatedEntSchemasCompile(t *testing.T) {
 		}
 	}
 
-	goMod := []byte("module generatedschema\n\ngo 1.26.9\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgolang.org/x/crypto v0.43.0\n)\n")
+	goMod := []byte("module generatedschema\n\ngo 1.26.10\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgolang.org/x/crypto v0.43.0\n)\n")
 	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), goMod, 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
 	}

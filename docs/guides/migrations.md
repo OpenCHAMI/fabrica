@@ -72,3 +72,51 @@ fabrica migrate yaml-tags --dir /path/to/service
 If the migration reports a parse error, fix the Go syntax in the referenced `*_types.go` file and rerun the command. The migration intentionally refuses to rewrite files that cannot be parsed safely.
 
 If the dry-run reports no changes, the resource files already have YAML tags, do not have JSON tags to mirror, or are not listed under the configured API groups and versions in `apis.yaml`.
+
+## Public Service Status Route
+
+Fabrica v0.4.12 generates a public `/service/status` handler and registration function. Newly initialized services call that function automatically. Existing services adopting the generated endpoint must update their project-owned HTTP setup; `fabrica generate` does not rewrite `cmd/server/main.go`.
+
+Use this checklist:
+
+1. Update the service's Fabrica dependency and use the matching Fabrica CLI, then regenerate the service.
+
+   ```bash
+   fabrica generate
+   ```
+
+2. In `cmd/server/main.go`, add the registration call to the public router group, alongside the existing public routes:
+
+   ```go
+   r.Group(func(public chi.Router) {
+       public.Get("/health", healthHandler)
+       RegisterGeneratedPublicRoutes(public)
+       public.Get("/openapi.json", ServeOpenAPISpec)
+       public.Get("/docs", ServeSwaggerUI)
+       // Preserve other existing public routes.
+   })
+   ```
+
+   Keep this group outside authentication and authorization middleware, as in the new-service template. Apply those middleware to resource routes separately.
+
+3. If the service already registers `/service/status`, replace that registration when adopting the generated endpoint. Review any custom health logic and response fields before removing its handler. The generated provider initially returns `ok`, and its response contains only `status` and `service`.
+
+4. Review the changes, run focused tests, and build the affected service.
+
+   ```bash
+   git diff
+   go mod tidy  # If generated imports changed.
+   go test ./cmd/server ./internal/...
+   go build ./cmd/server
+   git diff --check
+   ```
+
+5. Start the service and verify an anonymous request, using its configured address:
+
+   ```bash
+   curl -i http://localhost:8080/service/status
+   ```
+
+   With the default provider, expect HTTP 200 and `{"status":"ok","service":"<service-name>"}`. Repeat this check with authentication enabled to confirm the endpoint remains public.
+
+New services do not need this manual registration step. They get the generated public status route from the start.

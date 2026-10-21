@@ -423,11 +423,15 @@ func resourceFileMap(projectDir string, group *configpkg.APIGroup) map[string]st
 	return files
 }
 
-// resourceEndpoints generates standard REST endpoint paths for a list of resources.
-func resourceEndpoints(resources []string) map[string][]string {
-	out := make(map[string][]string, len(resources))
+// resourceEndpoints generates standard REST paths for discovered resources,
+// applying path overrides from the API group when available.
+func resourceEndpoints(resources []string, group *configpkg.APIGroup) map[string][]string {
+	out := map[string][]string{}
+	if group == nil {
+		group = &configpkg.APIGroup{}
+	}
 	for _, resource := range resources {
-		base := "/" + strings.ToLower(resource) + "s"
+		base := group.ResourcePath(resource)
 		out[resource] = []string{
 			"GET " + base,
 			"POST " + base,

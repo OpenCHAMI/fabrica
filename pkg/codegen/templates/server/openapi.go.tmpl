@@ -94,8 +94,8 @@ func GenerateOpenAPISpec() *openapi3.T {
 		},
 		Servers: openapi3.Servers{
 			{
-				URL:         {{printf "%q" .Config.OpenAPIServerURL}},
-				Description: "Development server",
+					URL: {{printf "%q" .Config.OpenAPIServerURL}},
+					{{if .Config.OpenAPIServerDescription}}Description: {{printf "%q" .Config.OpenAPIServerDescription}},{{end}}
 			},
 		},
 		Paths:      openapi3.NewPaths(),

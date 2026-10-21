@@ -196,7 +196,7 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 func writeMappedTypesModule(t *testing.T, repoRoot string, dir string) {
 	t.Helper()
 	repoRoot = filepath.Clean(filepath.Join(repoRoot, "..", ".."))
-	goMod := []byte("module github.com/openchami/fabrica\n\ngo 1.26.9\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgithub.com/mattn/go-sqlite3 v1.14.32\n)\n")
+	goMod := []byte("module github.com/openchami/fabrica\n\ngo 1.26.10\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgithub.com/mattn/go-sqlite3 v1.14.32\n)\n")
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), goMod, 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
 	}

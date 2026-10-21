@@ -566,9 +566,9 @@ Fabrica resources provide:
 
 **Next Steps:**
 - Build resources in [Getting Started](getting-started.md)
-- Generate code in [Code Generation](codegen.md)
+- Generate code in [Code Generation](../reference/codegen.md)
 - Store resources in [Storage Guide](storage.md)
 
 ---
 
-**Questions?** [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
+**Questions?** [GitHub Issues](https://github.com/openchami/fabrica/issues)

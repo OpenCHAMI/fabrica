@@ -570,4 +570,4 @@ func main() {
 
 - [Events](events.md) - Integrate events with reconciliation
 - [Storage](storage.md) - Persist resource state
-- [Architecture](architecture.md) - System design patterns
+- [Architecture](../reference/architecture.md) - System design patterns

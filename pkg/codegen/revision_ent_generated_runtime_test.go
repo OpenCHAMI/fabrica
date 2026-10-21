@@ -68,7 +68,7 @@ func TestRevisionEntGeneratedRuntimeParity(t *testing.T) {
 	} {
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.9")
+		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("execute generated Ent revision go %v: %v\n%s", args, err, output)
@@ -81,7 +81,7 @@ func writeRevisionEntFixture(t *testing.T, dir, root string) {
 	files := map[string]string{
 		"go.mod": fmt.Sprintf(`module example.com/entrevisionfixture
 
-go 1.26.9
+go 1.26.10
 
 require (
 	entgo.io/ent v0.14.5

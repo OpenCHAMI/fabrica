@@ -69,7 +69,7 @@ func (s *mcpServer) toolInspectProject(args map[string]interface{}) (map[string]
 			"reconciliation":  cfg.Features.Reconciliation.Enabled,
 		},
 		"resource_files":         resourceFileMap(projectDir, group),
-		"endpoints":              resourceEndpoints(resources),
+		"endpoints":              resourceEndpoints(resources, group),
 		"generated_files":        mustListGeneratedFiles(projectDir),
 		"docs_url":               "http://localhost:8080/docs",
 		"openapi_url":            "http://localhost:8080/openapi.json",

@@ -55,18 +55,18 @@ make dev                        # Clean, init, generate, and build
 
 The code generator consists of several key parts:
 
-**[pkg/codegen/generator.go](../pkg/codegen/generator.go)**
+**[pkg/codegen/generator.go](../../pkg/codegen/generator.go)**
 - Core generator logic
 - Template loading and execution
 - Resource registration
 - Output file management
 
-**[pkg/codegen/templates/](../pkg/codegen/templates/)**
+**[pkg/codegen/templates/](../../pkg/codegen/templates/)**
 - Go templates for each code artifact
 - Embedded in binary using `//go:embed`
 - Cannot reference parent directories (must be in package dir)
 
-**[cmd/fabrica/generate.go](../cmd/fabrica/generate.go)**
+**[cmd/fabrica/generate.go](../../cmd/fabrica/generate.go)**
 - CLI command implementation
 - Resource discovery via AST parsing
 - Orchestrates generation for different targets
@@ -97,7 +97,7 @@ type MyResource struct {
 
 ### Template Files
 
-All templates are located in [pkg/codegen/templates/](../pkg/codegen/templates/):
+All templates are located in [pkg/codegen/templates/](../../pkg/codegen/templates/):
 
 | Template | Purpose | Output Location | Used By |
 |----------|---------|-----------------|---------|
@@ -204,6 +204,19 @@ Generates complete server-side code:
 - `GenerateModels()` - Request/response types
 - `GenerateOpenAPI()` - OpenAPI specification for all Fabrica-managed resources, plus a one-time `openapi_extensions.go` stub for custom routes (see [OpenAPI Extensions](../guides/openapi-extensions.md))
 - `GenerateMiddleware()` - Validation, versioning, conditional requests
+
+The OpenAPI server URL defaults to `http://localhost:8080`. Override it with
+`generation.openapi_server_url` in `.fabrica.yaml`. The optional
+`generation.openapi_server_description` defaults to blank and is omitted from the
+generated server entry unless configured:
+
+```yaml
+generation:
+  openapi_server_url: https://api.example.com
+  openapi_server_description: Production API
+```
+
+Run `fabrica generate --openapi` to update `cmd/server/openapi_generated.go`.
 
 **Output:** Files in `cmd/server/`, `internal/storage/`, and `internal/middleware/`
 
@@ -837,10 +850,10 @@ This is acceptable for generated code and provides good readability.
 
 ## Related Documentation
 
-- [Getting Started Guide](getting-started.md) - Learn Fabrica basics
-- [Resource Guide](resources.md) - Define custom resources
-- [Storage Guide](storage.md) - Choose storage backends
-- [Templates README](../pkg/codegen/templates/README.md) - Template development
+- [Getting Started Guide](../guides/getting-started.md) - Learn Fabrica basics
+- [Resource Guide](../guides/resource-model.md) - Define custom resources
+- [Storage Guide](../guides/storage.md) - Choose storage backends
+- [Templates README](../../pkg/codegen/templates/README.md) - Template development
 
 ## Contributing
 

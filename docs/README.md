@@ -92,7 +92,7 @@ Technical reference and in-depth explanations:
 ### Resources
 
 - **[GitHub Issues](https://github.com/openchami/fabrica/issues)** - Report bugs or request features
-- **[Discussions](https://github.com/openchami/fabrica/discussions)** - Ask questions
+- **[GitHub Issues](https://github.com/openchami/fabrica/issues)** - Ask questions
 - **[API Docs](https://pkg.go.dev/github.com/openchami/fabrica)** - Package reference
 - **[Examples](../examples/)** - Working code samples
 
@@ -100,21 +100,21 @@ Technical reference and in-depth explanations:
 
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/openchami/fabrica/issues/new?template=bug_report.md)
 - 💡 **Feature Requests**: [GitHub Issues](https://github.com/openchami/fabrica/issues/new?template=feature_request.md)
-- ❓ **Questions**: [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
+- ❓ **Questions**: [GitHub Issues](https://github.com/openchami/fabrica/issues)
 
 ## 🤝 Contributing
 
 Help make Fabrica better!
 
-- **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute
+- **[Contributing Guide](../README.md#-contributing)** - How to contribute
 - **[Releasing Guide](reference/releasing.md)** - Release process
 
 ## 🚀 What's Next?
 
 1. **Start Building**: Follow the [Getting Started Guide](guides/getting-started.md)
 2. **Explore Examples**: Check out the [examples directory](../examples/)
-3. **Join the Community**: Participate in [GitHub Discussions](https://github.com/openchami/fabrica/discussions)
-4. **Contribute**: Help improve Fabrica - see the [Contributing Guide](../CONTRIBUTING.md)
+3. **Join the Community**: Participate in [GitHub Issues](https://github.com/openchami/fabrica/issues)
+4. **Contribute**: Help improve Fabrica - see the [Contributing Guide](../README.md#-contributing)
 
 ---
 
