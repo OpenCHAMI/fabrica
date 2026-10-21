@@ -11,10 +11,12 @@ on:
     paths:
       - 'docs/**'
       - 'README.md'
+      - '.github/workflows/docscheck.yaml'
   pull_request:
     paths:
       - 'docs/**'
       - 'README.md'
+      - '.github/workflows/docscheck.yaml'
   workflow_dispatch:
 
 permissions:
@@ -34,11 +36,13 @@ jobs:
         id: lychee
         uses: lycheeverse/lychee-action@22134d37a1fff6c2974df9c92a7c7e1e86a08f9c
         with:
-          args: '--output ./lychee-report.md --format markdown docs/ README.md'
-        continue-on-error: true
+          args: 'docs/ README.md'
+          output: ./lychee-report.md
+          format: markdown
+          fail: true
 
       - name: Create or update dead-links issue
-        if: github.event_name == 'push' && steps.lychee.outcome == 'failure'
+        if: failure() && github.event_name == 'push' && steps.lychee.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
