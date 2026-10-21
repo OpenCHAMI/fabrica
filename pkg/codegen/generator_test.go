@@ -159,12 +159,12 @@ func TestGenerateOpenAPIUsesConfiguredServerURL(t *testing.T) {
 	}{
 		{
 			name: "default server URL when unset",
-			want: `URL:         "http://localhost:8080"`,
+			want: `URL: "http://localhost:8080"`,
 		},
 		{
 			name:      "configured server URL",
 			serverURL: "https://api.example.com/fabrica",
-			want:      `URL:         "https://api.example.com/fabrica"`,
+			want:      `URL: "https://api.example.com/fabrica"`,
 		},
 	}
 
@@ -189,6 +189,9 @@ func TestGenerateOpenAPIUsesConfiguredServerURL(t *testing.T) {
 			}
 			if !strings.Contains(string(generated), tt.want) {
 				t.Fatalf("generated OpenAPI missing %q", tt.want)
+			}
+			if strings.Contains(string(generated), `"Development server"`) {
+				t.Fatal("generated OpenAPI labels the server as a development server")
 			}
 		})
 	}

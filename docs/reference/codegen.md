@@ -205,6 +205,10 @@ Generates complete server-side code:
 - `GenerateOpenAPI()` - OpenAPI specification for all Fabrica-managed resources, plus a one-time `openapi_extensions.go` stub for custom routes (see [OpenAPI Extensions](../guides/openapi-extensions.md))
 - `GenerateMiddleware()` - Validation, versioning, conditional requests
 
+The OpenAPI server URL defaults to `http://localhost:8080`. Override it with
+`generation.openapi_server_url` in `.fabrica.yaml`. Generated server entries omit
+the optional description so deployment URLs are not labeled as development servers.
+
 **Output:** Files in `cmd/server/`, `internal/storage/`, and `internal/middleware/`
 
 ### 2. Client Mode (`PackageName: "client"`)
