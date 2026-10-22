@@ -163,7 +163,7 @@ func TestFileMutationSerializesOrdinaryWriters(t *testing.T) {
 			defer unblock()
 			mutated, written := make(chan error, 1), make(chan error, 1)
 			go func() {
-				_, err := first.Mutate(ctx, "Node", "node-1", func(raw json.RawMessage) (json.RawMessage, bool, error) {
+				_, err := first.Mutate(ctx, "Node", "node-1", func(json.RawMessage) (json.RawMessage, bool, error) {
 					close(entered)
 					<-release
 					return json.RawMessage(`{"value":"mutation"}`), false, nil
