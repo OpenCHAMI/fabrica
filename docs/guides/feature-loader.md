@@ -22,6 +22,11 @@ reconciliation startup, metrics, authentication, protected middleware, and
 storage-specific commands. Disabled startup features are omitted; they do not
 require fake types or no-op implementations.
 
+You can split `Config` and startup code into separate application Go files under
+`cmd/server`. The selected build must include both the embedded
+`GeneratedFeatureConfig` and the call to `loadGeneratedFeatures`; tests and
+generated helpers do not establish loader adoption.
+
 This is build-time composition, not runtime reloading of `.fabrica.yaml`. Service
 flags, environment variables, and service YAML continue configuring the selected
 capabilities with the existing names and defaults. Embedded feature configuration

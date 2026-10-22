@@ -56,6 +56,21 @@ func TestFeatureLoaderGeneratedService(t *testing.T) {
 				t.Fatal(err)
 			}
 			main = append(main, []byte("\n// Application customization survives regeneration.\n")...)
+			// Application configuration may be moved out of the entry point.
+			start := bytes.Index(main, []byte("type Config struct {"))
+			if start < 0 {
+				t.Fatal("missing scaffold Config")
+			}
+			end := bytes.Index(main[start:], []byte("\n}"))
+			if end < 0 {
+				t.Fatal("missing scaffold Config closing brace")
+			}
+			end += start + len("\n}")
+			configSource := append([]byte("package main\n\n"), main[start:end]...)
+			if err := os.WriteFile(filepath.Join(dir, "cmd/server/config.go"), configSource, 0644); err != nil {
+				t.Fatal(err)
+			}
+			main = bytes.Join([][]byte{main[:start], main[end:]}, nil)
 			if err := os.WriteFile(mainPath, main, 0644); err != nil {
 				t.Fatal(err)
 			}
@@ -91,6 +106,10 @@ func TestFeatureLoaderGeneratedService(t *testing.T) {
 				got, _ := os.ReadFile(mainPath)
 				if !bytes.Equal(got, main) {
 					t.Fatal("main customization changed")
+				}
+				got, err = os.ReadFile(filepath.Join(dir, "cmd/server/config.go"))
+				if err != nil || !bytes.Equal(got, configSource) {
+					t.Fatalf("application configuration changed: %v", err)
 				}
 				loaderPath := filepath.Join(dir, "cmd/server/features_generated.go")
 				before, _ := os.ReadFile(loaderPath)
