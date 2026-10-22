@@ -137,21 +137,33 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 	s.Assert().True(config.Generation.Reconciliation, "reconciliation generation should be enabled")
 	s.T().Log("✓ Configuration contains correct reconciliation settings")
 
-	// Step 3: Verify main.go contains reconciliation controller setup (commented)
-	s.T().Log("Step 3: Verify main.go contains reconciliation setup")
+	// Step 3: Verify main delegates to the regenerate-safe feature loader.
+	s.T().Log("Step 3: Verify the generated reconciliation startup boundary")
 	mainPath := filepath.Join(projectDir, "cmd/server/main.go")
-	s.Require().FileExists(mainPath, "main.go should exist")
-
 	mainContent, err := os.ReadFile(mainPath)
 	s.Require().NoError(err, "should be able to read main.go")
 	mainStr := string(mainContent)
+	s.Assert().Contains(mainStr, "GeneratedFeatureConfig", "main should embed generated feature configuration")
+	s.Assert().Contains(mainStr, "loadGeneratedFeatures(cmd.Context(), config)", "main should load generated features")
+	s.Assert().Contains(mainStr, "defer features.Close()", "main should clean up loaded features")
+	s.Assert().NotContains(mainStr, "reconcile.NewController", "controller setup belongs in generated helpers")
 
-	s.Assert().Contains(mainStr, "pkg/reconcile", "main.go should import reconcile package")
-	s.Assert().Contains(mainStr, "pkg/reconcilers", "main.go should import reconcilers package (commented)")
-	s.Assert().Contains(mainStr, "ReconcileEnabled", "main.go should have ReconcileEnabled config")
-	s.Assert().Contains(mainStr, "ReconcileWorkers", "main.go should have ReconcileWorkers config")
-	s.Assert().Contains(mainStr, "reconcile.NewController", "main.go should create controller (commented)")
-	s.T().Log("✓ main.go contains reconciliation controller setup")
+	featuresPath := filepath.Join(projectDir, "cmd/server/features_generated.go")
+	featuresContent, err := os.ReadFile(featuresPath)
+	s.Require().NoError(err, "should be able to read generated feature composition")
+	s.Assert().Contains(string(featuresContent), "ReconcileEnabled", "generated configuration should own reconciliation enablement")
+	s.Assert().Contains(string(featuresContent), "ReconcileWorkers", "generated configuration should own worker count")
+	s.Assert().Contains(string(featuresContent), "initializeEventingAndReconciliation(config)", "loader should initialize reconciliation")
+
+	runtimePath := filepath.Join(projectDir, "cmd/server/runtime_helpers_generated.go")
+	runtimeContent, err := os.ReadFile(runtimePath)
+	s.Require().NoError(err, "should be able to read generated runtime helpers")
+	runtimeStr := string(runtimeContent)
+	s.Assert().Contains(runtimeStr, `"github.com/openchami/fabrica/pkg/reconcile"`, "runtime should import the controller package")
+	s.Assert().Contains(runtimeStr, `"`+projectModule+`/pkg/reconcilers"`, "runtime should import project reconcilers")
+	s.Assert().Contains(runtimeStr, "reconcile.NewController", "runtime should construct the controller")
+	s.Assert().Contains(runtimeStr, "controller.SetWorkerCount(config.ReconcileWorkers)", "runtime should apply the configured worker count")
+	s.T().Log("✓ Main delegates reconciliation startup to generated features and helpers")
 
 	// Step 4: Add test resources
 	s.T().Log("Step 4: Add test resources")
@@ -166,6 +178,9 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 	s.T().Log("Step 5: Generate code (auto-generates reconcilers)")
 	err = s.project.Generate(s.fabricaBinary)
 	s.Require().NoError(err, "code generation should succeed")
+	regeneratedMain, err := os.ReadFile(mainPath)
+	s.Require().NoError(err)
+	s.Assert().Equal(mainContent, regeneratedMain, "generation must preserve user-owned main.go")
 	s.T().Log("✓ Code generation completed")
 
 	// Step 6: Verify reconcilers were generated
@@ -228,15 +243,17 @@ func (s *RackReconciliationAutomatedTestSuite) TestAutomatedReconciliationWorkfl
 
 	// Step 9: Verify project builds with generated reconcilers
 	s.T().Log("Step 9: Verify project compiles")
-	err = s.project.Build()
-	s.Require().NoError(err, "project should build successfully with auto-generated reconcilers")
+	buildCmd := exec.Command("go", "build", "./...")
+	buildCmd.Dir = projectDir
+	buildOutput, err := buildCmd.CombinedOutput()
+	s.Require().NoError(err, "project should build successfully with auto-generated reconcilers: %s", buildOutput)
 	s.T().Log("✓ Project builds successfully")
 
 	// Final summary
 	s.T().Log("=== Automated Reconciliation Workflow Test Summary ===")
 	s.T().Log("✓ fabrica init --reconcile creates correct config")
 	s.T().Log("✓ .fabrica.yaml tracks reconciliation settings")
-	s.T().Log("✓ main.go includes controller setup (commented)")
+	s.T().Log("✓ main.go delegates to generated feature composition and survives regeneration")
 	s.T().Log("✓ fabrica generate auto-detects reconciliation from config")
 	s.T().Log("✓ Reconcilers generated automatically for all resources")
 	s.T().Log("✓ Registration boilerplate generated")

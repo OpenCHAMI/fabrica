@@ -187,7 +187,8 @@ Run focused tests while implementing, then the repository's required lane:
 ```bash
 GOTOOLCHAIN=go1.26.10 go test ./cmd/fabrica ./internal/config ./pkg/codegen -count=1
 GOTOOLCHAIN=go1.26.10 go test ./internal/mcp -count=1
-GOTOOLCHAIN=go1.26.10 go build -o ./bin/fabrica ./cmd/fabrica
+GOTOOLCHAIN=go1.26.10 make build
+(cd test/integration && GOTOOLCHAIN=go1.26.10 go mod tidy && GOTOOLCHAIN=go1.26.10 go test -v -timeout 10m)
 git diff --check
 ```
 
