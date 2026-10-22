@@ -135,6 +135,6 @@ func (r *{{ .Name }}Reconciler) Reconcile(ctx context.Context, resource interfac
 	}
     */
 
-	// Requeue after 5 minutes for periodic reconciliation
-	return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
+	// Requeue at the generated periodic reconciliation interval
+	return reconcile.Result{RequeueAfter: {{.ReconcileRequeueMinutes}} * time.Minute}, nil
 }

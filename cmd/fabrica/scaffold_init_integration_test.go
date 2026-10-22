@@ -58,9 +58,9 @@ func TestInitScaffold_EmitsHelperBoundaries(t *testing.T) {
 	mainContent := string(mainContentBytes)
 
 	for _, marker := range []string{
-		"initializeStorage(config)",
-		"initializeEventingAndReconciliation(config)",
-		"initializeAuthMiddleware(config)",
+		"loadGeneratedFeatures(cmd.Context(), config)",
+		"features.Use(r)",
+		"features.UseProtected(protected)",
 		"logStartupConfiguration(config, addr)",
 	} {
 		if !strings.Contains(mainContent, marker) {

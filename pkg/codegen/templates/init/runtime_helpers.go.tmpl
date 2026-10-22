@@ -96,6 +96,7 @@ func initializeStorage(config *Config) (func(), error) {
 	{{end}}
 }
 
+{{if .WithEvents}}
 func initializeEventingAndReconciliation(config *Config) (func(), error) {
 	{{if .WithEvents}}
 	eventConfig := &events.EventConfig{
@@ -131,6 +132,11 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 
 	events.SetGlobalEventBus(eventBus)
 	GlobalEventBus = eventBus
+    closeEventBus := func() {
+        events.SetGlobalEventBus(nil)
+        GlobalEventBus = nil
+        _ = eventBus.Close()
+    }
 	log.Println("Global event bus started and set.")
 
 	log.Printf("Event system initialized - Lifecycle: %v, Conditions: %v, Prefix: %s",
@@ -141,15 +147,19 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 	if config.ReconcileEnabled {
 		ctx := context.Background()
 		controller := reconcile.NewController(eventBus, storage.Backend)
+        if err := controller.SetWorkerCount(config.ReconcileWorkers); err != nil {
+            closeEventBus()
+            return nil, err
+        }
 		storageClient := storage.NewStorageClient()
 
 		if err := reconcilers.RegisterReconcilers(controller, storageClient, eventBus); err != nil {
-			eventBus.Close()
+			closeEventBus()
 			return nil, fmt.Errorf("failed to register reconcilers: %w", err)
 		}
 
 		if err := controller.Start(ctx); err != nil {
-			eventBus.Close()
+			closeEventBus()
 			return nil, fmt.Errorf("failed to start reconciliation controller: %w", err)
 		}
 
@@ -158,18 +168,18 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 				log.Printf("failed to stop reconciliation controller: %v", err)
 			}
 		}
-		log.Printf("Reconciliation controller started with %d workers", {{.ReconcileWorkers}})
+		log.Printf("Reconciliation controller started with %d workers", config.ReconcileWorkers)
 	}
 
 	return func() {
 		if stopController != nil {
 			stopController()
 		}
-		eventBus.Close()
+		closeEventBus()
 	}, nil
 	{{else}}
 	return func() {
-		eventBus.Close()
+		closeEventBus()
 	}, nil
 	{{end}}
 	{{else}}
@@ -179,6 +189,8 @@ func initializeEventingAndReconciliation(config *Config) (func(), error) {
 	return func() {}, nil
 	{{end}}
 }
+
+{{end}}
 
 func logStartupConfiguration(config *Config, addr string) {
 	log.Printf("Server starting on %s", addr)

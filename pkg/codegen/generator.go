@@ -121,6 +121,8 @@ type ResourceMetadata struct {
 // GeneratorConfig holds configuration values for code generation
 // These values are passed to templates and affect what code is generated
 type GeneratorConfig struct {
+	Features FeatureConfig
+
 	OpenAPIServerURL         string
 	OpenAPIServerDescription string
 
@@ -337,31 +339,32 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 	}
 
 	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
-		"Name":                  resource.Name,
-		"PluralName":            resource.PluralName,
-		"Package":               resource.Package,
-		"PackageAlias":          resource.PackageAlias,
-		"TypeName":              resource.TypeName,
-		"SpecType":              resource.SpecType,
-		"StatusType":            resource.StatusType,
-		"URLPath":               resource.URLPath,
-		"StorageName":           resource.StorageName,
-		"StorageType":           g.StorageType,
-		"Tags":                  resource.Tags,
-		"RevisioningEnabled":    resource.RevisioningEnabled,
-		"BareNameSelector":      resource.BareNameSelector,
-		"PerResourceVersioning": perResVersioning,
-		"IsVersioned":           isVersioned,
-		"ConditionalEnabled":    g.Config.ConditionalEnabled,
-		"SpecFields":            normalizeSpecFields(resource.SpecFields),
-		"Versions":              resource.Versions,
-		"DefaultVersion":        resource.DefaultVersion,
-		"APIGroupVersion":       resource.APIGroupVersion,
-		"UniqueImports":         uniqueImports,
-		"ModulePath":            g.ModulePath,
-		"Annotations":           resource.Annotations,
-		"EntSchema":             entSchemaMetadata(resource),
-		"EntAdapter":            entAdapterMetadata(resource),
+		"Name":                    resource.Name,
+		"PluralName":              resource.PluralName,
+		"Package":                 resource.Package,
+		"PackageAlias":            resource.PackageAlias,
+		"TypeName":                resource.TypeName,
+		"SpecType":                resource.SpecType,
+		"StatusType":              resource.StatusType,
+		"URLPath":                 resource.URLPath,
+		"StorageName":             resource.StorageName,
+		"StorageType":             g.StorageType,
+		"Tags":                    resource.Tags,
+		"RevisioningEnabled":      resource.RevisioningEnabled,
+		"BareNameSelector":        resource.BareNameSelector,
+		"PerResourceVersioning":   perResVersioning,
+		"IsVersioned":             isVersioned,
+		"ConditionalEnabled":      g.Config.ConditionalEnabled,
+		"SpecFields":              normalizeSpecFields(resource.SpecFields),
+		"Versions":                resource.Versions,
+		"DefaultVersion":          resource.DefaultVersion,
+		"APIGroupVersion":         resource.APIGroupVersion,
+		"UniqueImports":           uniqueImports,
+		"ModulePath":              g.ModulePath,
+		"Annotations":             resource.Annotations,
+		"EntSchema":               entSchemaMetadata(resource),
+		"EntAdapter":              entAdapterMetadata(resource),
+		"ReconcileRequeueMinutes": g.Config.Features.Normalize().ReconcileRequeueMinutes,
 	})
 }
 
@@ -1255,6 +1258,10 @@ func (g *Generator) LoadTemplates() error {
 		"middlewareVersioning":  "middleware/versioning.go.tmpl",
 		"eventBus":              "middleware/event-bus.go.tmpl",
 		"metrics":               "middleware/metrics.go.tmpl",
+
+		"features":       "server/features.go.tmpl",
+		"runtimeHelpers": "init/runtime_helpers.go.tmpl",
+		"authHelpers":    "init/auth_helpers.go.tmpl",
 
 		// Init templates (for regeneration)
 		"init/metrics_helpers.go.tmpl": "init/metrics_helpers.go.tmpl",
