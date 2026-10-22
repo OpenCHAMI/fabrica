@@ -160,7 +160,7 @@ func init() {
 	{{if eq .StorageType "file"}}
 	serveCmd.Flags().String("data-dir", "./data", "Directory for file storage")
 	{{else if eq .StorageType "ent"}}
-	serveCmd.Flags().String("database-url", "", "Database connection URL")
+	serveCmd.Flags().String("database-url", DefaultConfig().DatabaseURL, "Database connection URL")
 	{{end}}
 	{{end}}
 

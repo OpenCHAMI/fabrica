@@ -36,6 +36,37 @@ Ent is a powerful entity framework for Go that provides:
 
 ## Quick Start
 
+### SQLite Defaults and Overrides
+
+New Ent/SQLite services use `file:./data.db?cache=shared&_fk=1` by default.
+The `_fk=1` option enables the foreign keys required by Ent schema creation.
+No database URL override is needed for local startup:
+
+```bash
+fabrica init tester --storage-type ent --db sqlite --group tester.example.com --versions v1
+cd tester
+fabrica add resource Tester --version v1 --force
+fabrica generate
+go mod tidy
+go run ./cmd/server
+```
+
+To use another SQLite file, pass the URL to the `serve` command:
+
+```bash
+go run ./cmd/server serve --database-url 'file:./custom.db?cache=shared&_fk=1'
+```
+
+Database configuration precedence is an explicit `--database-url` flag, then
+the service-prefixed environment variable (for example, `TESTER_DATABASE_URL`),
+then the `database_url` YAML key, then the built-in default. Custom SQLite URLs
+must include `_fk=1`.
+
+Existing services initialized with an empty `--database-url` default need to
+update the flag registration in `cmd/server/main.go` to use
+`DefaultConfig().DatabaseURL` instead of `""`. `fabrica generate` does not
+overwrite this scaffolded file. The explicit URL above also works as a workaround.
+
 ### Complete Workflow Example
 
 Here's the complete workflow to create and run an Ent-backed Fabrica API:

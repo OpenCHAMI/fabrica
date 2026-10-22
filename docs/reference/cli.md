@@ -709,7 +709,10 @@ fabrica init my-api --storage-type ent --db sqlite
 cd my-api
 fabrica add resource Device
 fabrica generate
-go run ./cmd/server/ --database-url "file:./data.db?_fk=1"
+go mod tidy
+go run ./cmd/server/ # Uses file:./data.db?cache=shared&_fk=1 by default
+# Optional database override (database-url belongs to the serve command):
+go run ./cmd/server/ serve --database-url "file:./custom.db?cache=shared&_fk=1"
 
 # PostgreSQL (production)
 fabrica init my-api --storage-type ent --db postgres
