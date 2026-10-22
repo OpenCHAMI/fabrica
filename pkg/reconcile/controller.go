@@ -57,6 +57,16 @@ func NewController(eventBus events.EventBus, storage storage.StorageBackend) *Co
 	}
 }
 
+// SetWorkerCount configures concurrency before Start is called.
+// It must not be called while the controller is running.
+func (c *Controller) SetWorkerCount(workers int) error {
+	if workers < 1 {
+		return fmt.Errorf("reconciliation worker count must be positive")
+	}
+	c.workerCount = workers
+	return nil
+}
+
 // RegisterReconciler registers a reconciler for a resource kind.
 //
 // Parameters:

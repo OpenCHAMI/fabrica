@@ -311,8 +311,8 @@ Fabrica uses a **custom registry** (not the global Prometheus registry) to:
 ### Generated Files
 
 When metrics are enabled:
-- `internal/middleware/metrics_generated.go` - Metrics container and middleware
-- `cmd/server/main.go` - Wired into router with `/metrics` endpoint
+- `cmd/server/metrics_generated.go` - Metrics container and middleware
+- `cmd/server/features_generated.go` - Middleware and public `/metrics` registration
 
 ## Migration from v0.4.x
 
@@ -328,7 +328,7 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 
 ### After (v0.5.0+)
 ```go
-// internal/middleware/metrics_generated.go
+// cmd/server/metrics_generated.go
 type Metrics struct {
     HTTPRequestDuration *prometheus.HistogramVec
     // ... real instrumentation
@@ -339,7 +339,7 @@ type Metrics struct {
 
 1. **Backup** (optional, unlikely to have custom changes):
    ```bash
-   cp cmd/server/metrics_helpers_generated.go cmd/server/metrics_helpers_backup.go
+   cp cmd/server/metrics_helpers_generated.go ../metrics_helpers_backup.go
    ```
 
 2. **Update Fabrica**:
@@ -362,7 +362,7 @@ type Metrics struct {
 
 ### Enabling/Disabling Metrics After Initialization
 
-As of Fabrica v0.5.0+, you can toggle metrics on and off by editing `.fabrica.yaml` and running `fabrica generate`. The `cmd/server/main.go` file uses runtime detection to check if metrics are available.
+As of Fabrica v0.5.0+, you can toggle metrics on and off by editing `.fabrica.yaml` and running `fabrica generate`. New services use `features_generated.go` to compose enabled metrics. Legacy services keep runtime detection through a compatibility helper.
 
 #### Enable Metrics (After Init Without --metrics)
 
@@ -414,15 +414,16 @@ If you want to disable metrics:
    # Should return 404 Not Found
    ```
 
-**How It Works**: The generator creates `cmd/server/metrics_helpers_generated.go` with either:
-- Real implementation (when enabled) - calls `NewMetrics()` from `metrics_generated.go`
-- Stub implementation (when disabled) - returns `nil` and provides no-op methods
-
-The `main.go` file checks for `nil` and conditionally registers the metrics middleware and `/metrics` endpoint.
+**How it works:** Loader-based services generate `cmd/server/metrics_generated.go`
+only when metrics are enabled. `features_generated.go` installs its middleware
+and public route; disabling metrics removes the implementation and registration.
+There is no disabled metrics type or stub. Legacy services retain
+`metrics_helpers_generated.go` until explicitly migrated using the
+[feature loader guide](feature-loader.md).
 
 ### Breaking Changes
 
-- **Location**: Metrics moved from `cmd/server/metrics_helpers_generated.go` to `internal/middleware/metrics_generated.go`
+- **Location**: Instrumentation lives in `cmd/server/metrics_generated.go`
 - **Endpoint**: Now on main port (`:8080/metrics`) instead of separate port (`:9090/metrics`)
 - **Config**: Removed `EnableMetrics` and `MetricsPort` flags (metrics always on main port when enabled)
 
@@ -438,3 +439,11 @@ The `main.go` file checks for `nil` and conditionally registers the metrics midd
 - [Validation](./validation.md) - Request validation
 - [Events](./events.md) - CloudEvents integration
 - [Middleware](./middleware.md) - Custom middleware
+
+## Regenerate-safe feature startup
+
+New services use a generated feature loader so feature selections can change
+without rewriting user-owned `cmd/server/main.go`. See the
+[feature loader guide](../guides/feature-loader.md) for regeneration commands,
+selective-generation rules, customization boundaries, and migration of existing
+services.
