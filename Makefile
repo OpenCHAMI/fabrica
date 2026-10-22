@@ -8,6 +8,7 @@
 # Variables
 BINARY_NAME=fabrica
 GO=go
+GOEXE=$(shell $(GO) env GOEXE)
 GOFLAGS=-v
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -33,6 +34,9 @@ help: ## Display this help screen
 
 build: ## Build the application
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/fabrica
+ifneq ($(GOEXE),)
+	cp bin/$(BINARY_NAME) bin/$(BINARY_NAME)$(GOEXE)
+endif
 
 test: ## Run tests
 	$(GO) test $(GOFLAGS) -race -coverprofile=coverage.out -covermode=atomic $$(go list ./... 2>/dev/null | grep -v /examples/)
@@ -70,7 +74,7 @@ tidy: ## Tidy go.mod
 	$(GO) mod tidy
 
 run: build ## Build and run the application
-	./bin/$(BINARY_NAME)
+	./bin/$(BINARY_NAME)$(GOEXE)
 
 docker-build: ## Build Docker image
 	docker build -t $(BINARY_NAME):latest .
