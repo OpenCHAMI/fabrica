@@ -473,3 +473,157 @@ func TestSnapshotBookkeepingRejectsStaleResource(t *testing.T) {
 		t.Fatalf("bookkeeping overwrote newer state: %#v", current)
 	}
 }
+
+// Validation may resolve references through the same storage backend. It must
+// finish without holding that backend's write lock, including without If-Match.
+func TestMutationValidationCanReadStorage(t *testing.T) {
+	for _, operation := range []struct {
+		name, method, body string
+		handler            http.HandlerFunc
+	}{
+		{"spec PUT", "PUT", `{"spec":{"value":"updated"}}`, UpdateNode},
+		{"spec PATCH", "PATCH", `{"value":"updated"}`, PatchNode},
+		{"status PUT", "PUT", `{"phase":"ready"}`, UpdateNodeStatus},
+		{"status PATCH", "PATCH", `{"phase":"ready"}`, PatchNodeStatus},
+	} {
+		for _, conditional := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/conditional=%t", operation.name, conditional), func(t *testing.T) {
+				storage.SeedNode(testNode("initial"))
+				reference := testNode("reference")
+				reference.Metadata.UID = "referenced-node"
+				if err := storage.SaveNode(context.Background(), &reference); err != nil {
+					t.Fatal(err)
+				}
+				validation.Hook = func(ctx context.Context, _ any) error {
+					_, err := storage.LoadNode(ctx, reference.Metadata.UID)
+					return err
+				}
+				t.Cleanup(func() { validation.Hook = nil })
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				request := httptest.NewRequest(operation.method, "/nodes/node-1", bytes.NewBufferString(operation.body)).WithContext(ctx)
+				request.Header.Set("Content-Type", "application/merge-patch+json")
+				if conditional {
+					request.Header.Set("If-Match", currentNodeETag(t))
+				}
+				response := httptest.NewRecorder()
+				done := make(chan struct{})
+				go func() { operation.handler(response, request); close(done) }()
+				select {
+				case <-done:
+					if response.Code != http.StatusOK {
+						t.Fatalf("status=%d body=%s", response.Code, response.Body)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("storage read from validation deadlocked after request cancellation")
+				}
+			})
+		}
+	}
+}
+
+func TestMutationRevalidatesConcurrentState(t *testing.T) {
+	for _, operation := range []struct {
+		name, method, body string
+		handler            http.HandlerFunc
+		status             bool
+	}{
+		{"spec PUT", "PUT", `{"spec":{"value":"updated"}}`, UpdateNode, false},
+		{"spec PATCH", "PATCH", `{"value":"updated"}`, PatchNode, false},
+		{"status PUT", "PUT", `{"phase":"ready"}`, UpdateNodeStatus, true},
+		{"status PATCH", "PATCH", `{"phase":"ready"}`, PatchNodeStatus, true},
+	} {
+		for _, header := range []string{"", "*", "strong"} {
+			for _, rejectFresh := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/header=%s/reject=%t", operation.name, header, rejectFresh), func(t *testing.T) {
+					storage.SeedNode(testNode("initial"))
+					events.Mutations.Store(0)
+					calls := 0
+					validation.Hook = func(ctx context.Context, value any) error {
+						calls++
+						candidate := value.(*v1.Node)
+						if calls == 1 {
+							current, err := storage.LoadNode(ctx, "node-1")
+							if err != nil {
+								return err
+							}
+							if operation.status {
+								current.Spec.Value = "concurrent"
+							} else {
+								current.Status.Phase = "concurrent"
+							}
+							return storage.SaveNode(ctx, current)
+						}
+						if operation.status && candidate.Spec.Value != "concurrent" || !operation.status && candidate.Status.Phase != "concurrent" {
+							return errors.New("candidate was not rebuilt from fresh state")
+						}
+						if rejectFresh {
+							return errors.New("fresh state rejected")
+						}
+						return nil
+					}
+					t.Cleanup(func() { validation.Hook = nil })
+					request := httptest.NewRequest(operation.method, "/nodes/node-1", bytes.NewBufferString(operation.body))
+					request.Header.Set("Content-Type", "application/merge-patch+json")
+					if header == "strong" {
+						request.Header.Set("If-Match", currentNodeETag(t))
+					} else {
+						request.Header.Set("If-Match", header)
+					}
+					response := httptest.NewRecorder()
+					operation.handler(response, request)
+					wantStatus, wantCalls, wantEvents := http.StatusOK, 2, int32(1)
+					if rejectFresh {
+						wantStatus, wantEvents = http.StatusBadRequest, 0
+					}
+					if header == "strong" {
+						wantStatus, wantCalls, wantEvents = http.StatusPreconditionFailed, 1, 0
+					}
+					if response.Code != wantStatus || calls != wantCalls || events.Mutations.Load() != wantEvents {
+						t.Fatalf("status=%d calls=%d events=%d body=%s", response.Code, calls, events.Mutations.Load(), response.Body)
+					}
+					current := storage.NodeForTest("node-1")
+					wantValue, wantPhase := "updated", "concurrent"
+					if operation.status {
+						wantValue, wantPhase = "concurrent", "ready"
+					}
+					if wantStatus != http.StatusOK {
+						if operation.status {
+							wantPhase = ""
+						} else {
+							wantValue = "initial"
+						}
+					}
+					if current.Spec.Value != wantValue || current.Status.Phase != wantPhase {
+						t.Fatalf("unexpected committed state: %#v", current)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestMutationValidationRetryLimit(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	events.Mutations.Store(0)
+	calls := 0
+	validation.Hook = func(ctx context.Context, _ any) error {
+		calls++
+		current, err := storage.LoadNode(ctx, "node-1")
+		if err != nil {
+			return err
+		}
+		current.Metadata.Annotations = map[string]string{"attempt": fmt.Sprint(calls)}
+		return storage.SaveNode(ctx, current)
+	}
+	t.Cleanup(func() { validation.Hook = nil })
+	request := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"uncommitted"}}`))
+	response := httptest.NewRecorder()
+	UpdateNode(response, request)
+	if response.Code != http.StatusConflict || calls != 8 || events.Mutations.Load() != 0 {
+		t.Fatalf("status=%d calls=%d events=%d body=%s", response.Code, calls, events.Mutations.Load(), response.Body)
+	}
+	if current := storage.NodeForTest("node-1"); current.Spec.Value != "initial" || current.Status.Version != "" {
+		t.Fatalf("retry exhaustion committed candidate or snapshot bookkeeping: %#v", current)
+	}
+}

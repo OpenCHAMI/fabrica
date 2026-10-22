@@ -122,8 +122,23 @@ Custom storage backends can implement the optional
 `storage.AtomicMutationBackend` interface without changing `StorageBackend`.
 Conditional mutations against a backend without this capability return
 `501 Not Implemented`. Unconditional requests retain the existing custom storage
-path. Mutation callbacks, including validation, must tolerate retries, avoid
-external side effects, and must not re-enter the file backend.
+path. With an atomic backend, generated handlers build candidates and run custom
+validation outside backend locks and transactions, so validators can read
+storage, including the same backend. They then check `If-Match` and compare the
+authoritative resource with the state used for validation inside an atomic
+mutation. If that state changed, the handler reloads, rebuilds, and revalidates
+the candidate. A stale strong validator still returns `412` rather than
+authorizing the newer state.
+
+Handlers using an atomic backend make at most eight candidate validation
+attempts. Repeated concurrent changes return `409 Conflict`; retry the request
+against fresh state. Validation
+must tolerate retries and avoid external side effects. Reads of referenced
+resources do not provide a transaction across multiple resources.
+
+Backend mutation callbacks must still tolerate transaction retries, avoid
+external side effects, and must not re-enter the file backend. Generated atomic
+callbacks only check preconditions and copy the already validated candidate.
 
 With `features.storage.type: custom`, storage is entirely handwritten and Fabrica
 does not generate mutation adapters. Generated conditional mutation handlers

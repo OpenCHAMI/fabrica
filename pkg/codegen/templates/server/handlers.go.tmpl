@@ -1112,8 +1112,9 @@ func respond{{.Name}}MutationError(w http.ResponseWriter, r *http.Request, err e
 	respondError(w, http.StatusInternalServerError, err)
 }
 
-// mutate{{.Name}} checks the precondition and applies the change to the same stored
-// representation. The callback may be retried and must have no external effects.
+// mutate{{.Name}} builds and validates candidates outside backend locks and
+// transactions. Commit only if the authoritative representation still matches
+// the state used for validation; otherwise rebuild and revalidate fresh state.
 func mutate{{.Name}}(r *http.Request, uid string, apply func(*{{.PackageAlias}}.{{.Name}}) (bool, error)) (*{{.PackageAlias}}.{{.Name}}, error) {
 	{{if .ConditionalEnabled}}
 	ifMatch := r.Header.Get("If-Match")
@@ -1121,18 +1122,43 @@ func mutate{{.Name}}(r *http.Request, uid string, apply func(*{{.PackageAlias}}.
 	if ifMatch != "" { return nil, fabricaStorage.ErrAtomicMutationUnsupported }
 	{{else}}
 	if _, ok := storage.Backend.(fabricaStorage.AtomicMutationBackend); ok || ifMatch != "" {
-		return storage.Mutate{{.StorageName}}(r.Context(), uid, func(current *{{.PackageAlias}}.{{.Name}}) (bool, error) {
-			if ifMatch != "" {
-				etag, err := conditionalmiddleware.GenerateETag(current)
-				if err != nil {
-					return false, err
-				}
-				if !conditionalmiddleware.MatchesIfMatch(ifMatch, etag) {
-					return false, &{{.Name}}MutationError{status: http.StatusPreconditionFailed, err: fmt.Errorf("precondition failed"), etag: etag}
-				}
+		if !ok { return nil, fabricaStorage.ErrAtomicMutationUnsupported }
+		checkPrecondition := func(current *{{.PackageAlias}}.{{.Name}}) error {
+			if ifMatch == "" { return nil }
+			etag, err := conditionalmiddleware.GenerateETag(current)
+			if err != nil { return err }
+			if !conditionalmiddleware.MatchesIfMatch(ifMatch, etag) {
+				return &{{.Name}}MutationError{status: http.StatusPreconditionFailed, err: fmt.Errorf("precondition failed"), etag: etag}
 			}
-			return apply(current)
-		})
+			return nil
+		}
+		retryValidation := errors.New("resource changed during validation")
+		const maxValidationAttempts = 8
+		for attempt := 0; attempt < maxValidationAttempts; attempt++ {
+			if err := r.Context().Err(); err != nil { return nil, err }
+			candidate, err := storage.Load{{.StorageName}}(r.Context(), uid)
+			if err != nil { return nil, err }
+			if err := checkPrecondition(candidate); err != nil { return nil, err }
+			observed, err := json.Marshal(candidate)
+			if err != nil { return nil, err }
+			// apply includes custom validation, which may read this backend.
+			remove, err := apply(candidate)
+			if err != nil { return nil, err }
+			result, err := storage.Mutate{{.StorageName}}(r.Context(), uid, func(current *{{.PackageAlias}}.{{.Name}}) (bool, error) {
+				// Check the client's original precondition again under the guard.
+				if err := checkPrecondition(current); err != nil { return false, err }
+				actual, err := json.Marshal(current)
+				if err != nil { return false, err }
+				if string(actual) != string(observed) { return false, retryValidation }
+				if remove { return true, nil }
+				// The candidate remains read-only during backend transaction retries.
+				*current = *candidate
+				return false, nil
+			})
+			if errors.Is(err, retryValidation) { continue }
+			return result, err
+		}
+		return nil, &{{.Name}}MutationError{status: http.StatusConflict, err: fmt.Errorf("resource kept changing during validation; retry the request")}
 	}
 	{{end}}
 	{{end}}

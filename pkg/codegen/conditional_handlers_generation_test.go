@@ -51,7 +51,7 @@ func TestGeneratedMutationHandlersEnforceOptionalIfMatch(t *testing.T) {
 	}
 
 	guard := generatedFunctionBody(t, generated, "mutateNode")
-	assertGeneratedStatementsInOrder(t, guard, "storage.MutateNode", "conditionalmiddleware.GenerateETag(current)", "conditionalmiddleware.MatchesIfMatch", "return apply(current)")
+	assertGeneratedStatementsInOrder(t, guard, "storage.LoadNode", "checkPrecondition(candidate)", "json.Marshal(candidate)", "apply(candidate)", "storage.MutateNode", "checkPrecondition(current)", "json.Marshal(current)", "*current = *candidate")
 	versionDelete := generatedFunctionBody(t, generated, "DeleteNodeVersion")
 	assertGeneratedStatementsInOrder(t, versionDelete, "storage.DeleteNodeVersionChecked", "conditionalmiddleware.GenerateETag(version)", "conditionalmiddleware.MatchesIfMatch")
 

@@ -12,11 +12,17 @@ import (
 
 var Reject atomic.Bool
 
+// Hook exercises application validation against the generated storage layer.
+var Hook func(context.Context, any) error
+
 func ValidateResource(any) error {
 	return nil
 }
 
-func ValidateWithContext(context.Context, any) error {
+func ValidateWithContext(ctx context.Context, resource any) error {
+	if Hook != nil {
+		return Hook(ctx, resource)
+	}
 	if Reject.Load() {
 		return errors.New("rejected by validator")
 	}
