@@ -229,6 +229,11 @@ func (g *Generator) CheckFeatureGeneration(full bool) error {
 	if !full && (previous.Format == 0 || previous.Config != g.Config.Features.Normalize()) {
 		return fmt.Errorf("feature configuration changed; run full 'fabrica generate' before selective generation")
 	}
+	if previous.Config.StorageType == "ent" && g.Config.Features.Normalize().StorageType == "file" {
+		if err := g.checkEntToFileTransition(); err != nil {
+			return err
+		}
+	}
 	// Only consult fixed known paths. Never trust manifest paths for deletion.
 	for _, output := range g.featureOutputs() {
 		existing, err := os.ReadFile(output.path)
@@ -246,6 +251,41 @@ func (g *Generator) CheckFeatureGeneration(full bool) error {
 		if !tracked || digest != featureDigest(existing) {
 			return fmt.Errorf("feature output %s is untracked or modified; preserve customizations and move it aside before regeneration (see docs/guides/feature-loader.md)", output.path)
 		}
+	}
+	return nil
+}
+
+// Ent backend files predate feature ownership. Require an explicit migration
+// rather than deleting potentially customized code or leaving it uncompilable.
+func (g *Generator) checkEntToFileTransition() error {
+	root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
+	paths := []string{
+		"internal/storage/ent", "internal/storage/ent_adapter.go",
+		"internal/storage/ent_queries_generated.go", "internal/storage/ent_transactions_generated.go",
+		"internal/storage/generate.go", "cmd/server/export.go", "cmd/server/import.go",
+	}
+	dedicated, err := filepath.Glob(filepath.Join(root, "internal/storage/ent_adapter_*.go"))
+	if err != nil {
+		return err
+	}
+	for _, path := range dedicated {
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, filepath.ToSlash(relative))
+	}
+	var stale []string
+	for _, path := range paths {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(path))); err == nil {
+			stale = append(stale, path)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if len(stale) != 0 {
+		sort.Strings(stale)
+		return fmt.Errorf("Ent-to-file storage migration requires preserving data and moving obsolete Ent files outside the service before regeneration: %s; see docs/guides/feature-loader.md", strings.Join(stale, ", "))
 	}
 	return nil
 }

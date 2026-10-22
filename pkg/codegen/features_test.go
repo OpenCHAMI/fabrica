@@ -165,6 +165,50 @@ func TestFeatureLoaderAdoptionIsStructural(t *testing.T) {
 	}
 }
 
+func TestFeatureGenerationRequiresExplicitEntToFileMigration(t *testing.T) {
+	for _, path := range []string{
+		"internal/storage/ent/schema/resource.go", "internal/storage/ent_adapter.go",
+		"internal/storage/ent_adapter_node.go", "internal/storage/ent_queries_generated.go",
+		"internal/storage/ent_transactions_generated.go", "internal/storage/generate.go",
+		"cmd/server/export.go", "cmd/server/import.go",
+	} {
+		t.Run(path, func(t *testing.T) {
+			g := featureTestGenerator(t)
+			g.SetFeatures(FeatureConfig{StorageType: "ent"})
+			if err := g.GenerateFeatures(); err != nil {
+				t.Fatal(err)
+			}
+			loader, _ := os.ReadFile(filepath.Join(g.OutputDir, "features_generated.go"))
+			manifest, _ := os.ReadFile(filepath.Join(g.OutputDir, featureManifestName))
+			root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
+			obsolete := filepath.Join(root, filepath.FromSlash(path))
+			if err := os.MkdirAll(filepath.Dir(obsolete), 0755); err != nil {
+				t.Fatal(err)
+			}
+			customized := []byte("package storage\n// preserved customization\n")
+			if err := os.WriteFile(obsolete, customized, 0644); err != nil {
+				t.Fatal(err)
+			}
+			g.SetFeatures(FeatureConfig{StorageType: "file"})
+			if err := g.GenerateFeatures(); err == nil || !strings.Contains(err.Error(), "Ent-to-file storage migration") {
+				t.Fatalf("expected migration error, got %v", err)
+			}
+			for name, want := range map[string][]byte{
+				"features_generated.go": loader, featureManifestName: manifest,
+			} {
+				got, err := os.ReadFile(filepath.Join(g.OutputDir, name))
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("rejected migration changed %s: %v", name, err)
+				}
+			}
+			got, err := os.ReadFile(obsolete)
+			if err != nil || !bytes.Equal(got, customized) {
+				t.Fatalf("rejected migration changed customization: %v", err)
+			}
+		})
+	}
+}
+
 func TestFeatureLoaderLegacyAndMigration(t *testing.T) {
 	g := featureTestGenerator(t)
 	root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
