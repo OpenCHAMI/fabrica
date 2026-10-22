@@ -412,3 +412,12 @@ Each example includes:
 If you get stuck, check the example's README first, then consult the main documentation in [../docs/](../docs/).
 
 Happy building! 🚀
+
+## Resource UID format
+
+New resources receive TypeID/UUIDv7 identifiers, for example
+`node_01h455vb4pex5vsknk084sn02q`. Capture the returned `metadata.uid` when
+following these examples instead of assuming a fixed suffix or splitting on
+hyphens. Historical captured output may show legacy `prefix-hex` identifiers;
+those remain readable and are not rewritten. See the
+[resource model upgrade guide](../docs/guides/resource-model.md#upgrading-existing-services).

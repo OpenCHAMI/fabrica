@@ -155,14 +155,14 @@ func TestLegacyCompatibility(t *testing.T) {
 	}
 }
 
-func TestExistingResourceGenerationUnchanged(t *testing.T) {
+func TestResourceGenerationUsesTypeID(t *testing.T) {
 	value, err := resource.GenerateUID("dev")
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix, suffix, err := parseLegacyUID(value)
-	if err != nil || prefix != "dev" || len(suffix) != 8 || !strings.HasPrefix(value, "dev-") {
-		t.Fatalf("existing resource generation changed: %q, %v", value, err)
+	parsed, err := (uid.Codec{}).Parse(value)
+	if err != nil || parsed.Format != uid.FormatTypeID || parsed.Prefix != "dev" {
+		t.Fatalf("resource generation must use TypeID: %q, %v", value, err)
 	}
 	if !resource.IsValidUID("dev_01h455vb4pex5vsknk084sn02q") {
 		t.Fatal("resource validation must accept TypeID during dual parsing rollout")
