@@ -955,6 +955,9 @@ func (g *Generator) GenerateAll() error {
 	switch g.PackageName {
 	case "main":
 		// Server code - handlers, routes, models, storage, and openapi
+		if err := g.CheckFeatureGeneration(true); err != nil {
+			return err
+		}
 
 		// Generate Ent schemas first if using Ent storage
 		if g.StorageType == "ent" {
@@ -979,10 +982,7 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateHandlers(); err != nil {
 			return err
 		}
-		if err := g.GenerateMiddleware(); err != nil {
-			return err
-		}
-		if err := g.GenerateMetrics(); err != nil {
+		if err := g.GenerateFeatures(); err != nil {
 			return err
 		}
 		if err := g.GenerateRoutes(); err != nil {

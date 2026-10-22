@@ -89,6 +89,11 @@ when the feature selection differs from the last generated composition. With an
 unchanged selection, handler/storage generation refreshes feature composition;
 OpenAPI-only and client-only generation leave it alone.
 
+For Go integrations, configure the complete selection with `Generator.SetFeatures`
+and call `Generator.GenerateAll`. Server generation checks feature ownership
+before writing any outputs and refreshes the loader, enabled implementations,
+and manifest. Legacy services retain their existing middleware and metrics helpers.
+
 Commit `cmd/server/features_manifest_generated.json` alongside generated files.
 It records the feature selection and hashes of loader-owned outputs. It is not
 runtime configuration. Regeneration detects edited or untracked feature files
