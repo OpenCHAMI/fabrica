@@ -345,7 +345,7 @@ func RegisterResourcePrefix(resourceKind, prefix string) {
 	// Generation independently requires a TypeID-compatible prefix.
 	if err := uidcodec.ValidatePrefix(prefix); err != nil {
 		for _, r := range prefix {
-			if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
 				panic(fmt.Sprintf("prefix %q must be TypeID-compatible or a legacy lowercase alphanumeric prefix", prefix))
 			}
 		}
