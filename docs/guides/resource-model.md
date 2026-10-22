@@ -134,12 +134,12 @@ Fabrica generates prefixed UIDs to make resource identifiers easy to recognize.
 ### Format
 
 ```
-<prefix>-<random-hex>
+<prefix>_<26 lowercase base32 characters encoding a UUIDv7>
 
 Examples:
-  dev-1a2b3c4d    (Device)
-  usr-9f8e7d6c    (User)
-  prd-5a4b3c2d    (Product)
+  dev_01h455vb4pex5vsknk084sn02q    (Device)
+  usr_01h455vb4pex5vsknk084sn02q    (User)
+  prd_01h455vb4pex5vsknk084sn02q    (Product)
 ```
 
 ### Register a Prefix
@@ -152,6 +152,11 @@ func init() {
 }
 ```
 
+New prefixes must contain at most 63 lowercase ASCII letters or internal
+underscores, begin and end with a letter, and be nonempty. Existing legacy
+alphanumeric registrations remain supported for reads and kind lookup,
+including numeric prefixes. New UID generation rejects numeric prefixes.
+
 ### Generate UIDs
 
 **Automatic (recommended):**
@@ -160,15 +165,15 @@ func init() {
 device := &Device{
     Spec: DeviceSpec{Name: "Sensor 1"},
 }
-// UID will be generated: dev-1a2b3c4d
+// UID will be generated: dev_01h455vb4pex5vsknk084sn02q
 ```
 
 **Manual:**
 ```go
 uid, err := resource.GenerateUIDForResource("Device")
-// Returns: "dev-1a2b3c4d"
+// Returns: "dev_01h455vb4pex5vsknk084sn02q"
 
-// Custom length
+// Deprecated helper: explicitly generate a legacy UID
 uid, err := resource.GenerateUIDWithLength("dev", 12)
 // Returns: "dev-1a2b3c4d5e6f"
 ```
@@ -176,19 +181,19 @@ uid, err := resource.GenerateUIDWithLength("dev", 12)
 ### UID Utilities
 
 Parsing and validation accept both legacy `prefix-hex` UIDs and TypeID 0.3.0
-strings. Generation still uses the legacy format. `ParseUID` keeps its current
+strings. New identifiers use TypeID/UUIDv7. `ParseUID` keeps its current
 signature; its second return value is the original hex or base32 suffix.
 
 ```go
 // Parse UID
-prefix, random, err := resource.ParseUID("dev-1a2b3c4d")
-// prefix = "dev", random = "1a2b3c4d"
+prefix, random, err := resource.ParseUID("dev-deadbeef")
+// prefix = "dev", random = "deadbeef" (legacy ID)
 
 // Validate UID
-valid := resource.IsValidUID("dev-1a2b3c4d") // true
+valid := resource.IsValidUID("dev_01h455vb4pex5vsknk084sn02q") // true
 
 // Get resource type from UID
-kind, err := resource.GetResourceTypeFromUID("dev-1a2b3c4d")
+kind, err := resource.GetResourceTypeFromUID("dev_01h455vb4pex5vsknk084sn02q")
 // Returns: "Device"
 
 prefix, suffix, err := resource.ParseUID("dev_01h455vb4pex5vsknk084sn02q")
@@ -208,6 +213,28 @@ preserved. The text of parsing errors may differ from earlier releases.
 Use [`uid.Codec.Parse`](../reference/uid-codec.md) for the format and decoded
 UUID. See the [prefix audit](../reference/uid-prefix-compatibility.md) before
 preparing a service for TypeID generation.
+
+### Upgrading existing services
+
+Rebuilding with the upgraded Fabrica runtime changes newly assigned UIDs
+immediately. Existing generated handlers already call the runtime helper;
+there is no legacy-default toggle. Regenerate with the matching Fabrica binary
+to refresh OpenAPI descriptions and examples, then tidy, build, and test the
+service. Existing identifiers, URLs, references, and stored file names are
+not converted.
+
+New UIDs use an underscore separator and a 26-character suffix. Allow up to
+90 characters for a resource UID (63-character prefix plus separator and
+suffix). Update custom regular expressions, client-side splitting, and any
+restricted database columns. Keep accepting legacy identifiers for reads.
+
+Audit custom prefix registrations before upgrading. Numeric or overlong
+legacy prefixes still register for lookup, but creation under those prefixes
+returns an error. Generated services with incompatible route-derived prefixes
+fail generation before output is written. Do not automatically rename an
+existing kind's prefix: it can break lookup of its old identities. Define and
+test an explicit compatibility mapping before changing such a registration.
+See the [prefix compatibility guide](../reference/uid-prefix-compatibility.md).
 
 ## Metadata
 
@@ -229,13 +256,13 @@ device.Metadata.Name = "temperature-sensor-01"
 System-generated unique identifier:
 
 ```go
-device.Metadata.UID = "dev-1a2b3c4d"
+device.Metadata.UID = "dev_01h455vb4pex5vsknk084sn02q"
 ```
 
 **Best Practices:**
 - Never modify after creation
 - Use for all internal references
-- Use for API paths (`/devices/dev-1a2b3c4d`)
+- Use for API paths (`/devices/dev_01h455vb4pex5vsknk084sn02q`)
 
 ### Timestamps
 
@@ -367,7 +394,7 @@ storage.Save(ctx, device)
 ```
 
 **What happens:**
-1. UID generated: `dev-1a2b3c4d`
+1. UID generated: `dev_01h455vb4pex5vsknk084sn02q`
 2. Timestamps set: `CreatedAt`, `UpdatedAt`
 3. Persisted to storage
 
@@ -375,7 +402,7 @@ storage.Save(ctx, device)
 
 ```go
 // Get by UID
-device, err := storage.Load(ctx, "dev-1a2b3c4d")
+device, err := storage.Load(ctx, "dev_01h455vb4pex5vsknk084sn02q")
 
 // List all
 devices, err := storage.LoadAll(ctx)
@@ -393,7 +420,7 @@ for _, d := range devices {
 
 ```go
 // Load resource
-device, err := storage.Load(ctx, "dev-1a2b3c4d")
+device, err := storage.Load(ctx, "dev_01h455vb4pex5vsknk084sn02q")
 
 // Update spec (desired state)
 device.Spec.Location = "Warehouse B"
@@ -420,7 +447,7 @@ storage.Save(ctx, device)
 
 ```go
 // Delete by UID
-err := storage.Delete(ctx, "dev-1a2b3c4d")
+err := storage.Delete(ctx, "dev_01h455vb4pex5vsknk084sn02q")
 ```
 
 **What happens:**

@@ -955,6 +955,11 @@ func (g *Generator) GetResourceByName(name string) (*ResourceMetadata, bool) {
 
 // GenerateAll generates all code artifacts
 func (g *Generator) GenerateAll() error {
+	if g.PackageName == "main" {
+		if err := g.ValidateTypeIDPrefixes(); err != nil {
+			return err
+		}
+	}
 	if err := g.LoadTemplates(); err != nil {
 		return err
 	}
@@ -1576,6 +1581,9 @@ func (g *Generator) GenerateModels() error {
 
 // GenerateRoutes generates route registration code
 func (g *Generator) GenerateRoutes() error {
+	if err := g.ValidateTypeIDPrefixes(); err != nil {
+		return err
+	}
 	fmt.Printf("🛣️  Generating routes...\n")
 	var buf bytes.Buffer
 	data := g.globalTemplateData("server/routes.go.tmpl")
