@@ -19,6 +19,8 @@ import (
 	"github.com/openchami/fabrica/pkg/reconcile"
 
 	"{{.ModulePath}}/internal/storage/ent"
+	entannotation "{{.ModulePath}}/internal/storage/ent/annotation"
+	entlabel "{{.ModulePath}}/internal/storage/ent/label"
 	entresource "{{.ModulePath}}/internal/storage/ent/resource"
 	{{range .UniqueImports}}
 	{{.Alias}} "{{.Path}}"
@@ -162,8 +164,24 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 		return fmt.Errorf("ent client not initialized")
 	}
 
-	// Delete by UID
-	deleted, err := entClient.Resource.Delete().
+	// Required metadata edges must be removed before their parent. Keep the
+	// operation atomic so a failed resource deletion cannot strip metadata.
+	tx, err := entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete {{.Name}} %s: %w", uid, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Label.Delete().Where(entlabel.HasResourceWith(
+		entresource.UIDEQ(uid), entresource.KindEQ("{{.Name}}"),
+	)).Exec(ctx); err != nil {
+		return fmt.Errorf("delete {{.Name}} labels: %w", err)
+	}
+	if _, err := tx.Annotation.Delete().Where(entannotation.HasResourceWith(
+		entresource.UIDEQ(uid), entresource.KindEQ("{{.Name}}"),
+	)).Exec(ctx); err != nil {
+		return fmt.Errorf("delete {{.Name}} annotations: %w", err)
+	}
+	deleted, err := tx.Resource.Delete().
 		Where(
 			entresource.UIDEQ(uid),
 			entresource.KindEQ("{{.Name}}"),
@@ -178,6 +196,9 @@ func Delete{{.StorageName}}(ctx context.Context, uid string) error {
 		return ErrNotFound
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete {{.Name}} %s: %w", uid, err)
+	}
 	return nil
 }
 

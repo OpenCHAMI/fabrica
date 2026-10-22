@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `resource.GenerateUIDWithLength` remains an explicit legacy-format helper.
   Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
 
+### Fixed
+- Generated Ent storage deletes a resource's labels and annotations together
+  with the resource in a transaction. This fixes foreign-key failures when
+  deleting resources with metadata and preserves metadata if deletion fails.
+
+### Documentation
+- Added UID migration, mixed-format deployment, release validation, and rollback
+  guidance. Older binaries lacking dual parsing are not safe rollback targets
+  after TypeIDs have been stored.
+
 ## [v0.4.9] - 2026-07-20
 
 ### Added
