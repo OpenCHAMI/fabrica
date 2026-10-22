@@ -5,6 +5,7 @@
 package uid_test
 
 import (
+	"encoding/hex"
 	"errors"
 	"os"
 	"strings"
@@ -137,7 +138,7 @@ func TestLegacyCompatibility(t *testing.T) {
 	// Preserve even historical permissive cases until a deliberate public
 	// validation change is made. Do not reinterpret or normalize stored IDs.
 	for _, value := range []string{"dev-1a2b3c4d", "dev-ABCDEF", "disk1-aabbccddeeff", "Odd_Prefix-aa", "-", "dev-", "-aa"} {
-		prefix, suffix, err := resource.ParseUID(value)
+		prefix, suffix, err := parseLegacyUID(value)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,17 +155,17 @@ func TestLegacyCompatibility(t *testing.T) {
 	}
 }
 
-func TestExistingResourceBehaviorUnchanged(t *testing.T) {
+func TestExistingResourceGenerationUnchanged(t *testing.T) {
 	value, err := resource.GenerateUID("dev")
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix, suffix, err := resource.ParseUID(value)
+	prefix, suffix, err := parseLegacyUID(value)
 	if err != nil || prefix != "dev" || len(suffix) != 8 || !strings.HasPrefix(value, "dev-") {
 		t.Fatalf("existing resource generation changed: %q, %v", value, err)
 	}
-	if resource.IsValidUID("dev_01h455vb4pex5vsknk084sn02q") {
-		t.Fatal("existing resource validation unexpectedly switched to TypeID")
+	if !resource.IsValidUID("dev_01h455vb4pex5vsknk084sn02q") {
+		t.Fatal("resource validation must accept TypeID during dual parsing rollout")
 	}
 }
 
@@ -222,7 +223,7 @@ func FuzzParse(f *testing.F) {
 		}
 		switch parsed.Format {
 		case uid.FormatLegacy:
-			prefix, suffix, err := resource.ParseUID(value)
+			prefix, suffix, err := parseLegacyUID(value)
 			if err != nil || prefix != parsed.Prefix || suffix != parsed.Suffix || parsed.UUID != "" {
 				t.Fatalf("legacy parser mismatch: %+v, %v", parsed, err)
 			}
@@ -235,4 +236,16 @@ func FuzzParse(f *testing.F) {
 			t.Fatalf("unknown format: %+v", parsed)
 		}
 	})
+}
+
+// Freeze the pre-migration legacy parser as an independent compatibility oracle.
+func parseLegacyUID(value string) (string, string, error) {
+	parts := strings.Split(value, "-")
+	if len(parts) != 2 {
+		return "", "", errors.New("expected prefix-hex")
+	}
+	if _, err := hex.DecodeString(parts[1]); err != nil {
+		return "", "", err
+	}
+	return parts[0], parts[1], nil
 }

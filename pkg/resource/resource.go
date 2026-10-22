@@ -9,9 +9,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
+
+	uidcodec "github.com/openchami/fabrica/pkg/uid"
 )
 
 // Resource represents a common structure for all inventory resources.
@@ -298,11 +299,8 @@ func (r *Resource) LastUpdated() time.Duration {
 
 // UID Generation Helpers
 //
-// These functions provide structured, human-readable UIDs instead of UUIDs.
-// The format is: <prefix>-<random-hex-digits>
-//
-// This makes logs much easier to follow while still providing sufficient entropy
-// for uniqueness. Similar to AWS resource identifiers (e.g., i-1234abcd for instances).
+// Generation uses <prefix>-<random-hex-digits>. Parsing also accepts TypeID
+// specification 0.3.0 identifiers in preparation for the default migration.
 //
 // Resource prefixes are registered using RegisterResourcePrefix() which should be
 // called during package initialization (typically in init() functions).
@@ -517,7 +515,7 @@ func GenerateUIDForResource(resourceKind string) (string, error) {
 	return GenerateUID(prefix)
 }
 
-// ParseUID extracts the prefix and random part from a structured UID.
+// ParseUID extracts the prefix and suffix from a legacy UID or TypeID.
 //
 // This is useful for validation, logging, or when you need to extract
 // the resource type from a UID.
@@ -527,34 +525,30 @@ func GenerateUIDForResource(resourceKind string) (string, error) {
 //
 // Returns:
 //   - prefix: The prefix part (e.g., "dev")
-//   - randomPart: The hex random part (e.g., "1a2b3c4d")
+//   - randomPart: The original hex or TypeID base32 suffix
 //   - error: If the UID format is invalid
+//
+// Legacy acceptance rules are preserved, including uppercase hex and empty
+// parts. TypeIDs follow specification 0.3.0, including unprefixed identifiers
+// and non-v7 UUID payloads. Parsing does not check prefix registration. Use
+// uid.Codec.Parse for the format and decoded UUID as well as these two parts.
 //
 // Example:
 //
 //	prefix, randomPart, err := ParseUID("dev-1a2b3c4d")
 //	// prefix = "dev", randomPart = "1a2b3c4d"
 func ParseUID(uid string) (prefix, randomPart string, err error) {
-	parts := strings.Split(uid, "-")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid UID format: %s (expected format: prefix-hex)", uid)
+	parsed, err := (uidcodec.Codec{}).Parse(uid)
+	if err != nil {
+		return "", "", err
 	}
-
-	prefix = parts[0]
-	randomPart = parts[1]
-
-	// Validate that random part is valid hex
-	if _, err := hex.DecodeString(randomPart); err != nil {
-		return "", "", fmt.Errorf("invalid hex in UID: %s", randomPart)
-	}
-
-	return prefix, randomPart, nil
+	return parsed.Prefix, parsed.Suffix, nil
 }
 
 // IsValidUID checks if a UID follows the expected structured format.
 //
-// This validates that the UID has the correct format (prefix-hex) and that
-// the hex part is valid hexadecimal.
+// This accepts legacy prefix-hex UIDs and TypeID specification 0.3.0 strings.
+// It does not require a registered prefix or a UUIDv7 payload for parsed IDs.
 //
 // Example:
 //
