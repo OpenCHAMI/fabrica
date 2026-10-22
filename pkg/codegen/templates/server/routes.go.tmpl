@@ -40,7 +40,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/openchami/fabrica/pkg/resource"
+{{if .Resources}}	"github.com/openchami/fabrica/pkg/resource"{{end}}
 )
 
 // RegisterGeneratedPublicRoutes registers standardized service routes that must
@@ -73,18 +73,26 @@ func apiCatalogHandler(w http.ResponseWriter, r *http.Request) {
 		ServiceDoc  []link `json:"service-doc,omitempty"`
 		Status      []link `json:"status,omitempty"`
 	}
-	items := []link{
+	// Keep an API endpoint and its description discoverable even when no
+	// application resources are generated (RFC 9727, section 4.1).
+	paths := []string{
+		"/service/status",
 {{range .Resources}}
-		{Href: baseURL + {{printf "%q" .URLPath}}},
+		{{printf "%q" .URLPath}},
 {{end}}
+	}
+	items := make([]link, 0, len(paths))
+	for _, path := range paths {
+		items = append(items, link{Href: baseURL + path})
 	}
 	catalog := struct {
 		Linkset []context `json:"linkset"`
 	}{Linkset: []context{
 		{Anchor: baseURL + "/.well-known/api-catalog", Item: items},
-{{range .Resources}}
-		{
-			Anchor: baseURL + {{printf "%q" .URLPath}},
+	}}
+	for _, path := range paths {
+		catalog.Linkset = append(catalog.Linkset, context{
+			Anchor: baseURL + path,
 			ServiceDesc: []link{
 				{Href: baseURL + "/openapi.json", Type: "application/json"},
 			},
@@ -94,9 +102,8 @@ func apiCatalogHandler(w http.ResponseWriter, r *http.Request) {
 			Status: []link{
 				{Href: baseURL + "/service/status", Type: "application/json"},
 			},
-		},
-{{end}}
-	}}
+		})
+	}
 	if err := json.NewEncoder(w).Encode(catalog); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

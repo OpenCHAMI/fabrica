@@ -223,10 +223,13 @@ Run `fabrica generate --openapi` to update `cmd/server/openapi_generated.go`.
 Generated servers expose public `GET` and `HEAD` endpoints at
 `/.well-known/api-catalog`, following [RFC 9727](https://www.rfc-editor.org/rfc/rfc9727.html).
 `GET` returns an `application/linkset+json` document with the RFC 9727 profile.
-It lists generated resource collection paths and links each to the OpenAPI
-description (`/openapi.json`), interactive documentation (`/docs`), and service
-status (`/service/status`). `HEAD` returns the catalog location in a
-`Link` header with `rel="api-catalog"` and no response body.
+It always lists the standard `/service/status` API endpoint, followed by generated
+resource collection paths, and links each to the OpenAPI description
+(`/openapi.json`), interactive documentation (`/docs`), and service status
+(`/service/status`). This keeps the specification discoverable even when no
+application resources are generated, while preserving RFC 9727 endpoint links.
+`HEAD` returns the catalog location in a `Link` header with `rel="api-catalog"`
+and no response body.
 
 Catalog URLs use `generation.openapi_server_url` (default
 `http://localhost:8080`), including any configured deployment path prefix.

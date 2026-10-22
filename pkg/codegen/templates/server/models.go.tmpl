@@ -41,7 +41,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openchami/fabrica/pkg/fabrica"
+{{if .Resources}}	"github.com/openchami/fabrica/pkg/fabrica"{{end}}
 {{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
 {{range .UniqueImports}}
 	"{{.Path}}"

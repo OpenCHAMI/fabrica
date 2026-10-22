@@ -6,7 +6,6 @@ package codegen
 
 import (
 	"bytes"
-	"fmt"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -25,16 +24,27 @@ func TestGeneratedAPICatalog(t *testing.T) {
 	}{
 		{name: "default", paths: []string{"/nodes", "/boot/configs"}},
 		{name: "configured base path", serverURL: "https://api.example.com/prefix/", paths: []string{"/inventory/nodes"}},
-		{name: "empty catalog"},
+		{name: "no resources"},
+		{name: "no resources with base path", serverURL: "https://api.example.com/prefix/"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			gen := NewGenerator(dir, "main", "example.com/catalogfixture")
+			root, err := filepath.Abs(filepath.Join("..", ".."))
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeOpenAPIValidationFixture(t, dir, root)
+			gen := NewGenerator(dir, "main", "example.com/openapifixture")
 			if tt.serverURL != "" {
 				gen.Config.OpenAPIServerURL = tt.serverURL
 			}
 			for i, path := range tt.paths {
-				gen.Resources = append(gen.Resources, ResourceMetadata{Name: fmt.Sprintf("Resource%d", i), URLPath: path})
+				name := []string{"Node", "BootConfig"}[i]
+				gen.Resources = append(gen.Resources, ResourceMetadata{
+					Name: name, PluralName: name + "s", URLPath: path,
+					Package: "example.com/openapifixture/apis/v1", PackageAlias: "v1",
+					TypeName: "*v1." + name, SpecType: "v1." + name + "Spec", StatusType: "v1." + name + "Status",
+				})
 			}
 			if err := gen.LoadTemplates(); err != nil {
 				t.Fatal(err)
@@ -43,8 +53,15 @@ func TestGeneratedAPICatalog(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// Compile the actual generated public registration and catalog handler,
-			// isolating them from unrelated resource handlers and storage dependencies.
+			if err := gen.GenerateModels(); err != nil {
+				t.Fatal(err)
+			}
+			if err := gen.GenerateOpenAPI(); err != nil {
+				t.Fatal(err)
+			}
+
+			// Compile generated discovery, status, and OpenAPI handlers without
+			// pulling in unrelated resource handlers and storage dependencies.
 			fset := token.NewFileSet()
 			parsed, err := parser.ParseFile(fset, filepath.Join(dir, "routes_generated.go"), nil, 0)
 			if err != nil {
@@ -53,19 +70,23 @@ func TestGeneratedAPICatalog(t *testing.T) {
 			var source bytes.Buffer
 			source.WriteString("package main\nimport (\"encoding/json\"; \"net/http\"; \"strings\"; \"github.com/go-chi/chi/v5\")\n")
 			for _, decl := range parsed.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if ok && (fn.Name.Name == "RegisterGeneratedPublicRoutes" || fn.Name.Name == "apiCatalogHandler") {
-					if err := format.Node(&source, fset, fn); err != nil {
-						t.Fatal(err)
-					}
-					source.WriteByte('\n')
+				if d, ok := decl.(*ast.GenDecl); ok && d.Tok == token.IMPORT {
+					continue
 				}
+				if fn, ok := decl.(*ast.FuncDecl); ok && (fn.Name.Name == "RegisterGeneratedRoutes" || fn.Name.Name == "registerResourcePrefixes") {
+					continue
+				}
+				if err := format.Node(&source, fset, decl); err != nil {
+					t.Fatal(err)
+				}
+				source.WriteByte('\n')
 			}
-			source.WriteString("func serviceStatusHandler(http.ResponseWriter, *http.Request) {}\n")
-			writeConditionalFixtureFile(t, dir, "routes_generated.go", source.String())
-			writeConditionalFixtureFile(t, dir, "go.mod", "module example.com/catalogfixture\n\ngo 1.26.10\n\nrequire github.com/go-chi/chi/v5 v5.2.3\n")
+			// With no resource handlers, compile the entire routes file as emitted.
+			if len(gen.Resources) > 0 {
+				writeConditionalFixtureFile(t, dir, "routes_generated.go", source.String())
+			}
 			base := strings.TrimRight(gen.Config.OpenAPIServerURL, "/")
-			var paths []string
+			paths := []string{strconv.Quote(base + "/service/status")}
 			for _, path := range tt.paths {
 				paths = append(paths, strconv.Quote(base+path))
 			}
@@ -85,18 +106,33 @@ func TestGeneratedAPICatalog(t *testing.T) {
 const generatedCatalogBehaviorTest = `package main
 
 import (
+ "context"
  "encoding/json"
  "mime"
+ "strings"
  "net/http"
  "net/http/httptest"
  "testing"
 
+ "github.com/getkin/kin-openapi/openapi3"
  "github.com/go-chi/chi/v5"
 )
 
 func TestCatalogDiscovery(t *testing.T) {
  router := chi.NewRouter()
- router.Group(func(public chi.Router) { RegisterGeneratedPublicRoutes(public) })
+ router.Group(func(public chi.Router) {
+  RegisterGeneratedPublicRoutes(public)
+  public.Get("/openapi.json", ServeOpenAPISpec)
+  public.Get("/docs", ServeSwaggerUI)
+ })
+ // Model a reverse proxy stripping the configured deployment prefix.
+ fetch := func(target string) *httptest.ResponseRecorder {
+  t.Helper()
+  if !strings.HasPrefix(target, expectedBase+"/") { t.Fatalf("unexpected public URL: %s", target) }
+  response := httptest.NewRecorder()
+  router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, strings.TrimPrefix(target, expectedBase), nil))
+  return response
+ }
  router.Group(func(protected chi.Router) {
   protected.Use(func(next http.Handler) http.Handler {
    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
@@ -149,7 +185,20 @@ func TestCatalogDiscovery(t *testing.T) {
     } {
      var links []link
      if err := json.Unmarshal(entry[relation], &links); err != nil { t.Fatal(err) }
-     if len(links) != 1 || links[0] != want { t.Errorf("%s = %+v, want %+v", relation, links, want) }
+     if len(links) != 1 || links[0] != want { t.Fatalf("%s = %+v, want %+v", relation, links, want) }
+     linked := fetch(links[0].Href)
+     if linked.Code != http.StatusOK { t.Fatalf("%s link returned %d", relation, linked.Code) }
+     if relation == "service-desc" {
+      spec, err := openapi3.NewLoader().LoadFromData(linked.Body.Bytes())
+      if err != nil { t.Fatal(err) }
+      if err := spec.Validate(context.Background()); err != nil { t.Fatal(err) }
+      endpoint := strings.TrimPrefix(path, expectedBase)
+      if spec.Paths.Value(endpoint) == nil { t.Fatalf("OpenAPI does not describe %s", endpoint) }
+      if i == 0 {
+       status := fetch(items[i].Href)
+       if status.Code != http.StatusOK { t.Fatalf("service item returned %d", status.Code) }
+      }
+     }
     }
    }
   })

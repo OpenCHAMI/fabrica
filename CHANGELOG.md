@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Public RFC 9727 API discovery at `/.well-known/api-catalog`, with JSON Linkset responses, HEAD discovery, and generated OpenAPI documentation.
+  Include the standard service status API so specification discovery works without generated resources.
 
 ## [v0.4.9] - 2026-07-20
 

@@ -26,7 +26,7 @@ import (
 	"net/http"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/openapi3gen"
+{{if .Resources}}	"github.com/getkin/kin-openapi/openapi3gen"{{end}}
 {{range .UniqueImports}}	"{{.Path}}"
 {{end}})
 

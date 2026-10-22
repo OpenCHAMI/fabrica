@@ -76,8 +76,10 @@ If the dry-run reports no changes, the resource files already have YAML tags, do
 ## API Discovery Catalog
 
 Generated services now support public `GET` and `HEAD` requests at
-`/.well-known/api-catalog`. The catalog lists generated resource endpoints and
-their documentation and status links in RFC 9727 JSON Linkset format.
+`/.well-known/api-catalog`. The catalog always lists the standard `/service/status`
+API endpoint, followed by generated resource endpoints, with their documentation
+and status links in RFC 9727 JSON Linkset format. Services without generated
+resources can still discover their OpenAPI specification through the status entry.
 
 1. Set `generation.openapi_server_url` in `.fabrica.yaml` to the public service
    URL, including any deployment prefix, then run `fabrica generate` using the
