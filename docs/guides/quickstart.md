@@ -519,6 +519,7 @@ Validation happens automatically - invalid requests return 400 errors with detai
 Visit these URLs while your server is running:
 
 - **OpenAPI Docs**: http://localhost:8080/docs
+- **API Catalog**: http://localhost:8080/.well-known/api-catalog
 - **Health Check**: http://localhost:8080/health
 - **API Discovery**: http://localhost:8080/api/v1/
 

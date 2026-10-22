@@ -35,7 +35,9 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/openchami/fabrica/pkg/resource"
@@ -45,6 +47,59 @@ import (
 // remain outside authentication and authorization middleware.
 func RegisterGeneratedPublicRoutes(r chi.Router) {
 	r.Get("/service/status", serviceStatusHandler)
+	r.Get("/.well-known/api-catalog", apiCatalogHandler)
+	r.Head("/.well-known/api-catalog", apiCatalogHandler)
+}
+
+// apiCatalogHandler serves the RFC 9727 API catalog in RFC 9264 Linkset format.
+// Use the configured public server URL instead of trusting request or proxy headers.
+func apiCatalogHandler(w http.ResponseWriter, r *http.Request) {
+	baseURL := strings.TrimRight({{printf "%q" .Config.OpenAPIServerURL}}, "/")
+	w.Header().Set("Content-Type", `application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"`)
+	w.Header().Set("Link", "<"+baseURL+"/.well-known/api-catalog>; rel=\"api-catalog\"")
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	type link struct {
+		Href string `json:"href"`
+		Type string `json:"type,omitempty"`
+	}
+	type context struct {
+		Anchor      string `json:"anchor"`
+		Item        []link `json:"item,omitempty"`
+		ServiceDesc []link `json:"service-desc,omitempty"`
+		ServiceDoc  []link `json:"service-doc,omitempty"`
+		Status      []link `json:"status,omitempty"`
+	}
+	items := []link{
+{{range .Resources}}
+		{Href: baseURL + {{printf "%q" .URLPath}}},
+{{end}}
+	}
+	catalog := struct {
+		Linkset []context `json:"linkset"`
+	}{Linkset: []context{
+		{Anchor: baseURL + "/.well-known/api-catalog", Item: items},
+{{range .Resources}}
+		{
+			Anchor: baseURL + {{printf "%q" .URLPath}},
+			ServiceDesc: []link{
+				{Href: baseURL + "/openapi.json", Type: "application/json"},
+			},
+			ServiceDoc: []link{
+				{Href: baseURL + "/docs", Type: "text/html"},
+			},
+			Status: []link{
+				{Href: baseURL + "/service/status", Type: "application/json"},
+			},
+		},
+{{end}}
+	}}
+	if err := json.NewEncoder(w).Encode(catalog); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 type serviceStatusProviderFunc func() ServiceStatus
