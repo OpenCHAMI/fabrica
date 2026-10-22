@@ -14,6 +14,7 @@
 // OpenAPI endpoints:
 //   - GET /openapi.json - Returns OpenAPI 3.0 spec
 //   - GET /docs - Returns Swagger UI
+//   - GET, HEAD /.well-known/api-catalog - Discovers APIs (RFC 9727)
 //
 // This file automatically generates OpenAPI schemas from Go types using
 // kin-openapi's openapi3gen package. No docstring annotations required.
@@ -25,7 +26,7 @@ import (
 	"net/http"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/openapi3gen"
+{{if .Resources}}	"github.com/getkin/kin-openapi/openapi3gen"{{end}}
 {{range .UniqueImports}}	"{{.Path}}"
 {{end}})
 
@@ -228,6 +229,48 @@ func GenerateOpenAPISpec() *openapi3.T {
 			}),
 	})
 	spec.Paths.Set("/docs", &openapi3.PathItem{Get: docsOp})
+
+	// Register RFC 9727 API discovery, including the required HEAD response.
+	catalogLinkSchema := openapi3.NewObjectSchema().
+		WithProperty("href", openapi3.NewStringSchema()).
+		WithProperty("type", openapi3.NewStringSchema()).
+		WithRequired([]string{"href"})
+	catalogContextSchema := openapi3.NewObjectSchema().
+		WithProperty("anchor", openapi3.NewStringSchema()).
+		WithRequired([]string{"anchor"})
+	for _, relation := range []string{"item", "service-desc", "service-doc", "status"} {
+		catalogContextSchema.WithProperty(relation, openapi3.NewArraySchema().WithItems(catalogLinkSchema))
+	}
+	catalogSchema := openapi3.NewObjectSchema().
+		WithProperty("linkset", openapi3.NewArraySchema().WithItems(catalogContextSchema)).
+		WithRequired([]string{"linkset"})
+	catalogOp := openapi3.NewOperation()
+	catalogOp.OperationID = "getAPICatalog"
+	catalogOp.Summary = "Discover API endpoints and documentation"
+	catalogOp.Description = "Public RFC 9727 API catalog in RFC 9264 JSON Linkset format"
+	catalogOp.Tags = []string{"Service"}
+	catalogOp.Responses = openapi3.NewResponses()
+	catalogResponse := openapi3.NewResponse().WithDescription("API catalog")
+	catalogResponse.WithContent(map[string]*openapi3.MediaType{
+		"application/linkset+json": {Schema: &openapi3.SchemaRef{Value: catalogSchema}},
+	})
+	catalogLinkHeader := &openapi3.HeaderRef{Value: &openapi3.Header{
+		Parameter: openapi3.Parameter{
+			Description: "Catalog location with the api-catalog link relation",
+			Schema: &openapi3.SchemaRef{Value: openapi3.NewStringSchema()},
+		},
+	}}
+	catalogResponse.Headers = openapi3.Headers{"Link": catalogLinkHeader}
+	catalogOp.Responses.Set("200", &openapi3.ResponseRef{Value: catalogResponse})
+	catalogHeadOp := openapi3.NewOperation()
+	catalogHeadOp.OperationID = "headAPICatalog"
+	catalogHeadOp.Summary = "Discover the API catalog location"
+	catalogHeadOp.Tags = []string{"Service"}
+	catalogHeadOp.Responses = openapi3.NewResponses()
+	catalogHeadResponse := openapi3.NewResponse().WithDescription("API catalog location; no response body")
+	catalogHeadResponse.Headers = openapi3.Headers{"Link": catalogLinkHeader}
+	catalogHeadOp.Responses.Set("200", &openapi3.ResponseRef{Value: catalogHeadResponse})
+	spec.Paths.Set("/.well-known/api-catalog", &openapi3.PathItem{Get: catalogOp, Head: catalogHeadOp})
 
 	// Register custom (non-Fabrica-generated) paths.
 	// Defined in openapi_extensions.go – safe to edit, never overwritten.

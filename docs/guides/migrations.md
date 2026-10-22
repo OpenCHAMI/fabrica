@@ -73,6 +73,37 @@ If the migration reports a parse error, fix the Go syntax in the referenced `*_t
 
 If the dry-run reports no changes, the resource files already have YAML tags, do not have JSON tags to mirror, or are not listed under the configured API groups and versions in `apis.yaml`.
 
+## API Discovery Catalog
+
+Generated services now support public `GET` and `HEAD` requests at
+`/.well-known/api-catalog`. The catalog always lists the standard `/service/status`
+API endpoint, followed by generated resource endpoints, with their documentation
+and status links in RFC 9727 JSON Linkset format. Services without generated
+resources can still discover their OpenAPI specification through the status entry.
+
+1. Set `generation.openapi_server_url` in `.fabrica.yaml` to the public service
+   URL, including any deployment prefix, then run `fabrica generate` using the
+   matching Fabrica CLI. This updates both routes and OpenAPI output.
+2. Ensure project-owned `cmd/server/main.go` calls
+   `RegisterGeneratedPublicRoutes(public)` in its public router group, outside
+   authentication and authorization middleware. Newly initialized services
+   already include this call. If present, no startup change is needed. Do not
+   also register `/service/status` separately when adding this helper.
+3. Build and test the service, then verify:
+
+   ```bash
+   curl -i http://localhost:8080/.well-known/api-catalog
+   curl -I http://localhost:8080/.well-known/api-catalog
+   ```
+
+   Expect HTTP 200 and `Content-Type: application/linkset+json` with the RFC 9727
+   profile. GET returns catalog links; HEAD returns a `Link` header with
+   `rel="api-catalog"` and no body. Verify both requests without credentials.
+
+When using a reverse proxy with a deployment prefix, route the origin's
+`/.well-known/api-catalog` to the service's catalog endpoint as well, so clients
+can discover the catalog at the standard well-known location.
+
 ## Public Service Status Route
 
 Fabrica v0.4.12 generates a public `/service/status` handler and registration function. Newly initialized services call that function automatically. Existing services adopting the generated endpoint must update their project-owned HTTP setup; `fabrica generate` does not rewrite `cmd/server/main.go`.

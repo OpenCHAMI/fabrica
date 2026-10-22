@@ -218,6 +218,37 @@ generation:
 
 Run `fabrica generate --openapi` to update `cmd/server/openapi_generated.go`.
 
+#### API discovery catalog
+
+Generated servers expose public `GET` and `HEAD` endpoints at
+`/.well-known/api-catalog`, following [RFC 9727](https://www.rfc-editor.org/rfc/rfc9727.html).
+`GET` returns an `application/linkset+json` document with the RFC 9727 profile.
+It always lists the standard `/service/status` API endpoint, followed by generated
+resource collection paths, and links each to the OpenAPI description
+(`/openapi.json`), interactive documentation (`/docs`), and service status
+(`/service/status`). This keeps the specification discoverable even when no
+application resources are generated, while preserving RFC 9727 endpoint links.
+`HEAD` returns the catalog location in a `Link` header with `rel="api-catalog"`
+and no response body.
+
+Catalog URLs use `generation.openapi_server_url` (default
+`http://localhost:8080`), including any configured deployment path prefix.
+Set this to the externally accessible URL before generating a deployed service.
+Request host and forwarding headers do not change catalog links. Resource links
+honor configured resource paths; hand-written routes are not automatically listed.
+
+Run `fabrica generate` after changing resources or the public server URL so the
+catalog and OpenAPI specification stay synchronized. The catalog handler and route
+registration live in `cmd/server/routes_generated.go`. The existing public
+`RegisterGeneratedPublicRoutes(public)` call enables them after regeneration;
+services without that call must add it outside authentication middleware as
+described in the [migration guide](../guides/migrations.md#api-discovery-catalog).
+
+```bash
+curl -i http://localhost:8080/.well-known/api-catalog
+curl -I http://localhost:8080/.well-known/api-catalog
+```
+
 **Output:** Files in `cmd/server/`, `internal/storage/`, and `internal/middleware/`
 
 ### 2. Client Mode (`PackageName: "client"`)

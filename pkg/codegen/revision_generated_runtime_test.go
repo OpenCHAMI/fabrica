@@ -156,7 +156,21 @@ import (
  "testing"
 )
 func TestGeneratedOpenAPISpec(t *testing.T) {
- if err := GenerateOpenAPISpec().Validate(context.Background()); err != nil { t.Fatalf("validate generated OpenAPI: %v", err) }
+ spec := GenerateOpenAPISpec()
+ if err := spec.Validate(context.Background()); err != nil { t.Fatalf("validate generated OpenAPI: %v", err) }
+ catalog := spec.Paths.Value("/.well-known/api-catalog")
+ if catalog == nil || catalog.Get == nil || catalog.Head == nil { t.Fatal("catalog must advertise GET and HEAD") }
+ get := catalog.Get.Responses.Value("200").Value
+ head := catalog.Head.Responses.Value("200").Value
+ if get.Headers["Link"] == nil || head.Headers["Link"] == nil { t.Fatal("catalog responses must advertise the Link header") }
+ if len(head.Content) != 0 { t.Fatal("HEAD must not advertise a response body") }
+ media := get.Content["application/linkset+json"]
+ if media == nil || media.Schema == nil { t.Fatal("catalog must describe a JSON Linkset response") }
+ linkset := media.Schema.Value.Properties["linkset"]
+ if linkset == nil || linkset.Value.Items == nil { t.Fatal("catalog must describe the linkset array") }
+ for _, relation := range []string{"anchor", "item", "service-desc", "service-doc", "status"} {
+  if linkset.Value.Items.Value.Properties[relation] == nil { t.Errorf("catalog context missing %s", relation) }
+ }
 }
 `,
 	}

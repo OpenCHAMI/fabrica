@@ -82,6 +82,7 @@ func TestSetResourcePathRejectsInvalidReservedAndCollidingPaths(t *testing.T) {
 		{name: "invalid newline path", path: "/boot\nconfigs"},
 		{name: "reserved service status path", path: "/service/status"},
 		{name: "reserved docs path", path: "/docs"},
+		{name: "reserved API catalog path", path: "/.well-known/api-catalog"},
 	}
 
 	for _, tt := range tests {
