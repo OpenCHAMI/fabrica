@@ -571,3 +571,11 @@ func main() {
 - [Events](events.md) - Integrate events with reconciliation
 - [Storage](storage.md) - Persist resource state
 - [Architecture](../reference/architecture.md) - System design patterns
+
+## Regenerate-safe feature startup
+
+New services use a generated feature loader so feature selections can change
+without rewriting user-owned `cmd/server/main.go`. See the
+[feature loader guide](../guides/feature-loader.md) for regeneration commands,
+selective-generation rules, customization boundaries, and migration of existing
+services.

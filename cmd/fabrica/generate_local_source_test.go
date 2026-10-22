@@ -92,7 +92,7 @@ func TestGenerateRunnerCodeUsesProjectRoot(t *testing.T) {
 	if !strings.Contains(got, "os.Chdir(\"/tmp/project\")") {
 		t.Fatalf("runner code missing project root chdir:\n%s", got)
 	}
-	if !strings.Contains(got, "gen.GenerateMiddleware()") {
+	if !strings.Contains(got, "generateFeaturesCompat(gen)") {
 		t.Fatalf("runner code missing middleware generation:\n%s", got)
 	}
 }

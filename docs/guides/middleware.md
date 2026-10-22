@@ -737,3 +737,11 @@ func TestAuthMiddleware(t *testing.T) {
 - Add logging and monitoring
 - Configure rate limiting based on your needs
 - Test middleware independently before integration
+
+## Regenerate-safe feature startup
+
+New services use a generated feature loader so feature selections can change
+without rewriting user-owned `cmd/server/main.go`. See the
+[feature loader guide](../guides/feature-loader.md) for regeneration commands,
+selective-generation rules, customization boundaries, and migration of existing
+services.

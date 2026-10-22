@@ -930,3 +930,11 @@ The result: **Write resource definitions once, get complete CRUD APIs automatica
 - Makefile with dev workflow
 
 **Note:** The core infrastructure is complete and production-ready. For authentication/authorization, implement custom middleware in `internal/middleware/`.
+
+## Regenerate-safe feature startup
+
+New services use a generated feature loader so feature selections can change
+without rewriting user-owned `cmd/server/main.go`. See the
+[feature loader guide](../guides/feature-loader.md) for regeneration commands,
+selective-generation rules, customization boundaries, and migration of existing
+services.

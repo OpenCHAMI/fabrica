@@ -53,24 +53,45 @@ func TestInitScaffold_DatabaseConfigBehavior(t *testing.T) {
 			t.Fatal(err)
 		}
 		var declarations bytes.Buffer
-		for _, decl := range file.Decls {
-			switch decl := decl.(type) {
-			case *ast.GenDecl:
-				if decl.Tok == token.IMPORT {
-					continue
+		appendDeclarations := func(file *ast.File, feature bool) {
+			for _, decl := range file.Decls {
+				switch d := decl.(type) {
+				case *ast.GenDecl:
+					if d.Tok == token.IMPORT {
+						continue
+					}
+					if feature {
+						if d.Tok != token.TYPE || d.Specs[0].(*ast.TypeSpec).Name.Name != "GeneratedFeatureConfig" {
+							continue
+						}
+					}
+				case *ast.FuncDecl:
+					if feature {
+						switch d.Name.Name {
+						case "applyGeneratedFeatureDefaults", "registerGeneratedFeatureFlags", "registerGeneratedFeatureCommands":
+						default:
+							continue
+						}
+					} else {
+						switch d.Name.Name {
+						case "DefaultConfig", "bindFlagsWithUnderscoreKeys", "init", "initConfig":
+						default:
+							continue
+						}
+					}
 				}
-			case *ast.FuncDecl:
-				switch decl.Name.Name {
-				case "DefaultConfig", "bindFlagsWithUnderscoreKeys", "init", "initConfig":
-				default:
-					continue
+				if err := format.Node(&declarations, fset, decl); err != nil {
+					t.Fatal(err)
 				}
+				declarations.WriteString("\n\n")
 			}
-			if err := format.Node(&declarations, fset, decl); err != nil {
-				t.Fatal(err)
-			}
-			declarations.WriteString("\n\n")
 		}
+		appendDeclarations(file, false)
+		featureFile, err := parser.ParseFile(fset, filepath.Join(dir, "cmd/server/features_generated.go"), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		appendDeclarations(featureFile, true)
 		// Move only the isolated configuration into the fixture module.
 		if err := os.RemoveAll(dir); err != nil {
 			t.Fatal(err)

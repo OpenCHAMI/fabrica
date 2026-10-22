@@ -103,3 +103,13 @@ go run ./cmd/server/ serve
 # Run with custom config
 go run ./cmd/server/ serve --config config.yaml
 ```
+
+## Changing startup features
+
+Edit `.fabrica.yaml`, then run `fabrica generate`, `go mod tidy`, and your build
+and tests. The generated loader updates startup composition without overwriting
+`cmd/server/main.go`. Changed feature selections require full generation.
+Keep `cmd/server/features_manifest_generated.json` under version control; generated
+helpers and feature middleware must not be edited. Customize main, reconcilers,
+classifiers, policies, and project-owned storage instead. See the
+[Fabrica feature loader guide](https://github.com/OpenCHAMI/fabrica/blob/main/docs/guides/feature-loader.md).

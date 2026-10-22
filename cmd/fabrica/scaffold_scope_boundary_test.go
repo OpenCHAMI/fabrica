@@ -13,9 +13,9 @@ func TestTemplate_InitMain_OrchestrationOnlyBoundaries(t *testing.T) {
 	mainTmpl := mustReadFile(t, "pkg/codegen/templates/init/main.go.tmpl")
 
 	requiredOrchestrationCalls := []string{
-		"initializeStorage(config)",
-		"initializeEventingAndReconciliation(config)",
-		"initializeAuthMiddleware(config)",
+		"loadGeneratedFeatures(cmd.Context(), config)",
+		"features.Use(r)",
+		"features.UseProtected(protected)",
 		"logStartupConfiguration(config, addr)",
 	}
 

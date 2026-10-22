@@ -25,6 +25,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openchami/fabrica/internal/config"
+	"github.com/openchami/fabrica/internal/projectfeatures"
+	"github.com/openchami/fabrica/pkg/codegen"
 )
 
 // readFabricaConfig reads the .fabrica.yaml configuration file
@@ -126,6 +128,12 @@ Examples:
 
 			apisConfig, err := readAPIsConfig()
 			if err != nil {
+				return err
+			}
+
+			featureGen := codegen.NewGenerator(filepath.Join(projectRoot, "cmd/server"), "main", modulePath)
+			featureGen.SetFeatures(projectfeatures.FromConfig(config, apisConfig != nil))
+			if err := featureGen.CheckFeatureGeneration(all); err != nil {
 				return err
 			}
 
@@ -714,13 +722,13 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\tif err := gen.GenerateHandlers(); err != nil {\n")
 			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate handlers: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
-			generationCalls.WriteString("\tif err := gen.GenerateMiddleware(); err != nil {\n")
-			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate middleware: %v\", err)\n")
+			generationCalls.WriteString("\tif err := generateFeaturesCompat(gen); err != nil {\n")
+			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate features: %v\", err)\n")
 			generationCalls.WriteString("\t}\n")
-			// Always generate metrics (will create stub if disabled)
-			generationCalls.WriteString("\tif err := gen.GenerateMetrics(); err != nil {\n")
-			generationCalls.WriteString("\t\tlog.Fatalf(\"Failed to generate metrics: %v\", err)\n")
-			generationCalls.WriteString("\t}\n")
+		}
+
+		if storage && !handlers {
+			generationCalls.WriteString("\tif err := callOptionalGenerator(gen, \"GenerateFeaturesIfAdopted\"); err != nil { log.Fatal(err) }\n")
 		}
 
 		if storage && storageType != "custom" {
@@ -860,7 +868,7 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 	}
 
 	verboseFlag := "false"
-	fmtImport := ""
+	fmtImport := "\t\"fmt\"\n"
 	if debug {
 		verboseFlag = "true"
 		fmtImport = "\t\"fmt\"\n"
@@ -870,6 +878,8 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 
 import (
 %s	"log"
+    "bytes"
+    "encoding/json"
 	"os"
 	"reflect"
 
@@ -881,6 +891,7 @@ import (
 
 // FabricaConfig structures to load .fabrica.yaml
 type FabricaConfig struct {
+    Project struct { Name string `+"`yaml:\"name\"`"+` } `+"`yaml:\"project\"`"+`
 	Features   FeaturesConfig   `+"`yaml:\"features\"`"+`
 	Generation GenerationConfig `+"`yaml:\"generation\"`"+`
 }
@@ -893,6 +904,7 @@ type FeaturesConfig struct {
 	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
 	Metrics     MetricsConfig     `+"`yaml:\"metrics\"`"+`
 	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
+    Reconciliation ReconciliationConfig `+"`yaml:\"reconciliation\"`"+`
 }
 
 type ValidationConfig struct {
@@ -923,8 +935,15 @@ type MetricsConfig struct {
 	Enabled bool `+"`yaml:\"enabled\"`"+`
 }
 
+type ReconciliationConfig struct {
+ Enabled bool `+"`yaml:\"enabled\"`"+`
+ WorkerCount int `+"`yaml:\"worker_count\"`"+`
+ RequeueDelay int `+"`yaml:\"requeue_delay\"`"+`
+}
+
 type SecurityConfig struct {
-	AuthN AuthNConfig `+"`yaml:\"authn\"`"+`
+ AuthN AuthNConfig `+"`yaml:\"authn\"`"+`
+ AuthZ struct { Enabled bool `+"`yaml:\"enabled\"`"+`; Mode string `+"`yaml:\"mode\"`"+` } `+"`yaml:\"authz\"`"+`
 }
 
 type AuthNConfig struct {
@@ -994,8 +1013,21 @@ func main() {
 
 		// Wire TokenSmith-first security features into generator config.
 		authEnabled = config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled
-		setAuthEnabledCompat(gen, authEnabled)
-	}
+        setAuthEnabledCompat(gen, authEnabled)
+        if err := setFeaturesCompat(gen, map[string]interface{}{
+            "ProjectName": config.Project.Name,
+            "VersioningEnabled": fileExists("apis.yaml"),
+            "StorageType": gen.StorageType, "DBDriver": gen.DBDriver,
+            "EventsEnabled": config.Features.Events.Enabled, "EventBusType": config.Features.Events.BusType,
+            "ReconciliationEnabled": config.Features.Reconciliation.Enabled,
+            "ReconcileWorkers": config.Features.Reconciliation.WorkerCount,
+            "ReconcileRequeueMinutes": config.Features.Reconciliation.RequeueDelay,
+            "MetricsEnabled": config.Features.Metrics.Enabled, "AuthEnabled": authEnabled,
+            "AuthZEnabled": config.Features.Security.AuthZ.Enabled, "AuthZMode": config.Features.Security.AuthZ.Mode,
+            "ValidationEnabled": config.Features.Validation.Enabled, "ValidationMode": config.Features.Validation.Mode,
+            "ConditionalEnabled": config.Features.Conditional.Enabled, "ETagAlgorithm": config.Features.Conditional.ETagAlgorithm,
+        }); err != nil { log.Fatal(err) }
+    }
 
 	if _, err := os.Stat("apis.yaml"); err == nil {
 		gen.Config.VersioningEnabled = true
@@ -1006,6 +1038,37 @@ func main() {
 	}
 
 %s}
+
+// Bridge the shared typed feature model without requiring newer symbols when
+// a legacy project deliberately selects an older generator module.
+func setFeaturesCompat(gen *codegen.Generator, fields map[string]interface{}) error {
+    method := reflect.ValueOf(gen).MethodByName("SetFeatures")
+    if !method.IsValid() { return nil }
+    data, err := json.Marshal(fields)
+    if err != nil { return err }
+    value := reflect.New(method.Type().In(0))
+    if err := json.Unmarshal(data, value.Interface()); err != nil { return err }
+    method.Call([]reflect.Value{value.Elem()})
+    return nil
+}
+
+func fileExists(path string) bool {
+    _, err := os.Stat(path)
+    return err == nil
+}
+
+func generateFeaturesCompat(gen *codegen.Generator) error {
+    if reflect.ValueOf(gen).MethodByName("GenerateFeatures").IsValid() {
+        return callOptionalGenerator(gen, "GenerateFeatures")
+    }
+    main, err := os.ReadFile(gen.OutputDir + "/main.go")
+    if err != nil && !os.IsNotExist(err) { return err }
+    if bytes.Contains(main, []byte("GeneratedFeatureConfig")) {
+        return fmt.Errorf("feature-loader services require a Fabrica generator with GenerateFeatures support; update the module or use --fabrica-source")
+    }
+    if err := gen.GenerateMiddleware(); err != nil { return err }
+    return gen.GenerateMetrics()
+}
 
 func setAuthEnabledCompat(gen *codegen.Generator, enabled bool) {
 	if method := reflect.ValueOf(gen).MethodByName("SetAuthEnabled"); method.IsValid() {

@@ -42,7 +42,7 @@ func TestTemplate_InitMain_BindsHyphenatedFlagsToUnderscoreConfigKeys(t *testing
 }
 
 func TestTemplate_InitMain_UsesUnderscoreMapstructureKeys(t *testing.T) {
-	mainTmpl := mustReadFile(t, "pkg/codegen/templates/init/main.go.tmpl")
+	mainTmpl := mustReadFile(t, "pkg/codegen/templates/server/features.go.tmpl")
 
 	if !strings.Contains(mainTmpl, "DatabaseURL string `mapstructure:\"database_url\"`") {
 		t.Fatal("init/main.go.tmpl should use underscore-based database_url mapstructure key")
@@ -52,7 +52,7 @@ func TestTemplate_InitMain_UsesUnderscoreMapstructureKeys(t *testing.T) {
 		t.Fatal("init/main.go.tmpl should not use hyphen-based database-url mapstructure key")
 	}
 
-	if !strings.Contains(mainTmpl, `serveCmd.Flags().String("database-url"`) {
+	if !strings.Contains(mainTmpl, `flags.String("database-url"`) {
 		t.Fatal("init/main.go.tmpl should keep the database-url CLI flag hyphenated")
 	}
 }
