@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"go.jetify.com/typeid/v2"
 )
 
@@ -76,16 +77,23 @@ func TestResourceTypeLookupBothFormats(t *testing.T) {
 			t.Fatalf("GetResourceTypeFromUID(%q) = %q, %v", value, kind, err)
 		}
 	}
-	for _, kind := range []string{"Device", "DiskV1"} {
+	RegisterResourcePrefix("GroupName", "group_name")
+	for _, kind := range []string{"Device", "GroupName"} {
 		value, err := GenerateUIDForResource(kind)
 		if err != nil {
 			t.Fatal(err)
 		}
 		got, err := GetResourceTypeFromUID(value)
-		_, suffix, parseErr := ParseUID(value)
-		if err != nil || got != kind || !strings.Contains(value, "-") || parseErr != nil || len(suffix) != 8 {
-			t.Fatalf("legacy generation/lookup for %q = %q, %q, %v", kind, value, got, err)
+		id, parseErr := typeid.Parse(value)
+		if err != nil || got != kind || parseErr != nil || uuid.MustParse(id.UUID()).Version() != 7 {
+			t.Fatalf("TypeID generation/lookup for %q = %q, %q, %v", kind, value, got, err)
 		}
+	}
+	if value, err := GenerateUIDForResource("DiskV1"); err == nil || value != "" {
+		t.Fatalf("numeric prefix must reject new generation: %q, %v", value, err)
+	}
+	if kind, err := GetResourceTypeFromUID("disk1-abcdef"); err != nil || kind != "DiskV1" {
+		t.Fatalf("numeric legacy lookup: %q, %v", kind, err)
 	}
 	for _, value := range []string{"missing-aa", "missing_01h455vb4pex5vsknk084sn02q", "pre_fix_00000000000000000000000000", "00000000000000000000000000"} {
 		if !IsValidUID(value) {
@@ -126,4 +134,36 @@ func FuzzParseUID(f *testing.F) {
 			t.Fatalf("ParseUID(%q) = %q, %q, %v; want %q, %q, valid=%t", value, prefix, suffix, err, wantPrefix, wantSuffix, valid)
 		}
 	})
+}
+
+func TestGenerateUIDRejectsIncompatiblePrefixes(t *testing.T) {
+	for _, prefix := range []string{"", "disk1", "DEV", "_dev", "dev_", "dev-x", strings.Repeat("a", 64)} {
+		if value, err := GenerateUID(prefix); err == nil || value != "" {
+			t.Fatalf("GenerateUID(%q) = %q, %v", prefix, value, err)
+		}
+	}
+}
+
+func TestGenerateUIDWithLengthRemainsExplicitLegacy(t *testing.T) {
+	value, err := GenerateUIDWithLength("disk1", 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, suffix, err := ParseUID(value)
+	if err != nil || prefix != "disk1" || len(suffix) != 12 || !strings.Contains(value, "-") {
+		t.Fatalf("legacy helper = %q, %v", value, err)
+	}
+}
+
+func TestRegisterResourcePrefixRejectsMalformedTypeIDPrefix(t *testing.T) {
+	for _, prefix := range []string{"", "_dev", "dev_", "dev_1", "DEV", "dev-x"} {
+		t.Run(prefix, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("registration accepted invalid prefix")
+				}
+			}()
+			RegisterResourcePrefix("InvalidPrefix", prefix)
+		})
+	}
 }

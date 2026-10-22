@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- New resource UIDs use TypeID/UUIDv7 (`prefix_` plus 26 lowercase base32
+  characters), replacing the short random hexadecimal default. Rebuilding
+  against the upgraded runtime changes new IDs immediately. Existing stored
+  identifiers are never rewritten, and legacy parsing and lookup remain
+  supported. Account for up to 90 characters in custom validators and storage.
+- New resource UID generation requires TypeID-compatible nonempty prefixes.
+  Legacy alphanumeric registrations remain readable, but numeric and overlong
+  prefixes cannot create new IDs. Scaffolding and server generation reject
+  incompatible derived prefixes before writing output. Audit external services
+  and custom registrations before upgrading; no prefixes are silently renamed.
+- Revision UID generation uses the shared codec and retains its `rev_` format.
+
+### Deprecated
+- `resource.GenerateUIDWithLength` remains an explicit legacy-format helper.
+  Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
+
 ## [v0.4.9] - 2026-07-20
 
 ### Added

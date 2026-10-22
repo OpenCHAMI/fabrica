@@ -50,7 +50,7 @@ A series has a stable name, monotonically increasing revision numbers, and two p
 - `default`: the explicitly promoted revision. A bare series name resolves here.
 - `latest`: the most recently created revision.
 
-Creating a series creates revision 1 and initializes both pointers. Creating another revision advances only `latest`. Revision UIDs use the `rev_` TypeID prefix with a UUIDv7 payload; ordinary resource metadata UIDs retain their existing format.
+Creating a series creates revision 1 and initializes both pointers. Creating another revision advances only `latest`. Revision UIDs use the `rev_` TypeID prefix with a UUIDv7 payload; ordinary resource metadata UIDs also use TypeID/UUIDv7 with their registered resource prefix.
 
 Revision content includes API identity, user-managed metadata, and spec. Status, timestamps, and server-managed UIDs are excluded from the canonical digest. Status is mutable series-level state and does not create a new revision.
 

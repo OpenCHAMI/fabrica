@@ -14,8 +14,8 @@ import (
 
 // ValidateTypeIDPrefixes audits the lowercase resource names emitted as UID
 // prefixes by the routes template. It reports all incompatible names without
-// renaming prefixes or changing registration. Generation does not call this
-// opt-in preflight until TypeID becomes the default resource UID format.
+// renaming prefixes or changing registration. Server generation calls this preflight
+// before emitting files.
 // This does not audit custom registrations in user-authored resource files.
 func (g *Generator) ValidateTypeIDPrefixes() error {
 	var problems []error
