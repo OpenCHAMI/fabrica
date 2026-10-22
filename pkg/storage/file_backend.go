@@ -14,9 +14,35 @@ import (
 	"sync"
 )
 
-// fileBackendLocks serializes all instances using the same canonical directory.
+// fileBackendLocks serializes all instances using the same directory identity,
+// including symlinks and case aliases on case-insensitive filesystems.
 // File storage is intended for a single server process.
-var fileBackendLocks sync.Map
+var fileBackendLocks struct {
+	sync.Mutex
+	directories []fileDirectoryLock
+}
+
+type fileDirectoryLock struct {
+	info os.FileInfo
+	mu   *sync.RWMutex
+}
+
+func fileMutationLock(directory string) (*sync.RWMutex, error) {
+	info, err := os.Stat(directory)
+	if err != nil {
+		return nil, err
+	}
+	fileBackendLocks.Lock()
+	defer fileBackendLocks.Unlock()
+	for _, entry := range fileBackendLocks.directories {
+		if os.SameFile(info, entry.info) {
+			return entry.mu, nil
+		}
+	}
+	mu := &sync.RWMutex{}
+	fileBackendLocks.directories = append(fileBackendLocks.directories, fileDirectoryLock{info: info, mu: mu})
+	return mu, nil
+}
 
 // FileBackend implements StorageBackend using file-based storage.
 //
@@ -108,8 +134,11 @@ func NewFileBackend(baseDir string) (*FileBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	lock, _ := fileBackendLocks.LoadOrStore(canonical, &sync.RWMutex{})
-	backend := &FileBackend{baseDir: canonical, mu: lock.(*sync.RWMutex)}
+	lock, err := fileMutationLock(canonical)
+	if err != nil {
+		return nil, err
+	}
+	backend := &FileBackend{baseDir: canonical, mu: lock}
 
 	return backend, nil
 }

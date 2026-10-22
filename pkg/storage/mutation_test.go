@@ -236,3 +236,116 @@ func TestFileMutationCancellationDoesNotWrite(t *testing.T) {
 		}
 	}
 }
+
+func TestFileMutationSerializesCaseAliases(t *testing.T) {
+	ctx := context.Background()
+	parent := t.TempDir()
+	first, err := NewFileBackend(filepath.Join(parent, "Data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(parent, "data")
+	originalInfo, err := os.Stat(first.baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasInfo, err := os.Stat(alias)
+	if os.IsNotExist(err) {
+		t.Skip("case-sensitive filesystem")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(originalInfo, aliasInfo) {
+		t.Skip("case-sensitive filesystem")
+	}
+	second, err := NewFileBackend(alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := json.RawMessage(`{"value":"initial"}`)
+	if err := first.Save(ctx, "Node", "node-1", initial); err != nil {
+		t.Fatal(err)
+	}
+
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	firstResult, secondResult := make(chan error, 1), make(chan error, 1)
+	rejected := errors.New("stale precondition")
+	go func() {
+		_, err := first.Mutate(ctx, "Node", "node-1", func(raw json.RawMessage) (json.RawMessage, bool, error) {
+			if string(raw) != string(initial) {
+				return nil, false, rejected
+			}
+			close(entered)
+			<-release
+			return json.RawMessage(`{"value":"first"}`), false, nil
+		})
+		firstResult <- err
+	}()
+	<-entered
+	go func() {
+		_, err := second.Mutate(ctx, "Node", "node-1", func(raw json.RawMessage) (json.RawMessage, bool, error) {
+			if string(raw) != string(initial) {
+				return nil, false, rejected
+			}
+			return json.RawMessage(`{"value":"second"}`), false, nil
+		})
+		secondResult <- err
+	}()
+	select {
+	case err := <-secondResult:
+		t.Fatalf("case alias bypassed active mutation: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	unblock()
+	if err := <-firstResult; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondResult; !errors.Is(err, rejected) {
+		t.Fatalf("competing mutation=%v, want stale precondition", err)
+	}
+	raw, err := first.Load(ctx, "Node", "node-1")
+	if err != nil || string(raw) != `{"value":"first"}` {
+		t.Fatalf("winning mutation lost: %s %v", raw, err)
+	}
+}
+
+func TestFileMutationGuardUsesDirectoryIdentity(t *testing.T) {
+	root := t.TempDir()
+	first, err := NewFileBackend(filepath.Join(root, "Data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewFileBackend(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstInfo, err := os.Stat(first.baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInfo, err := os.Stat(second.baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Keep genuinely distinct case-sensitive directories independent.
+	if !os.SameFile(firstInfo, secondInfo) {
+		if first.mu == second.mu {
+			t.Fatal("distinct directories share a mutation lock")
+		}
+		return
+	}
+	// Snapshot guards must coordinate with backend operations through aliases.
+	if err := WithFileMutation(context.Background(), second.baseDir, func() error {
+		if first.mu.TryLock() {
+			first.mu.Unlock()
+			t.Error("snapshot guard and case-alias backend use different locks")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

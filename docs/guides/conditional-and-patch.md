@@ -109,9 +109,10 @@ unconditional behavior; wildcard and comma-separated strong validators are
 supported. Concurrent deletion can return `404 Not Found` when the resource no
 longer exists.
 
-File storage serializes backend instances sharing a canonical directory within
-one server process. Use Ent storage for multiple server processes sharing a
-database. Ent commits resource fields, labels, and annotations together, and
+File storage serializes backend instances sharing the same directory identity
+within one server process, including symlinks and case aliases on
+case-insensitive filesystems. Use Ent storage for multiple server processes
+sharing a database. Ent commits resource fields, labels, and annotations together, and
 retries conflicting transactions against freshly loaded state. Its internal
 `resource_version` guard advances on unconditional saves too.
 

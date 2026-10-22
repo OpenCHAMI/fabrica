@@ -9,8 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
-	"sync"
 )
 
 // Mutation computes a replacement or deletion from authoritative stored data.
@@ -63,16 +61,10 @@ func WithFileMutation(ctx context.Context, directory string, fn func() error) er
 	if err := os.MkdirAll(directory, 0755); err != nil {
 		return err
 	}
-	path, err := filepath.Abs(directory)
+	mu, err := fileMutationLock(directory)
 	if err != nil {
 		return err
 	}
-	path, err = filepath.EvalSymlinks(path)
-	if err != nil {
-		return err
-	}
-	guard, _ := fileBackendLocks.LoadOrStore(path, &sync.RWMutex{})
-	mu := guard.(*sync.RWMutex)
 	mu.Lock()
 	defer mu.Unlock()
 	if err := ctx.Err(); err != nil {
