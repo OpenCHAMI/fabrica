@@ -446,7 +446,9 @@ func loadEntForMutation(ctx context.Context, client *ent.Client, kind, uid strin
 
 // persistEntMutation advances the internal compare-and-swap token on EVERY write.
 // Resource fields, labels and annotations are committed in the same transaction.
-func persistEntMutation(ctx context.Context, client *ent.Client, current *ent.Resource, kind, uid string, raw json.RawMessage) error {
+// Ordinary saves refresh updatedAt on updates; atomic callbacks retain the
+// timestamp in their validated replacement and return that representation.
+func persistEntMutation(ctx context.Context, client *ent.Client, current *ent.Resource, kind, uid string, raw json.RawMessage, refreshUpdatedAt bool) error {
 	var envelope struct {
 		APIVersion string `json:"apiVersion"`
 		Metadata   struct {
@@ -474,6 +476,9 @@ func persistEntMutation(ctx context.Context, client *ent.Client, current *ent.Re
 		}
 		id = entity.ID
 	} else {
+		if refreshUpdatedAt {
+			envelope.Metadata.UpdatedAt = time.Now()
+		}
 		count, err := client.Resource.Update().Where(entresource.IDEQ(current.ID), entresource.ResourceVersionEQ(current.ResourceVersion)).
 			SetAPIVersion(envelope.APIVersion).SetName(envelope.Metadata.Name).
 			SetUpdatedAt(envelope.Metadata.UpdatedAt).SetSpec(envelope.Spec).SetStatus(envelope.Status).SetResourceVersion(token).Save(ctx)
@@ -497,7 +502,7 @@ func (b *entStorageBackend) write(ctx context.Context, kind, uid string, raw jso
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
-		return nil, persistEntMutation(ctx, client, current, kind, uid, raw)
+		return nil, persistEntMutation(ctx, client, current, kind, uid, raw, true)
 	})
 	return err
 }
@@ -538,7 +543,7 @@ func (b *entStorageBackend) Mutate(ctx context.Context, kind, uid string, fn fab
 			}
 			return current, nil
 		}
-		if err := persistEntMutation(ctx, client, entity, kind, uid, next); err != nil {
+		if err := persistEntMutation(ctx, client, entity, kind, uid, next, false); err != nil {
 			return nil, err
 		}
 		return next, nil

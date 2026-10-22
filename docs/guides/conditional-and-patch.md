@@ -114,7 +114,10 @@ within one server process, including symlinks and case aliases on
 case-insensitive filesystems. Use Ent storage for multiple server processes
 sharing a database. Ent commits resource fields, labels, and annotations together, and
 retries conflicting transactions against freshly loaded state. Its internal
-`resource_version` guard advances on unconditional saves too.
+`resource_version` guard advances on unconditional saves too. Ordinary Ent saves
+of existing resources also advance `metadata.updatedAt` to the save time. Atomic
+mutations preserve the timestamp chosen by their callback, so the returned
+representation matches the committed resource.
 
 Ent mutations use at most eight transaction attempts, including the initial
 attempt, with bounded backoff and context cancellation.

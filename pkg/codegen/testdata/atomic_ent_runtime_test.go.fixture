@@ -233,3 +233,92 @@ func TestEntMutationRetryLimit(t *testing.T) {
 		}
 	})
 }
+
+func TestEntSaveRefreshesModificationTime(t *testing.T) {
+	for _, backendSave := range []bool{false, true} {
+		name := "typed"
+		if backendSave {
+			name = "backend"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			client, err := ent.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "timestamps.db")+"?_fk=1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			if err := client.Schema.Create(ctx); err != nil {
+				t.Fatal(err)
+			}
+			SetEntClient(client)
+			stamp := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+			token := &testfixtures.MappedToken{Resource: resource.Resource{APIVersion: "v1", Kind: "MappedToken", Metadata: resource.Metadata{UID: "timestamp-1", Name: "token", CreatedAt: stamp, UpdatedAt: stamp}}}
+			token.Spec.Subject = "initial"
+			save := func() error {
+				if !backendSave {
+					return SaveMappedToken(ctx, token)
+				}
+				raw, err := json.Marshal(token)
+				if err != nil {
+					return err
+				}
+				return Backend.Save(ctx, "MappedToken", token.GetUID(), raw)
+			}
+			if err := save(); err != nil {
+				t.Fatal(err)
+			}
+			created, err := LoadMappedToken(ctx, token.GetUID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !created.Metadata.CreatedAt.Equal(stamp) || !created.Metadata.UpdatedAt.Equal(stamp) {
+				t.Fatalf("create changed supplied timestamps: %#v", created.Metadata)
+			}
+
+			// Ordinary saves historically supply the modification time themselves.
+			token.Spec.Subject = "updated"
+			before := time.Now()
+			if err := save(); err != nil {
+				t.Fatal(err)
+			}
+			after := time.Now()
+			updated, err := LoadMappedToken(ctx, token.GetUID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if updated.Spec.Subject != "updated" || !updated.Metadata.CreatedAt.Equal(stamp) || updated.Metadata.UpdatedAt.Before(before) || updated.Metadata.UpdatedAt.After(after) {
+				t.Fatalf("save did not preserve creation time and refresh modification time: %#v", updated)
+			}
+
+			// Atomic callbacks choose their own timestamp. Changing it implicitly
+			// would make the returned representation disagree with stored state.
+			chosen := stamp.Add(time.Hour)
+			committed, err := MutateMappedToken(ctx, token.GetUID(), func(current *testfixtures.MappedToken) (bool, error) {
+				current.Spec.Subject = "atomic"
+				current.Metadata.UpdatedAt = chosen
+				return false, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := LoadMappedToken(ctx, token.GetUID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !committed.Metadata.UpdatedAt.Equal(chosen) || !actual.Metadata.UpdatedAt.Equal(chosen) || actual.Spec.Subject != "atomic" {
+				t.Fatalf("atomic callback timestamp was replaced: returned=%#v stored=%#v", committed, actual)
+			}
+			returnedJSON, err := json.Marshal(committed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storedJSON, err := json.Marshal(actual)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(returnedJSON) != string(storedJSON) {
+				t.Fatalf("atomic result differs from committed resource: returned=%s stored=%s", returnedJSON, storedJSON)
+			}
+		})
+	}
+}
