@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -109,9 +110,10 @@ func (g *Generator) SetFeatures(f FeatureConfig) {
 	g.Config.VersioningEnabled = f.VersioningEnabled
 }
 
-// UsesFeatureLoader detects adoption structurally, without depending on comments.
+// UsesFeatureLoader detects adoption across application files in the server's
+// active build. Generated outputs and tests cannot establish adoption.
 func UsesFeatureLoader(serverDir string) (bool, error) {
-	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(serverDir, "main.go"), nil, 0)
+	entries, err := os.ReadDir(serverDir)
 	if os.IsNotExist(err) {
 		return false, nil
 	}
@@ -119,25 +121,46 @@ func UsesFeatureLoader(serverDir string) (bool, error) {
 		return false, err
 	}
 	embedded, called := false, false
-	ast.Inspect(file, func(n ast.Node) bool {
-		switch n := n.(type) {
-		case *ast.TypeSpec:
-			if n.Name.Name == "Config" {
-				if s, ok := n.Type.(*ast.StructType); ok {
-					for _, field := range s.Fields.List {
-						if id, ok := field.Type.(*ast.Ident); ok && len(field.Names) == 0 && id.Name == "GeneratedFeatureConfig" {
-							embedded = true
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || strings.HasSuffix(name, "_generated.go") {
+			continue
+		}
+		active, err := build.Default.MatchFile(serverDir, name)
+		if err != nil {
+			return false, err
+		}
+		if !active {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(serverDir, name), nil, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			return false, err
+		}
+		// Older main scaffolds carry a generated header even after migration.
+		if file.Name.Name != "main" || name != "main.go" && ast.IsGenerated(file) {
+			continue
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.TypeSpec:
+				if n.Name.Name == "Config" {
+					if s, ok := n.Type.(*ast.StructType); ok {
+						for _, field := range s.Fields.List {
+							if id, ok := field.Type.(*ast.Ident); ok && len(field.Names) == 0 && id.Name == "GeneratedFeatureConfig" {
+								embedded = true
+							}
 						}
 					}
 				}
+			case *ast.CallExpr:
+				if id, ok := n.Fun.(*ast.Ident); ok && id.Name == "loadGeneratedFeatures" {
+					called = true
+				}
 			}
-		case *ast.CallExpr:
-			if id, ok := n.Fun.(*ast.Ident); ok && id.Name == "loadGeneratedFeatures" {
-				called = true
-			}
-		}
-		return true
-	})
+			return true
+		})
+	}
 	if embedded != called {
 		return false, fmt.Errorf("incomplete feature-loader migration: embed GeneratedFeatureConfig and call loadGeneratedFeatures; see docs/guides/feature-loader.md")
 	}
