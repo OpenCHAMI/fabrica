@@ -5,6 +5,7 @@
 package codegen
 
 import (
+	_ "embed"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,7 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			types = []byte(strings.Replace(string(types), "type NodeSpec struct {", "type NodeSpec struct { ReferenceUID string `json:\"referenceUID,omitempty\" yaml:\"referenceUID,omitempty\"`;", 1))
 			types = append(types, []byte("\nfunc (n *Node) GetUID() string { return n.Metadata.UID }\n")...)
 			if err := os.WriteFile(typesPath, types, 0o644); err != nil {
 				t.Fatal(err)
@@ -80,27 +82,92 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			imports := ""
-			init := `if err := storage.InitFileBackend(t.TempDir()); err != nil { t.Fatal(err) }`
+			clientGen := NewGenerator(filepath.Join(dir, "pkg", "client"), "client", "example.com/revisionfixture")
+			if err := os.MkdirAll(clientGen.OutputDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			clientGen.Config.VersioningEnabled = true
+			clientGen.Resources = gen.Resources
+			if err := clientGen.LoadTemplates(); err != nil {
+				t.Fatal(err)
+			}
+			for _, generate := range []func() error{clientGen.GenerateClient, clientGen.GenerateClientModels, clientGen.GenerateClientCmd, clientGen.GenerateClientVersion} {
+				if err := generate(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			imports := `"os"`
+			init := `supportsDeleteFailure := false
+    setDeleteFailure := func(bool) {}
+    dataDir := t.TempDir()
+    reopen := func() {
+        if storage.Backend != nil { if err := storage.Backend.Close(); err != nil { t.Fatal(err) } }
+        if err := storage.InitFileBackend(dataDir); err != nil { t.Fatal(err) }
+    }
+    reopen()
+    t.Cleanup(func() { _ = storage.Backend.Close() })
+    verifyKeys := func(ids []string) {
+        entries, err := os.ReadDir(filepath.Join(dataDir, "nodes"))
+        if err != nil { t.Fatal(err) }
+        if len(entries) != len(ids) { t.Fatalf("physical file count = %d, want %d", len(entries), len(ids)) }
+        want := make(map[string]bool)
+        for _, id := range ids { want[id+".json"] = true }
+        for _, entry := range entries { if !want[entry.Name()] { t.Fatalf("UID filename changed: %s", entry.Name()) } }
+    }`
 			if backend == "ent" {
 				imports = `"database/sql"
-    "path/filepath"
+    "errors"
+    "sync/atomic"
+    entgo "entgo.io/ent"
     "example.com/revisionfixture/internal/storage/ent"
     dialectsql "entgo.io/ent/dialect/sql"
     _ "github.com/mattn/go-sqlite3"`
-				init = `db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "uids.db")+"?_fk=1")
-    if err != nil { t.Fatal(err) }
-    client := ent.NewClient(ent.Driver(dialectsql.OpenDB("sqlite3", db)))
-    t.Cleanup(func() { _ = client.Close() })
-    if err := client.Schema.Create(context.Background()); err != nil { t.Fatal(err) }
-    storage.SetEntClient(client)`
+				init = `supportsDeleteFailure := true
+    failDelete := &atomic.Bool{}
+    setDeleteFailure := func(enabled bool) { failDelete.Store(enabled) }
+    dbPath := filepath.Join(t.TempDir(), "uids.db")
+    var dbClient *ent.Client
+    reopen := func() {
+        if dbClient != nil { if err := dbClient.Close(); err != nil { t.Fatal(err) } }
+        db, err := sql.Open("sqlite3", "file:"+dbPath+"?_fk=1")
+        if err != nil { t.Fatal(err) }
+        dbClient = ent.NewClient(ent.Driver(dialectsql.OpenDB("sqlite3", db)))
+        if err := dbClient.Schema.Create(context.Background()); err != nil { t.Fatal(err) }
+        dbClient.Resource.Use(func(next entgo.Mutator) entgo.Mutator {
+            return entgo.MutateFunc(func(ctx context.Context, mutation entgo.Mutation) (entgo.Value, error) {
+                if failDelete.Load() && mutation.Op().Is(entgo.OpDelete | entgo.OpDeleteOne) { return nil, errors.New("forced resource delete failure") }
+                return next.Mutate(ctx, mutation)
+            })
+        })
+        storage.SetEntClient(dbClient)
+    }
+    reopen()
+    t.Cleanup(func() { _ = dbClient.Close() })
+    physicalIDs := make(map[string]int)
+    verifyKeys := func(ids []string) {
+        if len(ids) == 0 {
+            for _, count := range []func(context.Context) (int, error){dbClient.Label.Query().Count, dbClient.Annotation.Query().Count} {
+                n, err := count(context.Background()); if err != nil || n != 0 { t.Fatalf("orphaned metadata rows = %d, %v", n, err) }
+            }
+        }
+        rows, err := dbClient.Resource.Query().All(context.Background())
+        if err != nil { t.Fatal(err) }
+        if len(rows) != len(ids) { t.Fatalf("physical row count = %d, want %d", len(rows), len(ids)) }
+        want := make(map[string]bool)
+        for _, id := range ids { want[id] = true }
+        for _, row := range rows {
+            if !want[row.UID] { t.Fatalf("stored UID changed: %s", row.UID) }
+            if previous, ok := physicalIDs[row.UID]; ok && previous != row.ID { t.Fatalf("row recreated for UID %s", row.UID) }
+            physicalIDs[row.UID] = row.ID
+        }
+    }`
 			}
-			source := strings.ReplaceAll(uidWorkflowSource, "BACKEND_IMPORTS", imports)
-			source = strings.ReplaceAll(source, "INIT_BACKEND", init)
+			source := strings.ReplaceAll(uidWorkflowSource, "/*BACKEND_IMPORTS*/", imports)
+			source = strings.ReplaceAll(source, "/*INIT_BACKEND*/", init)
 			if err := os.WriteFile(filepath.Join(dir, "revision_workflow_test.go"), []byte(source), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			commands := [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}}
+			commands := [][]string{{"mod", "tidy"}, {"build", "-o", "uid-client", "./cmd/client"}, {"test", "-race", "-count=1", "./..."}}
 			if backend == "ent" {
 				commands = append([][]string{{"run", "-mod=mod", "entgo.io/ent/cmd/ent", "generate", "./internal/storage/ent/schema"}}, commands...)
 			}
@@ -116,67 +183,5 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 	}
 }
 
-const uidWorkflowSource = `package main
-import (
-    "bytes"
-    "context"
-    "encoding/json"
-    "net/http"
-    "net/http/httptest"
-    "testing"
-    "strings"
-    "github.com/go-chi/chi/v5"
-    "github.com/google/uuid"
-    "github.com/openchami/fabrica/pkg/resource"
-    "github.com/openchami/fabrica/pkg/uid"
-    "example.com/revisionfixture/internal/storage"
-    v1 "example.com/revisionfixture/apis/v1"
-    BACKEND_IMPORTS
-)
-func TestUIDWorkflow(t *testing.T) {
-    INIT_BACKEND
-    if err := registerResourcePrefixes(); err != nil { t.Fatal(err) }
-    router := chi.NewRouter(); RegisterGeneratedRoutes(router)
-    request := func(method, path, body string, code int) *v1.Node {
-        t.Helper()
-        req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
-        req.Header.Set("Content-Type", "application/json")
-        result := httptest.NewRecorder(); router.ServeHTTP(result, req)
-        if result.Code != code { t.Fatalf("%s %s = %d: %s", method, path, result.Code, result.Body.String()) }
-        var node v1.Node
-        if err := json.Unmarshal(result.Body.Bytes(), &node); err != nil { t.Fatal(err) }
-        return &node
-    }
-    created := request(http.MethodPost, "/nodes/", "{\"metadata\":{\"name\":\"new-node\"},\"spec\":{\"value\":\"one\"}}", http.StatusCreated)
-    parsed, err := (uid.Codec{}).Parse(created.Metadata.UID)
-    if err != nil || parsed.Format != uid.FormatTypeID || parsed.Prefix != "node" { t.Fatalf("created UID = %+v, %v", parsed, err) }
-    id := uuid.MustParse(parsed.UUID)
-    if id.Version() != 7 || id.Variant() != uuid.RFC4122 { t.Fatalf("new payload = %s", id) }
-    // Seed the exact historical identity rather than relying on a create endpoint
-    // to accept client-supplied IDs. No migration or rewrite is performed.
-    legacy := &v1.Node{APIVersion:"v1", Kind:"Node", Metadata:resource.Metadata{Name:"old-node", UID:"node-1a2b3c4d"}, Spec:v1.NodeSpec{Value:"old"}, Status:v1.NodeStatus{Phase:"Ready"}}
-    if err := storage.SaveNode(context.Background(), legacy); err != nil { t.Fatal(err) }
-    for _, value := range []string{created.Metadata.UID, legacy.Metadata.UID} {
-        loaded := request(http.MethodGet, "/nodes/"+value, "", http.StatusOK)
-        if loaded.Metadata.UID != value { t.Fatal("read rewrote UID") }
-        updated := request(http.MethodPut, "/nodes/"+value, "{\"metadata\":{\"uid\":\"replacement\"},\"spec\":{\"value\":\"two\"}}", http.StatusOK)
-        if updated.Metadata.UID != value || updated.Spec.Value != "two" { t.Fatalf("update changed UID: %+v", updated) }
-        stored, err := storage.LoadNode(context.Background(), value)
-        if err != nil || stored.Metadata.UID != value { t.Fatalf("storage identity = %+v, %v", stored, err) }
-        if value == legacy.Metadata.UID && stored.Status.Phase != "Ready" { t.Fatal("spec update changed legacy status") }
-    }
-    spec := GenerateOpenAPISpec()
-    if err := spec.Validate(context.Background()); err != nil { t.Fatal(err) }
-    path := spec.Paths.Find("/nodes/{uid}")
-    found := false
-    for _, parameter := range path.Parameters {
-        if parameter.Value.Name == "uid" {
-            found = true
-            if !strings.Contains(parameter.Value.Description, "legacy") { t.Fatal("UID description omits legacy reads") }
-            example, ok := parameter.Value.Schema.Value.Example.(string)
-            if !ok || !strings.HasPrefix(example, "node_") || !resource.IsValidUID(example) { t.Fatalf("invalid UID example: %#v", parameter.Value.Schema.Value.Example) }
-        }
-    }
-    if !found { t.Fatal("OpenAPI UID parameter missing") }
-}
-`
+//go:embed testdata/uid_migration_workflow_test.go.fixture
+var uidWorkflowSource string

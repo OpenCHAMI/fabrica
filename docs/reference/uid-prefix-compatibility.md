@@ -106,11 +106,55 @@ handling before new TypeID creation can succeed. Tests assert that generated
 routes call the audit and that a service with no resources emits neither the
 helper nor its imports.
 
-## External service audit remains open
+## External service audit: 2026-10-22
 
-No external generated service repositories or deployed prefix registries
-were available for this audit. Before the default change, collect each
-known service's custom registrations (or `resource.GetRegisteredPrefixes()`
-output) and validate their prefixes with `uid.ValidatePrefix`, also requiring
-a nonempty prefix. Record incompatible prefixes and their remediation.
-The repository audit alone does not complete that issue acceptance criterion.
+The two services below were inspected at pinned default-branch snapshots.
+Every Go file was parsed to locate `RegisterResourcePrefix` calls; all seven
+registrations were string literals. Their kinds agree with `apis.yaml`, and
+their prefixes agree with the lowercase names used by the current routes
+generator. Each nonempty prefix passed Fabrica's `uid.ValidatePrefix` and a
+shared-codec TypeID generation/parsing round trip under Go 1.26.10.
+
+| Service snapshot | Registered kinds and prefixes | Prefix result |
+| --- | --- | --- |
+| [boot-service, `1934967`](https://github.com/OpenCHAMI/boot-service/blob/1934967ada3c9ec722e434c6930835c8a29a0e0f/cmd/server/routes_generated.go#L84-L88) | BMC/bmc, BootConfiguration/bootconfiguration, Node/node | All compatible; no prefix renaming required |
+| [metadata-service, `fed117c`](https://github.com/OpenCHAMI/metadata-service/blob/fed117cde0ad7ce680b63dcdc90ca89b8641f185/cmd/server/routes_generated.go#L48-L54) | ClusterDefaults/clusterdefaults, Group/group, InstanceInfo/instanceinfo, WireGuardPeer/wireguardpeer | All compatible; custom creation exception below |
+
+These snapshots use Fabrica v0.4.13 with Go 1.26.10 in boot-service and
+Fabrica v0.4.10 with Go 1.26.5 in metadata-service. Both services need their
+runtime dependency upgraded to obtain the new default; metadata-service also
+needs its selected toolchain/module requirements aligned with Go 1.26.10.
+Generated create handlers call `GenerateUIDForResource`, so those creation
+paths pick up the new format after the runtime upgrade.
+
+### Metadata-service custom WireGuard identities
+
+The custom WireGuard initialization route bypasses Fabrica's generation
+helper. [`wireGuardPeerUIDFromPublicKey`](https://github.com/OpenCHAMI/metadata-service/blob/fed117cde0ad7ce680b63dcdc90ca89b8641f185/cmd/server/wireguard_routes.go#L218-L224)
+returns `wireguardpeer-` plus 16 hexadecimal characters derived from the public
+key. The [initialization handler](https://github.com/OpenCHAMI/metadata-service/blob/fed117cde0ad7ce680b63dcdc90ca89b8641f185/cmd/server/wireguard_routes.go#L81-L115)
+uses that value for both existing-peer lookup and new resource metadata. Its
+idempotency therefore depends on the deterministic identity. A Fabrica runtime
+upgrade alone leaves this path generating legacy IDs, even while the generated
+WireGuardPeer CRUD handler starts generating TypeIDs.
+
+The existing 16-character suffix remains valid legacy input. Preserve those
+identities and their references. If all newly created peers must use TypeID,
+make a separate metadata-service change that finds existing peers by a stable
+public-key identity and assigns TypeID only when creating a new peer. Preserve
+idempotency and concurrency behavior; replacing the deterministic helper with
+a fresh random UID on every request would lose existing-peer lookup.
+
+### Audit scope and remaining release checks
+
+This completes the prefix audit for these two named source snapshots. It does
+not establish compatibility for additional services, deployed configuration,
+or every custom endpoint. No service sources were modified, and these service
+snapshots were not rebuilt or regenerated against the new runtime as part of
+the prefix check. The WireGuard exception is a downstream adoption follow-up,
+not an incompatible registered prefix.
+
+Add any other known services to the inventory, collect custom registrations
+or `resource.GetRegisteredPrefixes()` output, and record prefix compatibility
+and remediation before release. Follow the [UID migration guide](../guides/uid-migration.md)
+for service-level upgrade and mixed-store validation.

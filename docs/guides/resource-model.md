@@ -235,6 +235,8 @@ fail generation before output is written. Do not automatically rename an
 existing kind's prefix: it can break lookup of its old identities. Define and
 test an explicit compatibility mapping before changing such a registration.
 See the [prefix compatibility guide](../reference/uid-prefix-compatibility.md).
+For release checks, mixed-store verification, and rollback guidance, follow the
+[UID migration guide](uid-migration.md).
 
 ## Metadata
 

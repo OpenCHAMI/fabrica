@@ -1,0 +1,267 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"encoding/json"
+	v1 "example.com/revisionfixture/apis/v1"
+	"example.com/revisionfixture/internal/storage"
+	"example.com/revisionfixture/pkg/client"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/openchami/fabrica/pkg/events"
+	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/uid"
+	"github.com/rs/zerolog"
+	"net/http/httptest"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+	/*BACKEND_IMPORTS*/)
+
+type migrationEventBus struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (*migrationEventBus) Start() {}
+func (b *migrationEventBus) Publish(_ context.Context, event events.Event) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, event)
+	return nil
+}
+func (*migrationEventBus) Subscribe(string, events.EventHandler) (events.SubscriptionID, error) {
+	return "", nil
+}
+func (*migrationEventBus) Unsubscribe(events.SubscriptionID) error { return nil }
+func (*migrationEventBus) Close() error                            { return nil }
+func (b *migrationEventBus) snapshot() []events.Event {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]events.Event(nil), b.events...)
+}
+
+func TestUIDWorkflow(t *testing.T) {
+	/*INIT_BACKEND*/
+	ctx := context.Background()
+	previousConfig, previousBus := events.GetEventConfig(), events.GetGlobalEventBus()
+	t.Cleanup(func() { events.SetEventConfig(previousConfig); events.SetGlobalEventBus(previousBus) })
+	bus := &migrationEventBus{}
+	events.SetEventConfig(&events.EventConfig{Enabled: true, LifecycleEventsEnabled: true, EventTypePrefix: "io.migration", Source: "migration-api"})
+	events.SetGlobalEventBus(bus)
+	if err := registerResourcePrefixes(); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	c, err := client.NewClient(server.URL, server.Client(), zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyUID := "node-ABCDEF12"
+	created, err := c.CreateNode(ctx, client.CreateNodeRequest{
+		Metadata: resource.Metadata{Name: "new-node", UID: "client-supplied-uid"},
+		Spec:     v1.NodeSpec{Value: "one", ReferenceUID: legacyUID},
+		Labels:   map[string]string{"origin": "new"}, Annotations: map[string]string{"note": "new resource"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := (uid.Codec{}).Parse(created.Metadata.UID)
+	if err != nil || parsed.Format != uid.FormatTypeID || parsed.Prefix != "node" {
+		t.Fatalf("created UID = %+v, %v", parsed, err)
+	}
+	id := uuid.MustParse(parsed.UUID)
+	if id.Version() != 7 || id.Variant() != uuid.RFC4122 {
+		t.Fatalf("new payload = %s", id)
+	}
+	// Include a maximum-length historical TypeID prefix in the mixed store.
+	// Transport and storage must preserve it independently of today's registration.
+	longUID, err := resource.GenerateUID(strings.Repeat("a", 60) + "_bc")
+	if err != nil || len(longUID) != 90 {
+		t.Fatalf("maximum UID = %q, %v", longUID, err)
+	}
+	for _, historicalUID := range []string{legacyUID, longUID} {
+		historical := &v1.Node{APIVersion: "v1", Kind: "Node",
+			Metadata: resource.Metadata{Name: "old-" + historicalUID, UID: historicalUID,
+				Labels: map[string]string{"origin": "persisted"}, Annotations: map[string]string{"note": "historical resource"}},
+			Spec: v1.NodeSpec{Value: "old", ReferenceUID: created.Metadata.UID}, Status: v1.NodeStatus{Phase: "Ready"},
+		}
+		if err := storage.SaveNode(ctx, historical); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := []string{created.Metadata.UID, legacyUID, longUID}
+	verifyKeys(ids)
+	// Reopening does not migrate names/keys/rows or alter linked identities.
+	reopen()
+	verifyKeys(ids)
+	for _, value := range ids {
+		loaded, err := c.GetNode(ctx, value)
+		if err != nil || loaded.Metadata.UID != value {
+			t.Fatalf("reopened read %s = %+v, %v", value, loaded, err)
+		}
+		peer, err := c.GetNode(ctx, loaded.Spec.ReferenceUID)
+		if err != nil || peer.Metadata.UID != loaded.Spec.ReferenceUID {
+			t.Fatalf("cross-format reference = %+v, %v", peer, err)
+		}
+		updated, err := c.UpdateNode(ctx, value, client.UpdateNodeRequest{
+			Metadata: resource.Metadata{UID: "replacement"},
+			Spec:     v1.NodeSpec{Value: "two", ReferenceUID: loaded.Spec.ReferenceUID},
+			Labels:   map[string]string{"stage": "updated"}, Annotations: map[string]string{"migration": "tested"},
+		})
+		if err != nil || updated.Metadata.UID != value || updated.Spec.Value != "two" || updated.Status != loaded.Status {
+			t.Fatalf("update identity/spec/status = %+v, %v", updated, err)
+		}
+		patched, err := c.PatchNode(ctx, value, []byte(`{"value":"patched"}`), "application/merge-patch+json")
+		if err != nil || patched.Metadata.UID != value || patched.Spec.ReferenceUID != loaded.Spec.ReferenceUID || patched.Status != loaded.Status {
+			t.Fatalf("patch identity/reference/status = %+v, %v", patched, err)
+		}
+		if _, err := c.UpdateNodeStatus(ctx, value, v1.NodeStatus{Phase: "Ready"}); err != nil {
+			t.Fatal(err)
+		}
+		// Use the built generated CLI so Cobra argument handling and request paths
+		// are verified as well as the Go client methods. A private config avoids
+		// consulting any developer configuration in the home directory.
+		configPath := filepath.Join(t.TempDir(), "config.yaml")
+		command := exec.Command("./uid-client", "--config", configPath, "--server", server.URL, "--timeout", "5s", "--output", "json", "node", "get", value)
+		output, err := command.Output()
+		if err != nil {
+			t.Fatalf("generated CLI get %s: %v", value, err)
+		}
+		var cliNode v1.Node
+		if err := json.Unmarshal(output, &cliNode); err != nil || cliNode.Metadata.UID != value {
+			t.Fatalf("CLI identity = %s, %v", output, err)
+		}
+	}
+	want := make(map[string]*v1.Node)
+	for _, value := range ids {
+		node, err := c.GetNode(ctx, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if node.Spec.Value != "patched" || node.Status.Phase != "Ready" || node.Metadata.Labels["stage"] != "updated" || node.Metadata.Annotations["migration"] != "tested" || node.Metadata.Labels["origin"] == "" || node.Metadata.Annotations["note"] == "" {
+			t.Fatalf("update lost resource data: %+v", node)
+		}
+		want[value] = node
+	}
+	reopen()
+	verifyKeys(ids)
+	// GetNodes decodes a bare JSON array. A wrapper object would fail decoding.
+	listed, err := c.GetNodes(ctx)
+	if err != nil || len(listed) != len(ids) {
+		t.Fatalf("mixed-format list = %+v, %v", listed, err)
+	}
+	for _, stored := range listed {
+		original := want[stored.Metadata.UID]
+		if original == nil || stored.Metadata.Name != original.Metadata.Name || !reflect.DeepEqual(stored.Metadata.Labels, original.Metadata.Labels) || !reflect.DeepEqual(stored.Metadata.Annotations, original.Metadata.Annotations) || stored.Spec != original.Spec || stored.Status != original.Status {
+			t.Fatalf("reopen changed persisted resource: %+v", stored)
+		}
+		peer, err := c.GetNode(ctx, stored.Spec.ReferenceUID)
+		if err != nil || peer.Metadata.UID != stored.Spec.ReferenceUID {
+			t.Fatalf("reopened reference = %+v, %v", peer, err)
+		}
+	}
+	if supportsDeleteFailure {
+		for _, value := range ids {
+			before := want[value]
+			eventCount := len(bus.snapshot())
+			setDeleteFailure(true)
+			err := c.DeleteNode(ctx, value)
+			setDeleteFailure(false)
+			if err == nil || !strings.Contains(err.Error(), "forced resource delete failure") {
+				t.Fatalf("injected delete failure = %v", err)
+			}
+			after, err := c.GetNode(ctx, value)
+			if err != nil || !reflect.DeepEqual(after.Metadata.Labels, before.Metadata.Labels) || !reflect.DeepEqual(after.Metadata.Annotations, before.Metadata.Annotations) || after.Spec != before.Spec || after.Status != before.Status {
+				t.Fatalf("failed delete stripped resource data: %+v, %v", after, err)
+			}
+			if len(bus.snapshot()) != eventCount {
+				t.Fatal("failed delete emitted an event")
+			}
+		}
+		verifyKeys(ids)
+	}
+	for _, value := range ids {
+		if err := c.DeleteNode(ctx, value); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.GetNode(ctx, value); err == nil {
+			t.Fatalf("deleted UID %s remains readable", value)
+		}
+	}
+	reopen()
+	verifyKeys(nil)
+	seen := make(map[string]map[string]bool)
+	for _, event := range bus.snapshot() {
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded events.Event
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		var payload struct {
+			Action      string   `json:"action"`
+			ResourceUID string   `json:"resourceUID"`
+			Resource    *v1.Node `json:"resource"`
+		}
+		if err := decoded.DataAs(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if want[payload.ResourceUID] == nil || decoded.ResourceUID() != payload.ResourceUID || decoded.Source() != "migration-api/resources/Node/"+payload.ResourceUID {
+			t.Fatalf("event rewrote UID: %s", encoded)
+		}
+		if payload.Resource != nil && (payload.Resource.Metadata.UID != payload.ResourceUID || payload.Resource.Spec.ReferenceUID != want[payload.ResourceUID].Spec.ReferenceUID) {
+			t.Fatalf("event rewrote nested identity/reference: %s", encoded)
+		}
+		if payload.Action != "deleted" && payload.Resource == nil {
+			t.Fatalf("event omitted resource: %s", encoded)
+		}
+		if seen[payload.ResourceUID] == nil {
+			seen[payload.ResourceUID] = make(map[string]bool)
+		}
+		seen[payload.ResourceUID][payload.Action] = true
+	}
+	for _, value := range ids {
+		for _, action := range []string{"updated", "patched", "deleted"} {
+			if !seen[value][action] {
+				t.Fatalf("missing %s event for %s", action, value)
+			}
+		}
+	}
+	if !seen[created.Metadata.UID]["created"] {
+		t.Fatal("missing generated create event")
+	}
+	spec := GenerateOpenAPISpec()
+	if err := spec.Validate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	path := spec.Paths.Find("/nodes/{uid}")
+	found := false
+	for _, parameter := range path.Parameters {
+		if parameter.Value.Name == "uid" {
+			found = true
+			if !strings.Contains(parameter.Value.Description, "legacy") {
+				t.Fatal("UID description omits legacy reads")
+			}
+			example, ok := parameter.Value.Schema.Value.Example.(string)
+			if !ok || !strings.HasPrefix(example, "node_") || !resource.IsValidUID(example) {
+				t.Fatalf("invalid UID example: %#v", parameter.Value.Schema.Value.Example)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("OpenAPI UID parameter missing")
+	}
+}
