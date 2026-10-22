@@ -51,7 +51,7 @@ func TestValidateTypeIDPrefixes(t *testing.T) {
 	}
 }
 
-func TestTypeIDPrefixPreflightDoesNotChangeGeneration(t *testing.T) {
+func TestTypeIDPrefixPreflightRejectsGeneration(t *testing.T) {
 	gen := NewGenerator(t.TempDir(), "main", "example.com/uidtest")
 	gen.Resources = []ResourceMetadata{{Name: "Node1", URLPath: "/nodes"}}
 	if err := gen.ValidateTypeIDPrefixes(); err == nil {
@@ -60,7 +60,14 @@ func TestTypeIDPrefixPreflightDoesNotChangeGeneration(t *testing.T) {
 	if err := gen.LoadTemplates(); err != nil {
 		t.Fatal(err)
 	}
-	if err := gen.GenerateRoutes(); err != nil {
-		t.Fatalf("legacy route generation must remain available: %v", err)
+	if err := gen.GenerateRoutes(); err == nil {
+		t.Fatal("route generation accepted numeric prefix")
+	}
+	if err := gen.GenerateAll(); err == nil {
+		t.Fatal("GenerateAll accepted numeric prefix")
+	}
+	entries, err := os.ReadDir(gen.OutputDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("failed preflight wrote output: %v, %v", entries, err)
 	}
 }

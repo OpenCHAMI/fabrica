@@ -104,7 +104,7 @@ func TestRevisionReferenceRejectsUnsupportedSelector(t *testing.T) {
 	}
 }
 
-func TestRevisionUIDExampleDoesNotChangeResourceUIDFormat(t *testing.T) {
+func TestRevisionAndResourceUIDExamplesUseTypeID(t *testing.T) {
 	if !strings.HasPrefix(revision.UIDExample, "rev_") {
 		t.Fatalf("revision UID example = %q, want rev_ TypeID prefix", revision.UIDExample)
 	}
@@ -116,8 +116,8 @@ func TestRevisionUIDExampleDoesNotChangeResourceUIDFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateUID() error = %v", err)
 	}
-	if !strings.HasPrefix(uid, "dev-") {
-		t.Fatalf("resource UID = %q, want existing dev- prefix format", uid)
+	if !strings.HasPrefix(uid, "dev_") {
+		t.Fatalf("resource UID = %q, want dev_ TypeID prefix", uid)
 	}
 }
 
