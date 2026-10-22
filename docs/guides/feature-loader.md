@@ -70,6 +70,17 @@ features. Switching storage backends is not a data migration. Existing checks
 reject stale Fabrica storage artifacts when switching to custom storage; preserve
 or migrate data and remove/replace those artifacts yourself.
 
+Switching an adopted service from Ent to file storage also requires an explicit
+migration. Full generation fails before changing output while Ent backend files
+remain. Back up or migrate the database and preserve any customizations, then
+move the paths listed in the error outside the service: `internal/storage/ent/`,
+`ent_adapter.go`, any `ent_adapter_*.go`, `ent_queries_generated.go`,
+`ent_transactions_generated.go`, and `generate.go` under `internal/storage/`,
+plus `cmd/server/export.go` and `cmd/server/import.go`. Leave
+`internal/storage/storage_generated.go` in place for regeneration. Run full
+`fabrica generate`, `go mod tidy`, `go test ./...`, and `go build ./cmd/server`.
+The loader does not delete or take ownership of these older backend files.
+
 ## Selective generation and file ownership
 
 A changed feature selection requires full `fabrica generate`. Selective runs such

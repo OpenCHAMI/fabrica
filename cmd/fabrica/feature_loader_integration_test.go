@@ -127,6 +127,51 @@ func TestFeatureLoaderGeneratedService(t *testing.T) {
 					t.Fatal("project storage was changed")
 				}
 			}
+			if backend == "ent" {
+				cfg.Features.Storage.Type = "file"
+				if err := configpkg.SaveConfig(dir, cfg); err != nil {
+					t.Fatal(err)
+				}
+				before := make(map[string][]byte)
+				for _, path := range []string{
+					"cmd/server/main.go", "cmd/server/features_generated.go",
+					"cmd/server/features_manifest_generated.json",
+					"pkg/resources/register_generated.go", "internal/storage/storage_generated.go",
+				} {
+					data, err := os.ReadFile(filepath.Join(dir, path))
+					if err != nil {
+						t.Fatal(err)
+					}
+					before[path] = data
+				}
+				cmd := exec.Command(binary, "generate", "--fabrica-source", repo)
+				cmd.Dir = dir
+				out, err := cmd.CombinedOutput()
+				if err == nil || !strings.Contains(string(out), "Ent-to-file storage migration") {
+					t.Fatalf("backend transition: %v\n%s", err, out)
+				}
+				for path, want := range before {
+					got, err := os.ReadFile(filepath.Join(dir, path))
+					if err != nil || !bytes.Equal(got, want) {
+						t.Fatalf("rejected migration changed %s: %v", path, err)
+					}
+				}
+				// Preserve the old backend outside the service before migrating.
+				backup := t.TempDir()
+				for _, path := range []string{
+					"internal/storage/ent", "internal/storage/ent_adapter.go",
+					"internal/storage/ent_queries_generated.go", "internal/storage/ent_transactions_generated.go",
+					"internal/storage/generate.go", "cmd/server/export.go", "cmd/server/import.go",
+				} {
+					if err := os.Rename(filepath.Join(dir, path), filepath.Join(backup, filepath.Base(path))); err != nil {
+						t.Fatal(err)
+					}
+				}
+				run(t, dir, binary, "generate", "--fabrica-source", repo)
+				run(t, dir, "go", "mod", "tidy")
+				run(t, dir, "go", "test", "./cmd/server", "-count=1")
+				run(t, dir, "go", "build", "./...")
+			}
 			// Changed feature settings must fail before registration or main is modified.
 			cfg.Features.Metrics.Enabled = true
 			if err := configpkg.SaveConfig(dir, cfg); err != nil {
