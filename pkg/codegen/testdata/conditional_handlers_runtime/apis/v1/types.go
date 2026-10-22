@@ -20,7 +20,8 @@ type NodeSpec struct {
 }
 
 type NodeStatus struct {
-	Phase string `json:"phase,omitempty"`
+	Version string `json:"version,omitempty"`
+	Phase   string `json:"phase,omitempty"`
 }
 
 type Node struct {
@@ -30,3 +31,6 @@ type Node struct {
 	Spec       NodeSpec   `json:"spec"`
 	Status     NodeStatus `json:"status"`
 }
+
+func (n *Node) GetUID() string  { return n.Metadata.UID }
+func (n *Node) GetName() string { return n.Metadata.Name }

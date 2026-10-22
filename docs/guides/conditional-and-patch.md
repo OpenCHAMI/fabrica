@@ -99,6 +99,83 @@ curl -H "If-Modified-Since: Mon, 01 Jan 2024 00:00:00 GMT" \
 - `200 OK` - Resource modified, return new version
 - `304 Not Modified` - Resource not modified, save bandwidth
 
+### Atomic generated mutations
+
+When conditional requests are enabled, generated spec and status PUT/PATCH
+handlers and resource DELETE handlers evaluate `If-Match` inside an atomic
+storage mutation. A stale validator returns `412 Precondition Failed` without
+saving, deleting, or publishing a mutation event. An absent header preserves
+unconditional behavior; wildcard and comma-separated strong validators are
+supported. Concurrent deletion can return `404 Not Found` when the resource no
+longer exists.
+
+File storage serializes backend instances sharing the same directory identity
+within one server process, including symlinks and case aliases on
+case-insensitive filesystems. Use Ent storage for multiple server processes
+sharing a database. Ent commits resource fields, labels, and annotations together, and
+retries conflicting transactions against freshly loaded state. Its internal
+`resource_version` guard advances on unconditional saves too. Ordinary Ent saves
+of existing resources also advance `metadata.updatedAt` to the save time. Atomic
+mutations preserve the timestamp chosen by their callback, so the returned
+representation matches the committed resource.
+
+Ent mutations use at most eight transaction attempts, including the initial
+attempt, with bounded backoff and context cancellation.
+
+Custom storage backends can implement the optional
+`storage.AtomicMutationBackend` interface without changing `StorageBackend`.
+Conditional mutations against a backend without this capability return
+`501 Not Implemented`. Unconditional requests retain the existing custom storage
+path. With an atomic backend, generated handlers build candidates and run custom
+validation outside backend locks and transactions, so validators can read
+storage, including the same backend. They then check `If-Match` and compare the
+authoritative resource with the state used for validation inside an atomic
+mutation. If that state changed, the handler reloads, rebuilds, and revalidates
+the candidate. A stale strong validator still returns `412` rather than
+authorizing the newer state.
+
+Handlers using an atomic backend make at most eight candidate validation
+attempts. Repeated concurrent changes return `409 Conflict`; retry the request
+against fresh state. Validation
+must tolerate retries and avoid external side effects. Reads of referenced
+resources do not provide a transaction across multiple resources.
+
+Backend mutation callbacks must still tolerate transaction retries, avoid
+external side effects, and must not re-enter the file backend. Generated atomic
+callbacks only check preconditions and copy the already validated candidate.
+
+With `features.storage.type: custom`, storage is entirely handwritten and Fabrica
+does not generate mutation adapters. Generated conditional mutation handlers
+return `501` in that mode; unconditional typed CRUD functions remain compatible.
+To use the optional backend capability with generated adapters, retain the file
+storage generation mode and initialize it with `storage.Init(customBackend)`.
+
+Snapshot deletion checks and removes the snapshot under the snapshot writers'
+guard. Snapshot bookkeeping updates `status.version` only if the resource still
+matches the successful spec mutation; it skips the bookkeeping with a warning
+if a newer mutation intervened.
+
+This bookkeeping also requires atomic mutation support. For custom storage
+without that support, the snapshot is retained and a warning is logged rather
+than saving a possibly stale resource to update `status.version`.
+
+Existing services must update their Fabrica dependency and regenerate to receive
+these changes. When validating a local Fabrica checkout, build its CLI and use
+that exact binary from the service directory:
+
+```bash
+# In the Fabrica checkout:
+go build -o ./bin/fabrica ./cmd/fabrica
+
+# In the generated service:
+/absolute/path/to/fabrica/bin/fabrica generate --fabrica-source /absolute/path/to/fabrica
+go mod tidy
+go test ./...
+```
+
+The Ent guard uses the existing `resource_version` column. Its value is internal;
+HTTP ETags continue to use the existing representation-based calculation.
+
 ### ETag Middleware
 
 Automatically add ETags to responses:

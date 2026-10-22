@@ -171,6 +171,15 @@ go func() {
 
 Implement the `StorageBackend` interface for custom storage.
 
+Backends plugged into generated adapters with `storage.Init(backend)` can also
+implement the optional `AtomicMutationBackend` interface for conditional writes.
+The backend must coordinate mutations with ordinary saves and deletes, and must
+commit the precondition check and resource change atomically. Without that
+capability, conditional mutation requests return `501 Not Implemented`;
+unconditional requests retain their existing behavior. See
+[atomic generated mutations](conditional-and-patch.md#atomic-generated-mutations)
+for callback requirements, handwritten storage mode, and regeneration steps.
+
 ### PostgreSQL Example
 
 ```go

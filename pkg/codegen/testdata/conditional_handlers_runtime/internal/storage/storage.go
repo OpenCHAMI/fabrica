@@ -6,43 +6,30 @@ package storage
 
 import (
 	"context"
-	"fmt"
+	"os"
 
 	v1 "example.com/test/apis/v1"
+	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 )
 
-var nodes = map[string]v1.Node{}
-
 func SeedNode(node v1.Node) {
-	nodes = map[string]v1.Node{node.Metadata.UID: node}
+	directory, err := os.MkdirTemp(".", "conditional-nodes-")
+	if err != nil {
+		panic(err)
+	}
+	backend, err := fabricaStorage.NewFileBackend(directory)
+	if err != nil {
+		panic(err)
+	}
+	Init(backend)
+	if err := SaveNode(context.Background(), &node); err != nil {
+		panic(err)
+	}
 }
-
 func NodeForTest(uid string) v1.Node {
-	return nodes[uid]
-}
-
-func LoadAllNodes(context.Context) ([]v1.Node, error) {
-	result := make([]v1.Node, 0, len(nodes))
-	for _, node := range nodes {
-		result = append(result, node)
+	node, err := LoadNode(context.Background(), uid)
+	if err != nil {
+		return v1.Node{}
 	}
-	return result, nil
-}
-
-func LoadNode(_ context.Context, uid string) (*v1.Node, error) {
-	node, ok := nodes[uid]
-	if !ok {
-		return nil, fmt.Errorf("node %s not found", uid)
-	}
-	return &node, nil
-}
-
-func SaveNode(_ context.Context, node *v1.Node) error {
-	nodes[node.Metadata.UID] = *node
-	return nil
-}
-
-func DeleteNode(_ context.Context, uid string) error {
-	delete(nodes, uid)
-	return nil
+	return *node
 }

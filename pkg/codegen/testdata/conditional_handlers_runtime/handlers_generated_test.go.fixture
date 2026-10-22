@@ -6,8 +6,17 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	middleware "example.com/test/internal/middleware"
+	"fmt"
+	"github.com/openchami/fabrica/pkg/events"
+	fabricaStorage "github.com/openchami/fabrica/pkg/storage"
+	"github.com/openchami/fabrica/pkg/validation"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -59,6 +68,9 @@ func TestGeneratedUpdateNodeIfMatchBehavior(t *testing.T) {
 			wantStatus: http.StatusOK,
 			wantValue:  "updated",
 		},
+		{name: "wildcard", header: func(string) string { return "*" }, wantStatus: 200, wantValue: "updated"},
+		{name: "list", header: func(e string) string { return `"other", ` + e }, wantStatus: 200, wantValue: "updated"},
+		{name: "weak validator fails", header: func(e string) string { return "W/" + e }, wantStatus: 412, wantValue: "initial"},
 		{
 			name:       "stale If-Match fails",
 			header:     func(string) string { return `"stale"` },
@@ -115,5 +127,503 @@ func testNode(value string) v1.Node {
 			UpdatedAt: stamp,
 		},
 		Spec: v1.NodeSpec{Value: value},
+	}
+}
+
+// rendezvousBackend makes both competing HTTP requests reach storage before
+// either can commit. It delegates the actual serialization to the real backend.
+type rendezvousBackend struct {
+	fabricaStorage.StorageBackend
+	calls atomic.Int32
+	ready chan struct{}
+}
+
+func (b *rendezvousBackend) Mutate(ctx context.Context, kind, uid string, fn fabricaStorage.Mutation) (json.RawMessage, error) {
+	n := b.calls.Add(1)
+	if n <= 2 {
+		if n == 2 {
+			close(b.ready)
+		}
+		select {
+		case <-b.ready:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return b.StorageBackend.(fabricaStorage.AtomicMutationBackend).Mutate(ctx, kind, uid, fn)
+}
+
+func TestConcurrentConditionalMutations(t *testing.T) {
+	for _, contender := range []struct {
+		name, method, path, body string
+		handler                  http.HandlerFunc
+	}{
+		{"spec PUT", "PUT", "/nodes/node-1", `{"spec":{"value":"second"}}`, UpdateNode},
+		{"spec PATCH", "PATCH", "/nodes/node-1", `{"value":"second"}`, PatchNode},
+		{"status PUT", "PUT", "/nodes/node-1/status", `{"phase":"ready"}`, UpdateNodeStatus},
+		{"status PATCH", "PATCH", "/nodes/node-1/status", `{"phase":"ready"}`, PatchNodeStatus},
+		{"DELETE", "DELETE", "/nodes/node-1", "", DeleteNode},
+	} {
+		t.Run(contender.name, func(t *testing.T) {
+			storage.SeedNode(testNode("initial"))
+			etag := currentNodeETag(t)
+			events.Mutations.Store(0)
+			storage.Backend = &rendezvousBackend{StorageBackend: storage.Backend, ready: make(chan struct{})}
+			results := make(chan int, 2)
+			run := func(method, path, body string, handler http.HandlerFunc) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				req := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
+				req.Header.Set("If-Match", etag)
+				req.Header.Set("Content-Type", "application/merge-patch+json")
+				w := httptest.NewRecorder()
+				handler(w, req)
+				results <- w.Code
+			}
+			go run("PUT", "/nodes/node-1", `{"spec":{"value":"first"}}`, UpdateNode)
+			go run(contender.method, contender.path, contender.body, contender.handler)
+			a, b := <-results, <-results
+			if a != 200 {
+				a, b = b, a
+			}
+			if a != 200 || (b != 412 && !(contender.method == "DELETE" && b == 404)) {
+				t.Fatalf("competing statuses = %d,%d", a, b)
+			}
+			if got := events.Mutations.Load(); got != 1 {
+				t.Fatalf("published %d mutation events, want 1", got)
+			}
+		})
+	}
+}
+
+// Wrapping the backend without forwarding its optional capability simulates an
+// existing custom backend. Conditional requests must fail before any write.
+type legacyBackend struct{ fabricaStorage.StorageBackend }
+
+func TestUnsupportedConditionalBackend(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	storage.Backend = legacyBackend{storage.Backend}
+	events.Mutations.Store(0)
+	req := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"changed"}}`))
+	req.Header.Set("If-Match", "*")
+	w := httptest.NewRecorder()
+	UpdateNode(w, req)
+	if w.Code != 501 {
+		t.Fatalf("unsupported backend status=%d body=%s", w.Code, w.Body)
+	}
+	if storage.NodeForTest("node-1").Spec.Value != "initial" || events.Mutations.Load() != 0 {
+		t.Fatal("failed mutation changed state or published an event")
+	}
+	req = httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"changed"}}`))
+	w = httptest.NewRecorder()
+	UpdateNode(w, req)
+	if w.Code != 200 {
+		t.Fatalf("unconditional custom backend status=%d body=%s", w.Code, w.Body)
+	}
+}
+
+func TestValidationFailureDoesNotCommit(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	events.Mutations.Store(0)
+	validation.Reject.Store(true)
+	defer validation.Reject.Store(false)
+	req := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"invalid"}}`))
+	req.Header.Set("If-Match", currentNodeETag(t))
+	w := httptest.NewRecorder()
+	UpdateNode(w, req)
+	if w.Code != 400 {
+		t.Fatalf("validation status=%d body=%s", w.Code, w.Body)
+	}
+	if storage.NodeForTest("node-1").Spec.Value != "initial" || events.Mutations.Load() != 0 {
+		t.Fatal("validation failure committed or published")
+	}
+}
+
+type interveningWriterBackend struct {
+	fabricaStorage.StorageBackend
+	injected atomic.Bool
+}
+
+func (b *interveningWriterBackend) Mutate(ctx context.Context, kind, uid string, fn fabricaStorage.Mutation) (json.RawMessage, error) {
+	committed, err := b.StorageBackend.(fabricaStorage.AtomicMutationBackend).Mutate(ctx, kind, uid, fn)
+	if err == nil && b.injected.CompareAndSwap(false, true) {
+		var fresh v1.Node
+		if err := json.Unmarshal(committed, &fresh); err != nil {
+			return nil, err
+		}
+		fresh.Spec.Value = "newer"
+		raw, err := json.Marshal(fresh)
+		if err != nil {
+			return nil, err
+		}
+		if err := b.StorageBackend.Save(ctx, kind, uid, raw); err != nil {
+			return nil, err
+		}
+	}
+	return committed, err
+}
+func TestSnapshotBookkeepingCannotOverwriteNewerState(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	storage.Backend = &interveningWriterBackend{StorageBackend: storage.Backend}
+	req := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"first"}}`))
+	req.Header.Set("If-Match", currentNodeETag(t))
+	w := httptest.NewRecorder()
+	UpdateNode(w, req)
+	if w.Code != 200 {
+		t.Fatalf("update status=%d body=%s", w.Code, w.Body)
+	}
+	current := storage.NodeForTest("node-1")
+	if current.Spec.Value != "newer" || current.Status.Version != "" {
+		t.Fatalf("snapshot overwrote newer resource: %#v", current)
+	}
+}
+
+func TestConditionalSnapshotDeletion(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	node := storage.NodeForTest("node-1")
+	id, err := storage.CreateNodeVersionSnapshot(context.Background(), &node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := storage.GetNodeVersion(context.Background(), "node-1", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	etag, err := middleware.GenerateETag(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tag := range []string{`"stale"`, etag} {
+		req := httptest.NewRequest("DELETE", "/nodes/node-1/versions/"+id, nil)
+		req.Header.Set("If-Match", tag)
+		w := httptest.NewRecorder()
+		DeleteNodeVersion(w, req)
+		want := 200
+		if tag == `"stale"` {
+			want = 412
+		}
+		if w.Code != want {
+			t.Fatalf("snapshot delete status=%d want=%d body=%s", w.Code, want, w.Body)
+		}
+	}
+	if _, err := storage.GetNodeVersion(context.Background(), "node-1", id); err == nil {
+		t.Fatal("snapshot survived deletion")
+	}
+}
+
+func TestStatusMutationsPreserveSpecAndManagedVersion(t *testing.T) {
+	for _, handler := range []http.HandlerFunc{UpdateNodeStatus, PatchNodeStatus} {
+		original := testNode("keep-spec")
+		original.Status.Version = "managed-snapshot"
+		storage.SeedNode(original)
+		etag := currentNodeETag(t)
+		request := httptest.NewRequest("PUT", "/nodes/node-1/status", bytes.NewBufferString(`{"phase":"ready","version":"client-value"}`))
+		request.Header.Set("Content-Type", "application/merge-patch+json")
+		request.Header.Set("If-Match", etag)
+		response := httptest.NewRecorder()
+		handler(response, request)
+		if response.Code != 200 {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body)
+		}
+		current := storage.NodeForTest("node-1")
+		if current.Spec.Value != "keep-spec" || current.Status.Phase != "ready" || current.Status.Version != "managed-snapshot" {
+			t.Fatalf("status mutation broke isolation: %#v", current)
+		}
+	}
+}
+
+func TestDisabledConditionalModePreservesCustomMutations(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	probe := httptest.NewRecorder()
+	GetNode(probe, httptest.NewRequest("GET", "/nodes/node-1", nil))
+	if probe.Header().Get("ETag") != "" {
+		t.Skip("conditional feature is enabled")
+	}
+	storage.Backend = legacyBackend{storage.Backend}
+	req := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"unconditional"}}`))
+	req.Header.Set("If-Match", `"stale"`)
+	w := httptest.NewRecorder()
+	UpdateNode(w, req)
+	if w.Code != 200 || storage.NodeForTest("node-1").Spec.Value != "unconditional" {
+		t.Fatalf("disabled feature changed custom mutation behavior: %d %s", w.Code, w.Body)
+	}
+}
+
+// competingWriterBackend commits an unconditional operation just before the
+// handler enters the atomic mutation. Its old validator must never authorize a
+// write against that newer state, or recreate a deleted resource.
+type competingWriterBackend struct {
+	fabricaStorage.StorageBackend
+	remove bool
+}
+
+func (b *competingWriterBackend) Mutate(ctx context.Context, kind, uid string, fn fabricaStorage.Mutation) (json.RawMessage, error) {
+	if b.remove {
+		if err := b.StorageBackend.Delete(ctx, kind, uid); err != nil {
+			return nil, err
+		}
+	} else {
+		raw, err := b.StorageBackend.Load(ctx, kind, uid)
+		if err != nil {
+			return nil, err
+		}
+		var current v1.Node
+		if err := json.Unmarshal(raw, &current); err != nil {
+			return nil, err
+		}
+		current.Spec.Value = "unconditional winner"
+		raw, err = json.Marshal(current)
+		if err != nil {
+			return nil, err
+		}
+		if err := b.StorageBackend.Save(ctx, kind, uid, raw); err != nil {
+			return nil, err
+		}
+	}
+	return b.StorageBackend.(fabricaStorage.AtomicMutationBackend).Mutate(ctx, kind, uid, fn)
+}
+
+func TestConditionalMutationsRespectUnconditionalWriters(t *testing.T) {
+	for _, remove := range []bool{false, true} {
+		for _, operation := range []struct {
+			name, method, body string
+			handler            http.HandlerFunc
+		}{
+			{"spec PUT", "PUT", `{"spec":{"value":"stale"}}`, UpdateNode},
+			{"spec PATCH", "PATCH", `{"value":"stale"}`, PatchNode},
+			{"status PUT", "PUT", `{"phase":"stale"}`, UpdateNodeStatus},
+			{"status PATCH", "PATCH", `{"phase":"stale"}`, PatchNodeStatus},
+			{"DELETE", "DELETE", "", DeleteNode},
+		} {
+			t.Run(fmt.Sprintf("%s/delete=%t", operation.name, remove), func(t *testing.T) {
+				storage.SeedNode(testNode("initial"))
+				etag := currentNodeETag(t)
+				storage.Backend = &competingWriterBackend{StorageBackend: storage.Backend, remove: remove}
+				events.Mutations.Store(0)
+				request := httptest.NewRequest(operation.method, "/nodes/node-1", bytes.NewBufferString(operation.body))
+				request.Header.Set("If-Match", etag)
+				request.Header.Set("Content-Type", "application/merge-patch+json")
+				response := httptest.NewRecorder()
+				operation.handler(response, request)
+				want := http.StatusPreconditionFailed
+				if remove {
+					want = http.StatusNotFound
+				}
+				if response.Code != want {
+					t.Fatalf("status=%d want=%d body=%s", response.Code, want, response.Body)
+				}
+				if events.Mutations.Load() != 0 {
+					t.Fatal("rejected mutation published an event")
+				}
+				raw, err := storage.Backend.Load(context.Background(), "Node", "node-1")
+				if remove {
+					if !errors.Is(err, fabricaStorage.ErrNotFound) {
+						t.Fatalf("deleted resource returned: %s %v", raw, err)
+					}
+				} else {
+					var current v1.Node
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := json.Unmarshal(raw, &current); err != nil {
+						t.Fatal(err)
+					}
+					if current.Spec.Value != "unconditional winner" || current.Status.Phase != "" {
+						t.Fatalf("stale mutation changed winner: %#v", current)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestResourceDeletionCleansVersionSnapshots(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	node := storage.NodeForTest("node-1")
+	id, err := storage.CreateNodeVersionSnapshot(context.Background(), &node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("DELETE", "/nodes/node-1", nil)
+	request.Header.Set("If-Match", currentNodeETag(t))
+	response := httptest.NewRecorder()
+	DeleteNode(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete status=%d body=%s", response.Code, response.Body)
+	}
+	if _, err := storage.GetNodeVersion(context.Background(), "node-1", id); !errors.Is(err, fabricaStorage.ErrNotFound) {
+		t.Fatalf("snapshot survived resource deletion: %v", err)
+	}
+}
+
+func TestSnapshotBookkeepingRejectsStaleResource(t *testing.T) {
+	committed := testNode("initial")
+	storage.SeedNode(committed)
+	newer := committed
+	newer.Spec.Value = "newer"
+	if err := storage.SaveNode(context.Background(), &newer); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("PUT", "/nodes/node-1", nil)
+	if _, err := persistNodeSnapshotVersion(request, "node-1", &committed, "snapshot"); err == nil {
+		t.Fatal("bookkeeping accepted stale resource")
+	}
+	current := storage.NodeForTest("node-1")
+	if current.Spec.Value != "newer" || current.Status.Version != "" {
+		t.Fatalf("bookkeeping overwrote newer state: %#v", current)
+	}
+}
+
+// Validation may resolve references through the same storage backend. It must
+// finish without holding that backend's write lock, including without If-Match.
+func TestMutationValidationCanReadStorage(t *testing.T) {
+	for _, operation := range []struct {
+		name, method, body string
+		handler            http.HandlerFunc
+	}{
+		{"spec PUT", "PUT", `{"spec":{"value":"updated"}}`, UpdateNode},
+		{"spec PATCH", "PATCH", `{"value":"updated"}`, PatchNode},
+		{"status PUT", "PUT", `{"phase":"ready"}`, UpdateNodeStatus},
+		{"status PATCH", "PATCH", `{"phase":"ready"}`, PatchNodeStatus},
+	} {
+		for _, conditional := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/conditional=%t", operation.name, conditional), func(t *testing.T) {
+				storage.SeedNode(testNode("initial"))
+				reference := testNode("reference")
+				reference.Metadata.UID = "referenced-node"
+				if err := storage.SaveNode(context.Background(), &reference); err != nil {
+					t.Fatal(err)
+				}
+				validation.Hook = func(ctx context.Context, _ any) error {
+					_, err := storage.LoadNode(ctx, reference.Metadata.UID)
+					return err
+				}
+				t.Cleanup(func() { validation.Hook = nil })
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				request := httptest.NewRequest(operation.method, "/nodes/node-1", bytes.NewBufferString(operation.body)).WithContext(ctx)
+				request.Header.Set("Content-Type", "application/merge-patch+json")
+				if conditional {
+					request.Header.Set("If-Match", currentNodeETag(t))
+				}
+				response := httptest.NewRecorder()
+				done := make(chan struct{})
+				go func() { operation.handler(response, request); close(done) }()
+				select {
+				case <-done:
+					if response.Code != http.StatusOK {
+						t.Fatalf("status=%d body=%s", response.Code, response.Body)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("storage read from validation deadlocked after request cancellation")
+				}
+			})
+		}
+	}
+}
+
+func TestMutationRevalidatesConcurrentState(t *testing.T) {
+	for _, operation := range []struct {
+		name, method, body string
+		handler            http.HandlerFunc
+		status             bool
+	}{
+		{"spec PUT", "PUT", `{"spec":{"value":"updated"}}`, UpdateNode, false},
+		{"spec PATCH", "PATCH", `{"value":"updated"}`, PatchNode, false},
+		{"status PUT", "PUT", `{"phase":"ready"}`, UpdateNodeStatus, true},
+		{"status PATCH", "PATCH", `{"phase":"ready"}`, PatchNodeStatus, true},
+	} {
+		for _, header := range []string{"", "*", "strong"} {
+			for _, rejectFresh := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/header=%s/reject=%t", operation.name, header, rejectFresh), func(t *testing.T) {
+					storage.SeedNode(testNode("initial"))
+					events.Mutations.Store(0)
+					calls := 0
+					validation.Hook = func(ctx context.Context, value any) error {
+						calls++
+						candidate := value.(*v1.Node)
+						if calls == 1 {
+							current, err := storage.LoadNode(ctx, "node-1")
+							if err != nil {
+								return err
+							}
+							if operation.status {
+								current.Spec.Value = "concurrent"
+							} else {
+								current.Status.Phase = "concurrent"
+							}
+							return storage.SaveNode(ctx, current)
+						}
+						if operation.status && candidate.Spec.Value != "concurrent" || !operation.status && candidate.Status.Phase != "concurrent" {
+							return errors.New("candidate was not rebuilt from fresh state")
+						}
+						if rejectFresh {
+							return errors.New("fresh state rejected")
+						}
+						return nil
+					}
+					t.Cleanup(func() { validation.Hook = nil })
+					request := httptest.NewRequest(operation.method, "/nodes/node-1", bytes.NewBufferString(operation.body))
+					request.Header.Set("Content-Type", "application/merge-patch+json")
+					if header == "strong" {
+						request.Header.Set("If-Match", currentNodeETag(t))
+					} else {
+						request.Header.Set("If-Match", header)
+					}
+					response := httptest.NewRecorder()
+					operation.handler(response, request)
+					wantStatus, wantCalls, wantEvents := http.StatusOK, 2, int32(1)
+					if rejectFresh {
+						wantStatus, wantEvents = http.StatusBadRequest, 0
+					}
+					if header == "strong" {
+						wantStatus, wantCalls, wantEvents = http.StatusPreconditionFailed, 1, 0
+					}
+					if response.Code != wantStatus || calls != wantCalls || events.Mutations.Load() != wantEvents {
+						t.Fatalf("status=%d calls=%d events=%d body=%s", response.Code, calls, events.Mutations.Load(), response.Body)
+					}
+					current := storage.NodeForTest("node-1")
+					wantValue, wantPhase := "updated", "concurrent"
+					if operation.status {
+						wantValue, wantPhase = "concurrent", "ready"
+					}
+					if wantStatus != http.StatusOK {
+						if operation.status {
+							wantPhase = ""
+						} else {
+							wantValue = "initial"
+						}
+					}
+					if current.Spec.Value != wantValue || current.Status.Phase != wantPhase {
+						t.Fatalf("unexpected committed state: %#v", current)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestMutationValidationRetryLimit(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	events.Mutations.Store(0)
+	calls := 0
+	validation.Hook = func(ctx context.Context, _ any) error {
+		calls++
+		current, err := storage.LoadNode(ctx, "node-1")
+		if err != nil {
+			return err
+		}
+		current.Metadata.Annotations = map[string]string{"attempt": fmt.Sprint(calls)}
+		return storage.SaveNode(ctx, current)
+	}
+	t.Cleanup(func() { validation.Hook = nil })
+	request := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"uncommitted"}}`))
+	response := httptest.NewRecorder()
+	UpdateNode(response, request)
+	if response.Code != http.StatusConflict || calls != 8 || events.Mutations.Load() != 0 {
+		t.Fatalf("status=%d calls=%d events=%d body=%s", response.Code, calls, events.Mutations.Load(), response.Body)
+	}
+	if current := storage.NodeForTest("node-1"); current.Spec.Value != "initial" || current.Status.Version != "" {
+		t.Fatalf("retry exhaustion committed candidate or snapshot bookkeeping: %#v", current)
 	}
 }
