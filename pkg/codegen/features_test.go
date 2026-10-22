@@ -209,6 +209,95 @@ func TestFeatureGenerationRequiresExplicitEntToFileMigration(t *testing.T) {
 	}
 }
 
+func TestGenerateAllUsesFeatureLoader(t *testing.T) {
+	g := featureTestGenerator(t)
+	t.Chdir(filepath.Clean(filepath.Join(g.OutputDir, "..", "..")))
+	for _, enabled := range []bool{false, true, false} {
+		g.SetFeatures(FeatureConfig{
+			StorageType: "file", MetricsEnabled: enabled, EventsEnabled: enabled,
+		})
+		if err := g.GenerateAll(); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.CheckFeatureGeneration(false); err != nil {
+			t.Fatalf("GenerateAll invalidated feature ownership: %v", err)
+		}
+		loader, err := os.ReadFile(filepath.Join(g.OutputDir, "features_generated.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, marker := range []string{"NewMetrics(", "initializeEventingAndReconciliation(config)"} {
+			if strings.Contains(string(loader), marker) != enabled {
+				t.Fatalf("loader did not update %s for enabled=%v", marker, enabled)
+			}
+		}
+		for _, path := range []string{
+			filepath.Join(g.OutputDir, "metrics_generated.go"),
+			filepath.Join("internal", "middleware", "event_bus_generated.go"),
+		} {
+			_, err := os.Stat(path)
+			if enabled && err != nil || !enabled && !os.IsNotExist(err) {
+				t.Fatalf("%s enabled=%v: %v", path, enabled, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(g.OutputDir, "metrics_helpers_generated.go")); !os.IsNotExist(err) {
+			t.Fatalf("GenerateAll created a legacy metrics helper: %v", err)
+		}
+	}
+}
+
+func TestGenerateAllFeaturePreflightPreventsPartialWrites(t *testing.T) {
+	g := featureTestGenerator(t)
+	t.Chdir(filepath.Clean(filepath.Join(g.OutputDir, "..", "..")))
+	if err := g.GenerateFeatures(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(g.OutputDir, "runtime_helpers_generated.go")
+	helper, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper = append(helper, []byte("\n// preserve this customization\n")...)
+	if err := os.WriteFile(path, helper, 0644); err != nil {
+		t.Fatal(err)
+	}
+	modelsPath := filepath.Join(g.OutputDir, "models_generated.go")
+	models := []byte("package main\n// must survive failed preflight\n")
+	if err := os.WriteFile(modelsPath, models, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.GenerateAll(); err == nil || !strings.Contains(err.Error(), "untracked or modified") {
+		t.Fatalf("expected ownership rejection, got %v", err)
+	}
+	for path, want := range map[string][]byte{path: helper, modelsPath: models} {
+		got, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("failed preflight changed %s: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("internal", "storage", "storage_generated.go")); !os.IsNotExist(err) {
+		t.Fatalf("failed preflight generated storage: %v", err)
+	}
+}
+
+func TestGenerateAllPreservesLegacyFeatureGeneration(t *testing.T) {
+	g := featureTestGenerator(t)
+	t.Chdir(filepath.Clean(filepath.Join(g.OutputDir, "..", "..")))
+	if err := os.WriteFile(filepath.Join(g.OutputDir, "main.go"), []byte("package main\ntype Config struct{}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.GenerateAll(); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.ReadFile(filepath.Join(g.OutputDir, "metrics_helpers_generated.go"))
+	if err != nil || !strings.Contains(string(helper), "type Metrics struct{}") {
+		t.Fatalf("legacy metrics compatibility helper missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(g.OutputDir, "features_generated.go")); !os.IsNotExist(err) {
+		t.Fatalf("legacy service acquired a loader: %v", err)
+	}
+}
+
 func TestFeatureLoaderLegacyAndMigration(t *testing.T) {
 	g := featureTestGenerator(t)
 	root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
