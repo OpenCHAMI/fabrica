@@ -6,6 +6,7 @@ package codegen
 
 import (
 	"bytes"
+	"go/format"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -29,6 +30,7 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 		TypeName:     "*v1.Node",
 		SpecType:     "v1.NodeSpec",
 		StatusType:   "v1.NodeStatus",
+		Tags:         map[string]string{"versioning": "enabled"},
 		URLPath:      "/nodes",
 		StorageName:  "Node",
 	}}
@@ -52,14 +54,95 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 		t.Fatalf("write generated middleware: %v", err)
 	}
 
-	cmd := exec.Command("go", "test", "-count=1", "./...")
+	// Compile the actual storage implementation and generated storage wrappers,
+	// rather than a mock of their locking semantics.
+	copyDir(t, filepath.Join("..", "storage"), filepath.Join(dir, "fabrica", "pkg", "storage"))
+	var storageSource bytes.Buffer
+	if err := gen.Templates["storage"].Execute(&storageSource, gen.globalTemplateData("storage/file.go.tmpl")); err != nil {
+		t.Fatal(err)
+	}
+	formatted, err := format.Source(storageSource.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "internal", "storage", "storage_generated.go"), formatted, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-race", "-count=1", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute generated handlers: %v\n%s", err, output)
 	}
+
+	// Also compile and execute the disabled feature against a backend exposing
+	// only the original storage interface.
+	gen.Config.ConditionalEnabled = false
+	if err := gen.GenerateHandlers(); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("go", "test", "-race", "-count=1", "-run", "^(TestDisabledConditionalModePreservesCustomMutations|TestSnapshotBookkeepingRejectsStaleResource)$", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("execute conditional-disabled handlers: %v\n%s", err, output)
+	}
+
+	// Fully handwritten storage has only the pre-existing typed CRUD functions;
+	// regeneration must not require new Backend or Mutate symbols from it.
+	gen.SetStorageType("custom")
+	gen.Config.ConditionalEnabled = true
+	gen.Resources[0].Tags = nil
+	if err := gen.GenerateHandlers(); err != nil {
+		t.Fatal(err)
+	}
+	customStorage, err := os.ReadFile(filepath.Join("testdata", "conditional_custom_storage.go.fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "internal", "storage", "storage_generated.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "internal", "storage", "storage.go"), customStorage, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "handlers_generated_test.go"), []byte(customStorageHandlerTest), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("go", "test", "-race", "-count=1", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("execute handwritten custom-storage handlers: %v\n%s", err, output)
+	}
 }
+
+const customStorageHandlerTest = `package main
+import (
+ "bytes"
+ "net/http/httptest"
+ "testing"
+ v1 "example.com/test/apis/v1"
+ "example.com/test/internal/storage"
+)
+func TestCustomStorageCompatibility(t *testing.T) {
+ for _, conditional := range []bool{false, true} {
+  node := v1.Node{Kind: "Node", Spec: v1.NodeSpec{Value: "initial"}}
+  node.Metadata.UID = "node-1"
+  storage.SeedNode(node)
+  request := httptest.NewRequest("PUT", "/nodes/node-1", bytes.NewBufferString("{\"spec\":{\"value\":\"updated\"}}"))
+  if conditional { request.Header.Set("If-Match", "*") }
+  response := httptest.NewRecorder()
+  UpdateNode(response, request)
+  wantStatus, wantValue := 200, "updated"
+  if conditional { wantStatus, wantValue = 501, "initial" }
+  if response.Code != wantStatus || storage.NodeForTest("node-1").Spec.Value != wantValue {
+   t.Fatalf("conditional=%t status=%d body=%s", conditional, response.Code, response.Body)
+  }
+ }
+}
+`
 
 func copyConditionalHandlerFixture(t *testing.T, source, destination string) {
 	t.Helper()

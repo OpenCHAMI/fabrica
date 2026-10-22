@@ -74,13 +74,8 @@ func CheckIfMatch(w http.ResponseWriter, r *http.Request, currentETag string) bo
 		return true
 	}
 
-	// Parse If-Match (can be comma-separated list)
-	tags := strings.Split(ifMatch, ",")
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "*" || tag == currentETag {
-			return true
-		}
+	if MatchesIfMatch(ifMatch, currentETag) {
+		return true
 	}
 
 	// ETag mismatch - return 412 Precondition Failed
@@ -130,4 +125,18 @@ func SetETag(w http.ResponseWriter, etag string) {
 // SetCacheControl sets cache control headers
 func SetCacheControl(w http.ResponseWriter, directive string) {
 	w.Header().Set("Cache-Control", directive)
+}
+
+// MatchesIfMatch evaluates the header without writing an HTTP response.
+func MatchesIfMatch(header, currentETag string) bool {
+	if header == "" {
+		return true
+	}
+	for _, tag := range strings.Split(header, ",") {
+		tag = strings.TrimSpace(tag)
+		if tag == "*" || tag == currentETag {
+			return true
+		}
+	}
+	return false
 }

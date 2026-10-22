@@ -346,6 +346,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"StatusType":            resource.StatusType,
 		"URLPath":               resource.URLPath,
 		"StorageName":           resource.StorageName,
+		"StorageType":           g.StorageType,
 		"Tags":                  resource.Tags,
 		"RevisioningEnabled":    resource.RevisioningEnabled,
 		"BareNameSelector":      resource.BareNameSelector,

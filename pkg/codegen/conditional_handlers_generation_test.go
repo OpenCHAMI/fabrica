@@ -42,23 +42,19 @@ func TestGeneratedMutationHandlersEnforceOptionalIfMatch(t *testing.T) {
 	} {
 		t.Run(handler, func(t *testing.T) {
 			body := generatedFunctionBody(t, generated, handler)
-			assertGeneratedStatementsInOrder(t, body,
-				"storage.LoadNode(r.Context(), uid)",
-				`r.Header.Get("If-Match") != ""`,
-				"conditionalmiddleware.GenerateETag(",
-				"conditionalmiddleware.CheckIfMatch(w, r, etag)",
-			)
+			assertGeneratedStatementsInOrder(t, body, "mutateNode(r, uid,", "respondNodeMutationError(w, r, err)", "events.PublishResource")
+			if strings.Contains(body, "storage.SaveNode(") || strings.Contains(body, "storage.DeleteNode(") {
+				t.Fatal("handler bypasses mutation guard")
+			}
+
 		})
 	}
 
+	guard := generatedFunctionBody(t, generated, "mutateNode")
+	assertGeneratedStatementsInOrder(t, guard, "storage.MutateNode", "conditionalmiddleware.GenerateETag(current)", "conditionalmiddleware.MatchesIfMatch", "return apply(current)")
 	versionDelete := generatedFunctionBody(t, generated, "DeleteNodeVersion")
-	assertGeneratedStatementsInOrder(t, versionDelete,
-		`r.Header.Get("If-Match") != ""`,
-		"storage.GetNodeVersion(r.Context(), uid, versionID)",
-		"conditionalmiddleware.GenerateETag(version)",
-		"conditionalmiddleware.CheckIfMatch(w, r, etag)",
-		"storage.DeleteNodeVersion(r.Context(), uid, versionID)",
-	)
+	assertGeneratedStatementsInOrder(t, versionDelete, "storage.DeleteNodeVersionChecked", "conditionalmiddleware.GenerateETag(version)", "conditionalmiddleware.MatchesIfMatch")
+
 }
 
 func TestGeneratedHandlersPreserveUnconditionalMode(t *testing.T) {
@@ -76,11 +72,25 @@ func TestGeneratedHandlersPreserveUnconditionalMode(t *testing.T) {
 	}
 }
 
-func generateConditionalHandlerSource(t *testing.T, enabled bool) string {
+func TestGeneratedCustomStoragePreservesTypedCRUD(t *testing.T) {
+	generated := generateConditionalHandlerSource(t, true, "custom")
+	for _, symbol := range []string{"storage.Backend", "storage.MutateNode", "storage.DeleteNodeVersionChecked", "storage.NodeVersionSnapshot"} {
+		if strings.Contains(generated, symbol) {
+			t.Errorf("handwritten custom storage requires new symbol %s", symbol)
+		}
+	}
+	guard := generatedFunctionBody(t, generated, "mutateNode")
+	assertGeneratedStatementsInOrder(t, guard, "fabricaStorage.ErrAtomicMutationUnsupported", "storage.LoadNode", "apply(current)")
+}
+
+func generateConditionalHandlerSource(t *testing.T, enabled bool, storageType ...string) string {
 	t.Helper()
 
 	outDir := t.TempDir()
 	gen := NewGenerator(outDir, "main", "example.com/test")
+	if len(storageType) > 0 {
+		gen.SetStorageType(storageType[0])
+	}
 	gen.Config.ConditionalEnabled = enabled
 	gen.Config.VersioningEnabled = true
 	gen.Resources = []ResourceMetadata{{
