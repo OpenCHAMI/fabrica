@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"go/format"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -1273,7 +1274,10 @@ func (g *Generator) LoadTemplates() error {
 
 	g.Templates = make(map[string]*template.Template)
 	for name, filename := range templateFiles {
-		templatePath := filepath.Join("templates", filename)
+		// embed.FS paths always require forward slashes, even on Windows.
+		// path.Join always uses "/" and thus should be used for internal paths,
+		// whereas filepath.Join uses the OS-native separator.
+		templatePath := path.Join("templates", filename)
 
 		// Read template content from embedded filesystem
 		content, err := embeddedTemplates.ReadFile(templatePath)
