@@ -365,6 +365,39 @@ We welcome contributions from the community! Here's how to get involved:
 - Ensure all tests pass: `make test integration`
 - Submit a pull request with a clear description
 
+### Go toolchain for local builds and tests
+
+The Makefile defaults `GOTOOLCHAIN` to the exact version in the `go` directive
+of `go.mod` and exports it to recipe commands, including Go commands launched
+by tests. This avoids using a newer installed toolchain with incompatible Ent
+code-generation dependencies. Go may download the selected toolchain on first use.
+
+```bash
+make test
+```
+
+An explicit environment or Make command-line setting takes precedence:
+
+```bash
+GOTOOLCHAIN=go1.26.10 make test
+make test GOTOOLCHAIN=auto
+```
+
+For direct `go` commands, select the toolchain explicitly:
+
+```bash
+GOTOOLCHAIN=go1.26.10 go test ./pkg/codegen
+GOTOOLCHAIN=go1.26.10 go build -o ./bin/fabrica ./cmd/fabrica
+```
+
+Or select it for all subsequent Go commands in the current shell:
+
+```bash
+export GOTOOLCHAIN=go1.26.10
+go test ./pkg/codegen
+go build -o ./bin/fabrica ./cmd/fabrica
+```
+
 **💬 Community:**
 - [GitHub Issues](https://github.com/openchami/fabrica/issues) - Ask questions and share ideas
 
