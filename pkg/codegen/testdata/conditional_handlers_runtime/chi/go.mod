@@ -4,4 +4,4 @@
 
 module github.com/go-chi/chi/v5
 
-go 1.26.10
+go 1.27.3
