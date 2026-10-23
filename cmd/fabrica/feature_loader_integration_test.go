@@ -45,6 +45,7 @@ func TestFeatureLoaderGeneratedService(t *testing.T) {
 	run(t, repo, "go", "build", "-o", binary, "./cmd/fabrica")
 	for _, backend := range []string{"file", "ent"} {
 		t.Run(backend, func(t *testing.T) {
+			t.Setenv("GOFLAGS", strings.TrimSpace(os.Getenv("GOFLAGS")+" -tags=reviewtag"))
 			dir := filepath.Join(workspace, backend)
 			run(t, workspace, binary, "init", backend, "--module", "example.com/"+backend, "--storage-type", backend)
 			run(t, dir, "go", "mod", "edit", "-replace", "github.com/openchami/fabrica="+repo,
@@ -66,11 +67,23 @@ func TestFeatureLoaderGeneratedService(t *testing.T) {
 				t.Fatal("missing scaffold Config closing brace")
 			}
 			end += start + len("\n}")
-			configSource := append([]byte("package main\n\n"), main[start:end]...)
+			configSource := append([]byte("//go:build reviewtag\n\npackage main\n\n"), main[start:end]...)
 			if err := os.WriteFile(filepath.Join(dir, "cmd/server/config.go"), configSource, 0644); err != nil {
 				t.Fatal(err)
 			}
 			main = bytes.Join([][]byte{main[:start], main[end:]}, nil)
+			// Also exercise both adoption markers hidden behind a build tag:
+			// missing both must not silently fall back to legacy generation.
+			if backend == "ent" {
+				if !bytes.Contains(main, []byte("loadGeneratedFeatures(")) {
+					t.Fatal("missing scaffold loader call")
+				}
+				main = bytes.ReplaceAll(main, []byte("loadGeneratedFeatures("), []byte("loadApplicationFeatures("))
+				startup := []byte("//go:build reviewtag\n\npackage main\n\nimport \"context\"\n\nfunc loadApplicationFeatures(ctx context.Context, config *Config) (*generatedFeatureSet, error) { return loadGeneratedFeatures(ctx, config) }\n")
+				if err := os.WriteFile(filepath.Join(dir, "cmd/server/startup.go"), startup, 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if err := os.WriteFile(mainPath, main, 0644); err != nil {
 				t.Fatal(err)
 			}

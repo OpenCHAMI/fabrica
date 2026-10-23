@@ -120,13 +120,17 @@ func UsesFeatureLoader(serverDir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	buildContext, err := featureBuildContext()
+	if err != nil {
+		return false, err
+	}
 	embedded, called := false, false
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || strings.HasSuffix(name, "_generated.go") {
 			continue
 		}
-		active, err := build.Default.MatchFile(serverDir, name)
+		active, err := buildContext.MatchFile(serverDir, name)
 		if err != nil {
 			return false, err
 		}
@@ -165,6 +169,68 @@ func UsesFeatureLoader(serverDir string) (bool, error) {
 		return false, fmt.Errorf("incomplete feature-loader migration: embed GeneratedFeatureConfig and call loadGeneratedFeatures; see docs/guides/feature-loader.md")
 	}
 	return embedded && called, nil
+}
+
+// featureBuildContext applies the invoking environment's -tags flag without
+// changing the shared default context or including inactive application variants.
+func featureBuildContext() (build.Context, error) {
+	ctx := build.Default
+	flags, err := splitFeatureFlags(os.Getenv("GOFLAGS"))
+	if err != nil {
+		return ctx, fmt.Errorf("parsing GOFLAGS: %w", err)
+	}
+	for _, arg := range flags {
+		name, value, hasValue := strings.Cut(arg, "=")
+		if name != "-tags" && name != "--tags" {
+			continue
+		}
+		if !hasValue {
+			return ctx, fmt.Errorf("GOFLAGS: %s requires a value (use %s=tag)", name, name)
+		}
+		// Match go build: repeated -tags replace the previous value. Older
+		// space-separated/quoted tag lists remain supported by the Go command.
+		if strings.ContainsAny(value, " '") {
+			ctx.BuildTags, err = splitFeatureFlags(value)
+			if err != nil {
+				return ctx, fmt.Errorf("parsing GOFLAGS tags: %w", err)
+			}
+		} else {
+			ctx.BuildTags = nil
+			for tag := range strings.SplitSeq(value, ",") {
+				if tag != "" {
+					ctx.BuildTags = append(ctx.BuildTags, tag)
+				}
+			}
+		}
+	}
+	return ctx, nil
+}
+
+// splitFeatureFlags follows Go's GOFLAGS quoting rules: quotes surround whole
+// arguments, with no shell expansion or unescaping inside quoted arguments.
+func splitFeatureFlags(value string) ([]string, error) {
+	var args []string
+	for {
+		value = strings.TrimLeft(value, " \t\r\n")
+		if value == "" {
+			return args, nil
+		}
+		if quote := value[0]; quote == '\'' || quote == '"' {
+			end := strings.IndexByte(value[1:], quote)
+			if end < 0 {
+				return nil, fmt.Errorf("unterminated %c quote", quote)
+			}
+			args = append(args, value[1:end+1])
+			value = value[end+2:]
+		} else {
+			end := strings.IndexAny(value, " \t\r\n")
+			if end < 0 {
+				return append(args, value), nil
+			}
+			args = append(args, value[:end])
+			value = value[end:]
+		}
+	}
 }
 
 const featureManifestName = "features_manifest_generated.json"
