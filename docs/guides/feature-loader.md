@@ -25,7 +25,16 @@ require fake types or no-op implementations.
 You can split `Config` and startup code into separate application Go files under
 `cmd/server`. The selected build must include both the embedded
 `GeneratedFeatureConfig` and the call to `loadGeneratedFeatures`; tests and
-generated helpers do not establish loader adoption.
+generated helpers do not establish loader adoption. For custom build tags, pass
+the same `GOFLAGS` environment to generation and the service build, for example:
+
+```bash
+GOFLAGS='-tags=prod,feature' /path/to/fabrica generate --fabrica-source /path/to/fabrica-source
+GOFLAGS='-tags=prod,feature' go build ./cmd/server
+```
+
+Generation honors `-tags` in this environment and excludes inactive variants.
+Tags supplied only to a separate `go build -tags=...` invocation are not inherited.
 
 This is build-time composition, not runtime reloading of `.fabrica.yaml`. Service
 flags, environment variables, and service YAML continue configuring the selected

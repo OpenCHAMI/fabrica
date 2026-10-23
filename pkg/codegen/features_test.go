@@ -6,8 +6,10 @@ package codegen
 
 import (
 	"bytes"
+	"go/build"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -410,5 +412,50 @@ func TestFeatureLoaderLegacyAndMigration(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(g.OutputDir, featureManifestName)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFeatureLoaderAdoptionWithGOFLAGS(t *testing.T) {
+	const config = "package main\ntype Config struct{GeneratedFeatureConfig}\n"
+	const startup = "package main\nfunc start(){loadGeneratedFeatures(nil,nil)}\n"
+	const tagged = "//go:build reviewtag && secondtag\n\n"
+	for _, tc := range []struct {
+		name, flags                  string
+		bothTagged, adopted, invalid bool
+	}{
+		{"config only", "-tags=reviewtag,secondtag", false, true, false},
+		{"both markers", "-tags=reviewtag,secondtag", true, true, false},
+		{"quoted arguments", "'-ldflags=-X main.name=hello world' \"--tags=reviewtag secondtag\"", true, true, false},
+		{"legacy space-separated tags", "'-tags=reviewtag secondtag'", true, true, false},
+		{"last tags win", "-tags=ignored -tags=reviewtag,,secondtag,", true, true, false},
+		{"inactive config", "-tags=other", false, false, true},
+		{"inactive variant", "-tags=other", true, false, false},
+		{"cleared tags", "-tags=reviewtag,secondtag -tags=", true, false, false},
+		{"missing value", "-tags", true, false, true},
+		{"unterminated quote", "'-tags=reviewtag", true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GOFLAGS", tc.flags)
+			dir := t.TempDir()
+			files := map[string]string{"config.go": tagged + config, "startup.go": startup}
+			if tc.bothTagged {
+				files["startup.go"] = tagged + startup
+			}
+			// An unselected variant must not provide a missing adoption marker.
+			files["inactive.go"] = "//go:build neverselected\n\n" + config + "func unused(){loadGeneratedFeatures(nil,nil)}\n"
+			for name, source := range files {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := append([]string(nil), build.Default.BuildTags...)
+			adopted, err := UsesFeatureLoader(dir)
+			if adopted != tc.adopted || (err != nil) != tc.invalid {
+				t.Fatalf("adopted=%v error=%v", adopted, err)
+			}
+			if !reflect.DeepEqual(before, build.Default.BuildTags) {
+				t.Fatal("modified default build context")
+			}
+		})
 	}
 }
