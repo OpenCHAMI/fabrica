@@ -8,6 +8,7 @@
 # Variables
 BINARY_NAME=fabrica
 GO=go
+export GOTOOLCHAIN ?= go$(shell awk '/^go / {print $$2; exit}' go.mod)
 GOFLAGS=-v
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
