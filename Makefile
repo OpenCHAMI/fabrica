@@ -1,4 +1,4 @@
-# Copyright © 2025 OpenCHAMI a Series of LF Projects, LLC
+# Copyright © 2025-2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-FileCopyrightText: © 2025 OpenCHAMI a Series of LF Projects, LLC
 #
 # SPDX-License-Identifier: MIT
@@ -9,6 +9,7 @@
 BINARY_NAME=fabrica
 GO=go
 GOEXE=$(shell $(GO) env GOEXE)
+GOTOOLCHAIN ?= go$(shell awk '/^go / {print $$2; exit}' go.mod)
 GOFLAGS=-v
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -18,6 +19,9 @@ RELEASE_VERSION ?= latest
 ACT_GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' go.mod | cut -d. -f1,2)
 ACT_LOCAL_GO_VERSION ?= 1.25
 ACT_DOCKER_HOST ?= $(shell docker context inspect $${DOCKER_CONTEXT:-$$(docker context show 2>/dev/null)} 2>/dev/null | awk -F'"' '/"Host":/ {print $$4; exit}')
+
+# Export so Go commands launched by Make use the selected toolchain.
+export GOTOOLCHAIN
 
 define run_act
 	@docker_host="$${DOCKER_HOST:-$(ACT_DOCKER_HOST)}"; \
