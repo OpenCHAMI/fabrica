@@ -89,7 +89,8 @@ migration. Full generation fails before changing output while Ent backend files
 remain. Back up or migrate the database and preserve any customizations, then
 move the paths listed in the error outside the service: `internal/storage/ent/`,
 `ent_adapter.go`, any `ent_adapter_*.go`, `ent_queries_generated.go`,
-`ent_transactions_generated.go`, and `generate.go` under `internal/storage/`,
+`ent_transactions_generated.go`, `ent_revisions_generated.go` when present, and
+`generate.go` under `internal/storage/`,
 plus `cmd/server/export.go` and `cmd/server/import.go`. Leave
 `internal/storage/storage_generated.go` in place for regeneration. Run full
 `fabrica generate`, `go mod tidy`, `go test ./...`, and `go build ./cmd/server`.

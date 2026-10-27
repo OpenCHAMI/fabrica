@@ -351,6 +351,7 @@ func (g *Generator) checkEntToFileTransition() error {
 	paths := []string{
 		"internal/storage/ent", "internal/storage/ent_adapter.go",
 		"internal/storage/ent_queries_generated.go", "internal/storage/ent_transactions_generated.go",
+		"internal/storage/ent_revisions_generated.go",
 		"internal/storage/generate.go", "cmd/server/export.go", "cmd/server/import.go",
 	}
 	dedicated, err := filepath.Glob(filepath.Join(root, "internal/storage/ent_adapter_*.go"))

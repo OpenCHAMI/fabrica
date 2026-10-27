@@ -241,7 +241,7 @@ func TestFeatureGenerationRequiresExplicitEntToFileMigration(t *testing.T) {
 	for _, path := range []string{
 		"internal/storage/ent/schema/resource.go", "internal/storage/ent_adapter.go",
 		"internal/storage/ent_adapter_node.go", "internal/storage/ent_queries_generated.go",
-		"internal/storage/ent_transactions_generated.go", "internal/storage/generate.go",
+		"internal/storage/ent_transactions_generated.go", "internal/storage/ent_revisions_generated.go", "internal/storage/generate.go",
 		"cmd/server/export.go", "cmd/server/import.go",
 	} {
 		t.Run(path, func(t *testing.T) {
