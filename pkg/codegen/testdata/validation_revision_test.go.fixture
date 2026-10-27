@@ -1,0 +1,151 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"log"
+	"net/http"
+	"strings"
+	"testing"
+
+	v1 "example.com/revisionfixture/apis/v1"
+	"example.com/revisionfixture/internal/storage"
+	"github.com/go-chi/chi/v5"
+	"github.com/openchami/fabrica/pkg/events"
+)
+
+func TestRevisionValidationPolicy(t *testing.T) {
+	const mode = "EXPECTED_MODE"
+	if err := storage.InitFileBackend(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerResourcePrefixes(); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	previousConfig, previousBus := events.GetEventConfig(), events.GetGlobalEventBus()
+	defer func() { events.SetEventConfig(previousConfig); events.SetGlobalEventBus(previousBus) }()
+	bus := &captureRevisionEventBus{}
+	cfg := events.DefaultEventConfig()
+	cfg.Enabled = true
+	events.SetEventConfig(cfg)
+	events.SetGlobalEventBus(bus)
+	good := `{"metadata":{"name":"production"},"spec":{"value":"valid"}}`
+	created := request(t, router, "POST", "/nodes/", good, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", created.Code, created.Body)
+	}
+	initial := decodeRecord(t, created)
+	for _, tc := range []struct {
+		name, method, path, body string
+		status                   int
+	}{
+		{"series tag", "POST", "/nodes/", `{"metadata":{"name":"invalid"},"spec":{}}`, 201},
+		{"series custom", "POST", "/nodes/", `{"metadata":{"name":"custom"},"spec":{"value":"reject"}}`, 201},
+		{"revision tag", "POST", "/nodes/production/revisions", `{"metadata":{},"spec":{}}`, 201},
+		{"revision custom", "POST", "/nodes/production/revisions", `{"metadata":{},"spec":{"value":"reject"}}`, 201},
+		{"ensure tag", "PUT", "/nodes/production/revisions/invalid", `{"metadata":{},"spec":{}}`, 201},
+		{"ensure custom", "PUT", "/nodes/production/revisions/custom", `{"metadata":{},"spec":{"value":"reject"}}`, 201},
+		{"status tag", "PUT", "/nodes/production/status", `{"phase":"Broken"}`, 200},
+		{"status custom", "PUT", "/nodes/production/status", `{"phase":"Pending"}`, 200},
+		{"status patch tag", "PATCH", "/nodes/production/status", `{"phase":"Broken"}`, 200},
+		{"status patch custom", "PATCH", "/nodes/production/status", `{"phase":"Pending"}`, 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			beforeStatus, err := storage.GetNodeSeriesStatus(context.Background(), "production")
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeSeries := request(t, router, "GET", "/nodes/production/", "", "")
+			beforeRevisions := request(t, router, "GET", "/nodes/production/revisions", "", "")
+			bus.events = nil
+			v1.ValidationCalls.Store(0)
+			var logs bytes.Buffer
+			oldLog := log.Writer()
+			log.SetOutput(&logs)
+			defer log.SetOutput(oldLog)
+			result := request(t, router, tc.method, tc.path, tc.body, "")
+			want := tc.status
+			if mode == "strict" {
+				want = 400
+			}
+			if result.Code != want {
+				t.Fatalf("mode=%s: %d want %d: %s", mode, result.Code, want, result.Body)
+			}
+			if mode == "strict" && len(bus.events) != 0 {
+				t.Fatalf("rejection emitted %d events", len(bus.events))
+			}
+			if mode == "strict" {
+				afterSeries := request(t, router, "GET", "/nodes/production/", "", "")
+				afterRevisions := request(t, router, "GET", "/nodes/production/revisions", "", "")
+				afterStatus, err := storage.GetNodeSeriesStatus(context.Background(), "production")
+				if err != nil || afterStatus != beforeStatus {
+					t.Fatalf("rejection changed resource status: %+v %v", afterStatus, err)
+				}
+				if !bytes.Equal(beforeSeries.Body.Bytes(), afterSeries.Body.Bytes()) || !bytes.Equal(beforeRevisions.Body.Bytes(), afterRevisions.Body.Bytes()) {
+					t.Fatal("rejection changed series/revisions")
+				}
+				if strings.HasPrefix(tc.name, "series") {
+					name := "invalid"
+					if strings.Contains(tc.name, "custom") {
+						name = "custom"
+					}
+					if got := request(t, router, "GET", "/nodes/"+name+"/", "", ""); got.Code != 404 {
+						t.Fatalf("rejected series exists: %d %s", got.Code, got.Body)
+					}
+				}
+			}
+			if mode == "warn" && !strings.Contains(logs.String(), "WARN: validation failed") {
+				t.Fatalf("missing warn logs: %s", logs.String())
+			}
+			if mode == "disabled" && (v1.ValidationCalls.Load() != 0 || logs.Len() != 0) {
+				t.Fatalf("disabled invoked optional checks: calls=%d logs=%s", v1.ValidationCalls.Load(), logs.String())
+			}
+			if mode != "strict" {
+				if strings.HasPrefix(tc.name, "status") {
+					status, err := storage.GetNodeSeriesStatus(context.Background(), "production")
+					expected := "Broken"
+					if strings.Contains(tc.name, "custom") {
+						expected = "Pending"
+					}
+					if err != nil || status.Phase != expected {
+						t.Fatalf("persisted status: %+v %v", status, err)
+					}
+				} else {
+					record := decodeRecord(t, result)
+					read := request(t, router, "GET", "/nodes/"+record.Metadata.SeriesName+"/revisions/by-uid/"+record.Metadata.UID, "", "")
+					if read.Code != 200 {
+						t.Fatalf("persisted revision: %d %s", read.Code, read.Body)
+					}
+				}
+			}
+			// Series status and later revisions cannot alter the initial immutable spec.
+			read := request(t, router, "GET", "/nodes/production/revisions/by-uid/"+initial.Metadata.UID, "", "")
+			if read.Code != 200 || decodeRecord(t, read).Resource.Spec.Value != "valid" {
+				t.Fatalf("initial revision changed: %d %s", read.Code, read.Body)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		method, path, body, etag string
+		status                   int
+	}{
+		{"POST", "/nodes/", "{", "", 400},
+		{"POST", "/nodes/", `{"spec":{"value":"valid"}}`, "", 400},
+		{"PUT", "/nodes/production/default", `{}`, "", 400},
+		{"PUT", "/nodes/production/status", "{", "", 400},
+		{"PATCH", "/nodes/production/status", `[{"op":"remove","path":"/missing"}]`, "", 422},
+		{"POST", "/nodes/", good, "", 409},
+		{"PUT", "/nodes/production/default", `{"revisionUid":"` + initial.Metadata.UID + `"}`, `"stale"`, 412},
+	} {
+		got := request(t, router, tc.method, tc.path, tc.body, tc.etag)
+		if got.Code != tc.status {
+			t.Fatalf("mandatory %s %s mode=%s: %d want %d: %s", tc.method, tc.path, mode, got.Code, tc.status, got.Body)
+		}
+	}
+}

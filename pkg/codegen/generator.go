@@ -52,6 +52,7 @@ import (
 	"github.com/openchami/fabrica/internal/constants"
 	"github.com/openchami/fabrica/internal/resourcepath"
 	"github.com/openchami/fabrica/pkg/annotations"
+	"github.com/openchami/fabrica/pkg/validation"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -356,6 +357,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"PerResourceVersioning":   perResVersioning,
 		"IsVersioned":             isVersioned,
 		"ConditionalEnabled":      g.Config.ConditionalEnabled,
+		"ValidationMode":          g.Config.ValidationMode,
 		"SpecFields":              normalizeSpecFields(resource.SpecFields),
 		"Versions":                resource.Versions,
 		"DefaultVersion":          resource.DefaultVersion,
@@ -955,6 +957,9 @@ func (g *Generator) GenerateAll() error {
 	// Generate based on package type
 	switch g.PackageName {
 	case "main":
+		if _, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode); err != nil {
+			return err
+		}
 		// Server code - handlers, routes, models, storage, and openapi
 		if err := g.CheckFeatureGeneration(true); err != nil {
 			return err
@@ -1305,6 +1310,11 @@ func (g *Generator) LoadTemplates() error {
 
 // GenerateHandlers generates REST API handlers for all resources
 func (g *Generator) GenerateHandlers() error {
+	mode, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode)
+	if err != nil {
+		return err
+	}
+	g.Config.ValidationMode = string(mode)
 	fmt.Printf("🛠️  Generating handlers...\n")
 	for _, resource := range g.Resources {
 		var buf bytes.Buffer
@@ -1335,6 +1345,12 @@ func (g *Generator) GenerateHandlers() error {
 
 // GenerateMiddleware generates middleware components based on configuration
 func (g *Generator) GenerateMiddleware() error {
+	mode, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode)
+	if err != nil {
+		return err
+	}
+	g.Config.ValidationMode = string(mode)
+	g.Config.ValidationEnabled = mode != validation.Disabled
 	fmt.Printf("⚙️  Generating middleware...\n")
 
 	// Middleware directory

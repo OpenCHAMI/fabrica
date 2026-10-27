@@ -56,6 +56,17 @@ features:
 Run the commands above. `/metrics` becomes available; disabling metrics and
 regenerating removes its route and implementation.
 
+Validation uses `features.validation.enabled` and `features.validation.mode` at
+generation time. Strict is the default; warn logs optional Spec/Status tag and
+custom-hook failures and continues, and disabled skips these optional checks.
+`enabled: false` overrides any valid mode; `mode: disabled` also disables optional
+checks even with `enabled: true`. Invalid modes reject configuration in all cases.
+Regenerate, rebuild, and restart after changing the policy. Runtime validation
+settings do not override generated policy. Required decoding, identity/envelope,
+patch, authorization, ETag, immutable-field, and backend checks remain mandatory.
+See the [validation policy table](validation.md#generated-http-validation-policy)
+for the full boundary and examples.
+
 Authentication is generated when either `features.security.authn.enabled` or the
 legacy `features.auth.enabled` is true. To disable it, set both to false. Enabled
 authentication still requires `TOKENSMITH_JWKS_URL` at startup. AuthZ retains the

@@ -555,6 +555,15 @@ generation:
   reconciliation: true        # if features.reconciliation.enabled
 ```
 
+Validation defaults to `enabled: true` and `mode: strict` when omitted. The mode
+controls optional Spec/Status tags and custom-validation hooks in generated HTTP
+handlers: strict rejects, warn logs and continues, and disabled skips them.
+`enabled: false` takes precedence over any valid mode; `mode: disabled` also wins
+over `enabled: true`. Invalid modes always reject configuration. Required request,
+authorization, ETag, immutable-field, and backend checks still apply in all modes.
+Changes require generation, rebuild, and restart; service runtime validation
+settings do not override this policy. See [validation](../guides/validation.md#generated-http-validation-policy).
+
 **Editing:**
 - Safe to edit manually
 - Changes take effect on next `fabrica generate`

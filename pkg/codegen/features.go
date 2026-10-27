@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/openchami/fabrica/internal/constants"
+	"github.com/openchami/fabrica/pkg/validation"
 )
 
 // FeatureConfig is the generation-time startup contract shared by init and generate.
@@ -65,14 +66,18 @@ func (f FeatureConfig) Normalize() FeatureConfig {
 	if f.AuthZMode != "shadow" && f.AuthZMode != "enforce" {
 		f.AuthZMode = "enforce"
 	}
-	if f.ValidationMode == "disabled" {
-		f.ValidationEnabled = false
+	if mode, err := validation.ResolveMode(f.ValidationEnabled, f.ValidationMode); err == nil {
+		f.ValidationMode = string(mode)
+		f.ValidationEnabled = mode != validation.Disabled
 	}
 	return f
 }
 
 // Validate rejects unsupported startup selections before generation mutates files.
 func (f FeatureConfig) Validate() error {
+	if _, err := validation.ResolveMode(f.ValidationEnabled, f.ValidationMode); err != nil {
+		return err
+	}
 	f = f.Normalize()
 	if f.ReconciliationEnabled && !f.EventsEnabled {
 		return fmt.Errorf("reconciliation requires events")

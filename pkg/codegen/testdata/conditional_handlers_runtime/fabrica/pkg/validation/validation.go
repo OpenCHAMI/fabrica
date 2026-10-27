@@ -28,3 +28,13 @@ func ValidateWithContext(ctx context.Context, resource any) error {
 	}
 	return nil
 }
+
+type Mode string
+
+func ValidateRequest(value any, _ Mode) error { return ValidateResource(value) }
+func ValidateRequestWithContext(ctx context.Context, value any, _ Mode) error {
+	return ValidateWithContext(ctx, value)
+}
+func ValidateWithContextMode(ctx context.Context, value any, _ Mode) error {
+	return ValidateWithContext(ctx, value)
+}

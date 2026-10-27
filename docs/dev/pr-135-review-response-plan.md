@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # PR #135 review response plan
 
-Status: step 1 implemented and verified. Steps 2–4 remain proposed. The
+Status: steps 1 and 2 implemented and verified. Steps 3–4 remain pending. The
 empty-Ent-collection correction is outside PR #135 and will be tracked separately.
 
 Initial review: 2026-10-27 against PR head `e947660`. Refreshed against
@@ -21,11 +21,12 @@ PR: <https://github.com/OpenCHAMI/fabrica/pull/135>
 Step 1 delivered the three initial loader fixes and the build-tag follow-up,
 preserving the reviewer's authorship. Alex's new comment identifies an additional
 loader defect: rendering first does not make the subsequent feature-file and
-manifest updates crash-recoverable. Address that in step 3 before expanding
-validation behavior in step 2, then complete step 4's acceptance coverage.
+manifest updates crash-recoverable. The user selected step 2 next; that validation
+policy is now implemented as a separate change. Crash recovery remains step 3,
+followed by step 4's acceptance coverage.
 
 The validation and empty-Ent-collection findings predate the loader. Validation
-scope remains proposed in step 2. The user has decided to split the empty Ent
+scope is implemented in step 2. The user has decided to split the empty Ent
 collection contract gap into a different issue: its implementation and acceptance
 criteria are outside #135 and are not prerequisites for this PR's completion.
 Record that issue's link when available; no issue number has been supplied, and
@@ -44,7 +45,7 @@ service and does not migrate stored data or reload a running server.
 | `Generator.GenerateAll` bypasses feature composition and ownership preflight | [Go API comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354523823) | Completed in `6cd8870`; server generation uses feature composition and retains legacy fallback. |
 | Loader adoption fails when application declarations move out of main | [Package-scanning comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354544542) | Completed in `461d5b6`; inspect active application files rather than main alone. |
 | Adoption ignores the invoking build tags | [Build-tag follow-up](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4364088807) | Completed in `e7fee6b`; honor GOFLAGS tags through a private build context. |
-| Validation modes change files but not request acceptance | [Validation contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363011277), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363018045) | Define and implement an effective validation policy in a separate, reviewable change; preserve mandatory request checks and strict defaults. |
+| Validation modes change files but not request acceptance | [Validation contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363011277), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363018045) | Implemented in step 2: shared effective-policy resolver and generated handler policy, with mandatory request checks and strict defaults preserved. |
 | Interrupted feature writes leave files and ownership manifest inconsistent | [Alex's crash-recovery comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505) | New step 3: persist recoverable transaction intent before mutation, atomically replace files/manifest, and prove successful retry after failures. |
 | Empty Ent lists return JSON null | [Backend contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363952424), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363954591) | User decision: separate issue, outside #135. Retain follow-up context below; do not gate loader completion on this backend correction. |
 
@@ -96,18 +97,32 @@ first; add coverage for any gaps rather than duplicating equivalent tests.
 
 ## 2. Define validation policy before changing handler behavior
 
-Recommended scope: honor the documented strict/warn/disabled modes for optional
+Implemented scope: honor the documented strict/warn/disabled modes for optional
 Spec/Status struct-tag checks and framework custom-validation hooks in generated
 handlers. Keep JSON decoding, endpoint-required envelope/identity checks, patch
 structure/path restrictions, authorization, ETag preconditions, immutable fields,
 and persistence constraints mandatory. Do not implement this by skipping every
 `ValidateResource` or `ValidateWithContext` call indiscriminately.
 
-This is a proposed behavior decision, not an already agreed reviewer requirement.
-Implement it as a distinct change so it can be reviewed independently. If this
-behavior expansion is deferred from #135, explicitly narrow the documented loader
-contract and retain this work as a follow-up; changing middleware emission alone
-does not resolve the documented HTTP behavior gap.
+The user selected this behavior expansion for implementation. It is a distinct
+change, with shared policy APIs in `pkg/validation`, consistent configuration and
+feature normalization, and policy-aware generated handlers and middleware. The
+existing standalone validation APIs retain strict behavior.
+
+Implemented regression coverage:
+
+- Configuration/default/invalid-mode precedence and rejection before generator writes.
+- Checkout-built CLI tests of fresh strict/warn/disabled services, regeneration
+  strict → warn → disabled → strict, and disabled boolean with strict/warn modes.
+- HTTP and storage checks for the default Node's 201-character description,
+  custom hooks, spec PUT/PATCH, status PUT/PATCH, warning logs, disabled hook
+  invocation, unchanged state/no success events after strict rejection, and
+  preservation of spec/status and user-owned main/custom validation code.
+- Revision series creation, revision creation/ensure, status PUT/PATCH, custom
+  hooks, immutable revision preservation, required series names/promotion selectors,
+  malformed JSON/patches, duplicate series constraints, and ETag failures.
+- Existing generated-handler atomic mutation, conditional request, custom-backend,
+  and file/Ent generation tests remain part of verification.
 
 Use one effective-policy resolver for configuration normalization and generation:
 
@@ -167,7 +182,7 @@ mutation can leave mixed output with old manifest digests, so the next ownership
 check mistakes Fabrica's changes for user customization. The shared write helper
 also uses direct `os.WriteFile`, allowing a partial manifest write.
 
-Implement this step next, before step 2. Atomic replacement of the manifest alone
+Implement this step next. Atomic replacement of the manifest alone
 is insufficient: recovery must recognize a recorded mixture of old and target
 feature outputs. The guarantee applies to loader-owned outputs and their
 manifest; it does not make every generator operation or storage migration one
@@ -357,3 +372,37 @@ Recorded the user's decision to move the pre-existing empty-Ent-collection gap t
 a separate issue. Its fix is excluded from this PR and its completion criteria.
 This update changes the plan only; no recovery implementation, backend changes,
 GitHub comments, or new GitHub issues were created.
+
+
+## Step 2 delivery — 2026-10-27
+
+Implemented generation-time strict/warn/disabled policy for optional Spec/Status
+tags and framework custom-validation hooks. The same resolver validates and
+normalizes YAML configuration, the project-feature bridge, and generator settings.
+Omitted YAML settings and the bridge's nil-config default remain strict; false
+wins over any valid mode, while invalid modes still reject. Invalid generator
+settings reject before server outputs change.
+
+New policy APIs preserve mandatory envelope checks and leave the original
+standalone validation APIs strict. Generated create, spec PUT/PATCH, status
+PUT/PATCH, and revision create/ensure/status operations use the effective policy.
+Promotion selectors stay mandatory. Prospective resource validation remains
+inside the existing atomic mutation callback. Warn logs failures and continues;
+disabled invokes neither optional tags nor custom hooks. Optional middleware
+emission and generated handlers agree, including after regeneration.
+
+Verified with Go 1.26.10:
+
+- All eight package suites in the validation command above passed, including the
+  final full `pkg/codegen` rerun, generated conditional-mutation race checks,
+  fresh/regenerated HTTP policy tests, revision policy tests, and file/Ent services.
+- The project-feature bridge's nil/default/invalid/precedence regressions passed.
+- `make build` produced the checkout binary; the separate integration module's
+  `go mod tidy` and full `go test -v -timeout 10m` passed (246 seconds).
+- PR-focused golangci-lint 2.15.0 reported zero issues. Changed Go files are
+  formatted and `git diff --check` is clean.
+
+Updated the validation, feature-loader, middleware, and CLI configuration guides.
+The four reviewer-authored commits remain intact. Step 3's crash recovery and the
+remaining step 4 acceptance work are pending; the empty-Ent-collection correction
+remains separately scoped. No GitHub comments, issues, merges, or pushes were made.

@@ -9,7 +9,6 @@ package server
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/openchami/fabrica/pkg/validation"
@@ -24,7 +23,7 @@ const ValidationMode = "{{.ValidationMode}}" // strict, warn, disabled
 // Validation modes:
 //   - strict: Return 400 on validation failures (production)
 //   - warn: Log validation failures but continue (development)
-//   - disabled: Skip validation entirely (not recommended)
+//   - disabled: Skip optional validation
 func ValidationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip if disabled
@@ -41,8 +40,8 @@ func ValidationMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Validation happens in handlers using ValidateAndRespond()
-		// This middleware sets up the validation context
+		// Validation happens in handlers using the generated policy
+		// Keep this wrapper for application middleware compatibility
 		next.ServeHTTP(w, r)
 	})
 }
@@ -50,7 +49,7 @@ func ValidationMiddleware(next http.Handler) http.Handler {
 // ValidateAndRespond validates a resource and handles the response based on mode
 //
 // Returns:
-//   - true if validation passed or mode is warn
+//   - true if mandatory checks pass and optional checks pass or are not enforced
 //   - false if validation failed in strict mode (response already sent)
 //
 // Usage in handlers:
@@ -58,21 +57,14 @@ func ValidationMiddleware(next http.Handler) http.Handler {
 //       return // Response already sent
 //   }
 func ValidateAndRespond(w http.ResponseWriter, r *http.Request, resource interface{}) bool {
-	if err := validation.ValidateResource(resource); err != nil {
-		if ValidationMode == "strict" {
-			// Return 400 Bad Request
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"error": "Validation failed",
-				"details": err.Error(),
-			})
-			return false
-		} else if ValidationMode == "warn" {
-			// Log but continue
-			log.Printf("WARN: Validation failed for %T: %v", resource, err)
-			return true
-		}
+	if err := validation.ValidateRequestWithContext(r.Context(), resource, validation.Mode(ValidationMode)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Validation failed",
+			"details": err.Error(),
+		})
+		return false
 	}
 
 	return true

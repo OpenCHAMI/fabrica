@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/openchami/fabrica/pkg/validation"
 	"gopkg.in/yaml.v3"
 )
 
@@ -177,6 +178,7 @@ func LoadConfig(dir string) (*FabricaConfig, error) {
 	}
 
 	var config FabricaConfig
+	config.Features.Validation = ValidationConfig{Enabled: true, Mode: "strict"}
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", ConfigFileName, err)
 	}
@@ -230,16 +232,12 @@ func ValidateConfig(config *FabricaConfig) error {
 		return fmt.Errorf("project.module is required")
 	}
 
-	// Validate validation mode
-	validModes := map[string]bool{"strict": true, "warn": true, "disabled": true}
-	if config.Features.Validation.Mode != "" && !validModes[config.Features.Validation.Mode] {
-		return fmt.Errorf("invalid validation.mode: %s (must be 'strict', 'warn', or 'disabled')",
-			config.Features.Validation.Mode)
+	mode, err := validation.ResolveMode(config.Features.Validation.Enabled, config.Features.Validation.Mode)
+	if err != nil {
+		return err
 	}
-	// Sync enabled flag with mode
-	if config.Features.Validation.Mode == "disabled" {
-		config.Features.Validation.Enabled = false
-	}
+	config.Features.Validation.Mode = string(mode)
+	config.Features.Validation.Enabled = mode != validation.Disabled
 
 	// Validate event bus type
 	if config.Features.Events.Enabled {

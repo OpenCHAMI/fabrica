@@ -8,6 +8,53 @@ SPDX-License-Identifier: MIT
 
 This guide explains how to use Fabrica's validation package to ensure your resources meet required standards.
 
+## Generated HTTP validation policy
+
+Set the policy in `.fabrica.yaml`, then regenerate, rebuild, and restart the service:
+
+```yaml
+features:
+  validation:
+    enabled: true
+    mode: strict
+```
+
+| Configuration | Effective behavior |
+| --- | --- |
+| `enabled: true`, `mode: strict` or omitted mode | Reject optional validation failures with HTTP 400. |
+| `enabled: true`, `mode: warn` | Run optional validators, log failures, and continue if mandatory checks pass. |
+| `mode: disabled` | Skip optional validation, even when enabled is true. |
+| `enabled: false`, any valid mode | Skip optional validation; the boolean takes precedence. |
+| Invalid mode, including when disabled | Reject the configuration. |
+
+Omitting the validation settings preserves strict defaults. The generated handlers
+apply the selected policy to checks inside Spec/Status and framework
+`CustomValidator.Validate(context.Context)` hooks. Create, spec PUT/PATCH, status
+PUT/PATCH, and revision create/ensure/status operations use the same policy. Warn
+runs custom hooks even when optional struct tags fail; disabled does not invoke
+these hooks. Standalone `validation.ValidateResource` and
+`validation.ValidateWithContext` retain their strict behavior.
+
+Decoding, endpoint-required identity/envelope fields, revision promotion selectors,
+patch structure/path restrictions, authorization, ETag preconditions, server-managed
+fields, and backend constraints remain mandatory in every mode. For example, an
+omitted `revisionUid` still rejects a revision promotion when validation is disabled.
+Envelope checks preserve existing required tags; they do not introduce new required
+fields or change Go's existing struct `required` semantics. A database can still
+reject values accepted by warn or disabled mode.
+
+The policy is selected during generation, independently of service runtime settings.
+Disabling validation removes the optional middleware while handlers retain mandatory
+checks. Spec mutations preserve status and status mutations preserve spec. For
+atomic resource mutations, validation runs against the prospective state inside
+the storage mutation callback. Custom hooks must be safe to retry and should not
+perform irreversible side effects; warn diagnostics can repeat after retries.
+
+For example, the default Node's `description` has `validate:"max=200"`. With file
+storage, a 201-character description rejects in strict mode, logs and persists in
+warn mode, and persists without optional checks when disabled. Return to strict
+mode by setting both `enabled: true` and `mode: strict` and regenerating.
+
 ## Overview
 
 Fabrica provides a powerful validation system that combines:
@@ -514,8 +561,8 @@ func (s *Server) Create{{.ResourceName}}(w http.ResponseWriter, r *http.Request)
         return
     }
 
-    // Auto-generated validation call
-    if err := validation.ValidateWithContext(r.Context(), &resource); err != nil {
+    // Generated policy preserves envelope checks in every mode
+    if err := validation.ValidateRequestWithContext(r.Context(), &resource, validation.Strict); err != nil {
         handleValidationError(w, err)
         return
     }

@@ -13,7 +13,7 @@ import (
 // FromConfig preserves legacy auth enablement while carrying the complete startup model.
 func FromConfig(cfg *config.FabricaConfig, versioned bool) codegen.FeatureConfig {
 	if cfg == nil {
-		return codegen.FeatureConfig{StorageType: "file", VersioningEnabled: versioned}.Normalize()
+		return codegen.FeatureConfig{StorageType: "file", VersioningEnabled: versioned, ValidationEnabled: true}.Normalize()
 	}
 	f := cfg.Features
 	return codegen.FeatureConfig{

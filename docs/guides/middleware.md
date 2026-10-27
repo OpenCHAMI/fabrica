@@ -59,6 +59,13 @@ features:
     mode: strict  # strict | warn | disabled
 ```
 
+Generated handlers apply the validation policy after decoding. The middleware
+wrapper remains available for composition; removing it does not remove mandatory
+request checks. `enabled: false` or `mode: disabled` skips optional Spec/Status tags
+and custom hooks. Warn logs optional failures; strict rejects them. Decoding,
+identity/envelope requirements, patches, auth, preconditions, and backend checks
+remain mandatory. See the [policy table](validation.md#generated-http-validation-policy).
+
 #### 2. Conditional Middleware (`conditional_middleware_generated.go`)
 
 Handles ETags and conditional request headers (If-Match, If-None-Match, etc.).

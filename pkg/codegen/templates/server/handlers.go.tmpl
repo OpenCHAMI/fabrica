@@ -133,7 +133,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Layer 1: Request validation (validates inline spec fields and metadata)
-	if err := validation.ValidateResource(&req); err != nil {
+	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -206,7 +206,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 
 	// Layer 2: Custom business logic validation
-	if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
+	if err := validation.ValidateRequestWithContext(r.Context(), {{camelCase .Name}}, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -317,7 +317,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{end}}
 
 		// Layer 2: Custom business logic validation
-		if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
+		if err := validation.ValidateRequestWithContext(r.Context(), {{camelCase .Name}}, validation.Mode("{{.ValidationMode}}")); err != nil {
 			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
 		}
 
@@ -407,7 +407,7 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{end}}
 
 		// Layer 2: Custom business logic validation
-		if err := validation.ValidateWithContext(r.Context(), {{camelCase .Name}}); err != nil {
+		if err := validation.ValidateRequestWithContext(r.Context(), {{camelCase .Name}}, validation.Mode("{{.ValidationMode}}")); err != nil {
 			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
 		}
 
@@ -491,7 +491,7 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		{{end}}
 
 		// Layer 2: Custom business logic validation
-		if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+		if err := validation.ValidateRequestWithContext(r.Context(), res, validation.Mode("{{.ValidationMode}}")); err != nil {
 			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
 		}
 
@@ -576,7 +576,7 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		{{end}}
 
 		// Layer 2: Custom business logic validation
-		if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+		if err := validation.ValidateRequestWithContext(r.Context(), res, validation.Mode("{{.ValidationMode}}")); err != nil {
 			return false, &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
 		}
 
@@ -767,7 +767,7 @@ func Create{{.Name}}Series(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
-	if err := validation.ValidateResource(&req); err != nil {
+	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -781,7 +781,7 @@ func Create{{.Name}}Series(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+	if err := validation.ValidateRequestWithContext(r.Context(), res, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -817,7 +817,7 @@ func Ensure{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
-	if err := validation.ValidateResource(&req); err != nil {
+	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -826,7 +826,7 @@ func Ensure{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+	if err := validation.ValidateRequestWithContext(r.Context(), res, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -851,7 +851,7 @@ func Create{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
-	if err := validation.ValidateResource(&req); err != nil {
+	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -860,7 +860,7 @@ func Create{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := validation.ValidateWithContext(r.Context(), res); err != nil {
+	if err := validation.ValidateRequestWithContext(r.Context(), res, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -990,7 +990,7 @@ func Update{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid status body: %w", err))
 		return
 	}
-	if err := validation.ValidateWithContext(r.Context(), &status); err != nil {
+	if err := validation.ValidateWithContextMode(r.Context(), &status, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
@@ -1031,7 +1031,7 @@ func Patch{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("decode patched status: %w", err))
 		return
 	}
-	if err := validation.ValidateWithContext(r.Context(), &status); err != nil {
+	if err := validation.ValidateWithContextMode(r.Context(), &status, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
