@@ -617,7 +617,7 @@ func (g *Generator) writeFeatureTransaction(root *os.Root, outputs []featureOutp
 			return err
 		}
 	}
-	tx := &featureTransaction{Format: 1, Config: g.Config.Features.Normalize()}
+	tx := &featureTransaction{Format: 1, Config: g.featureSelection().Normalize()}
 	manifest := featureManifest{Format: 1, Config: tx.Config, Files: make(map[string]string)}
 	for _, output := range outputs {
 		path, err := g.featureRelative(output.path)

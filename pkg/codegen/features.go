@@ -115,6 +115,22 @@ func (g *Generator) SetFeatures(f FeatureConfig) {
 	g.Config.VersioningEnabled = f.VersioningEnabled
 }
 
+// featureSelection returns the startup selection that matches the settings
+// handlers, storage, and legacy middleware generate from. SetFeatures keeps
+// both in sync; callers that only use SetStorageType, SetAuthEnabled, or
+// Config fields still get a loader that agrees with the rest of the output.
+func (g *Generator) featureSelection() FeatureConfig {
+	f := g.Config.Features
+	f.StorageType, f.DBDriver = g.StorageType, g.DBDriver
+	f.AuthEnabled = g.Config.WithAuth
+	f.EventsEnabled, f.EventBusType = g.Config.EventsEnabled, g.Config.EventBusType
+	f.MetricsEnabled = g.Config.MetricsEnabled
+	f.ValidationEnabled, f.ValidationMode = g.Config.ValidationEnabled, g.Config.ValidationMode
+	f.ConditionalEnabled, f.ETagAlgorithm = g.Config.ConditionalEnabled, g.Config.ETagAlgorithm
+	f.VersioningEnabled = g.Config.VersioningEnabled
+	return f
+}
+
 // UsesFeatureLoader detects adoption across application files in the server's
 // active build. Generated outputs and tests cannot establish adoption.
 func UsesFeatureLoader(serverDir string) (bool, error) {
@@ -261,7 +277,7 @@ type featureTemplateData struct {
 }
 
 func (g *Generator) featureData() featureTemplateData {
-	f := g.Config.Features.Normalize()
+	f := g.featureSelection().Normalize()
 	if f.ProjectName == "" {
 		f.ProjectName = g.extractServiceName()
 	}
@@ -310,7 +326,7 @@ func (g *Generator) CheckFeatureGeneration(full bool) error {
 	if err != nil || !adopted {
 		return err
 	}
-	if err := g.Config.Features.Validate(); err != nil {
+	if err := g.featureSelection().Validate(); err != nil {
 		return err
 	}
 	var previous featureManifest
@@ -326,10 +342,10 @@ func (g *Generator) CheckFeatureGeneration(full bool) error {
 			return fmt.Errorf("unsupported feature manifest format %d", previous.Format)
 		}
 	}
-	if !full && (previous.Format == 0 || previous.Config != g.Config.Features.Normalize()) {
+	if !full && (previous.Format == 0 || previous.Config != g.featureSelection().Normalize()) {
 		return fmt.Errorf("feature configuration changed; run full 'fabrica generate' before selective generation")
 	}
-	if previous.Config.StorageType == "ent" && g.Config.Features.Normalize().StorageType == "file" {
+	if previous.Config.StorageType == "ent" && g.featureSelection().Normalize().StorageType == "file" {
 		if err := g.checkEntToFileTransition(); err != nil {
 			return err
 		}

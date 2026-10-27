@@ -371,7 +371,7 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 		"Annotations":             resource.Annotations,
 		"EntSchema":               entSchemaMetadata(resource),
 		"EntAdapter":              entAdapterMetadata(resource),
-		"ReconcileRequeueMinutes": g.Config.Features.Normalize().ReconcileRequeueMinutes,
+		"ReconcileRequeueMinutes": g.featureSelection().Normalize().ReconcileRequeueMinutes,
 	})
 }
 

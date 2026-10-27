@@ -459,3 +459,52 @@ func TestFeatureLoaderAdoptionWithGOFLAGS(t *testing.T) {
 		})
 	}
 }
+
+// Go integrations that predate SetFeatures configure storage and toggles through
+// the legacy setters. The loader must follow the same settings as the handlers,
+// storage, and middleware generated from them.
+func TestFeatureGenerationFollowsLegacyGeneratorSettings(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cmd", "server")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	main := "package main\ntype Config struct { GeneratedFeatureConfig }\nfunc start() { loadGeneratedFeatures(nil, nil) }\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(main), 0644); err != nil {
+		t.Fatal(err)
+	}
+	g := NewGenerator(dir, "main", "example.com/fixture")
+	g.SetStorageType("ent")
+	g.SetDBDriver("postgres")
+	g.SetAuthEnabled(true)
+	g.Config.MetricsEnabled = true
+	g.Config.EventsEnabled = true
+	if err := g.LoadTemplates(); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.GenerateFeatures(); err != nil {
+		t.Fatal(err)
+	}
+	loader, err := os.ReadFile(filepath.Join(dir, "features_generated.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"DatabaseURL string", "postgres://", "newExportCommand()", "NewMetrics(", "initializeAuthMiddleware(config)", "initializeEventingAndReconciliation(config)"} {
+		if !strings.Contains(string(loader), marker) {
+			t.Fatalf("loader missing %q:\n%s", marker, loader)
+		}
+	}
+	if strings.Contains(string(loader), "DataDir") {
+		t.Fatal("loader selected file storage while the generator selected Ent")
+	}
+	for _, path := range []string{"metrics_generated.go", "auth_helpers_generated.go"} {
+		if _, err := os.Stat(filepath.Join(dir, path)); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+	}
+	// Strict validation and conditional requests are NewGenerator defaults.
+	for _, path := range []string{"validation_middleware_generated.go", "conditional_middleware_generated.go", "event_bus_generated.go"} {
+		if _, err := os.Stat(filepath.Join(dir, "..", "..", "internal", "middleware", path)); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+	}
+}
