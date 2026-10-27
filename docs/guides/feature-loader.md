@@ -221,6 +221,10 @@ preflight. `GenerateAll` and `GenerateFeatures` perform that preflight themselve
 
 Older main scaffolds continue using the legacy generation path, including metrics
 compatibility helpers. Their other init-time limitations remain until migrated.
+Request validation is the exception: regenerated handlers follow
+`features.validation` whether or not the service has migrated. See
+[Upgrading existing services](validation.md#upgrading-existing-services) before
+regenerating a service configured with `enabled: false`, `warn`, or `disabled`.
 Migration is explicit because `main.go` may contain application customizations.
 Use a current checkout-built Fabrica binary when validating the migration.
 

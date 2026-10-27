@@ -65,6 +65,20 @@ storage, a 201-character description rejects in strict mode, logs and persists i
 warn mode, and persists without optional checks when disabled. Return to strict
 mode by setting both `enabled: true` and `mode: strict` and regenerating.
 
+### Upgrading existing services
+
+This policy applies to every service on its next `fabrica generate`, including
+services that still use the legacy startup scaffold and have not adopted the
+[feature loader](feature-loader.md). Generated handlers are always regenerated.
+
+Before this change, generated handlers always rejected optional Spec/Status tag
+failures and failing `CustomValidator.Validate` hooks with HTTP 400, whatever
+`.fabrica.yaml` said; the validation settings only controlled the optional
+middleware file. After regenerating, a service whose configuration sets
+`enabled: false`, `mode: warn`, or `mode: disabled` accepts requests it used to
+reject. To keep the previous behavior, set `enabled: true` and `mode: strict`
+before regenerating.
+
 ## Overview
 
 Fabrica provides a powerful validation system that combines:

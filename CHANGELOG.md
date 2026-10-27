@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Public RFC 9727 API discovery at `/.well-known/api-catalog`, with JSON Linkset responses, HEAD discovery, and generated OpenAPI documentation.
   Include the standard service status API so specification discovery works without generated resources.
 
+### Changed
+- **Behavior change for all regenerated services:** generated handlers now apply `features.validation` from `.fabrica.yaml` to optional Spec/Status tag checks and `CustomValidator` hooks.
+  Previously handlers always rejected these failures, whatever the configuration said. This also applies to services that have not adopted the feature loader.
+  After the next `fabrica generate`, a service configured with `enabled: false`, `mode: warn`, or `mode: disabled` accepts requests it used to reject; set `enabled: true` and `mode: strict` to keep the old behavior.
+  See [Upgrading existing services](docs/guides/validation.md#upgrading-existing-services).
+
 ## [v0.4.9] - 2026-07-20
 
 ### Added
