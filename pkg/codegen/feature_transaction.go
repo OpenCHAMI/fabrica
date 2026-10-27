@@ -231,12 +231,18 @@ func (g *Generator) validateFeatureTransaction(tx *featureTransaction) error {
 		allowed[path] = true
 		selected[path] = output.enabled
 	}
+	// Owned paths come from this binary, never from the journal. A journal from
+	// a Fabrica version with different feature outputs cannot be verified here.
+	const versionHint = "finish recovery with the Fabrica generator version that wrote the journal"
 	if len(tx.Files) != len(allowed) {
-		return fmt.Errorf("incomplete owned-output list")
+		return fmt.Errorf("owned-output list does not match this Fabrica version; %s", versionHint)
 	}
 	for _, change := range tx.Files {
 		if !allowed[change.Path] {
-			return fmt.Errorf("unknown or duplicate owned path %q", change.Path)
+			if _, known := selected[change.Path]; known {
+				return fmt.Errorf("duplicate owned path %q", change.Path)
+			}
+			return fmt.Errorf("owned path %q is unknown to this Fabrica version; %s", change.Path, versionHint)
 		}
 		if change.After.Exists != selected[change.Path] {
 			return fmt.Errorf("captured selection disagrees with %s", change.Path)

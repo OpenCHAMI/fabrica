@@ -236,6 +236,49 @@ func interruptTransaction(t *testing.T, g *Generator) {
 	}
 }
 
+// Recovery trusts only the running binary's owned paths. A journal written by
+// a version with a different output set must say which version can finish it.
+func TestFeatureRecoveryReportsVersionMismatch(t *testing.T) {
+	for _, kind := range []string{"added-output", "removed-output"} {
+		t.Run(kind, func(t *testing.T) {
+			g := transactionFixture(t, false)
+			transactionSelection(g, true)
+			interruptTransaction(t, g)
+			journalPath := filepath.Join(g.OutputDir, featureJournalName)
+			encoded, err := os.ReadFile(journalPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var tx featureTransaction
+			if err := json.Unmarshal(encoded, &tx); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "added-output" {
+				extra := tx.Files[0]
+				extra.Path = "cmd/server/future_feature_generated.go"
+				tx.Files[len(tx.Files)-1] = extra
+			} else {
+				tx.Files = tx.Files[:len(tx.Files)-1]
+			}
+			if encoded, err = json.Marshal(tx); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(journalPath, encoded, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.InspectFeatureRecovery(); err == nil || !strings.Contains(err.Error(), "Fabrica generator version that wrote the journal") {
+				t.Fatalf("expected version guidance, got %v", err)
+			}
+			if err := g.GenerateFeatures(); err == nil || !strings.Contains(err.Error(), "Fabrica generator version that wrote the journal") {
+				t.Fatalf("expected version guidance, got %v", err)
+			}
+			if _, err := os.Stat(journalPath); err != nil {
+				t.Fatalf("journal must be retained: %v", err)
+			}
+		})
+	}
+}
+
 func TestFeatureTransactionRejectsUserEditsAndCorruption(t *testing.T) {
 	for _, kind := range []string{"output-edit", "output-deleted", "unexpected-creation", "manifest-edit", "path-escape", "duplicate", "missing-output", "bad-digest", "bad-data", "unknown-format", "unknown-field", "missing-before", "missing-absence", "missing-mode", "noncanonical-config", "truncated", "symlink", "parent-symlink"} {
 		t.Run(kind, func(t *testing.T) {

@@ -177,6 +177,14 @@ the target bytes in its base64-encoded `Data` fields. Moving a conflicting file
 aside is sufficient only when absence is one of its recorded states. Do not edit
 manifest hashes or delete the journal to bypass recovery.
 
+Recovery checks journal paths against the feature outputs of the generator
+performing recovery, never against paths read from the journal. The `fabrica`
+CLI recovers in its own preflight, before it builds the project's Fabrica
+module or `--fabrica-source` checkout, so finish an interrupted run with a
+`fabrica` binary from the same Fabrica version that wrote the journal, then
+upgrade. A binary with a different set of feature outputs reports the version
+mismatch and keeps the journal.
+
 These local files are reserved generation metadata:
 
 - `cmd/server/.fabrica-features-transaction.json`: pending recovery; removed after commit.
