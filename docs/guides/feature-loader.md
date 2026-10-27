@@ -100,8 +100,11 @@ or migrate data and remove/replace those artifacts yourself.
 
 Switching an adopted service from Ent to file storage also requires an explicit
 migration. Full generation fails before changing output while Ent backend files
-remain. Back up or migrate the database and preserve any customizations, then
-move the paths listed in the error outside the service: `internal/storage/ent/`,
+remain. This also applies when a legacy Ent service adopts the loader and selects
+file storage in the same generation; until the first manifest exists, any
+remaining Ent file under `internal/storage/` identifies the old backend. Back up
+or migrate the database and preserve any customizations, then move the paths
+listed in the error outside the service: `internal/storage/ent/`,
 `ent_adapter.go`, any `ent_adapter_*.go`, `ent_queries_generated.go`,
 `ent_transactions_generated.go`, `ent_revisions_generated.go` when present, and
 `generate.go` under `internal/storage/`,

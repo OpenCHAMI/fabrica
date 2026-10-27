@@ -17,6 +17,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -345,8 +346,8 @@ func (g *Generator) CheckFeatureGeneration(full bool) error {
 	if !full && (previous.Format == 0 || previous.Config != g.featureSelection().Normalize()) {
 		return fmt.Errorf("feature configuration changed; run full 'fabrica generate' before selective generation")
 	}
-	if previous.Config.StorageType == "ent" && g.featureSelection().Normalize().StorageType == "file" {
-		if err := g.checkEntToFileTransition(); err != nil {
+	if g.featureSelection().Normalize().StorageType == "file" && (previous.Format == 0 || previous.Config.StorageType == "ent") {
+		if err := g.checkEntToFileTransition(previous.Format == 0); err != nil {
 			return err
 		}
 	}
@@ -373,7 +374,9 @@ func (g *Generator) CheckFeatureGeneration(full bool) error {
 
 // Ent backend files predate feature ownership. Require an explicit migration
 // rather than deleting potentially customized code or leaving it uncompilable.
-func (g *Generator) checkEntToFileTransition() error {
+// Without a manifest (first adoption of a legacy service), any remaining Ent
+// storage file is the only evidence that the previous backend was Ent.
+func (g *Generator) checkEntToFileTransition(firstAdoption bool) error {
 	root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
 	paths := []string{
 		"internal/storage/ent", "internal/storage/ent_adapter.go",
@@ -399,6 +402,11 @@ func (g *Generator) checkEntToFileTransition() error {
 		} else if !os.IsNotExist(err) {
 			return err
 		}
+	}
+	if firstAdoption && !slices.ContainsFunc(stale, func(path string) bool {
+		return strings.HasPrefix(path, "internal/storage/")
+	}) {
+		return nil
 	}
 	if len(stale) != 0 {
 		sort.Strings(stale)

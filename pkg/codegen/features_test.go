@@ -281,6 +281,50 @@ func TestFeatureGenerationRequiresExplicitEntToFileMigration(t *testing.T) {
 	}
 }
 
+// A legacy Ent service adopting the loader has no manifest yet. Switching it to
+// file storage in the same generation must still reject stale Ent artifacts.
+func TestFeatureAdoptionRequiresExplicitEntToFileMigration(t *testing.T) {
+	g := featureTestGenerator(t)
+	root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
+	write := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("package placeholder\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	adapter := filepath.Join(root, "internal", "storage", "ent_adapter.go")
+	write(filepath.Join(root, "internal", "storage", "ent", "schema", "resource.go"))
+	write(adapter)
+	// A project-owned export command is not evidence of an Ent backend.
+	write(filepath.Join(g.OutputDir, "export.go"))
+	reject := func(stale string) {
+		t.Helper()
+		if err := g.GenerateFeatures(); err == nil || !strings.Contains(err.Error(), "ent-to-file storage migration") || !strings.Contains(err.Error(), stale) {
+			t.Fatalf("expected migration error naming %s, got %v", stale, err)
+		}
+		for _, name := range []string{"features_generated.go", featureManifestName} {
+			if _, err := os.Stat(filepath.Join(g.OutputDir, name)); !os.IsNotExist(err) {
+				t.Fatalf("rejected adoption wrote %s: %v", name, err)
+			}
+		}
+	}
+	reject("internal/storage/ent,")
+	// A partial migration still leaves code that cannot build without Ent.
+	if err := os.RemoveAll(filepath.Join(root, "internal", "storage", "ent")); err != nil {
+		t.Fatal(err)
+	}
+	reject("internal/storage/ent_adapter.go")
+	if err := os.Remove(adapter); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.GenerateFeatures(); err != nil {
+		t.Fatalf("file adoption after moving Ent artifacts: %v", err)
+	}
+}
+
 func TestGenerateAllUsesFeatureLoader(t *testing.T) {
 	g := featureTestGenerator(t)
 	t.Chdir(filepath.Clean(filepath.Join(g.OutputDir, "..", "..")))
