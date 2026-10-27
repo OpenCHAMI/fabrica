@@ -239,6 +239,8 @@ import (
  "github.com/spf13/viper"
 )
 
+const expectedGeneratedMetrics = METRICS_ENABLED
+
 func TestGeneratedFeatureRuntime(t *testing.T) {
  viper.Reset()
  config:=DefaultConfig()
@@ -347,8 +349,8 @@ func TestGeneratedAuthRoutingAndModes(t *testing.T){
   t.Run(mode,func(t *testing.T){
    t.Setenv("TOKENSMITH_AUTHZ_MODE",mode)
    config:=DefaultConfig()
-   config.ReconcileEnabled=false
    viper.Reset()
+   viper.Set("reconcile_enabled",false)
    viper.Set("data_dir",t.TempDir())
    viper.Set("database_url","file:"+filepath.Join(t.TempDir(),"auth.db")+"?_fk=1")
    if err:=viper.Unmarshal(config);err!=nil{t.Fatal(err)}
@@ -363,13 +365,19 @@ func TestGeneratedAuthRoutingAndModes(t *testing.T){
     RegisterGeneratedPublicRoutes(public)
     features.RegisterPublicRoutes(public)
    })
-   r.Group(func(protected chi.Router){features.UseProtected(protected);protected.Get("/protected",func(w http.ResponseWriter,r *http.Request){w.WriteHeader(http.StatusOK)})})
+   r.Group(func(protected chi.Router){features.UseProtected(protected);RegisterGeneratedRoutes(protected);protected.Get("/protected",func(w http.ResponseWriter,r *http.Request){w.WriteHeader(http.StatusOK)})})
+   registered:=false
+   if err:=chi.Walk(r,func(method,path string,_ http.Handler,_ ...func(http.Handler)http.Handler)error{if method=="GET"&&path=="/metrics"{registered=true};return nil});err!=nil{t.Fatal(err)}
+   if registered!=expectedGeneratedMetrics{t.Fatalf("metrics route registration=%t",registered)}
    for _,tc:=range []struct{path,token string;want int}{
     {"/health","",http.StatusOK},
     {"/openapi.json","",http.StatusOK},
     {"/docs","",http.StatusOK},
     {"/service/status","",http.StatusOK},
-    {"/metrics","",http.StatusOK},
+    {"/.well-known/api-catalog","",http.StatusOK},
+    {"/metrics","",map[bool]int{true:http.StatusOK,false:http.StatusMethodNotAllowed}[expectedGeneratedMetrics]},
+    {"/nodes/","",http.StatusUnauthorized},
+    {"/nodes/",token,map[bool]int{true:http.StatusForbidden,false:http.StatusOK}[mode=="enforce"]},
     {"/protected","",http.StatusUnauthorized},
     {"/protected",token,map[bool]int{true:http.StatusForbidden,false:http.StatusOK}[mode=="enforce"]},
    }{

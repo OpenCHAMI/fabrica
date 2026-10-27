@@ -270,3 +270,33 @@ Use a current checkout-built Fabrica binary when validating the migration.
 
 Keep application-specific storage hooks, reconcilers, policies, and classifiers
 in their user-owned files. Their existing create-once behavior is unchanged.
+
+## Acceptance checks in the Fabrica checkout
+
+Use Go 1.26.10 to run the independent feature and backend/migration scenarios:
+
+```sh
+GOTOOLCHAIN=go1.26.10 go test ./cmd/fabrica -run 'TestFeatureLoader(IndependentAcceptance|BackendDatasetTransitions|LegacyExplicitAdoption)$' -count=1
+```
+
+These tests build the CLI from the checkout and invoke it by absolute path with
+`--fabrica-source`. They compare supported `init` flags and first-generation YAML
+settings with regenerated output, then exercise HTTP behavior after rebuilding.
+Metrics, events/reconciliation, conditional requests, and AuthN are changed in
+separate sequences. Checks include metric observation/route removal, SHA-256/MD5
+ETags over actual payloads, 304/412 responses, signed-token/public-route behavior,
+worker concurrency, periodic requeue results, and real startup/shutdown cleanup.
+
+The backend scenario preserves file data, explicitly transfers a complete resource
+envelope into SQLite/Ent, preserves the old backend source/database outside the
+service, and transfers into a new file destination. Backend selection itself does
+not copy data. The original datasets and application source must remain intact.
+The pre-existing empty Ent collection response shape is tracked separately and
+is not changed or asserted as corrected by these loader tests.
+
+The live legacy scenario uses matching historical main/runtime-helper fixtures.
+It confirms legacy metrics helpers still work, while changing event/AuthN YAML
+alone retains the documented init-time limitation. After the explicit migration,
+the same application route observes event startup and subsequent removal without
+further main edits. The separately covered AuthN/AuthZ tests retain JWKS startup
+requirements and `TOKENSMITH_AUTHZ_MODE` off/shadow/enforce behavior.

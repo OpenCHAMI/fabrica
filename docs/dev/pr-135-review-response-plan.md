@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # PR #135 review response plan
 
-Status: steps 1–3 implemented and verified. Step 4 remains pending. The
+Status: steps 1–4 implemented and verified. The
 empty-Ent-collection correction is outside PR #135 and will be tracked separately.
 
 Initial review: 2026-10-27 against PR head `e947660`. Refreshed against
@@ -24,7 +24,8 @@ loader defect: rendering first does not make the subsequent feature-file and
 manifest updates crash-recoverable. The user selected step 2 next; that validation
 policy is implemented as a separate change. Step 3 now adds recoverable feature
 transactions, with fault-injection and process-recovery verification complete.
-Step 4 remains the final acceptance work.
+Step 4 now adds independent feature/runtime transitions, preserved-dataset backend
+transfers, and live legacy adoption acceptance. The full validation lane passed.
 
 The validation and empty-Ent-collection findings predate the loader. Validation
 scope is implemented in step 2. The user has decided to split the empty Ent
@@ -46,8 +47,8 @@ service and does not migrate stored data or reload a running server.
 | `Generator.GenerateAll` bypasses feature composition and ownership preflight | [Go API comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354523823) | Completed in `6cd8870`; server generation uses feature composition and retains legacy fallback. |
 | Loader adoption fails when application declarations move out of main | [Package-scanning comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354544542) | Completed in `461d5b6`; inspect active application files rather than main alone. |
 | Adoption ignores the invoking build tags | [Build-tag follow-up](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4364088807) | Completed in `e7fee6b`; honor GOFLAGS tags through a private build context. |
-| Validation modes change files but not request acceptance | [Validation contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363011277), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363018045) | Implemented in step 2: shared effective-policy resolver and generated handler policy, with mandatory request checks and strict defaults preserved. |
-| Interrupted feature writes leave files and ownership manifest inconsistent | [Alex's crash-recovery comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505) | Implemented in step 3: durable captured intent with inline staged bytes, atomic replacement, serialized recovery, and read-only previews; verified with fault injection, process interruption, CLI recovery/builds, and concurrent generators. |
+| Validation modes change files but not request acceptance | [Validation contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363011277), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363018045) | Implemented in `94012cc`: shared effective-policy resolver and generated handler policy, with mandatory request checks and strict defaults preserved. |
+| Interrupted feature writes leave files and ownership manifest inconsistent | [Alex's crash-recovery comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505) | Implemented in `e7eb37d`: durable captured intent with inline staged bytes, atomic replacement, serialized recovery, and read-only previews; verified with fault injection, process interruption, CLI recovery/builds, and concurrent generators. |
 | Empty Ent lists return JSON null | [Backend contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363952424), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363954591) | User decision: separate issue, outside #135. Retain follow-up context below; do not gate loader completion on this backend correction. |
 
 ## 1. Replay and verify the supplied fixes
@@ -283,6 +284,18 @@ this PR. Storage configuration changes still do not migrate data.
 
 ## 4. Close the remaining acceptance gaps
 
+Implemented and verified acceptance coverage in this change.
+`TestFeatureLoaderIndependentAcceptance` exercises separate metrics, events/reconcile,
+conditional, and AuthN transition families, compares true init-flag selections
+with normalized regeneration, and checks fresh/regenerated generated API artifacts.
+`TestFeatureLoaderBackendDatasetTransitions` preserves a seeded source dataset and
+old backend code/database across explicit transfers. `TestFeatureLoaderLegacyExplicitAdoption`
+rebuilds and starts a historical pre-loader scaffold before and after explicit
+adoption while retaining application routes. Steps 2 and 3 already supply the
+validation-policy, recovery, and read-only preview acceptance; those regressions
+remain in the full package lane.
+
+
 Extend the real checkout-built CLI fixtures instead of relying only on template
 string checks. Existing tests toggle metrics, auth, events, and reconciliation
 together; add independent transitions so one feature cannot mask another:
@@ -471,3 +484,71 @@ Verified with Go 1.26.10:
 Reviewer-authored commits remain intact. Step 4 and the separately scoped empty
 Ent collection issue remain outside this delivery. No GitHub comments, issues,
 merges, or pushes were made.
+
+
+## Step 4 delivery — 2026-10-27
+
+Completed the remaining acceptance work without production-code changes.
+
+- `TestFeatureLoaderIndependentAcceptance` changes metrics, events/reconciliation,
+  conditional requests, and AuthN independently. Metrics are observed at runtime
+  and removed routes/implementations are checked. Event-only startup and real
+  lifecycle delivery precede reconciliation; worker counts 2 → 4 and periodic
+  results 3 → 7 minutes are exercised. Blocking application reconciliation proves
+  shutdown waits for workers before closing the bus, and invalid runtime worker
+  settings prove startup unwinds the bus.
+- Conditional acceptance covers disabled → SHA-256 → MD5 → disabled, calculating
+  expected ETags from actual resource/list JSON and checking HTTP 304/412 plus
+  unchanged storage after rejected writes. It does not infer algorithms from
+  truncated hash length.
+- AuthN changes off → security flag on → legacy flag on → both off. Shared auth
+  tests now exercise generated resource routes and the public API catalog, retain
+  signed JWT/JWKS startup checks and AuthZ off/shadow/enforce behavior, and confirm
+  absent metrics registration even when Chi's OPTIONS wildcard yields HTTP 405.
+- Fresh services use actual supported `init` flags; their initial feature
+  selection/composition is checked before first generation. YAML-only conditional
+  settings are applied before first resource generation. Fresh and regenerated
+  normalized configurations, manifest hashes, loader files, and generated API/
+  storage artifacts agree. Repeat generation is byte-stable; changed selective
+  requests and edited outputs reject before any project files change. Equivalent
+  legacy/security auth selections accept selective generation. Application main,
+  resource inputs, and custom reconciler source remain unchanged.
+- `TestFeatureLoaderBackendDatasetTransitions` seeds complete metadata, labels,
+  annotations, spec, and status via HTTP. File → SQLite/Ent leaves original files
+  intact and requires explicit dataset transfer. Ent → file first rejects stale
+  Ent sources without writes, then succeeds after preserving backend code outside
+  the service. The source SQLite database and all original datasets remain
+  unchanged; the destination persists the full resource across restarts. Fresh
+  backend output/startup and Ent shutdown are checked. The known empty Ent-list
+  shape remains explicitly outside this acceptance gate.
+- `TestFeatureLoaderLegacyExplicitAdoption` renders matching historical main and
+  runtime-helper fixtures (with original license/provenance retained), rebuilds
+  and starts real servers, verifies legacy metrics behavior and init-time event/
+  AuthN limitations, then applies the documented adoption. Preserved application
+  routes observe event startup/removal after adoption without subsequent main
+  edits; displaced legacy helpers remain unchanged outside the service.
+- Existing custom-storage ownership/HTTP compatibility tests, step 2 validation
+  policy acceptance, step 3 failure/process recovery and read-only preview tests,
+  and #133's atomic conditional-write race regressions remain in the full lane.
+
+### Review-thread completion evidence
+
+| Review concern | Implementation/provenance | Verified acceptance evidence |
+| --- | --- | --- |
+| Ent-to-file transition | `c571539` (`ddb566f`), plus `3e8d157` | `TestFeatureGenerationRequiresExplicitEntToFileMigration`, `TestFeatureLoaderBackendDatasetTransitions`, and the tagged generated-service fixture. |
+| Direct Go API feature composition | `6cd8870` (`3ab3698`) | `TestGenerateAllUsesFeatureLoader`, `TestGenerateAllFeaturePreflightPreventsPartialWrites`, `TestGenerateAllRecoversFeaturesBeforeServerWrites`. |
+| Adoption across package/build files | `461d5b6` (`b621e4e`), `e7fee6b` (`9a959d5`) | `TestFeatureLoaderAdoptionAcrossPackageFiles`, `TestFeatureLoaderAdoptionWithGOFLAGS`, `TestFeatureLoaderAdoptionUsesTargetFilenames`, `TestGenerateAllRejectsMalformedBuildFlagsBeforeWrites`, and tagged CLI/file/Ent fixtures. |
+| Validation HTTP policy | `94012cc` | `TestGeneratedValidationPolicy`, revision API validation-policy runtime checks, mandatory-check regressions, and fresh/regenerated acceptance. |
+| Interrupted feature generation | `e7eb37d` | Filesystem-boundary/short-write/disk-full/corruption tests, process interruption, concurrent generators, directory-sync retry, `TestFeatureRecoveryCheckoutCLI`, and `TestMCPFeatureRecoveryPreviewIsReadOnly`. |
+| Empty Ent collections | User-selected separate issue, outside #135 | No correction asserted or implemented here; no issue number supplied and no GitHub issue created. |
+
+The full eight-package lane passed with Go 1.26.10: CLI acceptance completed in
+380 seconds and generator tests in 182 seconds, including the existing generated
+race checks. `make build` passed. The separate integration module's tidy and full
+`go test -v -timeout 10m` passed in 249 seconds. PR-focused golangci-lint 2.15.0
+reported zero issues; changed Go files are formatted and `git diff --check` is
+clean. The feature-loader guide includes reproducible acceptance commands and
+explains the explicit dataset-transfer and legacy-adoption boundaries.
+
+All four planned steps are complete. Reviewer authorship remains preserved. No
+GitHub comments, issue creation, thread resolution, merges, or pushes were made.

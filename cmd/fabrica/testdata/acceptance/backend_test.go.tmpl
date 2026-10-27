@@ -1,0 +1,62 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+package main
+
+import (
+ "bytes"
+ "context"
+ "encoding/json"
+ "net/http/httptest"
+ "os"
+ "strings"
+ "testing"
+
+ "github.com/go-chi/chi/v5"
+ "github.com/spf13/viper"
+ api "{{.APIImport}}"
+ "example.com/acceptance/internal/storage"
+)
+
+func TestBackendAcceptanceDataset(t *testing.T){
+ viper.Reset();viper.Set("data_dir",os.Getenv("ACCEPTANCE_DATA_DIR"));viper.Set("database_url","file:"+os.Getenv("ACCEPTANCE_DATABASE_FILE")+"?_fk=1")
+ config:=DefaultConfig();if err:=viper.Unmarshal(config);err!=nil{t.Fatal(err)}
+ features,err:=loadGeneratedFeatures(context.Background(),config);if err!=nil{t.Fatal(err)};defer features.Close()
+ if err:=registerResourcePrefixes();err!=nil{t.Fatal(err)}
+ r:=chi.NewRouter();features.Use(r);RegisterGeneratedRoutes(r)
+ request:=func(method,path,body string)*httptest.ResponseRecorder{
+  req:=httptest.NewRequest(method,path,strings.NewReader(body));req.Header.Set("Content-Type","application/json")
+  response:=httptest.NewRecorder();r.ServeHTTP(response,req);return response
+ }
+ expectedPath:=os.Getenv("ACCEPTANCE_EXPECTED_DATASET")
+ var wanted api.Node
+ if os.Getenv("ACCEPTANCE_DATASET_MODE")=="seed"{
+  response:=request("POST","/nodes/",`{"metadata":{"name":"source-dataset","labels":{"rack":"r1"},"annotations":{"owner":"acceptance"}},"spec":{"description":"must survive explicit transfer"}}`)
+  if response.Code!=201{t.Fatalf("seed: %d %s",response.Code,response.Body)}
+  if err:=json.Unmarshal(response.Body.Bytes(),&wanted);err!=nil{t.Fatal(err)}
+  response=request("PUT","/nodes/"+wanted.Metadata.UID+"/status/",`{"phase":"Ready","message":"preserved status","ready":true}`)
+  if response.Code!=200{t.Fatalf("seed status: %d %s",response.Code,response.Body)}
+  response=request("GET","/nodes/"+wanted.Metadata.UID,"");if response.Code!=200{t.Fatalf("read seed: %d %s",response.Code,response.Body)}
+  if err:=json.Unmarshal(response.Body.Bytes(),&wanted);err!=nil{t.Fatal(err)}
+  data,err:=json.Marshal(wanted);if err!=nil{t.Fatal(err)};if err:=os.WriteFile(expectedPath,data,0644);err!=nil{t.Fatal(err)}
+ }else{
+  data,err:=os.ReadFile(expectedPath);if err!=nil{t.Fatal(err)};if err:=json.Unmarshal(data,&wanted);err!=nil{t.Fatal(err)}
+  if os.Getenv("ACCEPTANCE_DATASET_MODE")=="import"{
+   if _,err:=storage.LoadNode(context.Background(),wanted.Metadata.UID);err==nil{t.Fatal("backend switch unexpectedly copied the source dataset")}
+   // The loader selects a backend; this explicit application operation migrates
+   // the preserved resource envelope, metadata, spec, and status.
+   if err:=storage.SaveNode(context.Background(),&wanted);err!=nil{t.Fatal(err)}
+  }
+ }
+ response:=request("GET","/nodes/"+wanted.Metadata.UID,"");if response.Code!=200{t.Fatalf("read transferred resource: %d %s",response.Code,response.Body)}
+ var actual api.Node;if err:=json.Unmarshal(response.Body.Bytes(),&actual);err!=nil{t.Fatal(err)}
+ wantJSON,err:=json.Marshal(wanted);if err!=nil{t.Fatal(err)};actualJSON,err:=json.Marshal(actual);if err!=nil{t.Fatal(err)}
+ if !bytes.Equal(wantJSON,actualJSON){t.Fatalf("resource changed across persistence/restart/explicit backend transfer:\nwant %s\n got %s",wantJSON,actualJSON)}
+ response=request("GET","/nodes/","");if response.Code!=200{t.Fatalf("nonempty list: %d %s",response.Code,response.Body)}
+ var nodes []api.Node;if err:=json.Unmarshal(response.Body.Bytes(),&nodes);err!=nil||len(nodes)!=1{t.Fatalf("nonempty list did not preserve array contract: %s %v",response.Body,err)}
+ // Empty Ent list response shape is a separately scoped issue, so no empty-list
+ // assertion is used to gate this loader/backend transition acceptance.
+ features.Close();features.Close()
+ {{if eq .Backend "ent"}}
+ if _,err:=storage.LoadNode(context.Background(),wanted.Metadata.UID);err==nil{t.Fatal("Ent storage was not closed during feature shutdown")}
+ {{end}}
+}
