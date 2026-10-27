@@ -177,6 +177,10 @@ type Generator struct {
 	// Emitters overrides code emission for this Generator only. Use
 	// SetEmitter to populate it; see emitter.go for the extension point.
 	Emitters map[EmitterKind]ResourceEmitter
+
+	// Instance-local fault injection for transaction filesystem operations.
+	featureTransactionHook  func(operation, path string) error
+	featureTransactionWrite func(*os.File, []byte) (int, error)
 }
 
 // NewGenerator creates a new code generator
@@ -961,7 +965,7 @@ func (g *Generator) GenerateAll() error {
 			return err
 		}
 		// Server code - handlers, routes, models, storage, and openapi
-		if err := g.CheckFeatureGeneration(true); err != nil {
+		if err := g.PrepareFeatureGeneration(true); err != nil {
 			return err
 		}
 

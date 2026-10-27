@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # PR #135 review response plan
 
-Status: steps 1 and 2 implemented and verified. Steps 3–4 remain pending. The
+Status: steps 1–3 implemented and verified. Step 4 remains pending. The
 empty-Ent-collection correction is outside PR #135 and will be tracked separately.
 
 Initial review: 2026-10-27 against PR head `e947660`. Refreshed against
@@ -22,8 +22,9 @@ Step 1 delivered the three initial loader fixes and the build-tag follow-up,
 preserving the reviewer's authorship. Alex's new comment identifies an additional
 loader defect: rendering first does not make the subsequent feature-file and
 manifest updates crash-recoverable. The user selected step 2 next; that validation
-policy is now implemented as a separate change. Crash recovery remains step 3,
-followed by step 4's acceptance coverage.
+policy is implemented as a separate change. Step 3 now adds recoverable feature
+transactions, with fault-injection and process-recovery verification complete.
+Step 4 remains the final acceptance work.
 
 The validation and empty-Ent-collection findings predate the loader. Validation
 scope is implemented in step 2. The user has decided to split the empty Ent
@@ -46,7 +47,7 @@ service and does not migrate stored data or reload a running server.
 | Loader adoption fails when application declarations move out of main | [Package-scanning comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354544542) | Completed in `461d5b6`; inspect active application files rather than main alone. |
 | Adoption ignores the invoking build tags | [Build-tag follow-up](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4364088807) | Completed in `e7fee6b`; honor GOFLAGS tags through a private build context. |
 | Validation modes change files but not request acceptance | [Validation contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363011277), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363018045) | Implemented in step 2: shared effective-policy resolver and generated handler policy, with mandatory request checks and strict defaults preserved. |
-| Interrupted feature writes leave files and ownership manifest inconsistent | [Alex's crash-recovery comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505) | New step 3: persist recoverable transaction intent before mutation, atomically replace files/manifest, and prove successful retry after failures. |
+| Interrupted feature writes leave files and ownership manifest inconsistent | [Alex's crash-recovery comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505) | Implemented in step 3: durable captured intent with inline staged bytes, atomic replacement, serialized recovery, and read-only previews; verified with fault injection, process interruption, CLI recovery/builds, and concurrent generators. |
 | Empty Ent lists return JSON null | [Backend contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363952424), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363954591) | User decision: separate issue, outside #135. Retain follow-up context below; do not gate loader completion on this backend correction. |
 
 ## 1. Replay and verify the supplied fixes
@@ -176,15 +177,23 @@ be presented as changing enforcement.
 ## 3. Make feature writes crash-recoverable
 
 Source: [Alex's review comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505).
-The current `GenerateFeatures` renders all enabled outputs in memory, then writes
-or removes files sequentially and writes the manifest last. A failure after any
-mutation can leave mixed output with old manifest digests, so the next ownership
-check mistakes Fabrica's changes for user customization. The shared write helper
-also uses direct `os.WriteFile`, allowing a partial manifest write.
+The review identified the former `GenerateFeatures` sequence: render enabled
+outputs, write/remove them sequentially, and write the manifest last. Interruptions
+left mixed outputs with old digests, which ordinary ownership checks mistook for
+customization. Direct manifest writes could also leave partial JSON.
 
-Implement this step next. Atomic replacement of the manifest alone
-is insufficient: recovery must recognize a recorded mixture of old and target
-feature outputs. The guarantee applies to loader-owned outputs and their
+Step 3 now uses a scoped transaction writer while retaining unrelated generators'
+existing overwrite contracts. Target bytes are staged inline in the versioned
+journal, alongside explicit old/target states and the captured manifest/config.
+The journal is atomically persisted and synced before live output mutation, then
+fixed owned paths and the manifest are atomically committed under an OS file lock.
+Recovery recognizes old/target states, resyncs previously observed changes, and
+retains evidence on unknown edits or corrupt metadata. Full CLI generation,
+`GenerateAll`, and `GenerateFeatures` recover before ordinary ownership rejection;
+selective generation rejects, and MCP previews report pending recovery read-only.
+
+Atomic replacement of the manifest alone is insufficient: recovery must recognize
+a recorded mixture of old and target feature outputs. The guarantee applies to loader-owned outputs and their
 manifest; it does not make every generator operation or storage migration one
 atomic transaction.
 
@@ -406,3 +415,59 @@ Updated the validation, feature-loader, middleware, and CLI configuration guides
 The four reviewer-authored commits remain intact. Step 3's crash recovery and the
 remaining step 4 acceptance work are pending; the empty-Ent-collection correction
 remains separately scoped. No GitHub comments, issues, merges, or pushes were made.
+
+
+## Step 3 delivery — 2026-10-27
+
+Implemented versioned, recoverable transactions for loader-owned feature files
+and their manifest. The journal stages exact bytes inline, records explicit old
+and target states/configuration, and is synced before live mutation. Atomic
+replacement and an OS file lock serialize commits and recovery. Successful
+recovery finishes the captured target before a new request is planned, including
+when YAML has changed. Previously observed renames/removals and the journal entry
+are resynced on retry, so an interrupted directory sync is not silently skipped.
+
+Journal validation rejects missing state/permission/data fields, invalid hashes,
+unknown/duplicate paths, noncanonical configuration, corrupt/truncated metadata,
+and mismatched captured manifests. Files matching neither recorded state and
+unsafe file types/symlinks are preserved with recovery evidence retained.
+Timestamp/identity-only no-ops retain exact existing bytes and modification times.
+The ordinary untracked/modified-output protections and legacy overwrite path
+remain intact; unrelated generators still use their existing write helper.
+
+Full CLI generation, `GenerateAll`, and `GenerateFeatures` recover before stale
+ownership checks. Selective generation rejects before writes. `FeatureImpact`
+reports the captured selection while recovery is pending, and MCP dry runs return
+`recovery_required` with affected paths/configuration and any conflicts without
+repairing files. New scaffold ignore rules cover local lock/journal/temp files.
+The feature-loader and MCP guides document retry/conflict handling, the feature-only
+transaction boundary, and platform/filesystem durability limits.
+
+Verified with Go 1.26.10:
+
+- All eight package suites in the validation command passed; the full generator
+  suite completed in 176 seconds, including the existing tagged file/Ent services
+  and conditional-mutation race checks.
+- `TestFeatureTransactionEveryFilesystemBoundary` injects failures across enable
+  and disable transitions. Short-write/disk-full, corrupt/missing metadata, user
+  edits, changed selections, no-op stability, process interruption, and cleanup
+  regressions passed. The final focused transaction suite passed in 61 seconds.
+- `TestFeatureRecoverySyncsObservedRenamesBeforeFurtherMutation` and
+  `TestFeatureRecoverySyncsObservedRemoval` verify retry durability, including a
+  legitimately absent parent directory after deletion.
+- `TestFeaturePreparationInterruptionThenNoopSelection` verifies unpublished
+  staging is discarded safely after a crash, even when YAML reverts to the old
+  selection and cleanup itself is interrupted; live files remain unchanged.
+- Race-enabled concurrency/process-interruption/durability tests passed. Both
+  competing generator instances and separate-process file locking were verified.
+- Final checkout CLI interruption → selective rejection → full recovery → changed
+  selection → tidy/test/build passed; read-only MCP pending/conflict/corruption
+  previews passed against the final journal format.
+- `make build` succeeded; generator packages cross-compiled for Linux and Windows.
+  The separate integration module's tidy and full tests passed (256 seconds).
+- PR-focused golangci-lint 2.15.0 reported zero issues; formatting and
+  `git diff --check` are clean.
+
+Reviewer-authored commits remain intact. Step 4 and the separately scoped empty
+Ent collection issue remain outside this delivery. No GitHub comments, issues,
+merges, or pushes were made.

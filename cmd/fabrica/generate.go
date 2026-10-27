@@ -133,7 +133,7 @@ Examples:
 
 			featureGen := codegen.NewGenerator(filepath.Join(projectRoot, "cmd/server"), "main", modulePath)
 			featureGen.SetFeatures(projectfeatures.FromConfig(config, apisConfig != nil))
-			if err := featureGen.CheckFeatureGeneration(all); err != nil {
+			if err := featureGen.PrepareFeatureGeneration(all); err != nil {
 				return err
 			}
 

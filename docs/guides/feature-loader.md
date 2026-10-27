@@ -137,6 +137,72 @@ therefore keep dependencies in `go.mod`.
 MCP dry runs use the same feature preflight and include `planned_removals` for
 obsolete feature outputs. The CLI remains the canonical generation interface.
 
+## Recovering interrupted feature generation
+
+Full generation saves a versioned recovery journal before changing loader-owned
+outputs. The journal captures the feature selection, old/target hashes (including
+absence), the exact target manifest, and the generated target bytes. The target
+bytes are staged inside the journal, so recovery does not depend on temporary
+files or rerendering templates from a newer Fabrica binary. Every output and the
+manifest are replaced with a flushed temporary file and a rename; the manifest
+is committed after the feature outputs match their recorded targets. Journals
+are limited to 16 MiB; oversized staged output rejects before live writes.
+
+After an interrupted run, use the same full command:
+
+```bash
+fabrica generate
+# When validating a local checkout:
+/absolute/path/to/fabrica/bin/fabrica generate --fabrica-source /absolute/path/to/fabrica
+```
+
+Full generation first finishes the captured transaction, then applies the newly
+requested `.fabrica.yaml` selection. Changing YAML while recovery is pending does
+not change the captured target. A new selection can still fail its own normal
+preflight after the previous transaction has been recovered. Selective commands
+such as `--handlers` or `--client` reject pending recovery before any writes and
+direct you to full generation.
+
+Recovery accepts only each file's captured old or target state. An unrecognized
+edit, symlink, special file, or corrupt journal stops recovery and retains the
+evidence. Back up custom edits outside the service, then restore an exact recorded
+old or target version for the conflicting path before retrying. The journal keeps
+the target bytes in its base64-encoded `Data` fields. Moving a conflicting file
+aside is sufficient only when absence is one of its recorded states. Do not edit
+manifest hashes or delete the journal to bypass recovery.
+
+These local files are reserved generation metadata:
+
+- `cmd/server/.fabrica-features-transaction.json`: pending recovery; removed after commit.
+- `cmd/server/.fabrica-features.lock`: persistent lock file; do not remove while generators run.
+- `*.fabrica-tmp` beside owned outputs: temporary replacement files, cleaned during retry.
+
+New scaffolds ignore these paths in Git. Existing services should add the same
+basename patterns to their `.gitignore`; continue committing the public
+`features_manifest_generated.json` with generated outputs. Preserve pending
+recovery metadata when moving or backing up an interrupted checkout.
+
+Mutation and recovery use an OS file lock shared by generators in the same
+service. Process termination releases the lock. The transaction covers only
+loader-owned feature files and their ownership manifest; it does not make all
+server/client generation or storage migrations atomic. Legacy services retain
+their existing overwrite behavior. Avoid editing owned files during generation.
+
+Files are synced before rename, and directory metadata is synced on Unix where
+supported. Process-interruption recovery is covered by tests. Power-loss
+durability depends on filesystem/OS guarantees, including support for advisory
+locking, atomic replacement, and reliable sync. Windows flushes staged files but
+has no portable directory-sync guarantee through this implementation. Platforms
+without supported file locking reject adopted feature generation explicitly.
+
+MCP `generate_code` dry runs remain read-only. When a transaction is pending,
+they return `status: recovery_required`, its captured configuration, affected
+`planned_files`/`planned_removals`, and the full-generation next action. Conflicting
+edits are reported in `recovery_conflict`; neither the files nor recovery metadata
+are repaired by a preview. Go callers can use `InspectFeatureRecovery` for the
+same read-only inspection and `PrepareFeatureGeneration(true)` for mutating full
+preflight. `GenerateAll` and `GenerateFeatures` perform that preflight themselves.
+
 ## Migrating an existing service
 
 Older main scaffolds continue using the legacy generation path, including metrics

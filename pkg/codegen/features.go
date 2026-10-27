@@ -300,6 +300,12 @@ func featureDigest(b []byte) string {
 // CheckFeatureGeneration performs ownership and selective-generation checks before
 // the CLI mutates any output. Changed feature selections require a full generation.
 func (g *Generator) CheckFeatureGeneration(full bool) error {
+	if recovery, err := g.InspectFeatureRecovery(); err != nil {
+		return err
+	} else if recovery != nil {
+		return fmt.Errorf("feature recovery pending for %s; run full 'fabrica generate' before ownership checks or selective generation", strings.Join(append(recovery.Writes, recovery.Removals...), ", "))
+	}
+
 	adopted, err := UsesFeatureLoader(g.OutputDir)
 	if err != nil || !adopted {
 		return err
@@ -388,6 +394,9 @@ func (g *Generator) checkEntToFileTransition() error {
 // GenerateFeatures emits the enabled startup composition and removes obsolete,
 // previously tracked feature outputs. Legacy scaffolds retain their old helpers.
 func (g *Generator) GenerateFeatures() error {
+	if err := g.PrepareFeatureGeneration(true); err != nil {
+		return err
+	}
 	adopted, err := UsesFeatureLoader(g.OutputDir)
 	if err != nil {
 		return err
@@ -399,61 +408,37 @@ func (g *Generator) GenerateFeatures() error {
 		}
 		return g.GenerateMetrics()
 	}
-	f := g.Config.Features.Normalize()
-	if err := g.CheckFeatureGeneration(true); err != nil {
-		return err
-	}
-	// Render and format everything before changing any output.
-	outputs := g.featureOutputs()
-	rendered := make(map[string][]byte)
-	for _, output := range outputs {
-		if !output.enabled {
-			continue
-		}
-		tmpl := g.Templates[output.template]
-		if tmpl == nil {
-			return fmt.Errorf("feature template %s not loaded", output.template)
-		}
-		var b bytes.Buffer
-		if err := tmpl.Execute(&b, output.data); err != nil {
+
+	return g.withFeatureLock(func(root *os.Root) error {
+		if err := g.recoverFeatures(root); err != nil {
 			return err
 		}
-		formatted, err := format.Source(b.Bytes())
-		if err != nil {
-			return fmt.Errorf("format %s: %w", output.path, err)
+		if err := g.CheckFeatureGeneration(true); err != nil {
+			return err
 		}
-		rendered[output.path] = formatted
-	}
-	manifest := featureManifest{Format: 1, Config: f, Files: make(map[string]string)}
-	for _, output := range outputs {
-		if !output.enabled {
-			if err := os.Remove(output.path); err != nil && !os.IsNotExist(err) {
+		// Render and format everything before changing any output.
+		outputs := g.featureOutputs()
+		rendered := make(map[string][]byte)
+		for _, output := range outputs {
+			if !output.enabled {
+				continue
+			}
+			tmpl := g.Templates[output.template]
+			if tmpl == nil {
+				return fmt.Errorf("feature template %s not loaded", output.template)
+			}
+			var b bytes.Buffer
+			if err := tmpl.Execute(&b, output.data); err != nil {
 				return err
 			}
-			continue
+			formatted, err := format.Source(b.Bytes())
+			if err != nil {
+				return fmt.Errorf("format %s: %w", output.path, err)
+			}
+			rendered[output.path] = formatted
 		}
-		if err := os.MkdirAll(filepath.Dir(output.path), 0755); err != nil {
-			return err
-		}
-		if _, err := g.writeGeneratedFile(output.path, rendered[output.path]); err != nil {
-			return err
-		}
-		actual, err := os.ReadFile(output.path)
-		if err != nil {
-			return err
-		}
-		relative, err := filepath.Rel(g.OutputDir, output.path)
-		if err != nil {
-			return err
-		}
-		manifest.Files[filepath.ToSlash(relative)] = featureDigest(actual)
-	}
-	b, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return err
-	}
-	_, err = writeGeneratedFile(filepath.Join(g.OutputDir, featureManifestName), append(b, '\n'))
-	return err
+		return g.writeFeatureTransaction(root, outputs, rendered)
+	})
 }
 
 // GenerateFeaturesIfAdopted refreshes startup for storage-only generation while
@@ -469,6 +454,17 @@ func (g *Generator) GenerateFeaturesIfAdopted() error {
 // FeatureImpact reports selected writes and existing obsolete outputs without
 // changing files. Paths are relative to the service root (cmd/server's parent).
 func (g *Generator) FeatureImpact() (writes, removals []string, err error) {
+	recovery, err := g.InspectFeatureRecovery()
+	if recovery != nil {
+		if err == nil {
+			err = fmt.Errorf("feature recovery pending; run full 'fabrica generate' before planning a new selection")
+		}
+		return recovery.Writes, recovery.Removals, err
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
 	root := filepath.Clean(filepath.Join(g.OutputDir, "..", ".."))
 	for _, output := range g.featureOutputs() {
 		path, err := filepath.Rel(root, output.path)
