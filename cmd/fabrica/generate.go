@@ -868,11 +868,10 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 	}
 
 	verboseFlag := "false"
-	fmtImport := "\t\"fmt\"\n"
 	if debug {
 		verboseFlag = "true"
-		fmtImport = "\t\"fmt\"\n"
 	}
+	fmtImport := "\t\"fmt\"\n"
 
 	return fmt.Sprintf(`package main
 

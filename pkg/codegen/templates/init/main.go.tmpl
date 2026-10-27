@@ -176,7 +176,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	log.Printf("Starting {{.ProjectName}} server...")
 
 	features, err := loadGeneratedFeatures(cmd.Context(), config)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer features.Close()
 
 	// Register resource prefixes for UID generation
@@ -235,21 +237,23 @@ func runServer(cmd *cobra.Command, args []string) error {
 		IdleTimeout:  time.Duration(config.IdleTimeout) * time.Second,
 	}
 
-    // Return server failures through runServer so feature cleanup still runs.
-    serverErrors := make(chan error, 1)
-    logStartupConfiguration(config, addr)
-    go func() { serverErrors <- server.ListenAndServe() }()
+	// Return server failures through runServer so feature cleanup still runs.
+	serverErrors := make(chan error, 1)
+	logStartupConfiguration(config, addr)
+	go func() { serverErrors <- server.ListenAndServe() }()
 
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-    defer signal.Stop(quit)
-    select {
-    case err := <-serverErrors:
-        if err != nil && err != http.ErrServerClosed { return fmt.Errorf("server failed: %w", err) }
-        return nil
-    case <-quit:
-    case <-cmd.Context().Done():
-    }
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+	select {
+	case err := <-serverErrors:
+		if err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("server failed: %w", err)
+		}
+		return nil
+	case <-quit:
+	case <-cmd.Context().Done():
+	}
 	log.Println("Server shutting down...")
 
 	// Graceful shutdown with timeout
