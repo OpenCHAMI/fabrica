@@ -962,6 +962,8 @@ func loadConfig() (*FabricaConfig, error) {
 	}
 
 	var config FabricaConfig
+	// Match config.LoadConfig: an omitted validation key keeps strict validation.
+	config.Features.Validation = ValidationConfig{Enabled: true, Mode: "strict"}
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
