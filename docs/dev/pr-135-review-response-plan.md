@@ -6,21 +6,30 @@ SPDX-License-Identifier: MIT
 
 # PR #135 review response plan
 
-Status: step 1 implemented and verified. Steps 2–4 remain proposed.
+Status: step 1 implemented and verified. Steps 2–4 remain proposed. The
+empty-Ent-collection correction is outside PR #135 and will be tracked separately.
 
-Reviewed on 2026-10-27 against PR head `e947660` and its current checkout.
-All eight inline comments across five unresolved review threads were retrieved,
-including replies, along with the complete review summary and manual test steps.
+Initial review: 2026-10-27 against PR head `e947660`. Refreshed against
+`698f3d8` on the same date: all nine inline comments across six unresolved threads
+were retrieved, including Alex Lovell-Troy's new crash-recovery comment. The
+original review summary and manual test steps remain part of the acceptance plan.
 
 PR: <https://github.com/OpenCHAMI/fabrica/pull/135>
 
 ## Assessment and scope
 
-The three initial loader defects and the build-tag follow-up are present in the
-current PR. The reviewer supplied four commits with implementation, tests, and
-documentation. Reuse those changes after inspecting and replaying them onto the
-current PR base. The validation and empty-Ent-collection findings also match the
-current source, but both predate the loader. Treat their scope explicitly.
+Step 1 delivered the three initial loader fixes and the build-tag follow-up,
+preserving the reviewer's authorship. Alex's new comment identifies an additional
+loader defect: rendering first does not make the subsequent feature-file and
+manifest updates crash-recoverable. Address that in step 3 before expanding
+validation behavior in step 2, then complete step 4's acceptance coverage.
+
+The validation and empty-Ent-collection findings predate the loader. Validation
+scope remains proposed in step 2. The user has decided to split the empty Ent
+collection contract gap into a different issue: its implementation and acceptance
+criteria are outside #135 and are not prerequisites for this PR's completion.
+Record that issue's link when available; no issue number has been supplied, and
+this plan update does not create one.
 
 Retain the existing compatibility boundary: new/adopted services can change
 supported generation settings without main edits; legacy services need the
@@ -29,14 +38,15 @@ service and does not migrate stored data or reload a running server.
 
 ## Comment coverage
 
-| Work item | Review evidence | Proposed disposition |
+| Work item | Review evidence | Disposition |
 | --- | --- | --- |
-| Ent-to-file transition leaves incompatible Ent support files | [Storage transition comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354513669) | Replay `ddb566f`; reject before writes and require preservation/migration of obsolete files. |
-| `Generator.GenerateAll` bypasses feature composition and ownership preflight | [Go API comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354523823) | Replay `3ab3698`; use the feature path for server generation and retain legacy fallback. |
-| Loader adoption fails when application declarations move out of main | [Package-scanning comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354544542) | Replay `b621e4e`; inspect active application files rather than main alone. |
-| Adoption ignores the invoking build tags | [Build-tag follow-up](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4364088807) | Replay `9a959d5`; honor GOFLAGS tags through a private build context. |
+| Ent-to-file transition leaves incompatible Ent support files | [Storage transition comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354513669) | Completed in `c571539`, with revision-helper coverage in `3e8d157`; reject before writes and preserve obsolete files explicitly. |
+| `Generator.GenerateAll` bypasses feature composition and ownership preflight | [Go API comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354523823) | Completed in `6cd8870`; server generation uses feature composition and retains legacy fallback. |
+| Loader adoption fails when application declarations move out of main | [Package-scanning comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4354544542) | Completed in `461d5b6`; inspect active application files rather than main alone. |
+| Adoption ignores the invoking build tags | [Build-tag follow-up](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4364088807) | Completed in `e7fee6b`; honor GOFLAGS tags through a private build context. |
 | Validation modes change files but not request acceptance | [Validation contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363011277), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363018045) | Define and implement an effective validation policy in a separate, reviewable change; preserve mandatory request checks and strict defaults. |
-| Empty Ent lists return JSON null | [Backend contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363952424), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363954591) | Plan a separate backend correction and tests; distinguish it from a new loader regression or a data migration. |
+| Interrupted feature writes leave files and ownership manifest inconsistent | [Alex's crash-recovery comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505) | New step 3: persist recoverable transaction intent before mutation, atomically replace files/manifest, and prove successful retry after failures. |
+| Empty Ent lists return JSON null | [Backend contract](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363952424), [edge cases](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4363954591) | User decision: separate issue, outside #135. Retain follow-up context below; do not gate loader completion on this backend correction. |
 
 ## 1. Replay and verify the supplied fixes
 
@@ -148,29 +158,104 @@ reference/examples with this boundary and precedence table. Preserve AuthZ's
 existing environment-driven mode selection; YAML AuthZ settings alone must not
 be presented as changing enforcement.
 
-## 3. Separate the empty-Ent-collection backend correction
+## 3. Make feature writes crash-recoverable
 
-The generic Ent storage template uses a nil result slice after a successful
-zero-row query, producing JSON null. Correct that successful result to a non-nil
-empty collection. Audit the dedicated Ent path for the same contract, without
-changing unrelated query, conversion, or error handling.
+Source: [Alex's review comment](https://github.com/OpenCHAMI/fabrica/pull/135#discussion_r4390596505).
+The current `GenerateFeatures` renders all enabled outputs in memory, then writes
+or removes files sequentially and writes the manifest last. A failure after any
+mutation can leave mixed output with old manifest digests, so the next ownership
+check mistakes Fabrica's changes for user customization. The shared write helper
+also uses direct `os.WriteFile`, allowing a partial manifest write.
 
-Deliver this as a separate backend fix, preferably before the final cross-backend
-acceptance run. If it is outside #135's agreed scope, retain a concrete follow-up
-and label the current result accurately; do not report that a backend switch
-caused a new loader regression. This plan does not create an issue or another PR.
+Implement this step next, before step 2. Atomic replacement of the manifest alone
+is insufficient: recovery must recognize a recorded mixture of old and target
+feature outputs. The guarantee applies to loader-owned outputs and their
+manifest; it does not make every generator operation or storage migration one
+atomic transaction.
 
-Acceptance tests:
+### Transaction and recovery design
 
-- Fresh file/SQLite-Ent services and services transitioned to an empty target
-  backend return HTTP 200 with JSON `[]` for successful empty collection queries.
-- Nonempty responses remain bare arrays with intact envelopes, UID, labels,
-  annotations, spec, and status.
-- An uninitialized backend, failed query, and missing single resource retain their
-  existing error semantics. Do not convert errors or arbitrary nil results into
-  successful empty lists.
-- Existing data in the source backend is preserved; no test assumes changing
-  storage configuration copies data into the target backend.
+1. **Prepare exact bytes and durable intent.** After normal config, transition,
+   and ownership preflight, stage the final bytes for all writes and the target
+   manifest. Preserve timestamp-only no-op behavior and generated identity rules
+   when choosing those bytes, so recorded digests match what will actually be
+   written. Before the first output mutation, atomically persist a versioned
+   journal containing the old and target manifest digests, effective generation
+   configuration, and each owned path's old/target digest or explicit absence.
+   Keep immutable staged data until recovery/commit completes. Flush staged data,
+   journal, and directory metadata as supported; document durability guarantees.
+   Preparation failures must leave live outputs unchanged.
+2. **Commit individual operations atomically.** Use temporary files on the
+   destination filesystem and rename to replace each changed output. Record
+   removals in the journal and remove only files matching the recorded old state.
+   Replace the final manifest through the same atomic-write mechanism after all
+   feature outputs match the target. Do not truncate a live output or manifest.
+   Serialize mutation/recovery for a service so concurrent generators cannot
+   replace each other's transaction intent.
+3. **Recover before ordinary ownership rejection.** Prefer idempotent roll-forward
+   to the journal's captured target. For every path and the manifest, accept only
+   its recorded old or target state, including expected creation/deletion states.
+   Complete missing operations and commit the captured manifest, then clean up
+   staging and journal state. A crash after manifest replacement but before
+   cleanup must be recognized as a completed transaction on the next run.
+4. **Preserve user edits and request boundaries.** A path matching neither
+   recorded state remains an ownership conflict; preserve it and retain recovery
+   evidence. Validate journal/staging paths against the fixed owned-output list
+   and reject corrupt metadata without overwriting files. A new YAML selection
+   must not be mixed into an unfinished transaction: finish the captured intent
+   before planning a new full generation. Document this ordering.
+5. **Keep previews read-only.** Separate transaction inspection from mutating
+   recovery. Full CLI generation, `GenerateAll`, and `GenerateFeatures` must enter
+   recovery before a stale manifest can trigger ordinary ownership rejection.
+   Selective generation with pending recovery should reject before writes and
+   direct the user to full generation. MCP dry runs inspect and report pending
+   recovery, affected files, and the required next action without repairing files.
+
+Primary targets: `pkg/codegen/features.go`, the feature-file write path currently
+using `writeGeneratedFile`, direct `GenerateAll`/CLI entry points, MCP preflight
+and previews, and `docs/guides/feature-loader.md`. Introduce small transaction/I/O
+helpers as needed without changing unrelated generators' overwrite contracts.
+
+### Fault-injection acceptance
+
+Use deterministic filesystem-operation hooks and subprocess interruption tests;
+permission changes alone may not produce the same failure under CI privileges.
+
+- Reproduce the reviewer's failure: one feature output has changed, the next
+  output write fails, the old manifest remains, and retry after clearing the
+  failure successfully repairs the recorded transaction.
+- Fail before/after each owned output write and removal, including creating a
+  new file and disabling an existing feature. Cover staging/journal persistence,
+  the final manifest write/rename, and cleanup. After removing the injected
+  failure, retry must produce target files and a manifest with matching digests.
+- Terminate a subprocess after the durable journal, between mutations, and after
+  manifest commit. Recovery must be idempotent, preserve user-owned files, and
+  permit a subsequent normal generation/build without manual manifest editing.
+- Simulate short writes/disk-full and malformed recovery metadata. Live manifests
+  must not become partially written; unknown states must retain evidence and
+  return actionable errors rather than discard customization.
+- Edit a pending transaction's output between attempts: do not overwrite that
+  unrecognized edit. Test changed YAML, selective retry, read-only MCP previews,
+  and concurrent generators against the recovery policy above.
+- Verify repeated successful generation remains stable, including timestamp-only
+  no-ops, and that legacy services retain their documented behavior. Existing
+  no-write checks for rejected ordinary ownership/selection preflight still pass.
+
+## Separate issue: empty Ent collections (outside #135)
+
+The user has decided to track this pre-existing backend contract gap separately.
+The generic Ent template currently returns a nil slice after a successful
+zero-row query, producing JSON null. The separate issue should cover non-nil
+empty collections, dedicated-backend consistency, preserved resource metadata,
+and unchanged query-error/missing-resource behavior. Retain the original review
+links in the coverage table and add the issue link when assigned.
+
+This is not step 3, a prerequisite for cross-backend loader checks, or a PR #135
+acceptance gate. Loader transition tests should validate successful generation,
+builds, selected backend startup, data preservation, and unchanged behavior
+relative to a fresh service using that same backend. Record the existing empty
+Ent response as the known separate issue instead of asserting its correction in
+this PR. Storage configuration changes still do not migrate data.
 
 ## 4. Close the remaining acceptance gaps
 
@@ -190,6 +275,8 @@ together; add independent transitions so one feature cannot mask another:
   testing auth removal. Cover retained AuthZ off/shadow/enforce semantics.
 - File → SQLite/Ent and explicitly migrated Ent → file, preserving the source
   dataset and user code. Keep custom storage project-owned.
+- Fault-injected and interrupted feature transactions recover on full retry,
+  while selective requests and previews preserve their no-write guarantees.
 - Fresh-init versus regenerated normalized configurations, stable repeated output
   and manifests, selective-transition/ownership rejection before writes, and live
   legacy behavior before and after explicit adoption.
@@ -217,7 +304,9 @@ generated output and exercise documented HTTP behavior on fresh and regenerated
 services; compilation alone is insufficient.
 
 Completion evidence should map each thread to the adopted commit(s), focused test
-names/results, and any explicitly deferred pre-existing behavior. Prepare
+names/results, and the external disposition of the empty-Ent-collection issue.
+PR #135 completion includes step 3's crash-recovery evidence; it does not require
+the separate backend response-shape fix. Prepare
 copy-paste review replies if requested. Do not post comments, resolve threads,
 create follow-up issues, merge, or push without user authorization.
 
@@ -255,3 +344,16 @@ under Go 1.26.10, including tagged generated file/Ent services and migration bac
 to file storage. The checkout-built CLI compiled successfully. The full separate
 integration suite passed under Go 1.26.10. Formatting and `git diff --check` are
 clean. No changes for steps 2–4 were implemented.
+
+
+## Review scope update — 2026-10-27
+
+Incorporated Alex Lovell-Troy's interrupted-generation/ownership-manifest feedback
+as the new step 3, with transaction persistence, atomic replacement, retry/recovery,
+read-only previews, and fault-injection acceptance. Recommended execution order is
+step 3 → step 2 → step 4 following the completed step 1.
+
+Recorded the user's decision to move the pre-existing empty-Ent-collection gap to
+a separate issue. Its fix is excluded from this PR and its completion criteria.
+This update changes the plan only; no recovery implementation, backend changes,
+GitHub comments, or new GitHub issues were created.
