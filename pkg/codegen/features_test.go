@@ -262,7 +262,7 @@ func TestFeatureGenerationRequiresExplicitEntToFileMigration(t *testing.T) {
 				t.Fatal(err)
 			}
 			g.SetFeatures(FeatureConfig{StorageType: "file"})
-			if err := g.GenerateFeatures(); err == nil || !strings.Contains(err.Error(), "Ent-to-file storage migration") {
+			if err := g.GenerateFeatures(); err == nil || !strings.Contains(err.Error(), "ent-to-file storage migration") {
 				t.Fatalf("expected migration error, got %v", err)
 			}
 			for name, want := range map[string][]byte{

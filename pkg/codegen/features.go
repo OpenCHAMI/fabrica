@@ -375,7 +375,7 @@ func (g *Generator) checkEntToFileTransition() error {
 	}
 	if len(stale) != 0 {
 		sort.Strings(stale)
-		return fmt.Errorf("Ent-to-file storage migration requires preserving data and moving obsolete Ent files outside the service before regeneration: %s; see docs/guides/feature-loader.md", strings.Join(stale, ", "))
+		return fmt.Errorf("ent-to-file storage migration requires preserving data and moving obsolete Ent files outside the service before regeneration: %s; see docs/guides/feature-loader.md", strings.Join(stale, ", "))
 	}
 	return nil
 }

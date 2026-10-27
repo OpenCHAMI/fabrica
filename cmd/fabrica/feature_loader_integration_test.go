@@ -179,7 +179,7 @@ func TestFeatureLoaderGeneratedService(t *testing.T) {
 				cmd := exec.Command(binary, "generate", "--fabrica-source", repo)
 				cmd.Dir = dir
 				out, err := cmd.CombinedOutput()
-				if err == nil || !strings.Contains(string(out), "Ent-to-file storage migration") {
+				if err == nil || !strings.Contains(string(out), "ent-to-file storage migration") {
 					t.Fatalf("backend transition: %v\n%s", err, out)
 				}
 				for path, want := range before {
