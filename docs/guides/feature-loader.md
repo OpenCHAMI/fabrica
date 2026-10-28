@@ -66,6 +66,9 @@ settings do not override generated policy. Required decoding, identity/envelope,
 patch, authorization, ETag, immutable-field, and backend checks remain mandatory.
 See the [validation policy table](validation.md#generated-http-validation-policy)
 for the full boundary and examples.
+Generated creates reject omitted/null required envelopes in all modes. Explicit
+empty objects are distinct from absence; nested validation remains mode-dependent.
+Revision creation/ensure requires `spec` and takes identity from the URL.
 
 Authentication is generated when either `features.security.authn.enabled` or the
 legacy `features.auth.enabled` is true. To disable it, set both to false. Enabled

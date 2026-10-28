@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -37,6 +38,10 @@ import (
 
 // Global validator instance
 var validate *validator.Validate
+
+type requiredFieldPresence interface {
+	RequiredFieldPresent(name string) (bool, bool)
+}
 
 // ValidationErrors wraps multiple validation errors
 //
@@ -92,6 +97,57 @@ func ValidateResource(resource interface{}) error {
 			return formatValidationErrors(validationErrs)
 		}
 		return err
+	}
+	return nil
+}
+
+// ValidateRequiredFields enforces only immediate required fields on a request envelope.
+func ValidateRequiredFields(resource interface{}, selected ...string) error {
+	presence, tracksPresence := resource.(requiredFieldPresence)
+	value := reflect.ValueOf(resource)
+	for value.IsValid() && (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) {
+		if value.IsNil() {
+			return ValidationErrors{Errors: []FieldError{{Field: "request", Tag: "required", Message: "request is required"}}}
+		}
+		value = value.Elem()
+	}
+	if !value.IsValid() || value.Kind() != reflect.Struct {
+		return fmt.Errorf("required-field validation expects a struct request")
+	}
+
+	typeOfValue := value.Type()
+	selectedFields := make(map[string]struct{}, len(selected))
+	for _, name := range selected {
+		selectedFields[name] = struct{}{}
+	}
+	errors := make([]FieldError, 0)
+	for index := 0; index < value.NumField(); index++ {
+		field := typeOfValue.Field(index)
+		if !slices.Contains(strings.Split(field.Tag.Get("validate"), ","), "required") {
+			continue
+		}
+		name := strings.SplitN(field.Tag.Get("json"), ",", 2)[0]
+		if name == "" || name == "-" {
+			name = field.Name
+		}
+		if len(selectedFields) != 0 {
+			if _, ok := selectedFields[name]; !ok {
+				continue
+			}
+		}
+		missing := value.Field(index).IsZero()
+		if tracksPresence {
+			if present, tracked := presence.RequiredFieldPresent(name); tracked {
+				missing = !present
+			}
+		}
+		if !missing {
+			continue
+		}
+		errors = append(errors, FieldError{Field: name, Tag: "required", Message: fmt.Sprintf("%s is required", name)})
+	}
+	if len(errors) != 0 {
+		return ValidationErrors{Errors: errors}
 	}
 	return nil
 }

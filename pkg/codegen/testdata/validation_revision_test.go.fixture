@@ -47,10 +47,10 @@ func TestRevisionValidationPolicy(t *testing.T) {
 	}{
 		{"series tag", "POST", "/nodes/", `{"metadata":{"name":"invalid"},"spec":{}}`, 201},
 		{"series custom", "POST", "/nodes/", `{"metadata":{"name":"custom"},"spec":{"value":"reject"}}`, 201},
-		{"revision tag", "POST", "/nodes/production/revisions", `{"metadata":{},"spec":{}}`, 201},
-		{"revision custom", "POST", "/nodes/production/revisions", `{"metadata":{},"spec":{"value":"reject"}}`, 201},
-		{"ensure tag", "PUT", "/nodes/production/revisions/invalid", `{"metadata":{},"spec":{}}`, 201},
-		{"ensure custom", "PUT", "/nodes/production/revisions/custom", `{"metadata":{},"spec":{"value":"reject"}}`, 201},
+		{"revision tag", "POST", "/nodes/production/revisions", `{"spec":{}}`, 201},
+		{"revision custom", "POST", "/nodes/production/revisions", `{"spec":{"value":"reject"}}`, 201},
+		{"ensure tag", "PUT", "/nodes/production/revisions/invalid", `{"spec":{}}`, 201},
+		{"ensure custom", "PUT", "/nodes/production/revisions/custom", `{"spec":{"value":"reject"}}`, 201},
 		{"status tag", "PUT", "/nodes/production/status", `{"phase":"Broken"}`, 200},
 		{"status custom", "PUT", "/nodes/production/status", `{"phase":"Pending"}`, 200},
 		{"status patch tag", "PATCH", "/nodes/production/status", `{"phase":"Broken"}`, 200},
@@ -136,6 +136,12 @@ func TestRevisionValidationPolicy(t *testing.T) {
 		status                   int
 	}{
 		{"POST", "/nodes/", "{", "", 400},
+		{"POST", "/nodes/", `{"metadata":{"name":"absent-spec"}}`, "", 400},
+		{"POST", "/nodes/", `{"metadata":{"name":"null-spec"},"spec":null}`, "", 400},
+		{"POST", "/nodes/production/revisions", `{}`, "", 400},
+		{"POST", "/nodes/production/revisions", `{"spec":null}`, "", 400},
+		{"PUT", "/nodes/production/revisions/missing-spec", `{}`, "", 400},
+		{"PUT", "/nodes/production/revisions/null-spec", `{"spec":null}`, "", 400},
 		{"POST", "/nodes/", `{"spec":{"value":"valid"}}`, "", 400},
 		{"PUT", "/nodes/production/default", `{}`, "", 400},
 		{"PUT", "/nodes/production/status", "{", "", 400},

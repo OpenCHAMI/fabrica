@@ -39,8 +39,18 @@ Decoding, endpoint-required identity/envelope fields, revision promotion selecto
 patch structure/path restrictions, authorization, ETag preconditions, server-managed
 fields, and backend constraints remain mandatory in every mode. For example, an
 omitted `revisionUid` still rejects a revision promotion when validation is disabled.
-Envelope checks preserve existing required tags; they do not introduce new required
-fields or change Go's existing struct `required` semantics. A database can still
+Generated create and series-create requests track whether their required
+`metadata` and `spec` JSON keys were supplied. Omitted or `null` values reject with
+HTTP 400 in every mode; explicitly supplied empty objects satisfy presence, and
+optional nested checks still follow the selected mode. Revision creation/ensure
+gets identity from the URL and requires only the `spec` envelope, so its metadata
+may be omitted. Existing series-name and promotion-selector requirements remain
+mandatory. This does not introduce a new name requirement for ordinary creates.
+
+Generated handlers call `validation.ValidateRequiredFields` before the policy APIs.
+It checks immediate required fields without running nested optional validators;
+callers may select JSON field names when other identity comes from the path.
+The existing standalone validation functions retain their prior behavior. A database can still
 reject values accepted by warn or disabled mode.
 
 The policy is selected during generation, independently of service runtime settings.

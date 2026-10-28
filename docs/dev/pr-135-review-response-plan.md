@@ -552,3 +552,28 @@ explains the explicit dataset-transfer and legacy-adoption boundaries.
 
 All four planned steps are complete. Reviewer authorship remains preserved. No
 GitHub comments, issue creation, thread resolution, merges, or pushes were made.
+
+
+## Required-envelope presence follow-up — 2026-10-29
+
+Selectively ported the presence-validation changes from Alex Lovell-Troy's commit
+`4a4d818c11fb8dd4a55859181e32db476cb45c12`. The original implementation adds
+`RequiredFieldPresent` tracking to generated request JSON decoding and the
+`ValidateRequiredFields` helper. Existing policy APIs remain responsible for
+optional tags and custom hooks. Handlers check required envelopes first, with
+path-scoped revision operations requiring only `spec`.
+
+This closes a gap in the earlier acceptance: required pointers were tested, but
+value-typed request fields did not distinguish omitted/null JSON from present
+zero-value objects. Added actual CLI HTTP rejection/no-storage/no-event checks
+across all policies, generated-model presence/reused-decode tests, and revision
+path-identity coverage. Ordinary-create name behavior remains unchanged. The
+source commit's alternative recovery implementation, policy replacement/logging,
+OpenAPI-only tests, and separate Ent empty-list correction are excluded. Source
+authorship/provenance are retained in the port commit.
+
+Verification passed with Go 1.26.10: the full eight-package lane (CLI acceptance
+382 seconds; generator tests 186 seconds), `make build`, and the separate
+integration module's tidy and full test suite (252 seconds). PR-focused
+golangci-lint 2.15.0 reported zero issues. Changed Go files are formatted and
+`git diff --check` is clean.

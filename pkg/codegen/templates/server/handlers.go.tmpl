@@ -133,6 +133,10 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Layer 1: Request validation (validates inline spec fields and metadata)
+	if err := validation.ValidateRequiredFields(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
 	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
@@ -767,6 +771,10 @@ func Create{{.Name}}Series(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
+	if err := validation.ValidateRequiredFields(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
 	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
@@ -817,6 +825,10 @@ func Ensure{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
+	if err := validation.ValidateRequiredFields(&req, "spec"); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+		return
+	}
 	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
@@ -849,6 +861,10 @@ func Create{{.Name}}Revision(w http.ResponseWriter, r *http.Request) {
 	var req Create{{.Name}}Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	if err := validation.ValidateRequiredFields(&req, "spec"); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
 	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {

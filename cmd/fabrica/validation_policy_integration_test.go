@@ -175,7 +175,7 @@ func TestValidationPolicyHTTP(t *testing.T){
  features,err:=loadGeneratedFeatures(context.Background(),config);if err!=nil{t.Fatal(err)};defer features.Close()
  if err:=registerResourcePrefixes();err!=nil{t.Fatal(err)}
  router:=chi.NewRouter();features.Use(router)
- router.Post("/nodes",CreateNode);router.Get("/nodes/{uid}",GetNode)
+ router.Post("/nodes",CreateNode);router.Get("/nodes",GetNodes);router.Get("/nodes/{uid}",GetNode)
  router.Put("/nodes/{uid}",UpdateNode);router.Patch("/nodes/{uid}",PatchNode)
  router.Put("/nodes/{uid}/status",UpdateNodeStatus);router.Patch("/nodes/{uid}/status",PatchNodeStatus)
  bus:=&validationBus{};oldConfig,oldBus:=events.GetEventConfig(),events.GetGlobalEventBus();defer func(){events.SetEventConfig(oldConfig);events.SetGlobalEventBus(oldBus)}()
@@ -185,6 +185,31 @@ func TestValidationPolicyHTTP(t *testing.T){
   response:=httptest.NewRecorder();router.ServeHTTP(response,req);return response
  }
  node:=func(response *httptest.ResponseRecorder)api.Node{t.Helper();var n api.Node;if err:=json.Unmarshal(response.Body.Bytes(),&n);err!=nil{t.Fatalf("decode status %d: %s: %v",response.Code,response.Body,err)};return n}
+
+ for _, body := range []string{
+  "{}", "null",
+  "{\"metadata\":{\"name\":\"missing-spec\"}}",
+  "{\"spec\":{}}",
+  "{\"metadata\":null,\"spec\":{}}",
+  "{\"metadata\":{\"name\":\"null-spec\"},\"spec\":null}",
+ } {
+  before := request("GET", "/nodes", "", "")
+  bus.count=0;api.ValidationCalls.Store(0)
+  result := request("POST", "/nodes", body, "")
+  if result.Code!=400 { t.Fatalf("mode=%s missing/null envelope %s: %d %s",mode,body,result.Code,result.Body) }
+  if bus.count!=0 || api.ValidationCalls.Load()!=0 {t.Fatal("mandatory rejection published events or invoked custom validation")}
+  after := request("GET", "/nodes", "", "")
+  if before.Code!=200 || after.Code!=200 || !bytes.Equal(before.Body.Bytes(),after.Body.Bytes()) { t.Fatal("mandatory rejection changed storage") }
+ }
+ // Presence and nonzero values are distinct. Do not introduce the source
+ // commit's separate ordinary-create name requirement in this port.
+ for _, body := range []string{
+  "{\"metadata\":{\"name\":\"empty-spec\"},\"spec\":{}}",
+  "{\"metadata\":{},\"spec\":{}}",
+ } {
+  result:=request("POST","/nodes",body,"")
+  if result.Code!=201 {t.Fatalf("mode=%s present zero-value envelope %s: %d %s",mode,body,result.Code,result.Body)}
+ }
  for _,tc:=range []struct{name,method,suffix,body string;create bool}{
   {"create tags","POST","",` + "`" + `{"metadata":{"name":"invalid"},"spec":{"description":"` + "`" + `+strings.Repeat("x",201)+` + "`" + `"}}` + "`" + `,true},
   {"create hook","POST","",` + "`" + `{"metadata":{"name":"invalid"},"spec":{"description":"custom-reject"}}` + "`" + `,true},
