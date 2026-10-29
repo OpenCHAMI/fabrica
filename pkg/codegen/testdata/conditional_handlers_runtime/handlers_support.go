@@ -20,6 +20,7 @@ type CreateNodeRequest struct {
 	Annotations     map[string]string `json:"annotations,omitempty"`
 	metadataPresent bool
 	specPresent     bool
+	presenceDecoded bool
 }
 
 func (r *CreateNodeRequest) UnmarshalJSON(data []byte) error {
@@ -28,24 +29,32 @@ func (r *CreateNodeRequest) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
+	var presence struct {
+		Metadata json.RawMessage `json:"metadata"`
+		Spec     json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(data, &presence); err != nil {
 		return err
 	}
 	*r = CreateNodeRequest(decoded)
-	metadata, hasMetadata := fields["metadata"]
-	spec, hasSpec := fields["spec"]
-	r.metadataPresent = hasMetadata && !bytes.Equal(bytes.TrimSpace(metadata), []byte("null"))
-	r.specPresent = hasSpec && !bytes.Equal(bytes.TrimSpace(spec), []byte("null"))
+	r.metadataPresent = presence.Metadata != nil && !bytes.Equal(presence.Metadata, []byte("null"))
+	r.specPresent = presence.Spec != nil && !bytes.Equal(presence.Spec, []byte("null"))
+	r.presenceDecoded = true
 	return nil
 }
 
 func (r *CreateNodeRequest) RequiredFieldPresent(name string) (bool, bool) {
 	switch name {
 	case "metadata":
-		return r.metadataPresent || !reflect.DeepEqual(r.Metadata, v1.Metadata{}), true
+		if r.presenceDecoded {
+			return r.metadataPresent, true
+		}
+		return !reflect.DeepEqual(r.Metadata, v1.Metadata{}), true
 	case "spec":
-		return r.specPresent || !reflect.DeepEqual(r.Spec, v1.NodeSpec{}), true
+		if r.presenceDecoded {
+			return r.specPresent, true
+		}
+		return !reflect.DeepEqual(r.Spec, v1.NodeSpec{}), true
 	default:
 		return false, false
 	}

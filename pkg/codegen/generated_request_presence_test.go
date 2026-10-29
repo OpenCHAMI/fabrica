@@ -53,14 +53,21 @@ import (
  "github.com/openchami/fabrica/pkg/validation"
 )
 func TestPresence(t *testing.T) {
- for _, body := range []string{"{}", "null", "{\"metadata\":null,\"spec\":null}", "{\"metadata\":{\"name\":\"provided\"}}", "{\"spec\":{}}", "{\"metadata\":null,\"spec\":{}}", "{\"metadata\":{},\"spec\":null}"} {
+ for _, body := range []string{"{}", "null", "{\"metadata\":null,\"spec\":null}", "{\"metadata\":{\"name\":\"provided\"}}", "{\"spec\":{}}", "{\"metadata\":null,\"spec\":{}}", "{\"metadata\":{},\"spec\":null}", "{\"metadata\":{},\"spec\":{\"marker\":1},\"spec\":null}", "{\"metadata\":{\"name\":\"dup\"},\"spec\":{},\"Metadata\":null}"} {
   var request CreateNodeRequest
   if err := json.Unmarshal([]byte(body), &request); err != nil { t.Fatal(err) }
   if err := validation.ValidateRequiredFields(&request); err == nil { t.Fatalf("accepted absent envelope: %s", body) }
  }
+ // Presence follows the decoder's case-insensitive key matching.
+ for _, body := range []string{"{\"metadata\":{},\"spec\":{}}", "{\"Metadata\":{},\"Spec\":{}}", "{\"METADATA\":{\"name\":\"upper\"},\"spec\":{\"marker\":1}}"} {
+  var request CreateNodeRequest
+  if err := json.Unmarshal([]byte(body), &request); err != nil { t.Fatal(err) }
+  if err := validation.ValidateRequiredFields(&request); err != nil { t.Fatalf("rejected present envelope %s: %v", body, err) }
+ }
+ var constructed CreateNodeRequest
+ constructed.Metadata.Name, constructed.Spec.Marker = "go", 1
+ if err := validation.ValidateRequiredFields(&constructed); err != nil { t.Fatalf("rejected nonzero request built in Go: %v", err) }
  var request CreateNodeRequest
- if err := json.Unmarshal([]byte("{\"metadata\":{},\"spec\":{}}"), &request); err != nil { t.Fatal(err) }
- if err := validation.ValidateRequiredFields(&request); err != nil { t.Fatalf("rejected present empty envelope: %v", err) }
  if err := json.Unmarshal([]byte("{\"metadata\":{\"name\":\"first\"},\"spec\":{\"marker\":1}}"), &request); err != nil { t.Fatal(err) }
  if err := validation.ValidateRequiredFields(&request); err != nil { t.Fatal(err) }
  if err := json.Unmarshal([]byte("{\"metadata\":{\"name\":\"second\"}}"), &request); err != nil { t.Fatal(err) }
