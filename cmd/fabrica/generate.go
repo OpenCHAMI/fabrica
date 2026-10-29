@@ -594,7 +594,18 @@ func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName stri
 		fmt.Printf("  Detected storage type: %s\n", storageType)
 	}
 
-	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType)
+	// The runner may build an older generator module than this CLI, so detect
+	// adoption here, across every server file, and pass the result in.
+	featureLoader := false
+	if packageName == "main" {
+		adopted, err := codegen.UsesFeatureLoader(filepath.Join(projectRoot, "cmd/server"))
+		if err != nil {
+			return err
+		}
+		featureLoader = adopted
+	}
+
+	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType, featureLoader)
 
 	if fabricaSource != "" {
 		return runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode, debug, fabricaSource)
@@ -706,11 +717,18 @@ func localModulePlaceholderVersion(modulePath string) string {
 }
 
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string) string {
+func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string, featureLoader bool) string {
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
 		// Server-side generation
+		if featureLoader {
+			// Reject before any output changes; an older generator would rewrite
+			// handlers and legacy helpers that the feature loader replaces.
+			generationCalls.WriteString("\tif !reflect.ValueOf(gen).MethodByName(\"GenerateFeatures\").IsValid() {\n")
+			generationCalls.WriteString("\t\tlog.Fatal(\"feature-loader services require a Fabrica generator with GenerateFeatures support; update the module or use --fabrica-source\")\n")
+			generationCalls.WriteString("\t}\n")
+		}
 		if debug {
 			generationCalls.WriteString("\tfmt.Println(\"  Loading templates...\")\n")
 		}
@@ -868,16 +886,16 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 	}
 
 	verboseFlag := "false"
+	fmtImport := ""
 	if debug {
 		verboseFlag = "true"
+		fmtImport = "\t\"fmt\"\n"
 	}
-	fmtImport := "\t\"fmt\"\n"
 
 	return fmt.Sprintf(`package main
 
 import (
 %s	"log"
-    "bytes"
     "encoding/json"
 	"os"
 	"reflect"
@@ -1061,11 +1079,6 @@ func fileExists(path string) bool {
 func generateFeaturesCompat(gen *codegen.Generator) error {
     if reflect.ValueOf(gen).MethodByName("GenerateFeatures").IsValid() {
         return callOptionalGenerator(gen, "GenerateFeatures")
-    }
-    main, err := os.ReadFile(gen.OutputDir + "/main.go")
-    if err != nil && !os.IsNotExist(err) { return err }
-    if bytes.Contains(main, []byte("GeneratedFeatureConfig")) {
-        return fmt.Errorf("feature-loader services require a Fabrica generator with GenerateFeatures support; update the module or use --fabrica-source")
     }
     if err := gen.GenerateMiddleware(); err != nil { return err }
     return gen.GenerateMetrics()

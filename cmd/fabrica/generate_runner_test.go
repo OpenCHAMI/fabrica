@@ -21,6 +21,7 @@ func TestGenerateRunnerCode_UsesStableAuthSetter(t *testing.T) {
 		false,
 		false,
 		"file",
+		false,
 	)
 
 	if !strings.Contains(runnerCode, "setAuthEnabledCompat(gen, authEnabled)") {
@@ -48,6 +49,7 @@ func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 		false,
 		false,
 		"file",
+		false,
 	)
 
 	if !strings.Contains(runnerCode, "setAuthEnabledCompat(gen, authEnabled)") {
@@ -67,6 +69,7 @@ func TestGenerateRunnerCode_ConfiguresOpenAPIServerURLWhenSet(t *testing.T) {
 		false,
 		false,
 		"file",
+		false,
 	)
 
 	for _, want := range []string{
@@ -95,6 +98,7 @@ func TestGenerateRunnerCode_StorageOnlyDoesNotRegenerateRoutesOrModels(t *testin
 		false,
 		false,
 		"file",
+		false,
 	)
 
 	for _, unexpected := range []string{"GenerateRoutes", "GenerateModels", "GenerateOpenAPI"} {
@@ -119,6 +123,7 @@ func TestGenerateRunnerCode_CustomStorageDoesNotGeneratePersistence(t *testing.T
 		false,
 		false,
 		"custom",
+		false,
 	)
 
 	for _, unexpected := range []string{
@@ -152,6 +157,7 @@ func TestGenerateRunnerCode_OpenAPIOnlyRegeneratesModelDependency(t *testing.T) 
 		false,
 		false,
 		"file",
+		false,
 	)
 
 	if !strings.Contains(runnerCode, "GenerateOpenAPI") {

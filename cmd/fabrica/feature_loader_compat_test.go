@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/openchami/fabrica/pkg/codegen"
 )
 
 // Compile the actual runner against a pre-loader generator API. String assertions
@@ -44,7 +46,7 @@ func RegisterAllResources(*codegen.Generator) error {return nil}
 `)
 	write("cmd/server/main.go", "package main\ntype Config struct{}\n")
 	write(".fabrica.yaml", "features:\n  storage:\n    type: file\n")
-	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, "file"))
+	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, "file", false))
 	run := func() ([]byte, error) {
 		cmd := exec.Command("go", "run", "-mod=mod", "runner.go")
 		cmd.Dir = root
@@ -59,11 +61,24 @@ func RegisterAllResources(*codegen.Generator) error {return nil}
 			t.Fatal(err)
 		}
 	}
-	// An adopted scaffold must fail explicitly when its generator is too old.
-	write("cmd/server/main.go", "package main\ntype Config struct{GeneratedFeatureConfig}\n")
+	// An adopted scaffold must fail explicitly when its generator is too old,
+	// before any output changes. Config may live outside main.go.
+	write("cmd/server/main.go", "package main\nfunc start() { loadGeneratedFeatures(nil, nil) }\n")
+	write("cmd/server/config.go", "package main\ntype Config struct{GeneratedFeatureConfig}\n")
+	adopted, err := codegen.UsesFeatureLoader(filepath.Join(root, "cmd/server"))
+	if err != nil || !adopted {
+		t.Fatalf("split adopted scaffold not detected: %v, %v", adopted, err)
+	}
+	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, "file", adopted))
+	if err := os.Remove(filepath.Join(root, "handlers.called")); err != nil {
+		t.Fatal(err)
+	}
 	out, err = run()
 	if err == nil || !strings.Contains(string(out), "require a Fabrica generator with GenerateFeatures support") {
 		t.Fatalf("old generator accepted adopted service: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "handlers.called")); !os.IsNotExist(err) {
+		t.Fatalf("old generator rewrote handlers before rejecting: %v", err)
 	}
 }
 
@@ -83,7 +98,7 @@ func NewGenerator(output,pkg,module string)*Generator{return &Generator{OutputDi
 func(g *Generator)SetStorageType(s string){g.StorageType=s}
 func(g *Generator)SetDBDriver(s string){g.DBDriver=s}
 func(g *Generator)LoadTemplates()error{return nil}
-func(g *Generator)GenerateHandlers()error{return nil}
+func(g *Generator)GenerateHandlers()error{return os.WriteFile("handlers.called",nil,0644)}
 func(g *Generator)GenerateMiddleware()error{return os.WriteFile("middleware.called",nil,0644)}
 func(g *Generator)GenerateMetrics()error{return os.WriteFile("metrics.called",nil,0644)}
 func(g *Generator)GenerateServerVersion()error{return nil}
