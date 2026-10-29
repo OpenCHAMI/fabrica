@@ -50,8 +50,8 @@ mandatory. This does not introduce a new name requirement for ordinary creates.
 Generated handlers call `validation.ValidateRequiredFields` before the policy APIs.
 It checks immediate required fields without running nested optional validators;
 callers may select JSON field names when other identity comes from the path.
-The existing standalone validation functions retain their prior behavior. A database can still
-reject values accepted by warn or disabled mode.
+The existing standalone validation functions retain their prior behavior. A
+database can still reject values accepted by warn or disabled mode.
 
 The policy is selected during generation, independently of service runtime settings.
 Disabling validation removes the optional middleware while handlers retain mandatory
@@ -78,6 +78,14 @@ middleware file. After regenerating, a service whose configuration sets
 `enabled: false`, `mode: warn`, or `mode: disabled` accepts requests it used to
 reject. To keep the previous behavior, set `enabled: true` and `mode: strict`
 before regenerating.
+
+Regenerated create, series-create, and revision handlers also reject omitted or
+`null` required envelopes in every mode, including disabled. Previously a body
+without `spec` or `metadata` decoded to zero values, because `required` does not
+apply to Go struct values, and failed only if optional checks rejected those
+values. Clients that send only `spec`, or only `metadata`, now receive HTTP 400;
+send `"metadata": {}` or `"spec": {}` instead.
+Generated Fabrica clients always send both fields and are unaffected.
 
 ## Overview
 
