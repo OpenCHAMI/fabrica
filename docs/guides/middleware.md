@@ -59,6 +59,13 @@ features:
     mode: strict  # strict | warn | disabled
 ```
 
+Generated handlers apply the validation policy after decoding. The middleware
+wrapper remains available for composition; removing it does not remove mandatory
+request checks. `enabled: false` or `mode: disabled` skips optional Spec/Status tags
+and custom hooks. Warn logs optional failures; strict rejects them. Decoding,
+identity/envelope requirements, patches, auth, preconditions, and backend checks
+remain mandatory. See the [policy table](validation.md#generated-http-validation-policy).
+
 #### 2. Conditional Middleware (`conditional_middleware_generated.go`)
 
 Handles ETags and conditional request headers (If-Match, If-None-Match, etc.).
@@ -737,3 +744,11 @@ func TestAuthMiddleware(t *testing.T) {
 - Add logging and monitoring
 - Configure rate limiting based on your needs
 - Test middleware independently before integration
+
+## Regenerate-safe feature startup
+
+New services use a generated feature loader so feature selections can change
+without rewriting user-owned `cmd/server/main.go`. See the
+[feature loader guide](../guides/feature-loader.md) for regeneration commands,
+selective-generation rules, customization boundaries, and migration of existing
+services.

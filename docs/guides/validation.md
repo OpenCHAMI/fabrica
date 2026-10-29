@@ -8,6 +8,85 @@ SPDX-License-Identifier: MIT
 
 This guide explains how to use Fabrica's validation package to ensure your resources meet required standards.
 
+## Generated HTTP validation policy
+
+Set the policy in `.fabrica.yaml`, then regenerate, rebuild, and restart the service:
+
+```yaml
+features:
+  validation:
+    enabled: true
+    mode: strict
+```
+
+| Configuration | Effective behavior |
+| --- | --- |
+| `enabled: true`, `mode: strict` or omitted mode | Reject optional validation failures with HTTP 400. |
+| `enabled: true`, `mode: warn` | Run optional validators, log failures, and continue if mandatory checks pass. |
+| `mode: disabled` | Skip optional validation, even when enabled is true. |
+| `enabled: false`, any valid mode | Skip optional validation; the boolean takes precedence. |
+| Invalid mode, including when disabled | Reject the configuration. |
+
+Omitting the validation settings preserves strict defaults. The generated handlers
+apply the selected policy to checks inside Spec/Status and framework
+`CustomValidator.Validate(context.Context)` hooks. Create, spec PUT/PATCH, status
+PUT/PATCH, and revision create/ensure/status operations use the same policy. Warn
+runs custom hooks even when optional struct tags fail; disabled does not invoke
+these hooks. Standalone `validation.ValidateResource` and
+`validation.ValidateWithContext` retain their strict behavior.
+
+Decoding, endpoint-required identity/envelope fields, revision promotion selectors,
+patch structure/path restrictions, authorization, ETag preconditions, server-managed
+fields, and backend constraints remain mandatory in every mode. For example, an
+omitted `revisionUid` still rejects a revision promotion when validation is disabled.
+Generated create and series-create requests track whether their required
+`metadata` and `spec` JSON keys were supplied. Omitted or `null` values reject with
+HTTP 400 in every mode; explicitly supplied empty objects satisfy presence, and
+optional nested checks still follow the selected mode. Revision creation/ensure
+gets identity from the URL and requires only the `spec` envelope, so its metadata
+may be omitted. Existing series-name and promotion-selector requirements remain
+mandatory. This does not introduce a new name requirement for ordinary creates.
+
+Generated handlers call `validation.ValidateRequiredFields` before the policy APIs.
+It checks immediate required fields without running nested optional validators;
+callers may select JSON field names when other identity comes from the path.
+The existing standalone validation functions retain their prior behavior. A
+database can still reject values accepted by warn or disabled mode.
+
+The policy is selected during generation, independently of service runtime settings.
+Disabling validation removes the optional middleware while handlers retain mandatory
+checks. Spec mutations preserve status and status mutations preserve spec. For
+atomic resource mutations, validation runs against the prospective state inside
+the storage mutation callback. Custom hooks must be safe to retry and should not
+perform irreversible side effects; warn diagnostics can repeat after retries.
+
+For example, the default Node's `description` has `validate:"max=200"`. With file
+storage, a 201-character description rejects in strict mode, logs and persists in
+warn mode, and persists without optional checks when disabled. Return to strict
+mode by setting both `enabled: true` and `mode: strict` and regenerating.
+
+### Upgrading existing services
+
+This policy applies to every service on its next `fabrica generate`, including
+services that still use the legacy startup scaffold and have not adopted the
+[feature loader](feature-loader.md). Generated handlers are always regenerated.
+
+Before this change, generated handlers always rejected optional Spec/Status tag
+failures and failing `CustomValidator.Validate` hooks with HTTP 400, whatever
+`.fabrica.yaml` said; the validation settings only controlled the optional
+middleware file. After regenerating, a service whose configuration sets
+`enabled: false`, `mode: warn`, or `mode: disabled` accepts requests it used to
+reject. To keep the previous behavior, set `enabled: true` and `mode: strict`
+before regenerating.
+
+Regenerated create, series-create, and revision handlers also reject omitted or
+`null` required envelopes in every mode, including disabled. Previously a body
+without `spec` or `metadata` decoded to zero values, because `required` does not
+apply to Go struct values, and failed only if optional checks rejected those
+values. Clients that send only `spec`, or only `metadata`, now receive HTTP 400;
+send `"metadata": {}` or `"spec": {}` instead.
+Generated Fabrica clients always send both fields and are unaffected.
+
 ## Overview
 
 Fabrica provides a powerful validation system that combines:
@@ -514,8 +593,8 @@ func (s *Server) Create{{.ResourceName}}(w http.ResponseWriter, r *http.Request)
         return
     }
 
-    // Auto-generated validation call
-    if err := validation.ValidateWithContext(r.Context(), &resource); err != nil {
+    // Generated policy preserves envelope checks in every mode
+    if err := validation.ValidateRequestWithContext(r.Context(), &resource, validation.Strict); err != nil {
         handleValidationError(w, err)
         return
     }

@@ -112,7 +112,8 @@ The init scaffold uses an orchestration-first boundary for server startup templa
 
 Current ownership model:
 
-- `init/main.go.tmpl`: command setup, config loading, router grouping, lifecycle orchestration.
+- `init/main.go.tmpl`: user-owned command setup, core config, router groups, and HTTP lifecycle.
+- `server/features.go.tmpl`: generated feature config/defaults/flags, composition, and cleanup.
 - `init/runtime_helpers.go.tmpl`: storage setup, events/reconciliation setup, startup configuration logging.
 - `init/auth_helpers.go.tmpl`: TokenSmith authn/authz initialization and related helper functions.
 - `init/metrics_helpers.go.tmpl`: metrics server setup and handler wiring.
@@ -120,9 +121,9 @@ Current ownership model:
 When adding features:
 
 1. Add or extend a feature helper template.
-2. Call the helper from `init/main.go.tmpl`.
+2. Compose the helper in `server/features.go.tmpl`; main calls the stable loader.
 3. Keep implementation details out of `init/main.go.tmpl`.
-4. Update scaffold-boundary tests in `cmd/fabrica/scaffold_scope_boundary_test.go`.
+4. Include the output in the feature ownership manifest and update scaffold-boundary tests in `cmd/fabrica/scaffold_scope_boundary_test.go`.
 
 ## Testing Templates
 
@@ -235,3 +236,9 @@ When modifying templates:
 2. Run `make dev` to regenerate
 3. Run `make test` to verify
 4. Document changes in commit message
+
+For init and regeneration, use `Generator.SetFeatures` with the shared typed
+`FeatureConfig`, followed by `GenerateFeatures`. Feature changes require full
+generation. The loader owns and hashes only its fixed output list, allowing safe
+cleanup when capabilities are disabled. See
+[the migration guide](../../../docs/guides/feature-loader.md).

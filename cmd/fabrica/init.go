@@ -516,21 +516,23 @@ func createProjectStructure(targetDir, projectName string, opts *initOptions) er
 		return err
 	}
 
-	// Generate runtime helpers from template
-	if err := generateFromTemplate("init/runtime_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/runtime_helpers_generated.go"), data); err != nil {
+	gen := codegen.NewGenerator(filepath.Join(targetDir, "cmd/server"), "main", opts.modulePath)
+	gen.Version = version
+	gen.SetFeatures(codegen.FeatureConfig{
+		ProjectName: projectName,
+		StorageType: opts.storageType, DBDriver: dbDriver,
+		AuthEnabled: opts.withAuth, MetricsEnabled: opts.withMetrics,
+		EventsEnabled: opts.withEvents, EventBusType: opts.eventBusType,
+		ReconciliationEnabled: opts.withReconcile, ReconcileWorkers: opts.reconcileWorkers,
+		ReconcileRequeueMinutes: opts.reconcileRequeueMs,
+		ValidationEnabled:       opts.validationMode != "disabled", ValidationMode: opts.validationMode,
+		ConditionalEnabled: true, ETagAlgorithm: "sha256", VersioningEnabled: true,
+	})
+	if err := gen.LoadTemplates(); err != nil {
 		return err
 	}
-
-	// Generate auth helpers from template
-	if err := generateFromTemplate("init/auth_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/auth_helpers_generated.go"), data); err != nil {
+	if err := gen.GenerateFeatures(); err != nil {
 		return err
-	}
-
-	// Generate metrics helpers from template (if metrics enabled)
-	if opts.withMetrics {
-		if err := generateFromTemplate("init/metrics_helpers.go.tmpl", filepath.Join(targetDir, "cmd/server/metrics_helpers_generated.go"), data); err != nil {
-			return err
-		}
 	}
 
 	// Create go.mod from template

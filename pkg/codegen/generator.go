@@ -52,6 +52,7 @@ import (
 	"github.com/openchami/fabrica/internal/constants"
 	"github.com/openchami/fabrica/internal/resourcepath"
 	"github.com/openchami/fabrica/pkg/annotations"
+	"github.com/openchami/fabrica/pkg/validation"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
@@ -122,6 +123,8 @@ type ResourceMetadata struct {
 // GeneratorConfig holds configuration values for code generation
 // These values are passed to templates and affect what code is generated
 type GeneratorConfig struct {
+	Features FeatureConfig
+
 	OpenAPIServerURL         string
 	OpenAPIServerDescription string
 
@@ -174,6 +177,10 @@ type Generator struct {
 	// Emitters overrides code emission for this Generator only. Use
 	// SetEmitter to populate it; see emitter.go for the extension point.
 	Emitters map[EmitterKind]ResourceEmitter
+
+	// Instance-local fault injection for transaction filesystem operations.
+	featureTransactionHook  func(operation, path string) error
+	featureTransactionWrite func(*os.File, []byte) (int, error)
 }
 
 // NewGenerator creates a new code generator
@@ -338,31 +345,33 @@ func (g *Generator) templateData(resource ResourceMetadata, templateName string)
 	}
 
 	return g.mergeCommonTemplateData(templateName, map[string]interface{}{
-		"Name":                  resource.Name,
-		"PluralName":            resource.PluralName,
-		"Package":               resource.Package,
-		"PackageAlias":          resource.PackageAlias,
-		"TypeName":              resource.TypeName,
-		"SpecType":              resource.SpecType,
-		"StatusType":            resource.StatusType,
-		"URLPath":               resource.URLPath,
-		"StorageName":           resource.StorageName,
-		"StorageType":           g.StorageType,
-		"Tags":                  resource.Tags,
-		"RevisioningEnabled":    resource.RevisioningEnabled,
-		"BareNameSelector":      resource.BareNameSelector,
-		"PerResourceVersioning": perResVersioning,
-		"IsVersioned":           isVersioned,
-		"ConditionalEnabled":    g.Config.ConditionalEnabled,
-		"SpecFields":            normalizeSpecFields(resource.SpecFields),
-		"Versions":              resource.Versions,
-		"DefaultVersion":        resource.DefaultVersion,
-		"APIGroupVersion":       resource.APIGroupVersion,
-		"UniqueImports":         uniqueImports,
-		"ModulePath":            g.ModulePath,
-		"Annotations":           resource.Annotations,
-		"EntSchema":             entSchemaMetadata(resource),
-		"EntAdapter":            entAdapterMetadata(resource),
+		"Name":                    resource.Name,
+		"PluralName":              resource.PluralName,
+		"Package":                 resource.Package,
+		"PackageAlias":            resource.PackageAlias,
+		"TypeName":                resource.TypeName,
+		"SpecType":                resource.SpecType,
+		"StatusType":              resource.StatusType,
+		"URLPath":                 resource.URLPath,
+		"StorageName":             resource.StorageName,
+		"StorageType":             g.StorageType,
+		"Tags":                    resource.Tags,
+		"RevisioningEnabled":      resource.RevisioningEnabled,
+		"BareNameSelector":        resource.BareNameSelector,
+		"PerResourceVersioning":   perResVersioning,
+		"IsVersioned":             isVersioned,
+		"ConditionalEnabled":      g.Config.ConditionalEnabled,
+		"ValidationMode":          g.Config.ValidationMode,
+		"SpecFields":              normalizeSpecFields(resource.SpecFields),
+		"Versions":                resource.Versions,
+		"DefaultVersion":          resource.DefaultVersion,
+		"APIGroupVersion":         resource.APIGroupVersion,
+		"UniqueImports":           uniqueImports,
+		"ModulePath":              g.ModulePath,
+		"Annotations":             resource.Annotations,
+		"EntSchema":               entSchemaMetadata(resource),
+		"EntAdapter":              entAdapterMetadata(resource),
+		"ReconcileRequeueMinutes": g.featureSelection().Normalize().ReconcileRequeueMinutes,
 	})
 }
 
@@ -952,7 +961,13 @@ func (g *Generator) GenerateAll() error {
 	// Generate based on package type
 	switch g.PackageName {
 	case "main":
+		if _, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode); err != nil {
+			return err
+		}
 		// Server code - handlers, routes, models, storage, and openapi
+		if err := g.PrepareFeatureGeneration(true); err != nil {
+			return err
+		}
 
 		// Generate Ent schemas first if using Ent storage
 		if g.StorageType == "ent" {
@@ -977,10 +992,7 @@ func (g *Generator) GenerateAll() error {
 		if err := g.GenerateHandlers(); err != nil {
 			return err
 		}
-		if err := g.GenerateMiddleware(); err != nil {
-			return err
-		}
-		if err := g.GenerateMetrics(); err != nil {
+		if err := g.GenerateFeatures(); err != nil {
 			return err
 		}
 		if err := g.GenerateRoutes(); err != nil {
@@ -1257,6 +1269,10 @@ func (g *Generator) LoadTemplates() error {
 		"eventBus":              "middleware/event-bus.go.tmpl",
 		"metrics":               "middleware/metrics.go.tmpl",
 
+		"features":       "server/features.go.tmpl",
+		"runtimeHelpers": "init/runtime_helpers.go.tmpl",
+		"authHelpers":    "init/auth_helpers.go.tmpl",
+
 		// Init templates (for regeneration)
 		"init/metrics_helpers.go.tmpl": "init/metrics_helpers.go.tmpl",
 
@@ -1298,6 +1314,11 @@ func (g *Generator) LoadTemplates() error {
 
 // GenerateHandlers generates REST API handlers for all resources
 func (g *Generator) GenerateHandlers() error {
+	mode, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode)
+	if err != nil {
+		return err
+	}
+	g.Config.ValidationMode = string(mode)
 	fmt.Printf("🛠️  Generating handlers...\n")
 	for _, resource := range g.Resources {
 		var buf bytes.Buffer
@@ -1328,6 +1349,12 @@ func (g *Generator) GenerateHandlers() error {
 
 // GenerateMiddleware generates middleware components based on configuration
 func (g *Generator) GenerateMiddleware() error {
+	mode, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode)
+	if err != nil {
+		return err
+	}
+	g.Config.ValidationMode = string(mode)
+	g.Config.ValidationEnabled = mode != validation.Disabled
 	fmt.Printf("⚙️  Generating middleware...\n")
 
 	// Middleware directory

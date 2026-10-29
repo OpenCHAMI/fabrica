@@ -433,3 +433,21 @@ func TestController_GracefulShutdown(t *testing.T) {
 		t.Fatal("Controller.Stop() did not complete within timeout")
 	}
 }
+
+func TestControllerSetWorkerCount(t *testing.T) {
+	controller := NewController(nil, nil)
+	if err := controller.SetWorkerCount(3); err != nil {
+		t.Fatal(err)
+	}
+	if controller.workerCount != 3 {
+		t.Fatalf("workers = %d", controller.workerCount)
+	}
+	for _, invalid := range []int{0, -1} {
+		if err := controller.SetWorkerCount(invalid); err == nil {
+			t.Fatalf("accepted %d workers", invalid)
+		}
+	}
+	if controller.workerCount != 3 {
+		t.Fatal("invalid setting changed worker count")
+	}
+}

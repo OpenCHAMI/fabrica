@@ -14,6 +14,7 @@ import (
 	"time"
 
 	configpkg "github.com/openchami/fabrica/internal/config"
+	"github.com/openchami/fabrica/pkg/codegen"
 )
 
 // Tool Implementations
@@ -242,7 +243,7 @@ func (s *mcpServer) toolCreateService(args map[string]interface{}) (map[string]i
 		if projectName == "." {
 			createdPath = targetDir
 		}
-		plannedFiles := predictCreateServiceFiles(createdPath)
+		plannedFiles := predictCreateServiceFiles(createdPath, opts)
 		return map[string]interface{}{
 			"status":        "dry_run",
 			"project_name":  projectName,
@@ -492,13 +493,47 @@ func (s *mcpServer) toolGenerateCode(args map[string]interface{}) (map[string]in
 	}
 
 	if mode == "dry_run" {
+		recoveryGen := codegen.NewGenerator(filepath.Join(projectDir, "cmd/server"), "main", "")
+		recovery, recoveryErr := recoveryGen.InspectFeatureRecovery()
+		if recovery != nil {
+			result := map[string]interface{}{
+				"status": "recovery_required", "project_path": projectDir, "flags": artifactFlags,
+				"planned_files": recovery.Writes, "planned_removals": recovery.Removals,
+				"captured_config": recovery.Config,
+				"next_action":     "Run full 'fabrica generate' to finish the captured feature transaction before generating the newly requested selection; selective generation cannot recover.",
+			}
+			if recoveryErr != nil {
+				result["recovery_conflict"] = recoveryErr.Error()
+			}
+			return result, nil
+		}
+		if recoveryErr != nil {
+			return nil, recoveryErr
+		}
 		willWrite, possible := predictGenerateImpact(projectDir, artifactFlags)
+		featureWrites, removals, err := previewFeatureGeneration(projectDir, artifactFlags)
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range featureWrites {
+			found := false
+			for _, existing := range willWrite {
+				if existing == path {
+					found = true
+					break
+				}
+			}
+			if !found {
+				willWrite = append(willWrite, path)
+			}
+		}
 		return map[string]interface{}{
-			"status":         "dry_run",
-			"project_path":   projectDir,
-			"flags":          artifactFlags,
-			"planned_files":  willWrite,
-			"possible_files": possible,
+			"planned_removals": removals,
+			"status":           "dry_run",
+			"project_path":     projectDir,
+			"flags":            artifactFlags,
+			"planned_files":    willWrite,
+			"possible_files":   possible,
 			"planned_steps": []string{
 				"discover resources",
 				"refresh registration",

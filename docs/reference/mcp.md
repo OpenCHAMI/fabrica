@@ -183,6 +183,14 @@ Optional inputs:
 Dry-run output includes predicted `planned_files` and `planned_steps`.
 The response also separates existing generated artifacts into `possible_files` so agents can distinguish files that may already exist from files the selected generation mode intends to write.
 
+For adopted services, generation previews inspect pending feature recovery without
+repairing it. A pending transaction returns `status: recovery_required`, its
+`captured_config`, affected `planned_files`/`planned_removals`, and a `next_action`
+requiring full `fabrica generate`. A conflicting edit is reported in
+`recovery_conflict`; corrupt recovery metadata returns an error. Selective
+execution cannot recover. Full execution completes the captured transaction before
+applying new YAML selections. See [feature recovery](../guides/feature-loader.md#recovering-interrupted-feature-generation).
+
 ### sync_dependencies
 
 Run `go mod tidy` in the target project.

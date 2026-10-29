@@ -12,25 +12,37 @@ import (
 	"strings"
 
 	configpkg "github.com/openchami/fabrica/internal/config"
+	"github.com/openchami/fabrica/internal/projectfeatures"
+	"github.com/openchami/fabrica/pkg/codegen"
 )
 
 // File Impact Prediction
 
 // predictCreateServiceFiles returns the files that will be created for a new service.
-func predictCreateServiceFiles(projectPath string) []string {
+func predictCreateServiceFiles(projectPath string, opts *initOptions) []string {
 	base := filepath.ToSlash(projectPath)
-	return []string{
-		base + "/.fabrica.yaml",
-		base + "/apis.yaml",
-		base + "/go.mod",
-		base + "/README.md",
-		base + "/cmd/server/main.go",
-		base + "/cmd/server/runtime_helpers_generated.go",
-		base + "/cmd/server/auth_helpers_generated.go",
-		base + "/cmd/server/metrics_helpers_generated.go",
+	files := []string{
+		base + "/.fabrica.yaml", base + "/apis.yaml", base + "/go.mod", base + "/README.md",
+		base + "/cmd/server/main.go", base + "/cmd/server/runtime_helpers_generated.go",
+		base + "/cmd/server/features_generated.go", base + "/cmd/server/features_manifest_generated.json",
 		base + "/internal/storage/storage.go",
-		base + "/internal/storage/storage_generated.go",
+		base + "/internal/middleware/conditional_middleware_generated.go",
+		base + "/internal/middleware/versioning_middleware_generated.go",
 	}
+	if opts.withAuth {
+		files = append(files, base+"/cmd/server/auth_helpers_generated.go")
+	}
+	if opts.withMetrics {
+		files = append(files, base+"/cmd/server/metrics_generated.go")
+	}
+	if opts.withEvents {
+		files = append(files, base+"/internal/middleware/event_bus_generated.go")
+	}
+	if opts.validationMode != "disabled" {
+		files = append(files, base+"/internal/middleware/validation_middleware_generated.go")
+	}
+	sort.Strings(files)
+	return files
 }
 
 // predictAddResourceFiles returns files that will be created/modified for a new resource.
@@ -139,7 +151,14 @@ func predictGenerateImpact(projectDir string, flags []string) ([]string, []strin
 		willWrite = append(willWrite, path)
 	}
 
-	if len(flags) == 0 {
+	hasArtifacts := false
+	for _, flag := range flags {
+		switch flag {
+		case "--handlers", "--storage", "--client", "--openapi":
+			hasArtifacts = true
+		}
+	}
+	if !hasArtifacts {
 		add("cmd/server/*_generated.go")
 		add("pkg/client/*.go")
 		add("pkg/resources/register_generated.go")
@@ -174,6 +193,42 @@ func predictGenerateImpact(projectDir string, flags []string) ([]string, []strin
 	sort.Strings(willWrite)
 	sort.Strings(possibleFiles)
 	return willWrite, possibleFiles
+}
+
+// previewFeatureGeneration shares the CLI's preflight and exact feature-file scope.
+func previewFeatureGeneration(projectDir string, flags []string) (writes, removals []string, err error) {
+	serverDir := filepath.Join(projectDir, "cmd/server")
+	adopted, err := codegen.UsesFeatureLoader(serverDir)
+	if err != nil || !adopted {
+		return nil, nil, err
+	}
+	selected, server := false, false
+	for _, flag := range flags {
+		switch flag {
+		case "--handlers", "--storage":
+			selected = true
+			server = true
+		case "--client", "--openapi":
+			selected = true
+		}
+	}
+	cfg, err := configpkg.LoadConfig(projectDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := configpkg.ValidateConfig(cfg); err != nil {
+		return nil, nil, err
+	}
+	_, statErr := os.Stat(filepath.Join(projectDir, "apis.yaml"))
+	g := codegen.NewGenerator(serverDir, "main", cfg.Project.Module)
+	g.SetFeatures(projectfeatures.FromConfig(cfg, statErr == nil))
+	if err := g.CheckFeatureGeneration(!selected); err != nil {
+		return nil, nil, err
+	}
+	if selected && !server {
+		return nil, nil, nil
+	}
+	return g.FeatureImpact()
 }
 
 // Workflow Recommendations

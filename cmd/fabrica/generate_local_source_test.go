@@ -87,12 +87,12 @@ func TestDetectProjectGoVersion(t *testing.T) {
 }
 
 func TestGenerateRunnerCodeUsesProjectRoot(t *testing.T) {
-	got := generateRunnerCode("/tmp/project", "example.com/demo", "cmd/server", "main", true, false, false, false, false, "file")
+	got := generateRunnerCode("/tmp/project", "example.com/demo", "cmd/server", "main", true, false, false, false, false, "file", false)
 
 	if !strings.Contains(got, "os.Chdir(\"/tmp/project\")") {
 		t.Fatalf("runner code missing project root chdir:\n%s", got)
 	}
-	if !strings.Contains(got, "gen.GenerateMiddleware()") {
+	if !strings.Contains(got, "generateFeaturesCompat(gen)") {
 		t.Fatalf("runner code missing middleware generation:\n%s", got)
 	}
 }

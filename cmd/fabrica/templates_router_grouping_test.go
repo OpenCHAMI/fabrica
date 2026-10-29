@@ -52,7 +52,7 @@ func TestTemplate_MainRouterHasPublicProtectedGroups(t *testing.T) {
 	if !strings.Contains(got, "public.Get(\"/docs\"") {
 		t.Fatalf("main template should register /docs on the public group")
 	}
-	if !strings.Contains(got, "protected.Use(authnMiddleware)") {
+	if !strings.Contains(got, "features.UseProtected(protected)") {
 		t.Fatalf("main template should apply authn middleware on protected routes")
 	}
 }

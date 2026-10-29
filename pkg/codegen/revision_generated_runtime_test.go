@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,13 +59,40 @@ func TestRevisionWorkflowGeneratedAPI(t *testing.T) {
 		t.Fatalf("write generated storage: %v", err)
 	}
 
-	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}} {
-		cmd := exec.Command("go", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("execute generated revision API go %v: %v\n%s", args, err, output)
+	policyTest, err := os.ReadFile(filepath.Join("testdata", "validation_revision_test.go.fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := `package v1
+import("context";"errors";"sync/atomic")
+var ValidationCalls atomic.Int64
+func(n *Node)Validate(context.Context)error{ValidationCalls.Add(1);if n.Spec.Value=="reject"{return errors.New("custom node rejection")};return nil}
+func(s *NodeStatus)Validate(context.Context)error{ValidationCalls.Add(1);if s.Phase=="Pending"{return errors.New("custom status rejection")};return nil}
+`
+	if err := os.WriteFile(filepath.Join(dir, "apis/v1/validation.go"), []byte(hook), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"strict", "warn", "disabled", "strict"} {
+		gen.Config.ValidationEnabled = true
+		gen.Config.ValidationMode = mode
+		if err := gen.GenerateHandlers(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "validation_policy_test.go"), []byte(strings.ReplaceAll(string(policyTest), "EXPECTED_MODE", mode)), 0644); err != nil {
+			t.Fatal(err)
+		}
+		commands := [][]string{{"mod", "tidy"}, {"test", "-count=1", "-run", "^TestRevisionValidationPolicy$", "./..."}}
+		if mode == "strict" {
+			commands = append(commands, []string{"test", "-count=1", "-run", "^TestWorkflow$", "./..."})
+		}
+		for _, args := range commands {
+			cmd := exec.Command("go", args...)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("execute generated revision API mode=%s go %v: %v\n%s", mode, args, err, output)
+			}
 		}
 	}
 }
@@ -215,7 +243,7 @@ func (b *captureRevisionEventBus) Publish(_ context.Context, event events.Event)
 func (*captureRevisionEventBus) Subscribe(string, events.EventHandler) (events.SubscriptionID, error) { return "", nil }
 func (*captureRevisionEventBus) Unsubscribe(events.SubscriptionID) error { return nil }
 func (*captureRevisionEventBus) Close() error { return nil }
-func request(t *testing.T, router http.Handler, method, path, body, ifMatch string) *httptest.ResponseRecorder { t.Helper(); req := httptest.NewRequest(method, path, bytes.NewBufferString(body)); req.Header.Set("Content-Type", "application/json"); if ifMatch != "" { req.Header.Set("If-Match", ifMatch) }; response := httptest.NewRecorder(); router.ServeHTTP(response, req); return response }
+func request(t *testing.T, router http.Handler, method, path, body, ifMatch string) *httptest.ResponseRecorder { t.Helper(); req := httptest.NewRequest(method, path, bytes.NewBufferString(body)); req.Header.Set("Content-Type", "application/json"); if bytes.HasPrefix(bytes.TrimSpace([]byte(body)), []byte("[")) { req.Header.Set("Content-Type", "application/json-patch+json") }; if ifMatch != "" { req.Header.Set("If-Match", ifMatch) }; response := httptest.NewRecorder(); router.ServeHTTP(response, req); return response }
 func decodeRecord(t *testing.T, response *httptest.ResponseRecorder) revision.Record[*v1.Node] { t.Helper(); var record revision.Record[*v1.Node]; if err := json.Unmarshal(response.Body.Bytes(), &record); err != nil { t.Fatal(err) }; return record }
 func TestWorkflow(t *testing.T) {
  if err := GenerateOpenAPISpec().Validate(context.Background()); err != nil { t.Fatalf("validate generated OpenAPI: %v", err) }

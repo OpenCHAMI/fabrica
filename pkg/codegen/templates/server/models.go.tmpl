@@ -37,9 +37,11 @@ package {{.PackageName}}
 {{range .Resources}}{{if .RevisioningEnabled}}{{$hasRevisioning = true}}{{end}}{{end}}
 
 import (
+	{{if .Resources}}"bytes"{{end}}
 	"encoding/json"
 	"fmt"
 	"net/http"
+	{{if .Resources}}"reflect"{{end}}
 
 {{if .Resources}}	"github.com/openchami/fabrica/pkg/fabrica"{{end}}
 {{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
@@ -100,6 +102,53 @@ type Create{{.Name}}Request struct {
 	Spec        {{.SpecType}}     `json:"spec" yaml:"spec" validate:"required"`
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	metadataPresent bool
+	specPresent bool
+	presenceDecoded bool
+}
+
+// UnmarshalJSON records required envelope-field presence separately from zero values.
+func (r *Create{{.Name}}Request) UnmarshalJSON(data []byte) error {
+	type requestAlias Create{{.Name}}Request
+	var decoded requestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	// Decode presence with the same key matching as the request itself:
+	// case-insensitive names, and the last duplicate key wins.
+	var presence struct {
+		Metadata json.RawMessage `json:"metadata"`
+		Spec     json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(data, &presence); err != nil {
+		return err
+	}
+	*r = Create{{.Name}}Request(decoded)
+	r.metadataPresent = presence.Metadata != nil && !bytes.Equal(presence.Metadata, []byte("null"))
+	r.specPresent = presence.Spec != nil && !bytes.Equal(presence.Spec, []byte("null"))
+	r.presenceDecoded = true
+	return nil
+}
+
+// RequiredFieldPresent reports whether a generated request envelope field was supplied.
+// Decoded requests report what the JSON contained; a null after an earlier value
+// still counts as absent. Requests built in Go fall back to nonzero values.
+func (r *Create{{.Name}}Request) RequiredFieldPresent(name string) (bool, bool) {
+	switch name {
+	case "metadata":
+		if r.presenceDecoded {
+			return r.metadataPresent, true
+		}
+		return !reflect.DeepEqual(r.Metadata, fabrica.Metadata{}), true
+	case "spec":
+		if r.presenceDecoded {
+			return r.specPresent, true
+		}
+		var zero {{.SpecType}}
+		return !reflect.DeepEqual(r.Spec, zero), true
+	default:
+		return false, false
+	}
 }
 
 // AsSpec converts the request fields to a spec object

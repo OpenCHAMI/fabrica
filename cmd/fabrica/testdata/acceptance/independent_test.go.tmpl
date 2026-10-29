@@ -1,0 +1,149 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+package main
+
+import (
+ {{if .Conditional}}"bytes"{{end}}
+ "context"
+ "crypto/md5"
+ "crypto/sha256"
+ "encoding/hex"
+ "encoding/json"
+ {{if .Reconcile}}"fmt"{{end}}
+ "net/http"
+ "net/http/httptest"
+ {{if .Auth}}"path/filepath"{{end}}
+ "strings"
+ "testing"
+ {{if or .Events .Auth}}"time"{{end}}
+ {{if .Auth}}
+ "crypto"
+ "crypto/rand"
+ "crypto/rsa"
+ "encoding/base64"
+ "math/big"
+ "os"
+ "github.com/openchami/tokensmith/pkg/keys"
+ {{end}}
+ "github.com/go-chi/chi/v5"
+ "github.com/spf13/viper"
+ "github.com/openchami/fabrica/pkg/events"
+ "github.com/openchami/fabrica/pkg/versioning"
+ api "{{.APIImport}}"
+ {{if .Reconcile}}
+ "example.com/acceptance/internal/storage"
+ "example.com/acceptance/pkg/reconcilers"
+ {{end}}
+)
+
+const expectedGeneratedMetrics={{.Metrics}}
+
+func acceptanceRouter(features *generatedFeatureSet)*chi.Mux{
+ r:=chi.NewRouter();features.Use(r)
+ r.Use(versioning.VersionNegotiationMiddleware(versioning.GlobalVersionRegistry,nil))
+ r.Group(func(public chi.Router){
+  public.Get("/health",healthHandler);public.Get("/openapi.json",ServeOpenAPISpec);public.Get("/docs",ServeSwaggerUI)
+  RegisterGeneratedPublicRoutes(public);features.RegisterPublicRoutes(public)
+ })
+ r.Group(func(protected chi.Router){features.UseProtected(protected);RegisterGeneratedRoutes(protected)})
+ return r
+}
+func acceptanceRequest(router http.Handler,method,path,body,header,value string)*httptest.ResponseRecorder{
+ request:=httptest.NewRequest(method,path,strings.NewReader(body));request.Header.Set("Content-Type","application/json")
+ if header!=""{request.Header.Set(header,value)}
+ response:=httptest.NewRecorder();router.ServeHTTP(response,request);return response
+}
+func acceptanceNode(t *testing.T,response *httptest.ResponseRecorder)api.Node{
+ t.Helper();var node api.Node;if err:=json.Unmarshal(response.Body.Bytes(),&node);err!=nil{t.Fatalf("decode %d: %s: %v",response.Code,response.Body,err)};return node
+}
+func acceptanceHash(t *testing.T,value any)string{
+ t.Helper();data,err:=json.Marshal(value);if err!=nil{t.Fatal(err)}
+ var sum []byte
+ if "{{.Algorithm}}"=="md5"{digest:=md5.Sum(data);sum=digest[:]}else{digest:=sha256.Sum256(data);sum=digest[:]}
+ return `"`+hex.EncodeToString(sum)[:16]+`"`
+}
+func TestIndependentFeatureHTTP(t *testing.T){
+ viper.Reset();viper.Set("data_dir",t.TempDir());viper.Set("auth_enabled",false);viper.Set("reconcile_enabled",false)
+ config:=DefaultConfig();if err:=viper.Unmarshal(config);err!=nil{t.Fatal(err)}
+ features,err:=loadGeneratedFeatures(context.Background(),config);if err!=nil{t.Fatal(err)};defer features.Close()
+ if err:=registerResourcePrefixes();err!=nil{t.Fatal(err)}
+ router:=acceptanceRouter(features)
+ for _,path:=range []string{"/health","/openapi.json","/docs","/service/status","/.well-known/api-catalog"}{
+  response:=acceptanceRequest(router,"GET",path,"","","");if response.Code!=200{t.Fatalf("public %s: %d %s",path,response.Code,response.Body)}
+ }
+ registered:=false
+ if err:=chi.Walk(router,func(method,path string,_ http.Handler,_ ...func(http.Handler)http.Handler)error{if method=="GET"&&path=="/metrics"{registered=true};return nil});err!=nil{t.Fatal(err)}
+ if registered!=expectedGeneratedMetrics{t.Fatalf("metrics registration=%t",registered)}
+ metrics:=acceptanceRequest(router,"GET","/metrics","","","")
+ if expectedGeneratedMetrics{
+  if metrics.Code!=200{t.Fatalf("metrics: %d %s",metrics.Code,metrics.Body)}
+  found:=false;for _,line:=range strings.Split(metrics.Body.String(),"\n"){if strings.HasPrefix(line,"acceptance_http_request_total{")&&strings.Contains(line,`handler="/health"`)&&strings.HasSuffix(line," 1"){found=true}}
+  if !found{t.Fatalf("metrics middleware did not observe health request: %s",metrics.Body)}
+ }else if metrics.Code!=404{t.Fatalf("removed metrics route: %d %s",metrics.Code,metrics.Body)}
+ {{if .Events}}
+ bus:=events.GetGlobalEventBus();if bus==nil{t.Fatal("events not initialized")}
+ observed:=make(chan events.Event,8)
+ _,err=bus.Subscribe("**",func(_ context.Context,event events.Event)error{if strings.HasSuffix(event.Type(),".created"){observed<-event};return nil});if err!=nil{t.Fatal(err)}
+ {{else}}
+ if events.GetGlobalEventBus()!=nil{t.Fatal("disabled events initialized a bus")}
+ {{end}}
+ created:=acceptanceRequest(router,"POST","/nodes/",`{"metadata":{"name":"independent"},"spec":{"description":"initial"}}`,"","")
+ if created.Code!=201{t.Fatalf("create: %d %s",created.Code,created.Body)};node:=acceptanceNode(t,created);path:="/nodes/"+node.Metadata.UID
+ {{if .Events}}
+ select{case event:=<-observed:if event.ResourceKind()!="Node"||event.ResourceUID()!=node.Metadata.UID{t.Fatalf("wrong lifecycle event: %+v",event)};case <-time.After(5*time.Second):t.Fatal("no lifecycle event delivered")}
+ {{end}}
+ current:=acceptanceRequest(router,"GET",path,"","","");if current.Code!=200{t.Fatalf("get: %d %s",current.Code,current.Body)}
+ {{if .Conditional}}
+ if got,want:=current.Header().Get("ETag"),acceptanceHash(t,acceptanceNode(t,current));got!=want{t.Fatalf("{{.Algorithm}} ETag=%s, want hash of actual resource %s",got,want)}
+ cached:=acceptanceRequest(router,"GET",path,"","If-None-Match",current.Header().Get("ETag"));if cached.Code!=304||cached.Body.Len()!=0{t.Fatalf("conditional get: %d %s",cached.Code,cached.Body)}
+ {{else}}
+ if current.Header().Get("ETag")!=""{t.Fatal("disabled conditional mode emitted ETag")}
+ cached:=acceptanceRequest(router,"GET",path,"","If-None-Match","*");if cached.Code!=200{t.Fatalf("disabled conditional GET: %d",cached.Code)}
+ {{end}}
+ list:=acceptanceRequest(router,"GET","/nodes/","","","");if list.Code!=200{t.Fatalf("list: %d %s",list.Code,list.Body)}
+ var nodes []api.Node;if err:=json.Unmarshal(list.Body.Bytes(),&nodes);err!=nil||len(nodes)!=1{t.Fatalf("list is not the bare resource array: %s %v",list.Body,err)}
+ {{if .Conditional}}
+ if got,want:=list.Header().Get("ETag"),acceptanceHash(t,nodes);got!=want{t.Fatalf("list ETag=%s, expected %s",got,want)}
+ {{end}}
+ update:=acceptanceRequest(router,"PUT",path,`{"spec":{"description":"updated"}}`,"If-Match",`"stale"`)
+ {{if .Conditional}}
+ if update.Code!=412{t.Fatalf("stale update: %d %s",update.Code,update.Body)}
+ after:=acceptanceRequest(router,"GET",path,"","","");if !bytes.Equal(current.Body.Bytes(),after.Body.Bytes()){t.Fatal("failed precondition changed storage")}
+ update=acceptanceRequest(router,"PUT",path,`{"spec":{"description":"updated"}}`,"If-Match",current.Header().Get("ETag"))
+ {{end}}
+ if update.Code!=200{t.Fatalf("update: %d %s",update.Code,update.Body)}
+ saved:=acceptanceNode(t,acceptanceRequest(router,"GET",path,"","",""));if saved.Spec.Description!="updated"{t.Fatalf("update not persisted: %+v",saved)}
+ features.Close();features.Close();if events.GetGlobalEventBus()!=nil{t.Fatal("event bus leaked after shutdown")}
+}
+
+{{if .Reconcile}}
+func TestIndependentReconciliationRuntime(t *testing.T){
+ viper.Reset();config:=DefaultConfig();config.DataDir=t.TempDir()
+ if config.ReconcileWorkers!={{.Workers}}{t.Fatalf("worker default=%d",config.ReconcileWorkers)}
+ gate:=make(chan struct{});reconcilers.AcceptanceGate=gate
+ released:=false;release:=func(){if !released{close(gate);released=true}};defer release()
+ features,err:=loadGeneratedFeatures(context.Background(),config);if err!=nil{t.Fatal(err)};defer func(){release();features.Close()}()
+ bus:=events.GetGlobalEventBus();if bus==nil{t.Fatal("missing event bus")}
+ for i:=0;i<config.ReconcileWorkers+1;i++{
+  n:=&api.Node{Kind:"Node",APIVersion:"v1"};n.Metadata.UID=fmt.Sprintf("node-%08d",i);n.Metadata.Name=n.Metadata.UID;n.Spec.Description="preserved"
+  if err:=storage.SaveNode(context.Background(),n);err!=nil{t.Fatal(err)}
+  if err:=events.PublishResourceEvent(context.Background(),"created","Node",n.GetUID(),n);err!=nil{t.Fatal(err)}
+ }
+ var active []string
+ for i:=0;i<config.ReconcileWorkers;i++{select{case uid:=<-reconcilers.AcceptanceEntered:active=append(active,uid);case <-time.After(5*time.Second):t.Fatalf("only %d workers started",len(active))}}
+ select{case uid:=<-reconcilers.AcceptanceEntered:t.Fatalf("more than configured workers started: %s",uid);case <-time.After(50*time.Millisecond):}
+ closed:=make(chan struct{});go func(){features.Close();close(closed)}()
+ select{case <-closed:t.Fatal("shutdown did not wait for active reconciliations");case <-time.After(50*time.Millisecond):}
+ if events.GetGlobalEventBus()!=bus{t.Fatal("bus closed before controller stopped")}
+ release()
+ select{case <-closed:case <-time.After(5*time.Second):t.Fatal("shutdown did not finish")}
+ if events.GetGlobalEventBus()!=nil{t.Fatal("bus leaked after reconciliation shutdown")}
+ for _,uid:=range active{n,err:=storage.LoadNode(context.Background(),uid);if err!=nil||!n.Status.Ready||n.Status.Message!="acceptance reconciled"||n.Spec.Description!="preserved"{t.Fatalf("reconciliation did not preserve spec and persist status: %+v %v",n,err)}}
+ raw,err:=storage.Backend.Load(context.Background(),"Node",active[0]);if err!=nil{t.Fatal(err)}
+ reconciler:=reconcilers.NewDefaultNodeReconciler(storage.NewStorageClient(),nil)
+ result,err:=reconciler.Reconcile(context.Background(),raw);if err!=nil||result.RequeueAfter!={{.Minutes}}*time.Minute{t.Fatalf("generated periodic result=%+v err=%v",result,err)}
+ config=DefaultConfig();config.DataDir=t.TempDir();config.ReconcileWorkers=0
+ failed,err:=loadGeneratedFeatures(context.Background(),config);if err==nil{failed.Close();t.Fatal("invalid runtime worker count accepted")};failed.Close()
+ if events.GetGlobalEventBus()!=nil{t.Fatal("startup failure leaked event bus")}
+}
+{{end}}

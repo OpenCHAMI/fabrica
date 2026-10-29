@@ -5,17 +5,59 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"reflect"
 
 	v1 "example.com/test/apis/v1"
 )
 
 type CreateNodeRequest struct {
-	Metadata    v1.Metadata       `json:"metadata"`
-	Spec        v1.NodeSpec       `json:"spec"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
+	Metadata        v1.Metadata       `json:"metadata" validate:"required"`
+	Spec            v1.NodeSpec       `json:"spec" validate:"required"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty"`
+	metadataPresent bool
+	specPresent     bool
+	presenceDecoded bool
+}
+
+func (r *CreateNodeRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias CreateNodeRequest
+	var decoded requestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var presence struct {
+		Metadata json.RawMessage `json:"metadata"`
+		Spec     json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(data, &presence); err != nil {
+		return err
+	}
+	*r = CreateNodeRequest(decoded)
+	r.metadataPresent = presence.Metadata != nil && !bytes.Equal(presence.Metadata, []byte("null"))
+	r.specPresent = presence.Spec != nil && !bytes.Equal(presence.Spec, []byte("null"))
+	r.presenceDecoded = true
+	return nil
+}
+
+func (r *CreateNodeRequest) RequiredFieldPresent(name string) (bool, bool) {
+	switch name {
+	case "metadata":
+		if r.presenceDecoded {
+			return r.metadataPresent, true
+		}
+		return !reflect.DeepEqual(r.Metadata, v1.Metadata{}), true
+	case "spec":
+		if r.presenceDecoded {
+			return r.specPresent, true
+		}
+		return !reflect.DeepEqual(r.Spec, v1.NodeSpec{}), true
+	default:
+		return false, false
+	}
 }
 
 func (r CreateNodeRequest) AsSpec() v1.NodeSpec {

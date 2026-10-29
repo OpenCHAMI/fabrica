@@ -271,6 +271,9 @@ Open a new terminal and try the API:
 curl -X POST http://localhost:8080/products \
   -H "Content-Type: application/json" \
   -d '{
+    "metadata": {
+      "name": "laptop-pro"
+    },
     "spec": {
       "name": "laptop-pro",
       "displayName": "MacBook Pro",
