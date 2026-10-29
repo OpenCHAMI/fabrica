@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Public RFC 9727 API discovery at `/.well-known/api-catalog`, with JSON Linkset responses, HEAD discovery, and generated OpenAPI documentation.
   Include the standard service status API so specification discovery works without generated resources.
+- Regenerate-safe startup feature loader for new services: `fabrica generate` owns `cmd/server/features_generated.go`, which holds feature configuration fields, defaults, flags, and storage, eventing, reconciliation, metrics, and authentication startup, while `main.go` stays user-owned.
+  Changing `.fabrica.yaml` and regenerating updates the selected startup features without editing `main.go`. Existing services keep the legacy startup path until migrated.
+  Generation tracks owned outputs in a manifest, rejects modified outputs and selective runs after configuration changes, and recovers interrupted runs.
+  See [Regenerate-safe startup features](docs/guides/feature-loader.md).
 
 ### Changed
 - **Behavior change for all regenerated services:** generated handlers now apply `features.validation` from `.fabrica.yaml` to optional Spec/Status tag checks and `CustomValidator` hooks.
