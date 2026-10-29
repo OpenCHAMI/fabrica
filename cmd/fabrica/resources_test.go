@@ -163,6 +163,15 @@ func TestDiscoverResourceParts_EmptyDirFails(t *testing.T) {
 	}
 }
 
+func TestCreateCommand_HasResourcesAndInitFlags(t *testing.T) {
+	cmd := newCreateCommand()
+	for _, name := range []string{"resources", "module", "group", "storage-type", "db", "auth"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Fatalf("create command missing --%s flag", name)
+		}
+	}
+}
+
 func TestAddCommand_HasResourcesSubcommand(t *testing.T) {
 	cmd := newAddCommand()
 	var found bool
