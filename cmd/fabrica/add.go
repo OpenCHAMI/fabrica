@@ -33,19 +33,69 @@ func newAddCommand() *cobra.Command {
 		Long: `Add new resources or API versions to your Fabrica project.
 
 Subcommands:
-  resource  Add a new resource type
-  version   Add a new API version
+  resource   Add a new resource type
+  resources  Bulk-add resources from a directory of hand-written spec struct files
+  version    Add a new API version
 
 Examples:
   fabrica add resource Device --version v1alpha1
+  fabrica add resources ./structs
   fabrica add version v1beta2
 `,
 	}
 
 	// Add subcommands
 	cmd.AddCommand(newAddResourceCommand())
+	cmd.AddCommand(newAddResourcesCommand())
 	cmd.AddCommand(newAddVersionCommand())
 
+	return cmd
+}
+
+// newAddResourcesCommand creates the 'fabrica add resources <specs-dir>'
+// command, which bulk-adds resources into the current project from a directory
+// of hand-written spec struct files. Each .go file in the directory that
+// declares one exported <Name>Spec struct is added (like 'fabrica add resource
+// <Name>') and its declarations are merged, with comments preserved, into the
+// generated types file. Which resources are added is decided at run time from
+// the files present in the directory.
+func newAddResourcesCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "resources <specs-dir>",
+		Short: "Bulk-add resources from a directory of hand-written spec struct files",
+		Long: `Bulk-add resources to the current project from a directory of spec struct files.
+
+<specs-dir> is the path to a directory of .go files, each declaring one exported
+<Name>Spec struct.
+
+Run this from the project root (the directory containing ` + configpkg.ConfigFileName + `).
+For each .go file in <specs-dir> that declares one exported <Name>Spec struct,
+this runs the equivalent of 'fabrica add resource <Name>' and merges the
+hand-written declarations (preserving comments) into the generated types file.
+
+Example:
+  fabrica add resources ./structs
+`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			resourcesPath := args[0]
+			if !isFabricaProject() {
+				return fmt.Errorf("this doesn't appear to be a fabrica project directory (expected %s in the current directory)", configpkg.ConfigFileName)
+			}
+			abs, err := filepath.Abs(resourcesPath)
+			if err != nil {
+				return fmt.Errorf("failed to resolve resources path: %w", err)
+			}
+			if err := addResourcesFromDir(".", abs); err != nil {
+				return fmt.Errorf("failed to add resources from %s: %w", resourcesPath, err)
+			}
+			fmt.Println("\n✅ Resources added successfully!")
+			fmt.Println("\nNext steps:")
+			fmt.Println("  1. Run 'fabrica generate' to generate code")
+			fmt.Println("  2. Run 'go mod tidy' to update dependencies")
+			return nil
+		},
+	}
 	return cmd
 }
 

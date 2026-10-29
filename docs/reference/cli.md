@@ -160,6 +160,35 @@ my-api/
 
 ---
 
+### fabrica add resources
+
+Bulk-add resources to an **existing** project from a directory of hand-written
+spec struct files, without creating a new project. This is the same merge used
+by [`fabrica create`](#fabrica-create), applied in the current project directory.
+
+`<specs-dir>` is the path to a directory of `.go` files, each declaring one
+exported `<Name>Spec` struct.
+
+Run it from the project root (the directory containing `.fabrica.yaml`). For each
+`.go` file in `<specs-dir>` that declares one exported `<Name>Spec` struct, this
+runs the equivalent of `fabrica add resource <Name>` and merges the hand-written
+declarations (preserving comments) into the generated types file.
+
+**Usage:**
+```bash
+fabrica add resources <specs-dir>
+```
+
+**Example:**
+```bash
+cd my-api
+fabrica add resources ./structs
+fabrica generate
+go mod tidy
+```
+
+---
+
 ### fabrica add resource
 
 Add a new resource type to your project.
