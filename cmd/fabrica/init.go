@@ -89,15 +89,7 @@ type templateData struct {
 // (wizard) modes. Default settings include file storage, strict validation,
 // and a single v1 API version.
 func newInitCommand() *cobra.Command {
-	opts := &initOptions{
-		withStorage:    true,           // Default to enabling storage
-		withVersion:    true,           // Default to enabling version command
-		storageType:    "file",         // Default to file storage
-		dbDriver:       "sqlite",       // Default database
-		validationMode: "strict",       // Default validation mode
-		eventBusType:   "memory",       // Default event bus
-		apiVersions:    []string{"v1"}, // Default hub version
-	}
+	opts := defaultInitOptions()
 
 	cmd := &cobra.Command{
 		Use:   "init [project-name]",
@@ -148,6 +140,29 @@ or by providing the name of an existing directory.`,
 	}
 
 	// Feature flags instead of complex modes
+	registerInitFlags(cmd, opts)
+
+	return cmd
+}
+
+// defaultInitOptions returns the default project initialization options shared
+// by the 'init' and 'create' commands.
+func defaultInitOptions() *initOptions {
+	return &initOptions{
+		withStorage:    true,           // Default to enabling storage
+		withVersion:    true,           // Default to enabling version command
+		storageType:    "file",         // Default to file storage
+		dbDriver:       "sqlite",       // Default database
+		validationMode: "strict",       // Default validation mode
+		eventBusType:   "memory",       // Default event bus
+		apiVersions:    []string{"v1"}, // Default hub version
+	}
+}
+
+// registerInitFlags registers the project initialization flags shared by the
+// 'init' and 'create' commands onto cmd.
+func registerInitFlags(cmd *cobra.Command, opts *initOptions) {
+	// Feature flags instead of complex modes
 	cmd.Flags().BoolVarP(&opts.interactive, "interactive", "i", false, "Interactive wizard mode")
 	cmd.Flags().StringVar(&opts.modulePath, "module", "", "Go module path (e.g., github.com/user/project)")
 	cmd.Flags().StringVar(&opts.description, "description", "", "Project description")
@@ -177,8 +192,6 @@ or by providing the name of an existing directory.`,
 	// Storage options
 	cmd.Flags().StringVar(&opts.storageType, "storage-type", "file", "Storage backend: file, ent, or custom")
 	cmd.Flags().StringVar(&opts.dbDriver, "db", "sqlite", "Database driver for Ent: postgres, mysql, or sqlite")
-
-	return cmd
 }
 
 // runInteractiveInit runs the interactive project initialization wizard.

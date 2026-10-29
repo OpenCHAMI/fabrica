@@ -160,6 +160,52 @@ my-api/
 
 ---
 
+### fabrica create
+
+Initialize a new project and add resources from hand-written spec struct files
+in one step. `create` accepts every flag of `fabrica init`, plus a required
+`--resources <specs-dir>`.
+
+For each `.go` file in `<specs-dir>` that declares exactly one exported
+`<Name>Spec` struct, `create` runs the equivalent of `fabrica add resource
+<Name>` and merges the hand-written declarations (Spec, optional Status, helper
+types, and a custom `Validate` method) into the generated
+`apis/<group>/<version>/<name>_types.go` file. Comments, struct tags, and
+`+fabrica:` annotations are preserved. Which resources are added is decided at
+run time from the files present in the directory.
+
+**Usage:**
+```bash
+fabrica create [project-name] [init flags] --resources <specs-dir>
+```
+
+**Flags:**
+
+All [`fabrica init`](#fabrica-init) flags, plus:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--resources <specs-dir>` | string | - | Directory of hand-written spec struct files (one `<Name>Spec` per file). Required. |
+
+> `create` is non-interactive. For an interactive setup, use `fabrica init -i`
+> then `fabrica add resources <specs-dir>`.
+
+**Example:**
+```bash
+fabrica create inventory-service \
+  --module github.com/openchami/inventory-service \
+  --group inventory-service.openchami.org \
+  --storage-type ent --db sqlite \
+  --resources ./structs
+
+# Then generate code and resolve dependencies:
+cd inventory-service
+fabrica generate
+go mod tidy
+```
+
+---
+
 ### fabrica add resources
 
 Bulk-add resources to an **existing** project from a directory of hand-written
