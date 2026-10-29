@@ -21,8 +21,17 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, backend := range []string{"file", "ent"} {
-		t.Run(backend, func(t *testing.T) {
+	for _, tc := range []struct {
+		name, backend string
+		conditional   bool
+	}{
+		{name: "file", backend: "file"},
+		{name: "ent", backend: "ent"},
+		{name: "file_conditional", backend: "file", conditional: true},
+		{name: "ent_conditional", backend: "ent", conditional: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := tc.backend
 			dir := t.TempDir()
 			writeRevisionFixture(t, dir, root)
 			typesPath := filepath.Join(dir, "apis", "v1", "types.go")
@@ -60,7 +69,7 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 			}
 			gen := NewGenerator(dir, "main", "example.com/revisionfixture")
 			gen.Config.VersioningEnabled = true
-			gen.Config.ConditionalEnabled = false
+			gen.Config.ConditionalEnabled = tc.conditional
 			gen.SetStorageType(backend)
 			gen.DBDriver = "sqlite3"
 			gen.Resources = []ResourceMetadata{{
@@ -79,6 +88,11 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 			}
 			for _, generate := range []func() error{gen.GenerateModels, gen.GenerateHandlers, gen.GenerateRoutes, gen.GenerateOpenAPI, gen.GenerateStorage} {
 				if err := generate(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.conditional {
+				if err := gen.GenerateMiddleware(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -164,6 +178,9 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 			}
 			source := strings.ReplaceAll(uidWorkflowSource, "/*BACKEND_IMPORTS*/", imports)
 			source = strings.ReplaceAll(source, "/*INIT_BACKEND*/", init)
+			if tc.conditional {
+				source = strings.ReplaceAll(source, "conditionalRequestsEnabled := false", "conditionalRequestsEnabled := true")
+			}
 			if err := os.WriteFile(filepath.Join(dir, "revision_workflow_test.go"), []byte(source), 0o644); err != nil {
 				t.Fatal(err)
 			}

@@ -103,8 +103,11 @@ Against a persistent test store, verify the following outcomes:
 - Delete works for resources with labels/annotations. Ent storage deletes the
   metadata and parent resource atomically; a failed deletion retains both.
 
-Regenerate Ent storage code to obtain the transactional metadata cleanup fix.
-It does not depend on a database cascade schema migration.
+Regenerate Ent storage code to obtain the shared atomic mutation backend,
+including transactional metadata cleanup. Both unconditional deletion and
+ETag-guarded deletion must use that backend; do not replace it with a separate
+deletion transaction when integrating migration changes. This requires no
+database cascade schema migration.
 
 ## Rollback and mixed deployments
 
@@ -137,9 +140,12 @@ GOTOOLCHAIN=go1.26.10 go test ./pkg/uid -run '^$' -fuzz '^FuzzParse$' -fuzztime=
 ```
 
 The generated workflow builds actual Go and CLI clients and exercises them
-against file storage and SQLite/Ent with foreign keys enabled. It covers mixed
-stores, reopening, metadata/reference preservation, lifecycle events, physical
-keys/rows, long prefixes, and transactional delete rollback. Separate tests
+against file storage and SQLite/Ent with foreign keys enabled, with conditional
+requests both disabled and enabled. It covers mixed stores, reopening,
+metadata/reference preservation, lifecycle events, physical keys/rows, long
+prefixes, stale conditional deletes, and transactional delete rollback. Rejected
+or failed deletions must retain the resource and its metadata and publish no
+deletion event. Separate tests
 cover JSON/YAML resources and serialized lifecycle/condition events.
 
 This is not evidence of PostgreSQL/MySQL runtime parity, compatibility with

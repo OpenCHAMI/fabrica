@@ -52,9 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
 
 ### Fixed
-- Generated Ent storage deletes a resource's labels and annotations together
-  with the resource in a transaction. This fixes foreign-key failures when
-  deleting resources with metadata and preserves metadata if deletion fails.
+- UID migration verification exercises the shared atomic storage backend with
+  conditional requests disabled and enabled. Deletion rejects stale ETags and
+  retains resource metadata on failure for both legacy and TypeID identities.
 
 ### Documentation
 - Added UID migration, mixed-format deployment, release validation, and rollback

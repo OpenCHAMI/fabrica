@@ -10,12 +10,15 @@ import (
 	v1 "example.com/revisionfixture/apis/v1"
 	"example.com/revisionfixture/internal/storage"
 	"example.com/revisionfixture/pkg/client"
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/openchami/fabrica/pkg/events"
 	"github.com/openchami/fabrica/pkg/resource"
 	"github.com/openchami/fabrica/pkg/uid"
 	"github.com/rs/zerolog"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
@@ -50,6 +53,7 @@ func (b *migrationEventBus) snapshot() []events.Event {
 
 func TestUIDWorkflow(t *testing.T) {
 	/*INIT_BACKEND*/
+	conditionalRequestsEnabled := false
 	ctx := context.Background()
 	previousConfig, previousBus := events.GetEventConfig(), events.GetGlobalEventBus()
 	t.Cleanup(func() { events.SetEventConfig(previousConfig); events.SetGlobalEventBus(previousBus) })
@@ -66,6 +70,49 @@ func TestUIDWorkflow(t *testing.T) {
 	c, err := client.NewClient(server.URL, server.Client(), zerolog.Nop())
 	if err != nil {
 		t.Fatal(err)
+	}
+	currentETag := func(value string) string {
+		t.Helper()
+		response, err := server.Client().Get(server.URL + "/nodes/" + value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, readErr := io.Copy(io.Discard, response.Body)
+		closeErr := response.Body.Close()
+		if readErr != nil || closeErr != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("read current ETag: status=%d read=%v close=%v", response.StatusCode, readErr, closeErr)
+		}
+		etag := response.Header.Get("ETag")
+		if etag == "" {
+			t.Fatal("conditional resource read has no ETag")
+		}
+		return etag
+	}
+	deleteWithETag := func(value, etag string) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/nodes/"+value, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("If-Match", etag)
+		response, err := server.Client().Do(req)
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			return err
+		}
+		if response.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf("delete HTTP %d: %s", response.StatusCode, body)
+		}
+		return nil
+	}
+	deleteNode := func(value string) error {
+		if conditionalRequestsEnabled {
+			return deleteWithETag(value, currentETag(value))
+		}
+		return c.DeleteNode(ctx, value)
 	}
 	legacyUID := "node-ABCDEF12"
 	created, err := c.CreateNode(ctx, client.CreateNodeRequest{
@@ -171,12 +218,29 @@ func TestUIDWorkflow(t *testing.T) {
 			t.Fatalf("reopened reference = %+v, %v", peer, err)
 		}
 	}
+	if conditionalRequestsEnabled {
+		for _, value := range ids {
+			before := want[value]
+			eventCount := len(bus.snapshot())
+			if err := deleteWithETag(value, `"stale"`); err == nil || !strings.Contains(err.Error(), "412") {
+				t.Fatalf("stale delete of %s = %v", value, err)
+			}
+			after, err := c.GetNode(ctx, value)
+			if err != nil || !reflect.DeepEqual(after.Metadata.Labels, before.Metadata.Labels) || !reflect.DeepEqual(after.Metadata.Annotations, before.Metadata.Annotations) || after.Spec != before.Spec || after.Status != before.Status {
+				t.Fatalf("rejected conditional delete stripped resource data: %+v, %v", after, err)
+			}
+			if len(bus.snapshot()) != eventCount {
+				t.Fatal("rejected conditional delete emitted an event")
+			}
+		}
+		verifyKeys(ids)
+	}
 	if supportsDeleteFailure {
 		for _, value := range ids {
 			before := want[value]
 			eventCount := len(bus.snapshot())
 			setDeleteFailure(true)
-			err := c.DeleteNode(ctx, value)
+			err := deleteNode(value)
 			setDeleteFailure(false)
 			if err == nil || !strings.Contains(err.Error(), "forced resource delete failure") {
 				t.Fatalf("injected delete failure = %v", err)
@@ -192,7 +256,7 @@ func TestUIDWorkflow(t *testing.T) {
 		verifyKeys(ids)
 	}
 	for _, value := range ids {
-		if err := c.DeleteNode(ctx, value); err != nil {
+		if err := deleteNode(value); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := c.GetNode(ctx, value); err == nil {
