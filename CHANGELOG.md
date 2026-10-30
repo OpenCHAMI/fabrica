@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `resource.GenerateUIDWithLength` remains an explicit legacy-format helper.
   Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
 
+### Fixed
+- UID migration verification exercises the shared atomic storage backend with
+  conditional requests disabled and enabled. Deletion rejects stale ETags and
+  retains resource metadata on failure for both legacy and TypeID identities.
+
+### Documentation
+- Added UID migration, mixed-format deployment, release validation, and rollback
+  guidance. Older binaries lacking dual parsing are not safe rollback targets
+  after TypeIDs have been stored.
+
 ## [v0.4.9] - 2026-07-20
 
 ### Added
