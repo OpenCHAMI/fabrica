@@ -8,8 +8,9 @@ SPDX-License-Identifier: MIT
 
 `github.com/openchami/fabrica/pkg/uid` is the shared format boundary for the
 UID migration tracked in [issue #85](https://github.com/OpenCHAMI/fabrica/issues/85).
-Adding this package does not change the existing `resource` helpers or
-revision UIDs. Ordinary resources still receive legacy IDs in this stage.
+`resource.ParseUID`, `resource.IsValidUID`, and `resource.GetResourceTypeFromUID`
+use this codec for dual-format reads. Ordinary resources still receive legacy
+IDs in this stage, and prefix registration and revision generation are unchanged.
 
 ```go
 var codec uid.Codec // zero value is ready for concurrent use
@@ -61,6 +62,10 @@ import the TypeID implementation directly.
 Run the focused checks under the repository's selected toolchain:
 
 ```sh
-GOTOOLCHAIN=go1.26.10 go test -race ./pkg/uid -count=1
+GOTOOLCHAIN=go1.26.10 go test -race ./pkg/uid ./pkg/resource -count=1
 GOTOOLCHAIN=go1.26.10 go test ./pkg/uid -run '^$' -fuzz '^FuzzParse$' -fuzztime=10s
+GOTOOLCHAIN=go1.26.10 go test ./pkg/resource -run '^$' -fuzz '^FuzzParseUID$' -fuzztime=10s
 ```
+
+For the registered prefix audit and opt-in generator preflight, see
+[UID prefix compatibility](uid-prefix-compatibility.md).

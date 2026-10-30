@@ -129,7 +129,7 @@ type DeviceStatus struct {
 
 ## UID Generation
 
-Fabrica uses structured UIDs instead of UUIDs for better readability and debugging.
+Fabrica generates prefixed UIDs to make resource identifiers easy to recognize.
 
 ### Format
 
@@ -175,6 +175,10 @@ uid, err := resource.GenerateUIDWithLength("dev", 12)
 
 ### UID Utilities
 
+Parsing and validation accept both legacy `prefix-hex` UIDs and TypeID 0.3.0
+strings. Generation still uses the legacy format. `ParseUID` keeps its current
+signature; its second return value is the original hex or base32 suffix.
+
 ```go
 // Parse UID
 prefix, random, err := resource.ParseUID("dev-1a2b3c4d")
@@ -186,7 +190,24 @@ valid := resource.IsValidUID("dev-1a2b3c4d") // true
 // Get resource type from UID
 kind, err := resource.GetResourceTypeFromUID("dev-1a2b3c4d")
 // Returns: "Device"
+
+prefix, suffix, err := resource.ParseUID("dev_01h455vb4pex5vsknk084sn02q")
+// prefix = "dev", suffix = "01h455vb4pex5vsknk084sn02q"
+
+valid = resource.IsValidUID("dev_01h455vb4pex5vsknk084sn02q") // true
+kind, err = resource.GetResourceTypeFromUID("dev_01h455vb4pex5vsknk084sn02q")
+// Returns: "Device" if "dev" is registered
 ```
+
+Parsing does not require registration, modify identifiers, or emit deprecation
+logs. TypeID parsing accepts spec-valid UUID payloads of any version and bare
+suffixes without a prefix; resource-type lookup still requires a registered
+prefix. Legacy acceptance rules, including uppercase hex and empty parts, are
+preserved. The text of parsing errors may differ from earlier releases.
+
+Use [`uid.Codec.Parse`](../reference/uid-codec.md) for the format and decoded
+UUID. See the [prefix audit](../reference/uid-prefix-compatibility.md) before
+preparing a service for TypeID generation.
 
 ## Metadata
 
