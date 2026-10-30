@@ -69,11 +69,42 @@ writing resource registration output. Empty prefixes are
 rejected even though the TypeID specification permits unprefixed IDs.
 It does not detect registration collisions or inspect custom registrations,
 including the legacy CLI's resource-file registration. This is a Go API
-preflight, not a new CLI flag.
+preflight, not a new CLI flag. Those custom registrations are covered by the
+startup warning below instead.
 
 Tests generate routes and inspect the emitted registrations to prove that
 the preflight checks the same prefixes. A separate test proves that a
 numeric resource name fails server generation without modifying output.
+
+## Startup warning in generated services
+
+The generator preflight only sees prefixes derived from resource names. Generated
+services therefore also audit the live registry at startup: the regenerated
+`registerResourcePrefixes()` in `routes_generated.go` calls
+`warnIncompatibleUIDPrefixes()`, which walks `resource.GetRegisteredPrefixes()`
+and logs one warning per prefix that `uid.ValidatePrefix` rejects. This covers
+prefixes registered by hand in resource files, which the generator cannot see.
+Because the call lives in generated code, regenerating picks it up without
+editing user-owned `cmd/server/main.go`.
+
+The check warns and the service still starts. Legacy prefixes stay registered so
+stored identifiers keep resolving to their kind, and refusing to start would
+remove the read access this migration preserves. Creating a resource of the
+affected kind still fails with HTTP 500 until the prefix is remediated.
+
+```text
+WARNING: resource kind "Node" prefix "node2" cannot generate new TypeID UIDs:
+uid: invalid TypeID prefix: typeid: prefix must contain only [a-z_], found '2'
+in "node2". Reads and kind lookup still work, but creating a Node fails with
+HTTP 500 until the prefix is remediated.
+```
+
+Prefixes registered after `registerResourcePrefixes()` runs are not reported.
+Renaming a prefix changes kind lookup for existing identifiers, so there is no
+in-place remediation today; an affected service needs explicit compatibility
+handling before new TypeID creation can succeed. Tests assert that generated
+routes call the audit and that a service with no resources emits neither the
+helper nor its imports.
 
 ## External service audit remains open
 

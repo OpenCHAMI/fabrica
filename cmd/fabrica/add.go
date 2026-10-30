@@ -468,19 +468,19 @@ func init() {
 // resourceUIDPrefix preserves existing derivation for compatible names while
 // validating before scaffolding writes. Short legacy names use their full name.
 func resourceUIDPrefix(name string, versioned bool) (string, error) {
-	prefix := strings.ToLower(name)
-	if prefix == "" {
-		return "", fmt.Errorf("resource name must not be empty")
-	}
 	// Check the full route-derived prefix as well as any legacy short prefix.
-	if err := uid.ValidatePrefix(prefix); err != nil {
+	prefix, err := uid.ResourcePrefix(name)
+	if err != nil {
+		if prefix == "" {
+			return "", fmt.Errorf("resource name must not be empty")
+		}
 		return "", fmt.Errorf("resource %q cannot generate TypeID UIDs: %w", name, err)
 	}
 	if !versioned && len(prefix) > 3 {
 		prefix = prefix[:3]
-	}
-	if err := uid.ValidatePrefix(prefix); err != nil {
-		return "", fmt.Errorf("resource %q produces incompatible UID prefix %q: %w", name, prefix, err)
+		if err := uid.ValidatePrefix(prefix); err != nil {
+			return "", fmt.Errorf("resource %q produces incompatible UID prefix %q: %w", name, prefix, err)
+		}
 	}
 	return prefix, nil
 }

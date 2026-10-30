@@ -147,7 +147,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 
 	uid, err := resource.GenerateUIDForResource("{{.Name}}")
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate UID: %w", err))
+		respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to generate {{.Name}} UID: %w", err))
 		return
 	}
 

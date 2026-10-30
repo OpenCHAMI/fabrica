@@ -13,6 +13,9 @@ import (
 )
 
 func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping generated UID workflow integration test in short mode")
+	}
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)

@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   incompatible derived prefixes before writing output. Audit external services
   and custom registrations before upgrading; no prefixes are silently renamed.
 - Revision UID generation uses the shared codec and retains its `rev_` format.
+- Regenerated services audit the registered UID prefixes at startup and log a
+  warning for each prefix that cannot generate new TypeID UIDs, including
+  prefixes registered by hand in resource files. The service still starts and
+  legacy reads and kind lookup are unaffected; creating a resource of the
+  affected kind fails with HTTP 500 until the prefix is remediated.
+  See [UID prefix compatibility](docs/reference/uid-prefix-compatibility.md#startup-warning-in-generated-services).
 
 ### Deprecated
 - `resource.GenerateUIDWithLength` remains an explicit legacy-format helper.

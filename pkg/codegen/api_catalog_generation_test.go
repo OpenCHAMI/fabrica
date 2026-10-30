@@ -73,7 +73,7 @@ func TestGeneratedAPICatalog(t *testing.T) {
 				if d, ok := decl.(*ast.GenDecl); ok && d.Tok == token.IMPORT {
 					continue
 				}
-				if fn, ok := decl.(*ast.FuncDecl); ok && (fn.Name.Name == "RegisterGeneratedRoutes" || fn.Name.Name == "registerResourcePrefixes") {
+				if fn, ok := decl.(*ast.FuncDecl); ok && (fn.Name.Name == "RegisterGeneratedRoutes" || fn.Name.Name == "registerResourcePrefixes" || fn.Name.Name == "warnIncompatibleUIDPrefixes") {
 					continue
 				}
 				if err := format.Node(&source, fset, decl); err != nil {

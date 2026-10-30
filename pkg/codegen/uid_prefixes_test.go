@@ -71,3 +71,63 @@ func TestTypeIDPrefixPreflightRejectsGeneration(t *testing.T) {
 		t.Fatalf("failed preflight wrote output: %v, %v", entries, err)
 	}
 }
+
+func TestGeneratedRoutesWarnAboutIncompatiblePrefixes(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/uidtest")
+	gen.Resources = []ResourceMetadata{{Name: "Node", URLPath: "/nodes"}}
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gen.GenerateRoutes(); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(filepath.Join(gen.OutputDir, "routes_generated.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The startup check must audit the whole registry, not just the prefixes
+	// this file registers, so that hand-written registrations are covered too.
+	for _, want := range []string{
+		`"github.com/openchami/fabrica/pkg/uid"`,
+		"func warnIncompatibleUIDPrefixes() {",
+		"resource.GetRegisteredPrefixes()",
+		"uid.ValidatePrefix(prefix)",
+		"sort.Strings(kinds)",
+	} {
+		if !strings.Contains(string(generated), want) {
+			t.Errorf("generated routes missing %q", want)
+		}
+	}
+	register := strings.Index(string(generated), "func registerResourcePrefixes() error {")
+	call := strings.Index(string(generated), "\twarnIncompatibleUIDPrefixes()")
+	if register < 0 || call < register {
+		t.Fatalf("warning is not reached from startup registration: %d, %d", register, call)
+	}
+}
+
+func TestGeneratedRoutesOmitUIDValidationWithoutResources(t *testing.T) {
+	gen := NewGenerator(t.TempDir(), "main", "example.com/uidtest")
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gen.GenerateRoutes(); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(filepath.Join(gen.OutputDir, "routes_generated.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// format.Source parses without type-checking, so an import left behind for a
+	// resourceless service would only fail later, when the service is built.
+	for _, unwanted := range []string{
+		`"github.com/openchami/fabrica/pkg/uid"`,
+		`"github.com/openchami/fabrica/pkg/resource"`,
+		`"sort"`,
+		`"log"`,
+		"warnIncompatibleUIDPrefixes",
+	} {
+		if strings.Contains(string(generated), unwanted) {
+			t.Errorf("resourceless routes contain %q", unwanted)
+		}
+	}
+}
