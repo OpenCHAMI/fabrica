@@ -1019,7 +1019,7 @@ func Patch{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 	status, etag, err := mutate{{.Name}}SeriesStatus(r, name, func(current *{{.StatusType}}) error {
 		currentJSON, err := json.Marshal(current)
 		if err != nil { return err }
-		patched, err := patch.ApplyPatchWithOptions(currentJSON, patchData, patch.DetectPatchType(r.Header.Get("Content-Type")), patch.PatchOptions{AllowAddFields: true, AllowRemoveFields: false})
+		patched, err := patch.ApplyPatchWithOptions(currentJSON, patchData, patch.DetectPatchType(r.Header.Get("Content-Type")), patch.PatchOptions{AllowAddFields: true, AllowRemoveFields: true})
 		if err != nil { return &{{.Name}}MutationError{status: http.StatusUnprocessableEntity, err: fmt.Errorf("patch status: %w", err)} }
 		var next {{.StatusType}}
 		if err := json.Unmarshal(patched.Updated, &next); err != nil {
