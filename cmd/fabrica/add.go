@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	configpkg "github.com/openchami/fabrica/internal/config"
+	"github.com/openchami/fabrica/pkg/uid"
 	"github.com/spf13/cobra"
 )
 
@@ -91,6 +92,9 @@ func isFabricaProject() bool {
 }
 
 func runAddResource(resourceName string, opts *addOptions) error {
+	if _, err := resourceUIDPrefix(resourceName, true); err != nil {
+		return err
+	}
 	// Check if we're in a fabrica project directory
 	if !isFabricaProject() {
 		fmt.Println("⚠️  Warning: This doesn't appear to be a fabrica project directory.")
@@ -201,6 +205,10 @@ func runAddResource(resourceName string, opts *addOptions) error {
 }
 
 func generateResourceFile(filePath, resourceName string, isVersioned bool, opts *addOptions, modulePath, hubVersion, groupName string) error {
+	prefix, err := resourceUIDPrefix(resourceName, isVersioned)
+	if err != nil {
+		return err
+	}
 	if len(resourceName) > 0 {
 		r := []rune(resourceName)
 		r[0] = unicode.ToUpper(r[0])
@@ -438,7 +446,7 @@ func (r *` + resourceName + `) GetUID() string {
 
 func init() {
 	// Register resource type prefix for storage
-	resource.RegisterResourcePrefix("` + resourceName + `", "` + strings.ToLower(resourceName)[:3] + `")
+	resource.RegisterResourcePrefix("` + resourceName + `", "` + prefix + `")
 }
 `
 	}
@@ -455,4 +463,24 @@ func init() {
 	}
 
 	return os.WriteFile(filePath, formatted, 0644)
+}
+
+// resourceUIDPrefix preserves existing derivation for compatible names while
+// validating before scaffolding writes. Short legacy names use their full name.
+func resourceUIDPrefix(name string, versioned bool) (string, error) {
+	// Check the full route-derived prefix as well as any legacy short prefix.
+	prefix, err := uid.ResourcePrefix(name)
+	if err != nil {
+		if prefix == "" {
+			return "", fmt.Errorf("resource name must not be empty")
+		}
+		return "", fmt.Errorf("resource %q cannot generate TypeID UIDs: %w", name, err)
+	}
+	if !versioned && len(prefix) > 3 {
+		prefix = prefix[:3]
+		if err := uid.ValidatePrefix(prefix); err != nil {
+			return "", fmt.Errorf("resource %q produces incompatible UID prefix %q: %w", name, prefix, err)
+		}
+	}
+	return prefix, nil
 }

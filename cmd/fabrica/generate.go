@@ -205,6 +205,16 @@ Examples:
 				}
 			}
 
+			// Client-only generation does not assign UIDs. Validate derived
+			// server prefixes before any generated-file mutations.
+			if all || handlers || storage || openapi {
+				for _, name := range resources {
+					if _, err := resourceUIDPrefix(toPascal(name), true); err != nil {
+						return err
+					}
+				}
+			}
+
 			// Auto-generate registration file
 			fmt.Println()
 			fmt.Println("📝 Registration file not found, creating it...")
@@ -729,6 +739,9 @@ func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, 
 			generationCalls.WriteString("\t\tlog.Fatal(\"feature-loader services require a Fabrica generator with GenerateFeatures support; update the module or use --fabrica-source\")\n")
 			generationCalls.WriteString("\t}\n")
 		}
+		generationCalls.WriteString("\tif err := callOptionalGenerator(gen, \"ValidateTypeIDPrefixes\"); err != nil {\n")
+		generationCalls.WriteString("\t\tlog.Fatalf(\"Invalid TypeID resource prefixes: %v\", err)\n")
+		generationCalls.WriteString("\t}\n")
 		if debug {
 			generationCalls.WriteString("\tfmt.Println(\"  Loading templates...\")\n")
 		}

@@ -29,6 +29,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Previously these bodies decoded to zero values and failed only on optional checks. Revision creation and ensure require only `spec`; explicitly empty objects (`{}`) remain valid.
   Generated Fabrica clients always send both fields; raw HTTP clients that omit either must now send an empty object.
   See [Upgrading existing services](docs/guides/validation.md#upgrading-existing-services).
+- New resource UIDs use TypeID/UUIDv7 (`prefix_` plus 26 lowercase base32
+  characters), replacing the short random hexadecimal default. Rebuilding
+  against the upgraded runtime changes new IDs immediately. Existing stored
+  identifiers are never rewritten, and legacy parsing and lookup remain
+  supported. Account for up to 90 characters in custom validators and storage.
+- New resource UID generation requires TypeID-compatible nonempty prefixes.
+  Legacy alphanumeric registrations remain readable, but numeric and overlong
+  prefixes cannot create new IDs. Scaffolding and server generation reject
+  incompatible derived prefixes before writing output. Audit external services
+  and custom registrations before upgrading; no prefixes are silently renamed.
+- Revision UID generation uses the shared codec and retains its `rev_` format.
+- Regenerated services audit the registered UID prefixes at startup and log a
+  warning for each prefix that cannot generate new TypeID UIDs, including
+  prefixes registered by hand in resource files. The service still starts and
+  legacy reads and kind lookup are unaffected; creating a resource of the
+  affected kind fails with HTTP 500 until the prefix is remediated.
+  See [UID prefix compatibility](docs/reference/uid-prefix-compatibility.md#startup-warning-in-generated-services).
+
+### Deprecated
+- `resource.GenerateUIDWithLength` remains an explicit legacy-format helper.
+  Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
 
 ## [v0.4.9] - 2026-07-20
 

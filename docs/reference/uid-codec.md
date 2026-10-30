@@ -9,8 +9,11 @@ SPDX-License-Identifier: MIT
 `github.com/openchami/fabrica/pkg/uid` is the shared format boundary for the
 UID migration tracked in [issue #85](https://github.com/OpenCHAMI/fabrica/issues/85).
 `resource.ParseUID`, `resource.IsValidUID`, and `resource.GetResourceTypeFromUID`
-use this codec for dual-format reads. Ordinary resources still receive legacy
-IDs in this stage, and prefix registration and revision generation are unchanged.
+use this codec for dual-format reads. Ordinary resources now receive TypeID/UUIDv7
+IDs by default, and revision generation uses this codec with the `rev` prefix.
+Resource generation requires a nonempty compatible prefix. Legacy-only
+registrations remain available for read and kind lookup; new generation under
+those prefixes returns an error.
 
 ```go
 var codec uid.Codec // zero value is ready for concurrent use
@@ -23,7 +26,7 @@ parsed, err := codec.Parse(value)
 Generation produces TypeID specification 0.3.0 strings with RFC 9562 UUIDv7
 payloads. `ValidatePrefix` checks the specification's rules: up to 63 ASCII
 lowercase letters or underscores, with no leading or trailing underscore.
-The specification permits an empty prefix; resource registration can impose
+The specification permits an empty prefix; resource registration imposes
 an additional nonempty requirement. Internal and consecutive underscores are
 allowed. Digits, uppercase letters, and non-ASCII letters are rejected.
 
@@ -67,5 +70,5 @@ GOTOOLCHAIN=go1.26.10 go test ./pkg/uid -run '^$' -fuzz '^FuzzParse$' -fuzztime=
 GOTOOLCHAIN=go1.26.10 go test ./pkg/resource -run '^$' -fuzz '^FuzzParseUID$' -fuzztime=10s
 ```
 
-For the registered prefix audit and opt-in generator preflight, see
+For the registered prefix audit and enforced generator preflight, see
 [UID prefix compatibility](uid-prefix-compatibility.md).

@@ -36,12 +36,15 @@ package main
 
 import (
 	"encoding/json"
-	"net/http"
-	"strings"
+{{if .Resources}}	"log"
+{{end}}	"net/http"
+{{if .Resources}}	"sort"
+{{end}}	"strings"
 
 	"github.com/go-chi/chi/v5"
-{{if .Resources}}	"github.com/openchami/fabrica/pkg/resource"{{end}}
-)
+{{if .Resources}}	"github.com/openchami/fabrica/pkg/resource"
+	"github.com/openchami/fabrica/pkg/uid"
+{{end}})
 
 // RegisterGeneratedPublicRoutes registers standardized service routes that must
 // remain outside authentication and authorization middleware.
@@ -144,8 +147,37 @@ func registerResourcePrefixes() error {
 {{range .Resources}}
 	resource.RegisterResourcePrefix("{{.Name}}", "{{toLower .Name}}")
 {{end}}
+{{if .Resources}}	warnIncompatibleUIDPrefixes()
+{{end}}
 	return nil
 }
+{{if .Resources}}
+// warnIncompatibleUIDPrefixes reports every registered prefix that cannot
+// generate new TypeID UIDs, including prefixes registered by hand in resource
+// files rather than by this file. Those registrations stay in place so stored
+// legacy identifiers keep resolving to their kind, so this warns rather than
+// failing startup: reads and kind lookup still work, and only creation for the
+// named kind fails. Prefixes registered after this call are not reported.
+func warnIncompatibleUIDPrefixes() {
+	registered := resource.GetRegisteredPrefixes()
+	kinds := make([]string, 0, len(registered))
+	for kind := range registered {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	for _, kind := range kinds {
+		prefix := registered[kind]
+		err := uid.ValidatePrefix(prefix)
+		if err == nil {
+			continue
+		}
+		log.Printf("WARNING: resource kind %q prefix %q cannot generate new TypeID UIDs: %v. "+
+			"Reads and kind lookup still work, but creating a %s fails with HTTP 500 until the prefix is remediated. "+
+			"See https://github.com/OpenCHAMI/fabrica/blob/main/docs/reference/uid-prefix-compatibility.md",
+			kind, prefix, err, kind)
+	}
+}
+{{end}}
 
 // RegisterGeneratedRoutes registers all generated resource routes.
 // The router passed to this function should already have middleware applied in main.go.

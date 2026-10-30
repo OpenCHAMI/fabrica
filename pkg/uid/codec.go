@@ -63,6 +63,21 @@ func ValidatePrefix(prefix string) error {
 	return nil
 }
 
+// ResourcePrefix derives the UID prefix for a resource name and checks it
+// against TypeID 0.3.0 rules. The derived prefix is the lowercase name.
+//
+// Unlike ValidatePrefix, the empty prefix is rejected: a resource needs a
+// nonempty prefix to generate UIDs. On failure the derived prefix is returned
+// alongside the error so callers can name it in their own diagnostics; that
+// value is empty only when the name itself is empty.
+func ResourcePrefix(name string) (string, error) {
+	prefix := strings.ToLower(name)
+	if prefix == "" {
+		return "", errors.New("uid: resource UID prefix must not be empty")
+	}
+	return prefix, ValidatePrefix(prefix)
+}
+
 // Generate returns a TypeID containing a UUIDv7 with the RFC 9562 variant.
 // Prefix validation runs before the generator is invoked.
 func (c Codec) Generate(prefix string) (string, error) {

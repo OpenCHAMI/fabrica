@@ -460,10 +460,12 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 		Post: createOp,
 	}
 
+	uidSchema := openapi3.NewStringSchema()
+	uidSchema.Example = "{{toLower .Name}}_01h455vb4pex5vsknk084sn02q"
 	uidParam := openapi3.NewPathParameter("uid").
-		WithDescription("Unique identifier of the {{.Name}} resource").
+		WithDescription("Immutable {{.Name}} UID. New resources use TypeID/UUIDv7; existing legacy prefix-hex UIDs remain accepted.").
 		WithRequired(true).
-		WithSchema(openapi3.NewStringSchema())
+		WithSchema(uidSchema)
 
 	itemPath := &openapi3.PathItem{
 		Get:        getOp,

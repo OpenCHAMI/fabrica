@@ -299,8 +299,7 @@ func (r *Resource) LastUpdated() time.Duration {
 
 // UID Generation Helpers
 //
-// Generation uses <prefix>-<random-hex-digits>. Parsing also accepts TypeID
-// specification 0.3.0 identifiers in preparation for the default migration.
+// Generation uses TypeID/UUIDv7. Parsing also accepts legacy prefix-hex IDs.
 //
 // Resource prefixes are registered using RegisterResourcePrefix() which should be
 // called during package initialization (typically in init() functions).
@@ -314,6 +313,8 @@ var resourcePrefixesMutex sync.RWMutex
 // This function should be called during package initialization, typically in
 // init() functions. It's thread-safe and will panic if the same resource kind
 // or prefix is registered twice to catch configuration errors early.
+// Legacy-only prefixes remain registered for reads; GenerateUIDForResource
+// rejects them for new IDs. TypeID-compatible prefixes permit internal underscores.
 //
 // Parameters:
 //   - resourceKind: The Kind field of the resource (e.g., "Device", "Asset", "Sensor")
@@ -323,7 +324,7 @@ var resourcePrefixesMutex sync.RWMutex
 //   - If resourceKind is already registered
 //   - If prefix is already used by another resource kind
 //   - If resourceKind or prefix is empty
-//   - If prefix contains invalid characters (only lowercase letters and numbers allowed)
+//   - If prefix is neither TypeID-compatible nor a legacy lowercase alphanumeric prefix
 //
 // Example:
 //
@@ -340,11 +341,13 @@ func RegisterResourcePrefix(resourceKind, prefix string) {
 		panic("prefix cannot be empty")
 	}
 
-	// Validate prefix format - only lowercase letters and numbers
-	// nolint:all // Allow simple loop for clarity
-	for _, r := range prefix {
-		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
-			panic(fmt.Sprintf("prefix '%s' contains invalid characters - only lowercase letters and numbers allowed", prefix))
+	// Preserve legacy alphanumeric registrations for reads and kind lookup.
+	// Generation independently requires a TypeID-compatible prefix.
+	if err := uidcodec.ValidatePrefix(prefix); err != nil {
+		for _, r := range prefix {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+				panic(fmt.Sprintf("prefix %q must be TypeID-compatible or a legacy lowercase alphanumeric prefix", prefix))
+			}
 		}
 	}
 
@@ -430,31 +433,24 @@ func IsPrefixRegistered(prefix string) bool {
 	return false
 }
 
-// GenerateUID creates a structured UID with the specified prefix.
-//
-// The UID format is: <prefix>-<8-random-hex-digits>
-// This provides 32 bits of entropy (4 billion possible values per prefix),
-// which should be sufficient for most inventory systems.
-//
-// Parameters:
-//   - prefix: The prefix to use (e.g., "dev", "ast", "sen")
-//
-// Returns:
-//   - A structured UID string (e.g., "dev-1a2b3c4d")
-//   - An error if random generation fails
-//
-// Example:
-//
-//	uid, err := GenerateUID("dev")
-//	if err != nil {
-//	    return err
-//	}
-//	// uid might be "dev-1a2b3c4d"
+// GenerateUID creates a TypeID with a nonempty prefix and UUIDv7 payload.
+// Prefixes contain at most 63 lowercase ASCII letters or internal underscores.
+// Existing legacy identifiers are never rewritten by this function.
 func GenerateUID(prefix string) (string, error) {
-	return GenerateUIDWithLength(prefix, 8)
+	if prefix == "" {
+		return "", fmt.Errorf("resource UID prefix must not be empty")
+	}
+	value, err := (uidcodec.Codec{}).Generate(prefix)
+	if err != nil {
+		return "", fmt.Errorf("generate resource UID for prefix %q: %w", prefix, err)
+	}
+	return value, nil
 }
 
-// GenerateUIDWithLength creates a structured UID with the specified prefix and hex length.
+// GenerateUIDWithLength creates a legacy UID with the specified prefix and hex length.
+//
+// Deprecated: Use GenerateUID for TypeID/UUIDv7 identifiers. This explicit legacy
+// helper remains available for compatibility and migration tooling.
 //
 // This allows for variable entropy levels. Each hex character provides 4 bits
 // of entropy, so 8 characters = 32 bits, 12 characters = 48 bits, etc.
@@ -502,7 +498,7 @@ func GenerateUIDWithLength(prefix string, hexLength int) (string, error) {
 // Example:
 //
 //	uid, err := GenerateUIDForResource("Device")
-//	// uid might be "dev-1a2b3c4d"
+//	// uid might be "dev_01h455vb4pex5vsknk084sn02q"
 func GenerateUIDForResource(resourceKind string) (string, error) {
 	resourcePrefixesMutex.RLock()
 	prefix, exists := resourcePrefixes[resourceKind]
