@@ -601,6 +601,12 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	patchStatusOp.OperationID = "patch{{.Name}}SeriesStatus"
 	patchStatusOp.Description = "Patches mutable status shared by the named revision series"
 	patchStatusOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series status patched").WithJSONSchemaRef(componentSchemaRef(spec, "{{.Name}}Status"))})
+	{{if $.Config.ConditionalEnabled}}
+	for _, operation := range []*openapi3.Operation{updateStatusOp, patchStatusOp} {
+		operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: openapi3.NewHeaderParameter("If-Match").WithSchema(openapi3.NewStringSchema())})
+		operation.Responses.Set("412", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series ETag precondition failed").WithJSONSchemaRef(componentSchemaRef(spec, "RevisionPreconditionResponse"))})
+	}
+	{{end}}
 	spec.Paths.Set({{printf "%q" (printf "%s/{name}/status" .URLPath)}}, &openapi3.PathItem{Put: updateStatusOp, Patch: patchStatusOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
 	{{else}}
 	spec.Paths.Set({{printf "%q" .URLPath}}, collectionPath)

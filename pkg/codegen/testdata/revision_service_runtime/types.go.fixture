@@ -1,0 +1,40 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package v1
+
+import "github.com/openchami/fabrica/pkg/resource"
+
+type BootConfigSpec struct {
+	Kernel string `json:"kernel" validate:"required"`
+}
+
+type BootConfigStatus struct {
+	Phase   string            `json:"phase,omitempty"`
+	Details map[string]string `json:"details,omitempty"`
+}
+
+type BootConfig struct {
+	APIVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   resource.Metadata `json:"metadata"`
+	Spec       BootConfigSpec    `json:"spec"`
+	Status     BootConfigStatus  `json:"status,omitempty"`
+}
+
+type NodeSpec struct {
+	Value string `json:"value"`
+}
+
+type NodeStatus struct {
+	Phase string `json:"phase,omitempty"`
+}
+
+type Node struct {
+	APIVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   resource.Metadata `json:"metadata"`
+	Spec       NodeSpec          `json:"spec"`
+	Status     NodeStatus        `json:"status,omitempty"`
+}

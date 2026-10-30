@@ -991,26 +991,15 @@ func Promote{{.Name}}Default(w http.ResponseWriter, r *http.Request) {
 
 func Update{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	{{if .ConditionalEnabled}}
-	_, currentETag, err := storage.Get{{.Name}}Series(r.Context(), name)
-	if err != nil {
-		respond{{.Name}}RevisionError(w, err)
-		return
-	}
-	if r.Header.Get("If-Match") != "" && !conditionalmiddleware.CheckIfMatch(w, r, currentETag) {
-		return
-	}
-	{{end}}
 	var status {{.StatusType}}
 	if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("invalid status body: %w", err))
 		return
 	}
-	if err := validation.ValidateWithContextMode(r.Context(), &status, validation.Mode("{{.ValidationMode}}")); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
-	etag, err := storage.Update{{.Name}}SeriesStatus(r.Context(), name, status)
+	status, etag, err := mutate{{.Name}}SeriesStatus(r, name, func(current *{{.StatusType}}) error {
+		*current = status
+		return nil
+	})
 	if err != nil {
 		respond{{.Name}}RevisionError(w, err)
 		return
@@ -1022,36 +1011,23 @@ func Update{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 
 func Patch{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	current, err := storage.Get{{.Name}}SeriesStatus(r.Context(), name)
-	if err != nil {
-		respond{{.Name}}RevisionError(w, err)
-		return
-	}
 	patchData, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("read status patch: %w", err))
 		return
 	}
-	currentJSON, err := json.Marshal(current)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Errorf("marshal status: %w", err))
-		return
-	}
-	patched, err := patch.ApplyPatchWithOptions(currentJSON, patchData, patch.DetectPatchType(r.Header.Get("Content-Type")), patch.PatchOptions{AllowAddFields: true, AllowRemoveFields: false})
-	if err != nil {
-		respondError(w, http.StatusUnprocessableEntity, fmt.Errorf("patch status: %w", err))
-		return
-	}
-	var status {{.StatusType}}
-	if err := json.Unmarshal(patched.Updated, &status); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("decode patched status: %w", err))
-		return
-	}
-	if err := validation.ValidateWithContextMode(r.Context(), &status, validation.Mode("{{.ValidationMode}}")); err != nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
-		return
-	}
-	etag, err := storage.Update{{.Name}}SeriesStatus(r.Context(), name, status)
+	status, etag, err := mutate{{.Name}}SeriesStatus(r, name, func(current *{{.StatusType}}) error {
+		currentJSON, err := json.Marshal(current)
+		if err != nil { return err }
+		patched, err := patch.ApplyPatchWithOptions(currentJSON, patchData, patch.DetectPatchType(r.Header.Get("Content-Type")), patch.PatchOptions{AllowAddFields: true, AllowRemoveFields: false})
+		if err != nil { return &{{.Name}}MutationError{status: http.StatusUnprocessableEntity, err: fmt.Errorf("patch status: %w", err)} }
+		var next {{.StatusType}}
+		if err := json.Unmarshal(patched.Updated, &next); err != nil {
+			return &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("decode patched status: %w", err)}
+		}
+		*current = next
+		return nil
+	})
 	if err != nil {
 		respond{{.Name}}RevisionError(w, err)
 		return
@@ -1061,7 +1037,29 @@ func Patch{{.Name}}SeriesStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, status)
 }
 
+// Keep validation outside storage locks; storage retries against fresh series
+// state and rechecks the request's precondition before any candidate can commit.
+func mutate{{.Name}}SeriesStatus(r *http.Request, name string, apply func(*{{.StatusType}}) error) ({{.StatusType}}, string, error) {
+	return storage.Mutate{{.Name}}SeriesStatus(r.Context(), name, func(status *{{.StatusType}}, currentETag string) error {
+		{{if .ConditionalEnabled}}
+		if ifMatch := r.Header.Get("If-Match"); ifMatch != "" && !conditionalmiddleware.MatchesIfMatch(ifMatch, currentETag) {
+			return &revision.PreconditionError{CurrentETag: currentETag}
+		}
+		{{end}}
+		if err := apply(status); err != nil { return err }
+		if err := validation.ValidateWithContextMode(r.Context(), status, validation.Mode("{{.ValidationMode}}")); err != nil {
+			return &{{.Name}}MutationError{status: http.StatusBadRequest, err: fmt.Errorf("validation failed: %w", err)}
+		}
+		return nil
+	})
+}
+
 func respond{{.Name}}RevisionError(w http.ResponseWriter, err error) {
+	var mutationErr *{{.Name}}MutationError
+	if errors.As(err, &mutationErr) {
+		respondError(w, mutationErr.status, mutationErr.err)
+		return
+	}
 	var conflict *revision.ConflictError
 	if errors.As(err, &conflict) {
 		respondJSON(w, http.StatusConflict, RevisionConflictResponse{

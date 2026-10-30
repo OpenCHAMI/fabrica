@@ -1,0 +1,209 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+
+	v1 "example.com/revisionservice/apis/v1"
+	"example.com/revisionservice/internal/storage"
+	"example.com/revisionservice/pkg/client"
+	"github.com/go-chi/chi/v5"
+	"github.com/openchami/fabrica/pkg/fabrica"
+)
+
+var registerPrefixesOnce sync.Once
+
+func initializeTestPrefixes(t *testing.T) {
+	t.Helper()
+	registerPrefixesOnce.Do(func() {
+		if err := registerResourcePrefixes(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestRevisionClientSurface(t *testing.T) {
+	methods := reflect.TypeOf((*client.Client)(nil))
+	for _, name := range []string{"GetBootConfigs", "GetBootConfig", "CreateBootConfig", "CreateBootConfigSimple", "UpdateBootConfig", "UpdateBootConfigSimple", "PatchBootConfig", "DeleteBootConfig", "UpdateBootConfigStatus", "PatchBootConfigStatus", "PatchBootConfigStatusWithType", "ListBootConfigVersions", "GetBootConfigVersion", "DeleteBootConfigVersion"} {
+		if _, ok := methods.MethodByName(name); ok {
+			t.Errorf("revision client exposes unsupported mutable method %s", name)
+		}
+	}
+	for _, name := range []string{"CreateBootConfigSeries", "CreateBootConfigRevision", "EnsureBootConfigRevision", "GetBootConfigSeries", "ListBootConfigRevisions", "GetBootConfigRevision", "ResolveBootConfigRevision", "PromoteBootConfigDefault", "RetireBootConfigRevision", "UpdateBootConfigSeriesStatus", "PatchBootConfigSeriesStatus"} {
+		if _, ok := methods.MethodByName(name); !ok {
+			t.Errorf("revision client missing method %s", name)
+		}
+	}
+}
+
+func TestRevisionClientWorkflow(t *testing.T) {
+	spec := GenerateOpenAPISpec()
+	if err := spec.Validate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range spec.Paths.Value("/boot-configs/{name}/status").Operations() {
+		found := false
+		for _, parameter := range operation.Parameters {
+			if parameter.Value.Name == "If-Match" && parameter.Value.In == "header" && !parameter.Value.Required {
+				found = true
+			}
+		}
+		if !found || operation.Responses.Value("412") == nil {
+			t.Fatal("series status OpenAPI omits optional precondition contract")
+		}
+	}
+	if err := storage.InitFileBackend(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	initializeTestPrefixes(t)
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	c, err := client.NewClient(server.URL, server.Client(), client.DefaultLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	req := client.CreateBootConfigRequest{Metadata: fabrica.Metadata{Name: "compute"}, Spec: v1.BootConfigSpec{Kernel: "kernel-a"}}
+	a, err := c.CreateBootConfigSeries(ctx, req, "release-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Spec.Kernel = "kernel-b"
+	b, err := c.EnsureBootConfigRevision(ctx, "compute", "release-b", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := c.EnsureBootConfigRevision(ctx, "compute", "release-b", req)
+	if err != nil || retry.Metadata.UID != b.Metadata.UID {
+		t.Fatalf("ensure retry = %v, %v", retry, err)
+	}
+	resolved, err := c.ResolveBootConfigRevision(ctx, client.ResourceReference{Name: "compute"})
+	if err != nil || resolved.Revision.UID != a.Metadata.UID {
+		t.Fatalf("bare name changed default: %v, %v", resolved, err)
+	}
+	_, etag, err := c.GetBootConfigSeries(ctx, "compute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PromoteBootConfigDefault(ctx, "compute", b.Metadata.UID, etag); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PromoteBootConfigDefault(ctx, "compute", a.Metadata.UID, etag); err == nil {
+		t.Fatal("stale promotion succeeded")
+	}
+	resolved, err = c.ResolveBootConfigRevision(ctx, client.ResourceReference{Name: "compute"})
+	if err != nil || resolved.Revision.UID != b.Metadata.UID {
+		t.Fatalf("promoted resolution = %v, %v", resolved, err)
+	}
+	record, err := c.GetBootConfigRevision(ctx, "compute", resolved.Revision.UID)
+	if err != nil || record.Resource.Spec.Kernel != "kernel-b" {
+		t.Fatalf("revision payload = %v, %v", record, err)
+	}
+	req.Spec.Kernel = "kernel-c"
+	unnamed, err := c.CreateBootConfigRevision(ctx, "compute", req)
+	if err != nil || unnamed.Metadata.RevisionName != "" || unnamed.Resource.Spec.Kernel != "kernel-c" {
+		t.Fatalf("unnamed revision = %v, %v", unnamed, err)
+	}
+	_, etag, err = c.GetBootConfigSeries(ctx, "compute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := c.UpdateBootConfigSeriesStatus(ctx, "compute", v1.BootConfigStatus{Phase: "Ready"}, etag)
+	if err != nil || status.Phase != "Ready" {
+		t.Fatalf("series status PUT = %v, %v", status, err)
+	}
+	if _, err := c.UpdateBootConfigSeriesStatus(ctx, "compute", v1.BootConfigStatus{Phase: "Stale"}, `"stale"`); err == nil {
+		t.Fatal("stale status PUT succeeded")
+	}
+	_, etag, err = c.GetBootConfigSeries(ctx, "compute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err = c.PatchBootConfigSeriesStatus(ctx, "compute", []byte(`[{"op":"replace","path":"/phase","value":"Pending"}]`), "application/json-patch+json", etag)
+	if err != nil || status.Phase != "Pending" {
+		t.Fatalf("series status PATCH = %v, %v", status, err)
+	}
+	if _, err := c.PatchBootConfigSeriesStatus(ctx, "compute", []byte(`{"phase":"Stale"}`), "application/merge-patch+json", `"stale"`); err == nil {
+		t.Fatal("stale status PATCH succeeded")
+	}
+	_, etag, err = c.GetBootConfigSeries(ctx, "compute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PromoteBootConfigDefault(ctx, "compute", a.Metadata.UID, etag); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = c.ResolveBootConfigRevision(ctx, client.ResourceReference{Name: "compute"})
+	if err != nil || resolved.Revision.UID != a.Metadata.UID {
+		t.Fatalf("rollback = %v, %v", resolved, err)
+	}
+	retired, err := c.RetireBootConfigRevision(ctx, "compute", b.Metadata.UID)
+	if err != nil || retired.Metadata.RetiredAt == nil {
+		t.Fatalf("retirement = %v, %v", retired, err)
+	}
+	records, err := c.ListBootConfigRevisions(ctx, "compute")
+	if err != nil || len(records) != 3 {
+		t.Fatalf("status updates or ensure retries created revisions: %v, %v", records, err)
+	}
+}
+
+func TestRevisionStatusPatchRemovesFields(t *testing.T) {
+	if err := storage.InitFileBackend(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	initializeTestPrefixes(t)
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	c, err := client.NewClient(server.URL, server.Client(), client.DefaultLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	for _, tc := range []struct {
+		name, contentType, patch string
+		want                     v1.BootConfigStatus
+	}{
+		{"merge scalar", "application/merge-patch+json", `{"phase":null}`, v1.BootConfigStatus{Details: map[string]string{"keep": "kept", "remove": "gone"}}},
+		{"json scalar", "application/json-patch+json", `[{"op":"remove","path":"/phase"}]`, v1.BootConfigStatus{Details: map[string]string{"keep": "kept", "remove": "gone"}}},
+		{"merge map entry", "application/merge-patch+json", `{"details":{"remove":null}}`, v1.BootConfigStatus{Phase: "Ready", Details: map[string]string{"keep": "kept"}}},
+		{"json map entry", "application/json-patch+json", `[{"op":"remove","path":"/details/remove"}]`, v1.BootConfigStatus{Phase: "Ready", Details: map[string]string{"keep": "kept"}}},
+		{"merge map", "application/merge-patch+json", `{"details":null}`, v1.BootConfigStatus{Phase: "Ready"}},
+		{"json map", "application/json-patch+json", `[{"op":"remove","path":"/details"}]`, v1.BootConfigStatus{Phase: "Ready"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use one series per case so no case relies on another patch's result.
+			name := strings.ReplaceAll(tc.name, " ", "-")
+			if _, err := c.CreateBootConfigSeries(ctx, client.CreateBootConfigRequest{Metadata: fabrica.Metadata{Name: name}, Spec: v1.BootConfigSpec{Kernel: "kernel-a"}}, "initial"); err != nil {
+				t.Fatal(err)
+			}
+			initial := v1.BootConfigStatus{Phase: "Ready", Details: map[string]string{"keep": "kept", "remove": "gone"}}
+			if _, err := c.UpdateBootConfigSeriesStatus(ctx, name, initial, ""); err != nil {
+				t.Fatal(err)
+			}
+			_, etag, err := c.GetBootConfigSeries(ctx, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := c.PatchBootConfigSeriesStatus(ctx, name, []byte(tc.patch), tc.contentType, etag)
+			if err != nil || got == nil || !reflect.DeepEqual(*got, tc.want) {
+				t.Fatalf("PATCH status = %#v, %v; want %#v", got, err, tc.want)
+			}
+			stored, err := storage.GetBootConfigSeriesStatus(ctx, name)
+			if err != nil || !reflect.DeepEqual(stored, tc.want) {
+				t.Fatalf("persisted status = %#v, %v; want %#v", stored, err, tc.want)
+			}
+		})
+	}
+}
