@@ -445,35 +445,63 @@ func Get{{.Name}}SeriesStatus(ctx context.Context, name string) ({{.StatusType}}
 }
 
 func Update{{.Name}}SeriesStatus(ctx context.Context, name string, status {{.StatusType}}) (string, error) {
-	if err := ensureBackendReady(); err != nil {
-		return "", err
-	}
-	encoded, err := json.Marshal(status)
-	if err != nil {
-		return "", fmt.Errorf("encode {{.Name}} series status: %w", err)
-	}
-	series, err := entClient.RevisionSeries.Query().Where(revisionseries.ResourceKindEQ("{{.Name}}"), revisionseries.NameEQ(name)).Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return "", revision.ErrSeriesNotFound
+	_, etag, err := Mutate{{.Name}}SeriesStatus(ctx, name, func(current *{{.StatusType}}, _ string) error {
+		*current = status
+		return nil
+	})
+	return etag, err
+}
+
+// Mutate{{.Name}}SeriesStatus validates outside database locks and guards the
+// write with every field used by the series ETag, including the status bytes.
+func Mutate{{.Name}}SeriesStatus(ctx context.Context, name string, mutate func(*{{.StatusType}}, string) error) ({{.StatusType}}, string, error) {
+	var status {{.StatusType}}
+	if err := ensureBackendReady(); err != nil { return status, "", err }
+	for range 8 {
+		if err := ctx.Err(); err != nil { return status, "", err }
+		series, err := committedRevisionSeries(ctx, "{{.Name}}", name)
+		if err != nil {
+			if ent.IsNotFound(err) { return status, "", revision.ErrSeriesNotFound }
+			return status, "", err
 		}
-		return "", err
+		status = {{.StatusType}}{}
+		if len(series.ResourceStatus) != 0 {
+			if err := json.Unmarshal(series.ResourceStatus, &status); err != nil { return status, "", err }
+		}
+		if err := mutate(&status, entRevisionETag(series)); err != nil { return status, "", err }
+		encoded, err := json.Marshal(status)
+		if err != nil { return status, "", err }
+		etag, err := commit{{.Name}}SeriesStatus(ctx, series, encoded)
+		if isRetryableRevisionMutation(err) { continue }
+		if err != nil { return status, "", err }
+		return status, etag, nil
 	}
-	now := time.Now().UTC()
-	updated, err := entClient.RevisionSeries.Update().Where(
-		revisionseries.IDEQ(series.ID), revisionseries.RevisionCountEQ(series.RevisionCount), revisionseries.UpdatedAtEQ(series.UpdatedAt),
-	).SetResourceStatus(encoded).SetUpdatedAt(now).Save(ctx)
-	if err != nil {
-		return "", err
+	return status, "", fmt.Errorf("{{.Name}} series kept changing during status validation: %w", revision.ErrPreconditionFailed)
+}
+
+func commit{{.Name}}SeriesStatus(ctx context.Context, series *ent.RevisionSeries, encoded []byte) (string, error) {
+	tx, err := entClient.Tx(ctx)
+	if err != nil { return "", err }
+	defer tx.Rollback()
+	update := tx.RevisionSeries.Update().Where(
+		revisionseries.IDEQ(series.ID), revisionseries.RevisionCountEQ(series.RevisionCount),
+		revisionseries.DefaultRevisionUIDEQ(series.DefaultRevisionUID), revisionseries.LatestRevisionUIDEQ(series.LatestRevisionUID),
+		revisionseries.UpdatedAtEQ(series.UpdatedAt),
+	).SetResourceStatus(encoded).SetUpdatedAt(time.Now().UTC())
+	if series.ResourceStatus == nil {
+		update.Where(revisionseries.ResourceStatusIsNil())
+	} else {
+		update.Where(revisionseries.ResourceStatusEQ(series.ResourceStatus))
 	}
-	if updated != 1 {
-		return "", errRevisionConcurrentMutation
-	}
-	series, err = committedRevisionSeries(ctx, "{{.Name}}", name)
-	if err != nil {
-		return "", fmt.Errorf("reload committed {{.Name}} revision series: %w", err)
-	}
-	return entRevisionETag(series), nil
+	updated, err := update.Save(ctx)
+	if err != nil { return "", err }
+	if updated != 1 { return "", errRevisionConcurrentMutation }
+	// Reload before commit so a later writer cannot make the response ETag
+	// describe a different status; persisted timestamp precision is authoritative.
+	current, err := tx.RevisionSeries.Get(ctx, series.ID)
+	if err != nil { return "", err }
+	if err := tx.Commit(); err != nil { return "", err }
+	return entRevisionETag(current), nil
 }
 
 func Retire{{.Name}}Revision(ctx context.Context, name, revisionUID string) (revision.Record[{{.TypeName}}], error) {

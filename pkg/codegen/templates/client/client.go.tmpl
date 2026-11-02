@@ -52,8 +52,9 @@
 {{/* Determine if any resource has versioning enabled to gate time import */}}
 {{$hasVersioning := false}}
 {{$hasRevisioning := false}}
-{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}{{/* set flag */}}
-{{$hasVersioning = true}}{{end}}{{end}}{{if .RevisioningEnabled}}{{$hasRevisioning = true}}{{end}}{{end}}
+{{$hasMutable := false}}
+{{range .Resources}}{{if not .RevisioningEnabled}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}{{/* set flag */}}
+{{$hasVersioning = true}}{{end}}{{end}}{{$hasMutable = true}}{{end}}{{if .RevisioningEnabled}}{{$hasRevisioning = true}}{{end}}{{end}}
 
 package {{.PackageName}}
 
@@ -70,7 +71,7 @@ import (
 	"strings"
 {{if $hasVersioning}}	"time"{{end}}
 
-	"github.com/openchami/fabrica/pkg/fabrica"
+{{if $hasMutable}}	"github.com/openchami/fabrica/pkg/fabrica"{{end}}
 {{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -368,6 +369,10 @@ func (c *Client) doRequestWithResponse(ctx context.Context, method, endpoint str
 
 // doPatchRequest performs a PATCH request with custom content type
 func (c *Client) doPatchRequest(ctx context.Context, endpoint string, patchData []byte, contentType string, result interface{}) error {
+	return c.doPatchRequestWithHeaders(ctx, endpoint, patchData, contentType, nil, result)
+}
+
+func (c *Client) doPatchRequestWithHeaders(ctx context.Context, endpoint string, patchData []byte, contentType string, headers http.Header, result interface{}) error {
 	u := *c.baseURL
 	u.Path = path.Join(u.Path, endpoint)
 
@@ -378,6 +383,11 @@ func (c *Client) doPatchRequest(ctx context.Context, endpoint string, patchData 
 
 	// Set patch-specific Content-Type
 	req.Header.Set("Content-Type", contentType)
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
 
 	// Set Accept header with optional version
 	acceptType := "application/json"
@@ -434,7 +444,7 @@ type Promote{{.Name}}DefaultRequest struct {
 	RevisionUID string `json:"revisionUid" yaml:"revisionUid"`
 }
 {{end}}
-{{- if .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
+{{- if and (not .RevisioningEnabled) .Tags}}{{- if eq (index .Tags "versioning") "enabled"}}
 // {{.Name}}VersionSnapshot is a versioned snapshot of {{.Name}} in the client
 type {{.Name}}VersionSnapshot struct {
 	VersionID   string                 `json:"versionId" yaml:"versionId"`
@@ -447,6 +457,7 @@ type {{.Name}}VersionSnapshot struct {
 }
 {{- end}}{{- end}}
 
+{{if not .RevisioningEnabled}}
 // Get{{.Name}}s retrieves all {{.PluralName}}
 func (c *Client) Get{{.Name}}s(ctx context.Context) ([]{{.PackageAlias}}.{{.Name}}, error) {
 	var response []{{.PackageAlias}}.{{.Name}}
@@ -616,6 +627,7 @@ func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
 	return nil
 }
 
+{{end}}
 {{if .RevisioningEnabled}}
 func (c *Client) Get{{.Name}}Series(ctx context.Context, name string) (*RevisionSeriesStatus, string, error) {
 	var result RevisionSeriesStatus
@@ -634,6 +646,41 @@ func (c *Client) Create{{.Name}}Series(ctx context.Context, req Create{{.Name}}R
 		endpoint += "?revisionName=" + url.QueryEscape(revisionName)
 	}
 	if err := c.doRequest(ctx, http.MethodPost, endpoint, req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Create{{.Name}}Revision creates an unnamed immutable revision in an existing series.
+// Use Ensure{{.Name}}Revision when retries must return the same revision.
+func (c *Client) Create{{.Name}}Revision(ctx context.Context, name string, req Create{{.Name}}Request) (*{{.Name}}Revision, error) {
+	var result {{.Name}}Revision
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions" .URLPath)}}, url.PathEscape(name))
+	if err := c.doRequest(ctx, http.MethodPost, endpoint, req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Update{{.Name}}SeriesStatus updates mutable series status without creating a revision.
+func (c *Client) Update{{.Name}}SeriesStatus(ctx context.Context, name string, status {{.StatusType}}, ifMatch string) (*{{.StatusType}}, error) {
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, url.PathEscape(name))
+	headers := make(http.Header)
+	if ifMatch != "" { headers.Set("If-Match", ifMatch) }
+	var result {{.StatusType}}
+	if err := c.doRequestWithHeaders(ctx, http.MethodPut, endpoint, status, headers, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Patch{{.Name}}SeriesStatus patches mutable series status using the requested patch format.
+func (c *Client) Patch{{.Name}}SeriesStatus(ctx context.Context, name string, patchData []byte, contentType, ifMatch string) (*{{.StatusType}}, error) {
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, url.PathEscape(name))
+	headers := make(http.Header)
+	if ifMatch != "" { headers.Set("If-Match", ifMatch) }
+	var result {{.StatusType}}
+	if err := c.doPatchRequestWithHeaders(ctx, endpoint, patchData, contentType, headers, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -702,7 +749,7 @@ func (c *Client) Promote{{.Name}}Default(ctx context.Context, name, revisionUID,
 
 {{end}}
 
-{{range .Resources}}{{if .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
+{{range .Resources}}{{if and (not .RevisioningEnabled) .Tags}}{{if eq (index .Tags "versioning") "enabled"}}
 // List{{.Name}}Versions lists version snapshots for a resource
 func (c *Client) List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionSnapshot, error) {
 	var result []{{.Name}}VersionSnapshot

@@ -181,6 +181,33 @@ func TestGenerateRevisionCLIAndAuthorizationClasses(t *testing.T) {
 	}
 }
 
+func TestRevisionClientDoesNotExposeMutableSnapshots(t *testing.T) {
+	t.Parallel()
+	gen := revisionTestGenerator(t.TempDir())
+	// Even a pre-existing snapshot annotation must not expose routes that are
+	// replaced by revisioning. The ordinary resource keeps its snapshot methods.
+	for i := range gen.Resources {
+		gen.Resources[i].Tags = map[string]string{"versioning": "enabled"}
+	}
+	if err := gen.LoadTemplates(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"client", "clientCmd"} {
+		var rendered bytes.Buffer
+		if err := gen.Templates[name].Execute(&rendered, gen.globalTemplateData("test")); err != nil {
+			t.Fatal(err)
+		}
+		for _, unsupported := range []string{"BootConfigVersionSnapshot", "ListBootConfigVersions", "GetBootConfigVersion", "DeleteBootConfigVersion", "bootconfigVersionsCmd"} {
+			if strings.Contains(rendered.String(), unsupported) {
+				t.Errorf("%s exposes %s", name, unsupported)
+			}
+		}
+		if !strings.Contains(rendered.String(), "ListNodeVersions") {
+			t.Errorf("%s lost ordinary snapshots", name)
+		}
+	}
+}
+
 func TestGenerateRevisionImportExportFailsClosed(t *testing.T) {
 	t.Parallel()
 

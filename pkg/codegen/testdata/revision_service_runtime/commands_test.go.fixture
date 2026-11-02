@@ -1,0 +1,79 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/spf13/viper"
+)
+
+func TestRevisionCommandSurface(t *testing.T) {
+	for _, command := range bootconfigCmd.Commands() {
+		if command.Name() != "revisions" {
+			t.Errorf("revision resource exposes unsupported command %s", command.Name())
+		}
+	}
+	for _, path := range [][]string{
+		{"bootconfig", "revisions", "series", "create"},
+		{"bootconfig", "revisions", "create"},
+		{"bootconfig", "revisions", "ensure"},
+		{"bootconfig", "revisions", "promote-default"},
+	} {
+		command, remaining, err := rootCmd.Find(path)
+		if err != nil || len(remaining) != 0 || command.Name() != path[len(path)-1] {
+			t.Errorf("command %v: found %v, remaining %v, error %v", path, command, remaining, err)
+		}
+	}
+}
+
+func TestRevisionCreateCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		args         []string
+		path         string
+		revisionName string
+	}{
+		{name: "series", args: []string{"bootconfig", "revisions", "series", "create", "--revision-name", "release-a"}, path: "/boot-configs", revisionName: "release-a"},
+		{name: "unnamed revision", args: []string{"bootconfig", "revisions", "create", "compute"}, path: "/boot-configs/compute/revisions"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if r.Method != http.MethodPost || r.URL.Path != tc.path || r.URL.Query().Get("revisionName") != tc.revisionName {
+					t.Errorf("request = %s %s", r.Method, r.URL)
+				}
+				var req struct {
+					Metadata struct{ Name string }
+					Spec     struct{ Kernel string }
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Metadata.Name != "compute" || req.Spec.Kernel != "kernel-a" {
+					t.Errorf("request body = %v, %v", req, err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"metadata":{"uid":"rev_test"},"resource":{"spec":{"kernel":"kernel-a"}}}`))
+			}))
+			t.Cleanup(server.Close)
+			viper.Set("server", server.URL)
+			t.Cleanup(func() { viper.Set("server", nil) })
+			rootCmd.SetIn(strings.NewReader(`{"metadata":{"name":"compute"},"spec":{"kernel":"kernel-a"}}`))
+			t.Cleanup(func() { rootCmd.SetIn(nil) })
+			rootCmd.SetArgs(tc.args)
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if requests.Load() != 1 {
+				t.Fatalf("requests = %d, want 1", requests.Load())
+			}
+		})
+	}
+}

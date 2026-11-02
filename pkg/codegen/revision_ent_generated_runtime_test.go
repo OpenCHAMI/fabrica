@@ -196,6 +196,46 @@ func TestEntRevisionParity(t *testing.T) {
 	conflictCreated, conflictRejected := 0, 0
 	for got := range conflicts { if got.err == nil && got.created { conflictCreated++ } else if errors.Is(got.err, revision.ErrRevisionNameConflict) { conflictRejected++ } else { t.Fatalf("different-content race = created %t err %v", got.created, got.err) } }
 	if conflictCreated != 1 || conflictRejected != 1 { t.Fatalf("different-content race created=%d conflicted=%d", conflictCreated, conflictRejected) }
+
+	_, statusETag, err := CreateNodeSeries(ctx, "status-race", "initial", node("content"))
+	if err != nil { t.Fatal(err) }
+	statusReady := make(chan struct{}, 2)
+	statusRelease := make(chan struct{})
+	statusResults := make(chan error, 2)
+	for _, phase := range []string{"Ready", "Pending"} {
+		go func(phase string) {
+			_, _, err := MutateNodeSeriesStatus(ctx, "status-race", func(status *v1.NodeStatus, etag string) error {
+				if etag != statusETag { return &revision.PreconditionError{CurrentETag: etag} }
+				// Callbacks run outside DB transactions and may resolve references.
+				if _, err := GetNodeSeriesStatus(ctx, "status-race"); err != nil { return err }
+				statusReady <- struct{}{}
+				<-statusRelease
+				status.Phase = phase
+				return nil
+			})
+			statusResults <- err
+		}(phase)
+	}
+	for range 2 { <-statusReady }
+	close(statusRelease)
+	statusSucceeded, statusRejected := 0, 0
+	for range 2 {
+		err := <-statusResults
+		if err == nil { statusSucceeded++ } else if errors.Is(err, revision.ErrPreconditionFailed) { statusRejected++ } else { t.Fatalf("status mutation = %v", err) }
+	}
+	if statusSucceeded != 1 || statusRejected != 1 { t.Fatalf("same-ETag status mutations succeeded=%d rejected=%d", statusSucceeded, statusRejected) }
+	statusAttempts := 0
+	_, _, err = MutateNodeSeriesStatus(ctx, "status-race", func(status *v1.NodeStatus, _ string) error {
+		statusAttempts++
+		if statusAttempts == 1 {
+			if _, err := UpdateNodeSeriesStatus(ctx, "status-race", v1.NodeStatus{Phase:"concurrent"}); err != nil { return err }
+			return nil
+		}
+		if status.Phase != "concurrent" { return errors.New("status callback did not revalidate fresh state") }
+		status.Phase = "revalidated"
+		return nil
+	})
+	if err != nil || statusAttempts != 2 { t.Fatalf("status retries=%d err=%v", statusAttempts, err) }
 }
 `,
 	}

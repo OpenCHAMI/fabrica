@@ -54,6 +54,10 @@ Creating a series creates revision 1 and initializes both pointers. Creating ano
 
 Revision content includes API identity, user-managed metadata, and spec. Status, timestamps, and server-managed UIDs are excluded from the canonical digest. Status is mutable series-level state and does not create a new revision.
 
+Revisioning replaces the resource's ordinary collection and UID-based CRUD routes. The generated Go client and CLI expose series/revision operations for that kind, rather than mutable create/update/patch/delete or snapshot operations. Ordinary resources in the same service retain their existing CRUD and snapshot operations. Before enabling revisioning in an existing service, update application code that lists or mutates that resource; regeneration does not migrate existing resource data.
+
+Named revision series do not make `metadata.name` unique for ordinary mutable resource kinds. Deterministic mutable-name lookup or apply requires a separate contract; it is not supplied by enabling revisions on a different kind.
+
 ## HTTP operations
 
 For a revision-enabled `BootConfig` at `/boot-configs`, generated routes are:
@@ -85,6 +89,16 @@ Resolve accepts one of these query forms:
 
 The first form is exactly equivalent to `selector=default`. Supplying more than one of `uid`, `revisionName`, or `selector` is invalid.
 
+Create a series before ensuring revisions within it. A duplicate series create returns `409`; verify that series and ensure the intended named revision rather than treating all conflicts as a successful apply. Resolve returns revision metadata; fetch the revision by its resolved UID to obtain the resource payload.
+
+### Series status concurrency
+
+When conditional requests are enabled, both status PUT and PATCH honor an optional `If-Match` series ETag and return `412` for a stale precondition. A missing header preserves unconditional status updates. The storage layer commits against the complete series state used to build and validate the candidate, including revision pointers and current status. After contention, it rebuilds and revalidates the candidate against fresh state with bounded retries. PATCH therefore applies to the current status rather than overwriting an intervening update from a stale snapshot.
+
+Status PUT and PATCH use the configured validation mode (`strict`, `warn`, or `disabled`) for every candidate, including retries. PATCH decodes the complete patched document into a fresh status value: JSON Merge Patch `null` and JSON Patch `remove` clear fields or map entries rather than retaining their previous values.
+
+Validation runs outside file locks and database transactions so validators can perform read-only reference lookups. Mutation callbacks may run more than once and must avoid externally visible side effects. Lifecycle events are emitted only after a successful commit. Status mutations do not create revisions or change the default/latest pointers.
+
 ## Promote default safely
 
 Read the series to obtain its `ETag`, then promote a revision:
@@ -102,12 +116,18 @@ Missing or stale `If-Match` returns `412 Precondition Failed` and leaves `defaul
 
 ## Generated clients and CLI
 
-The Go client generates `CreateBootConfigSeries`, `EnsureBootConfigRevision`, `ListBootConfigRevisions`, `GetBootConfigRevision`, `RetireBootConfigRevision`, `ResolveBootConfigRevision`, and `PromoteBootConfigDefault`. Promotion requires the current series ETag.
+The Go client generates `CreateBootConfigSeries`, `CreateBootConfigRevision`, `EnsureBootConfigRevision`, `ListBootConfigRevisions`, `GetBootConfigRevision`, `RetireBootConfigRevision`, `ResolveBootConfigRevision`, and `PromoteBootConfigDefault`. Promotion requires the current series ETag. `UpdateBootConfigSeriesStatus` and `PatchBootConfigSeriesStatus` return the typed series status, not a resource envelope; pass an optional series ETag as their final argument. PATCH also accepts the patch content type.
+
+`CreateBootConfigRevision` creates an unnamed revision on every successful request. Use `EnsureBootConfigRevision` with a deterministic revision name for retryable declarative workflows.
 
 The generated CLI groups revision operations under the resource:
 
 ```bash
+# The initial request includes metadata.name and spec.
+cat initial-boot-config.json | client bootconfig revisions series create --revision-name release-a
 cat boot-config.json | client bootconfig revisions ensure production release-a
+# Imperative operation: retries can create another unnamed revision.
+cat boot-config.json | client bootconfig revisions create production
 client bootconfig revisions series production
 client bootconfig revisions list production
 client bootconfig revisions retire production rev_01...
@@ -116,6 +136,8 @@ client bootconfig revisions promote-default production rev_01... --if-match '"sh
 ```
 
 `revisions series` prints the series status and current ETag. `revisions get` accepts a series name and revision UID. For `promote-default`, `--if-match` may be supplied explicitly; when omitted, the CLI first reads the series state and uses its returned ETag for the promotion request. A concurrent mutation between those calls still produces `412 Precondition Failed` rather than overwriting the newer state.
+
+To adopt the corrected client/CLI and atomic status behavior in an existing service, regenerate handlers, storage, client and CLI together with a matching Fabrica runtime dependency, then rebuild and test the service. This change requires no additional Ent schema fields and does not enable revisioning for previously mutable resource kinds.
 
 Generated OpenAPI, authorization tuples, and lifecycle events use the same revision routes. Promotion has a distinct `promote-default` authorization action; it is not classified as an ordinary update. Events distinguish `series-created`, `revision-created`, and `alias-promoted`, including the series, revision UID, alias, previous UID, and new UID where applicable.
 

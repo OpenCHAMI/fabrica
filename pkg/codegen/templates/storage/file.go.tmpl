@@ -215,6 +215,20 @@ func Update{{.Name}}SeriesStatus(ctx context.Context, name string, status {{.Sta
 	}
 	return {{camelCase .Name}}RevisionStore.UpdateStatus(ctx, name, status)
 }
+
+func Mutate{{.Name}}SeriesStatus(ctx context.Context, name string, mutate func(*{{.StatusType}}, string) error) ({{.StatusType}}, string, error) {
+	var status {{.StatusType}}
+	if err := ensure{{.Name}}RevisionStore(); err != nil { return status, "", err }
+	etag, err := {{camelCase .Name}}RevisionStore.MutateStatus(ctx, name, func(raw json.RawMessage, currentETag string) (json.RawMessage, error) {
+		status = {{.StatusType}}{}
+		if len(raw) != 0 {
+			if err := json.Unmarshal(raw, &status); err != nil { return nil, err }
+		}
+		if err := mutate(&status, currentETag); err != nil { return nil, err }
+		return json.Marshal(status)
+	})
+	return status, etag, err
+}
 {{end}}{{end}}
 
 {{range .Resources}}

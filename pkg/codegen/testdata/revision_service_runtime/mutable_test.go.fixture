@@ -1,0 +1,83 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	v1 "example.com/revisionservice/apis/v1"
+	"example.com/revisionservice/internal/storage"
+	"example.com/revisionservice/pkg/client"
+	"github.com/go-chi/chi/v5"
+)
+
+func TestMutableResourceAlongsideRevisions(t *testing.T) {
+	if err := storage.InitFileBackend(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	initializeTestPrefixes(t)
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	c, err := client.NewClient(server.URL, server.Client(), client.DefaultLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	node, err := c.CreateNodeSimple(ctx, "ordinary", v1.NodeSpec{Value: "initial"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := c.UpdateNodeSimple(ctx, node.Metadata.UID, v1.NodeSpec{Value: "updated"})
+	if err != nil || updated.Spec.Value != "updated" {
+		t.Fatalf("ordinary update = %v, %v", updated, err)
+	}
+	listed, err := c.GetNodes(ctx)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("ordinary list = %v, %v", listed, err)
+	}
+
+	// Exercise #133 in the mixed service: two mutations using one ETag must
+	// never both commit, even though immutable revision routes are also present.
+	path := "/nodes/" + node.Metadata.UID
+	read := httptest.NewRecorder()
+	router.ServeHTTP(read, httptest.NewRequest(http.MethodGet, path, nil))
+	etag := read.Header().Get("ETag")
+	if read.Code != http.StatusOK || etag == "" {
+		t.Fatalf("read = %d, ETag %q", read.Code, etag)
+	}
+	start := make(chan struct{})
+	results := make(chan int, 2)
+	for _, value := range []string{"first", "second"} {
+		go func(value string) {
+			<-start
+			req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(`{"spec":{"value":"`+value+`"}}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("If-Match", etag)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, req)
+			results <- response.Code
+		}(value)
+	}
+	close(start)
+	codes := map[int]int{}
+	for range 2 {
+		codes[<-results]++
+	}
+	if codes[http.StatusOK] != 1 || codes[http.StatusPreconditionFailed] != 1 {
+		t.Fatalf("concurrent same-ETag responses = %v", codes)
+	}
+	if err := c.DeleteNode(ctx, node.Metadata.UID); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = c.GetNodes(ctx)
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("ordinary delete/list = %v, %v", listed, err)
+	}
+}
