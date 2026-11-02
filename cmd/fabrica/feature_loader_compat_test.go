@@ -5,6 +5,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,8 +46,18 @@ import "github.com/openchami/fabrica/pkg/codegen"
 func RegisterAllResources(*codegen.Generator) error {return nil}
 `)
 	write("cmd/server/main.go", "package main\ntype Config struct{}\n")
-	write(".fabrica.yaml", "features:\n  storage:\n    type: file\n")
-	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, "file", false))
+	// The runner must use its snapshot even if YAML changes after preflight.
+	write(".fabrica.yaml", "invalid: [yaml")
+	selection := runnerTestConfig("file")
+	selection.Features.AuthEnabled = true
+	selection.Features.ValidationMode = "warn"
+	selection.Features.ConditionalEnabled = true
+	selection.Features.EventsEnabled = true
+	selection.Features.EventBusType = "memory"
+	selection.Features.MetricsEnabled = true
+	selection.OpenAPIServerURL = "https://example.test/api"
+	selection.OpenAPIServerDescription = "quoted \"description\"\nline two"
+	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, selection, false))
 	run := func() ([]byte, error) {
 		cmd := exec.Command("go", "run", "-mod=mod", "runner.go")
 		cmd.Dir = root
@@ -56,6 +67,21 @@ func RegisterAllResources(*codegen.Generator) error {return nil}
 	if err != nil {
 		t.Fatalf("legacy generator runner: %v\n%s", err, out)
 	}
+	var applied struct {
+		ValidationMode, OpenAPIServerURL, OpenAPIServerDescription                        string
+		WithAuth, SecurityAuthNEnabled, ConditionalEnabled, EventsEnabled, MetricsEnabled bool
+	}
+	data, err := os.ReadFile(filepath.Join(root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied.ValidationMode != "warn" || !applied.WithAuth || !applied.SecurityAuthNEnabled || !applied.ConditionalEnabled || !applied.EventsEnabled || !applied.MetricsEnabled || applied.OpenAPIServerURL != selection.OpenAPIServerURL || applied.OpenAPIServerDescription != selection.OpenAPIServerDescription {
+		t.Fatalf("legacy generator did not apply resolved settings: %#v", applied)
+	}
+
 	for _, name := range []string{"middleware.called", "metrics.called"} {
 		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
 			t.Fatal(err)
@@ -69,7 +95,7 @@ func RegisterAllResources(*codegen.Generator) error {return nil}
 	if err != nil || !adopted {
 		t.Fatalf("split adopted scaffold not detected: %v, %v", adopted, err)
 	}
-	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, "file", adopted))
+	write("runner.go", generateRunnerCode(root, "example.com/legacy", "cmd/server", "main", true, false, false, false, false, runnerTestConfig("file"), adopted))
 	if err := os.Remove(filepath.Join(root, "handlers.called")); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +109,7 @@ func RegisterAllResources(*codegen.Generator) error {return nil}
 }
 
 const legacyGeneratorFixture = `package codegen
-import "os"
+import ("os"; "encoding/json")
 type Config struct {
  ValidationEnabled,ConditionalEnabled,EventsEnabled,MetricsEnabled,VersioningEnabled bool
  ValidationMode,ETagAlgorithm,EventBusType,OpenAPIServerURL,OpenAPIServerDescription,StorageType,DBDriver string
@@ -98,7 +124,11 @@ func NewGenerator(output,pkg,module string)*Generator{return &Generator{OutputDi
 func(g *Generator)SetStorageType(s string){g.StorageType=s}
 func(g *Generator)SetDBDriver(s string){g.DBDriver=s}
 func(g *Generator)LoadTemplates()error{return nil}
-func(g *Generator)GenerateHandlers()error{return os.WriteFile("handlers.called",nil,0644)}
+func(g *Generator)GenerateHandlers()error{
+ data,err:=json.Marshal(g.Config);if err!=nil{return err}
+ if err:=os.WriteFile("config.json",data,0644);err!=nil{return err}
+ return os.WriteFile("handlers.called",nil,0644)
+}
 func(g *Generator)GenerateMiddleware()error{return os.WriteFile("middleware.called",nil,0644)}
 func(g *Generator)GenerateMetrics()error{return os.WriteFile("metrics.called",nil,0644)}
 func(g *Generator)GenerateServerVersion()error{return nil}

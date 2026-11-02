@@ -51,7 +51,7 @@ func TestResourceUIDPrefixScaffolding(t *testing.T) {
 }
 
 func TestRunnerValidatesPrefixesBeforeEmittingServerFiles(t *testing.T) {
-	runner := generateRunnerCode("/tmp/project", "example.com/demo", "cmd/server", "main", true, true, true, false, false, "file", false)
+	runner := generateRunnerCode("/tmp/project", "example.com/demo", "cmd/server", "main", true, true, true, false, false, runnerTestConfig("file"), false)
 	preflight := strings.Index(runner, `if err := callOptionalGenerator(gen, "ValidateTypeIDPrefixes");`)
 	if preflight < 0 {
 		t.Fatal("runner has no prefix preflight")

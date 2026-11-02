@@ -49,6 +49,20 @@ fabrica generate --openapi      # OpenAPI spec plus request/response models
 make dev                        # Clean, init, generate, and build
 ```
 
+## Configuration resolution
+
+`fabrica generate` reads and validates `.fabrica.yaml` before changing generated
+outputs. It resolves feature defaults once and embeds that normalized selection,
+along with the OpenAPI server URL and description, into each temporary runner.
+The server, client, and reconciler runners use the same selection as the feature
+manifest preflight; they do not parse the YAML again or silently ignore errors.
+
+An explicit storage type takes precedence over the legacy Ent inference from
+`cmd/server/main.go`. When inference is needed, preflight and runners use the same
+result. Older generator modules without `SetFeatures` still receive the resolved
+settings through their legacy configuration; feature-loader services continue to
+require a generator that supports the loader.
+
 ## Architecture
 
 ### Generator Components

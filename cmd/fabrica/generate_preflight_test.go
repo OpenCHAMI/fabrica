@@ -235,3 +235,41 @@ Or use --force to skip this check and proceed at your own risk.
 		}
 	}
 }
+
+func TestGenerateCommandConfigErrorsPrecedeOutputMutation(t *testing.T) {
+	for _, input := range []string{"invalid: [yaml", "project:\n  name: invalid\n  module: example.com/invalid\nfeatures:\n  storage:\n    enabled: true\n    type: bogus\n"} {
+		t.Run(input, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			if err := os.WriteFile("go.mod", []byte("module example.com/invalid\n\ngo 1.26.10\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(".fabrica.yaml", []byte(input), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll("pkg/resources", 0755); err != nil {
+				t.Fatal(err)
+			}
+			const path = "pkg/resources/register_generated.go"
+			const sentinel = "package resources\n// unchanged\n"
+			if err := os.WriteFile(path, []byte(sentinel), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cmd := newGenerateCommand()
+			cmd.SetArgs(nil)
+			if err := cmd.Execute(); err == nil {
+				t.Fatal("invalid configuration accepted")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != sentinel {
+				t.Fatal("configuration error changed registration")
+			}
+			if _, err := os.Stat("cmd"); !os.IsNotExist(err) {
+				t.Fatalf("runner/output directory created before configuration failure: %v", err)
+			}
+		})
+	}
+}

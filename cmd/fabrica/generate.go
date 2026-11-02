@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -131,8 +132,12 @@ Examples:
 				return err
 			}
 
+			selection := resolveGenerationConfig(config, apisConfig != nil)
+			if err := selection.Features.Validate(); err != nil {
+				return err
+			}
 			featureGen := codegen.NewGenerator(filepath.Join(projectRoot, "cmd/server"), "main", modulePath)
-			featureGen.SetFeatures(projectfeatures.FromConfig(config, apisConfig != nil))
+			featureGen.SetFeatures(selection.Features)
 			if err := featureGen.PrepareFeatureGeneration(all); err != nil {
 				return err
 			}
@@ -198,7 +203,7 @@ Examples:
 				}
 			}
 
-			storageType := detectStorageType()
+			storageType := selection.Features.StorageType
 			if storageType == "custom" && (all || handlers || storage || openapi) {
 				if err := ensureCustomStorageHasNoGeneratedArtifacts(projectRoot); err != nil {
 					return err
@@ -218,7 +223,7 @@ Examples:
 			// Auto-generate registration file
 			fmt.Println()
 			fmt.Println("📝 Registration file not found, creating it...")
-			if err := generateRegistrationFile(debug, apisConfig); err != nil {
+			if err := generateRegistrationFile(debug, apisConfig, storageType); err != nil {
 				return fmt.Errorf("failed to generate registration file: %w", err)
 			}
 			fmt.Println()
@@ -233,7 +238,7 @@ Examples:
 				if debug {
 					fmt.Println("📦 Generating server code...")
 				}
-				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "cmd/server", "main", all || handlers, all || storage, all || openapi, false, debug, resolvedFabricaSource, selection); err != nil {
 					return fmt.Errorf("failed to generate server code: %w", err)
 				}
 			}
@@ -241,7 +246,7 @@ Examples:
 			// Generate client code
 			if all || client {
 				fmt.Println("📦 Generating client code...")
-				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/client", "client", false, false, false, true, debug, resolvedFabricaSource, selection); err != nil {
 					return fmt.Errorf("failed to generate client code: %w", err)
 				}
 			}
@@ -249,7 +254,7 @@ Examples:
 			// Check if reconciliation is enabled in config
 			if config != nil && config.Features.Reconciliation.Enabled {
 				fmt.Println("🔄 Generating reconciliation code...")
-				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource); err != nil {
+				if err := generateCodeWithRunner(projectRoot, modulePath, "pkg/reconcilers", "reconcile", false, false, false, false, debug, resolvedFabricaSource, selection); err != nil {
 					return fmt.Errorf("failed to generate reconciliation code: %w", err)
 				}
 			}
@@ -474,20 +479,29 @@ func getModulePath() (string, error) {
 	return "", fmt.Errorf("module declaration not found in go.mod")
 }
 
-// detectStorageType detects the storage type from the project configuration
-func detectStorageType() string {
-	// First, check .fabrica.yaml configuration
-	if config, err := readFabricaConfig(); err == nil && config != nil {
-		switch config.Features.Storage.Type {
-		case "ent":
-			return "ent"
-		case "file":
-			return "file"
-		case "custom":
-			return "custom"
-		}
-	}
+// resolvedGenerationConfig is resolved once before preflight and shared with
+// every runner. Runners never reinterpret project YAML or apply their own defaults.
+type resolvedGenerationConfig struct {
+	Features                 codegen.FeatureConfig
+	OpenAPIServerURL         string
+	OpenAPIServerDescription string
+}
 
+func resolveGenerationConfig(cfg *config.FabricaConfig, versioned bool) resolvedGenerationConfig {
+	selection := resolvedGenerationConfig{Features: projectfeatures.FromConfig(cfg, versioned)}
+	if cfg == nil || cfg.Features.Storage.Type == "" {
+		selection.Features.StorageType = detectLegacyStorageType()
+	}
+	selection.Features = selection.Features.Normalize()
+	if cfg != nil {
+		selection.OpenAPIServerURL = cfg.Generation.OpenAPIServerURL
+		selection.OpenAPIServerDescription = cfg.Generation.OpenAPIServerDescription
+	}
+	return selection
+}
+
+// detectLegacyStorageType preserves the inference used by adopted projects.
+func detectLegacyStorageType() string {
 	// Fallback: Check if the main.go file contains Ent imports (even if commented)
 	if data, err := os.ReadFile("cmd/server/main.go"); err == nil {
 		content := string(data)
@@ -577,7 +591,7 @@ func isFabricaGeneratedFile(path string) bool {
 }
 
 // generateCodeWithRunner creates and runs a temporary codegen program
-func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, fabricaSource string) error {
+func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, fabricaSource string, selection resolvedGenerationConfig) error {
 	// Create output directory if it doesn't exist
 	if debug {
 		fmt.Printf("  Creating output directory: %s\n", outputDir)
@@ -598,10 +612,9 @@ func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName stri
 		fmt.Println("  Generating codegen runner...")
 	}
 
-	// Detect storage type before generating runner
-	storageType := detectStorageType()
+	// Report the selection already checked by preflight.
 	if debug {
-		fmt.Printf("  Detected storage type: %s\n", storageType)
+		fmt.Printf("  Resolved storage type: %s\n", selection.Features.StorageType)
 	}
 
 	// The runner may build an older generator module than this CLI, so detect
@@ -615,7 +628,7 @@ func generateCodeWithRunner(projectRoot, modulePath, outputDir, packageName stri
 		featureLoader = adopted
 	}
 
-	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, storageType, featureLoader)
+	runnerCode := generateRunnerCode(projectRoot, modulePath, outputDir, packageName, handlers, storage, openapi, client, debug, selection, featureLoader)
 
 	if fabricaSource != "" {
 		return runIsolatedCodegenRunner(projectRoot, modulePath, runnerCode, debug, fabricaSource)
@@ -727,7 +740,12 @@ func localModulePlaceholderVersion(modulePath string) string {
 }
 
 // generateRunnerCode creates the source code for the temporary codegen runner
-func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, storageType string, featureLoader bool) string {
+func generateRunnerCode(projectRoot, modulePath, outputDir, packageName string, handlers, storage, openapi, client, debug bool, selection resolvedGenerationConfig, featureLoader bool) string {
+	storageType := selection.Features.StorageType
+	resolvedJSON, err := json.Marshal(selection)
+	if err != nil {
+		panic(err)
+	}
 	var generationCalls strings.Builder
 
 	if packageName == "main" {
@@ -916,90 +934,7 @@ import (
 
 	"%s/pkg/resources"
 	"github.com/openchami/fabrica/pkg/codegen"
-	"gopkg.in/yaml.v3"
 )
-
-// FabricaConfig structures to load .fabrica.yaml
-type FabricaConfig struct {
-    Project struct { Name string `+"`yaml:\"name\"`"+` } `+"`yaml:\"project\"`"+`
-	Features   FeaturesConfig   `+"`yaml:\"features\"`"+`
-	Generation GenerationConfig `+"`yaml:\"generation\"`"+`
-}
-
-type FeaturesConfig struct {
-	Validation  ValidationConfig  `+"`yaml:\"validation\"`"+`
-	Conditional ConditionalConfig `+"`yaml:\"conditional\"`"+`
-	Auth        AuthConfig        `+"`yaml:\"auth\"`"+`
-	Events      EventsConfig      `+"`yaml:\"events\"`"+`
-	Storage     StorageConfig     `+"`yaml:\"storage\"`"+`
-	Metrics     MetricsConfig     `+"`yaml:\"metrics\"`"+`
-	Security    SecurityConfig    `+"`yaml:\"security\"`"+`
-    Reconciliation ReconciliationConfig `+"`yaml:\"reconciliation\"`"+`
-}
-
-type ValidationConfig struct {
-	Enabled bool   `+"`yaml:\"enabled\"`"+`
-	Mode    string `+"`yaml:\"mode\"`"+`
-}
-
-type ConditionalConfig struct {
-	Enabled       bool   `+"`yaml:\"enabled\"`"+`
-	ETagAlgorithm string `+"`yaml:\"etag_algorithm\"`"+`
-}
-
-type AuthConfig struct {
-	Enabled bool `+"`yaml:\"enabled\"`"+`
-}
-
-type EventsConfig struct {
-	Enabled bool   `+"`yaml:\"enabled\"`"+`
-	BusType string `+"`yaml:\"bus_type\"`"+`
-}
-
-type StorageConfig struct {
-	Type     string `+"`yaml:\"type\"`"+`
-	DBDriver string `+"`yaml:\"db_driver\"`"+`
-}
-
-type MetricsConfig struct {
-	Enabled bool `+"`yaml:\"enabled\"`"+`
-}
-
-type ReconciliationConfig struct {
- Enabled bool `+"`yaml:\"enabled\"`"+`
- WorkerCount int `+"`yaml:\"worker_count\"`"+`
- RequeueDelay int `+"`yaml:\"requeue_delay\"`"+`
-}
-
-type SecurityConfig struct {
- AuthN AuthNConfig `+"`yaml:\"authn\"`"+`
- AuthZ struct { Enabled bool `+"`yaml:\"enabled\"`"+`; Mode string `+"`yaml:\"mode\"`"+` } `+"`yaml:\"authz\"`"+`
-}
-
-type AuthNConfig struct {
-	Enabled bool `+"`yaml:\"enabled\"`"+`
-}
-
-type GenerationConfig struct {
-	OpenAPIServerURL string `+"`yaml:\"openapi_server_url,omitempty\"`"+`
-	OpenAPIServerDescription string `+"`yaml:\"openapi_server_description,omitempty\"`"+`
-}
-
-func loadConfig() (*FabricaConfig, error) {
-	data, err := os.ReadFile(".fabrica.yaml")
-	if err != nil {
-		return nil, err
-	}
-
-	var config FabricaConfig
-	// Match config.LoadConfig: an omitted validation key keeps strict validation.
-	config.Features.Validation = ValidationConfig{Enabled: true, Mode: "strict"}
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, err
-	}
-
-	return &config, nil
-}
 
 func main() {
 	if err := os.Chdir(%q); err != nil {
@@ -1012,58 +947,24 @@ func main() {
 	gen.Version = "%s" // Fabrica version used for generation
 	gen.Commit = "%s" // Fabrica git commit SHA used for generation
 
-	// Configure storage type - passed from main generate command
-	gen.SetStorageType("%s")
-	if "%s" == "ent" {
-		gen.SetDBDriver("sqlite") // Default to sqlite for now
-	}
-
-	// Load .fabrica.yaml and apply configuration to generator
-	if config, err := loadConfig(); err == nil {
-		// Update generator config from .fabrica.yaml
-		gen.Config.ValidationEnabled = config.Features.Validation.Enabled
-		gen.Config.ValidationMode = config.Features.Validation.Mode
-		gen.Config.ConditionalEnabled = config.Features.Conditional.Enabled
-		gen.Config.ETagAlgorithm = config.Features.Conditional.ETagAlgorithm
-		gen.Config.EventsEnabled = config.Features.Events.Enabled
-		gen.Config.EventBusType = config.Features.Events.BusType
-		gen.Config.MetricsEnabled = config.Features.Metrics.Enabled
-		if config.Generation.OpenAPIServerURL != "" {
-			gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL
-		}
-		gen.Config.OpenAPIServerDescription = config.Generation.OpenAPIServerDescription
-
-		// Override storage config from .fabrica.yaml if present
-		if config.Features.Storage.Type != "" {
-			gen.SetStorageType(config.Features.Storage.Type)
-			gen.Config.StorageType = config.Features.Storage.Type
-		}
-		if config.Features.Storage.DBDriver != "" {
-			gen.SetDBDriver(config.Features.Storage.DBDriver)
-			gen.Config.DBDriver = config.Features.Storage.DBDriver
-		}
-
-		// Wire TokenSmith-first security features into generator config.
-		authEnabled = config.Features.Security.AuthN.Enabled || config.Features.Auth.Enabled
-        setAuthEnabledCompat(gen, authEnabled)
-        if err := setFeaturesCompat(gen, map[string]interface{}{
-            "ProjectName": config.Project.Name,
-            "VersioningEnabled": fileExists("apis.yaml"),
-            "StorageType": gen.StorageType, "DBDriver": gen.DBDriver,
-            "EventsEnabled": config.Features.Events.Enabled, "EventBusType": config.Features.Events.BusType,
-            "ReconciliationEnabled": config.Features.Reconciliation.Enabled,
-            "ReconcileWorkers": config.Features.Reconciliation.WorkerCount,
-            "ReconcileRequeueMinutes": config.Features.Reconciliation.RequeueDelay,
-            "MetricsEnabled": config.Features.Metrics.Enabled, "AuthEnabled": authEnabled,
-            "AuthZEnabled": config.Features.Security.AuthZ.Enabled, "AuthZMode": config.Features.Security.AuthZ.Mode,
-            "ValidationEnabled": config.Features.Validation.Enabled, "ValidationMode": config.Features.Validation.Mode,
-            "ConditionalEnabled": config.Features.Conditional.Enabled, "ETagAlgorithm": config.Features.Conditional.ETagAlgorithm,
-        }); err != nil { log.Fatal(err) }
-    }
-
-	if _, err := os.Stat("apis.yaml"); err == nil {
-		gen.Config.VersioningEnabled = true
-	}
+	// Apply the CLI's exact preflight selection, including for older modules
+	// without SetFeatures. JSON ignores fields absent from their legacy config.
+ var selection struct {
+  Features json.RawMessage
+  OpenAPIServerURL string
+  OpenAPIServerDescription string
+ }
+ if err := json.Unmarshal([]byte(%q), &selection); err != nil { log.Fatal(err) }
+ var legacy struct { StorageType, DBDriver string; AuthEnabled bool }
+ if err := json.Unmarshal(selection.Features, &legacy); err != nil { log.Fatal(err) }
+ if err := json.Unmarshal(selection.Features, gen.Config); err != nil { log.Fatal(err) }
+ gen.SetStorageType(legacy.StorageType)
+ gen.SetDBDriver(legacy.DBDriver)
+ authEnabled = legacy.AuthEnabled
+ setAuthEnabledCompat(gen, authEnabled)
+ if selection.OpenAPIServerURL != "" { gen.Config.OpenAPIServerURL = selection.OpenAPIServerURL }
+ gen.Config.OpenAPIServerDescription = selection.OpenAPIServerDescription
+ if err := setFeaturesCompat(gen, selection.Features); err != nil { log.Fatal(err) }
 
 	if err := resources.RegisterAllResources(gen); err != nil {
 		log.Fatalf("Failed to register resources: %%v", err)
@@ -1073,20 +974,13 @@ func main() {
 
 // Bridge the shared typed feature model without requiring newer symbols when
 // a legacy project deliberately selects an older generator module.
-func setFeaturesCompat(gen *codegen.Generator, fields map[string]interface{}) error {
+func setFeaturesCompat(gen *codegen.Generator, data json.RawMessage) error {
     method := reflect.ValueOf(gen).MethodByName("SetFeatures")
     if !method.IsValid() { return nil }
-    data, err := json.Marshal(fields)
-    if err != nil { return err }
     value := reflect.New(method.Type().In(0))
     if err := json.Unmarshal(data, value.Interface()); err != nil { return err }
     method.Call([]reflect.Value{value.Elem()})
     return nil
-}
-
-func fileExists(path string) bool {
-    _, err := os.Stat(path)
-    return err == nil
 }
 
 func generateFeaturesCompat(gen *codegen.Generator) error {
@@ -1140,7 +1034,7 @@ func callOptionalGenerator(gen *codegen.Generator, methodName string) error {
 
 	return nil
 }
-`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, commit, storageType, storageType, generationCalls.String())
+`, fmtImport, modulePath, projectRoot, outputDir, packageName, modulePath, verboseFlag, version, commit, string(resolvedJSON), generationCalls.String())
 }
 
 // discoverResources scans for resource definitions using apis.yaml when present.
@@ -1303,7 +1197,7 @@ func discoverLegacyResources() ([]string, error) {
 }
 
 // generateRegistrationFile creates pkg/resources/register_generated.go
-func generateRegistrationFile(debug bool, apisConfig *config.APIsConfig) error {
+func generateRegistrationFile(debug bool, apisConfig *config.APIsConfig, storageType string) error {
 	if !debug {
 		fmt.Println("🔍 Discovering resources...")
 	}
@@ -1367,7 +1261,7 @@ func generateRegistrationFile(debug bool, apisConfig *config.APIsConfig) error {
 	fmt.Println("Next steps:")
 	fmt.Println("  fabrica generate                # Generate handlers and storage")
 	fmt.Println("  go mod tidy                     # Update dependencies")
-	if detectStorageType() == "custom" {
+	if storageType == "custom" {
 		fmt.Println("  implement internal/storage      # Provide project-owned storage functions")
 	}
 	fmt.Println("  go run ./cmd/server/       # Start the server")
