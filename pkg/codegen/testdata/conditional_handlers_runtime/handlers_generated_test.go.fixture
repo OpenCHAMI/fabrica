@@ -37,15 +37,37 @@ func TestGeneratedGetNodeConditionalBehavior(t *testing.T) {
 		t.Fatalf("ETag = %q, want quoted strong validator", etag)
 	}
 
-	conditionalRequest := httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil)
-	conditionalRequest.Header.Set("If-None-Match", etag)
-	conditional := httptest.NewRecorder()
-	GetNode(conditional, conditionalRequest)
-	if conditional.Code != http.StatusNotModified {
-		t.Fatalf("conditional GET status = %d, want %d", conditional.Code, http.StatusNotModified)
+	tests := []struct {
+		name       string
+		header     string
+		wantStatus int
+	}{
+		{name: "strong match", header: etag, wantStatus: http.StatusNotModified},
+		{name: "weak match", header: "W/" + etag, wantStatus: http.StatusNotModified},
+		{name: "weak match in list", header: "\"other\", W/" + etag, wantStatus: http.StatusNotModified},
+		{name: "strong mismatch", header: "\"other\"", wantStatus: http.StatusOK},
+		{name: "weak mismatch", header: "W/\"other\"", wantStatus: http.StatusOK},
+		{name: "wildcard", header: "*", wantStatus: http.StatusNotModified},
 	}
-	if conditional.Body.Len() != 0 {
-		t.Fatalf("conditional GET body = %q, want empty", conditional.Body.String())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil)
+			request.Header.Set("If-None-Match", tt.header)
+			response := httptest.NewRecorder()
+			GetNode(response, request)
+			if response.Code != tt.wantStatus {
+				t.Fatalf("conditional GET status = %d, want %d", response.Code, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusNotModified && response.Body.Len() != 0 {
+				t.Fatalf("conditional GET body = %q, want empty", response.Body.String())
+			}
+			if tt.wantStatus == http.StatusOK && response.Body.Len() == 0 {
+				t.Fatal("nonmatching conditional GET should return the resource")
+			}
+			if got := response.Header().Get("ETag"); got != etag {
+				t.Fatalf("conditional GET ETag = %q, want %q", got, etag)
+			}
+		})
 	}
 }
 
