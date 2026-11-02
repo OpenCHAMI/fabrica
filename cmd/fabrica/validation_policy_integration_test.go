@@ -189,8 +189,6 @@ func TestValidationPolicyHTTP(t *testing.T){
  for _, body := range []string{
   "{}", "null",
   "{\"metadata\":{\"name\":\"missing-spec\"}}",
-  "{\"spec\":{}}",
-  "{\"metadata\":null,\"spec\":{}}",
   "{\"metadata\":{\"name\":\"null-spec\"},\"spec\":null}",
  } {
   before := request("GET", "/nodes", "", "")
@@ -201,9 +199,10 @@ func TestValidationPolicyHTTP(t *testing.T){
   after := request("GET", "/nodes", "", "")
   if before.Code!=200 || after.Code!=200 || !bytes.Equal(before.Body.Bytes(),after.Body.Bytes()) { t.Fatal("mandatory rejection changed storage") }
  }
- // Presence and nonzero values are distinct. Do not introduce the source
- // commit's separate ordinary-create name requirement in this port.
+ // Ordinary creates require spec, but metadata remains optional for raw clients.
  for _, body := range []string{
+  "{\"spec\":{}}",
+  "{\"metadata\":null,\"spec\":{}}",
   "{\"metadata\":{\"name\":\"empty-spec\"},\"spec\":{}}",
   "{\"metadata\":{},\"spec\":{}}",
  } {

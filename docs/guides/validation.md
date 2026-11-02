@@ -39,10 +39,11 @@ Decoding, endpoint-required identity/envelope fields, revision promotion selecto
 patch structure/path restrictions, authorization, ETag preconditions, server-managed
 fields, and backend constraints remain mandatory in every mode. For example, an
 omitted `revisionUid` still rejects a revision promotion when validation is disabled.
-Generated create and series-create requests track whether their required
-`metadata` and `spec` JSON keys were supplied. Omitted or `null` values reject with
-HTTP 400 in every mode; explicitly supplied empty objects satisfy presence, and
-optional nested checks still follow the selected mode. Revision creation/ensure
+Generated ordinary creates require a non-null `spec` JSON key; `metadata` may be
+omitted or null, and no name is required. Series creation requires both `metadata`
+and `spec`, plus a nonempty series name. Omitted or `null` required values reject
+with HTTP 400 in every mode; explicitly supplied empty objects satisfy presence,
+and optional nested checks still follow the selected mode. Revision creation/ensure
 gets identity from the URL and requires only the `spec` envelope, so its metadata
 may be omitted. Existing series-name and promotion-selector requirements remain
 mandatory. This does not introduce a new name requirement for ordinary creates.
@@ -79,12 +80,13 @@ middleware file. After regenerating, a service whose configuration sets
 reject. To keep the previous behavior, set `enabled: true` and `mode: strict`
 before regenerating.
 
-Regenerated create, series-create, and revision handlers also reject omitted or
-`null` required envelopes in every mode, including disabled. Previously a body
-without `spec` or `metadata` decoded to zero values, because `required` does not
-apply to Go struct values, and failed only if optional checks rejected those
-values. Clients that send only `spec`, or only `metadata`, now receive HTTP 400;
-send `"metadata": {}` or `"spec": {}` instead.
+Regenerated create, series-create, and revision handlers reject omitted or
+`null` required envelopes in every mode, including disabled. Previously an absent
+`spec` decoded to zero values and failed only if optional checks rejected them.
+Send `"spec": {}` when an empty spec is intended. Ordinary creates continue to
+accept bodies containing only `spec`; series creation also requires metadata with
+a name. Ordinary creates with omitted or null metadata receive a generated UID
+and an empty name.
 Generated Fabrica clients always send both fields and are unaffected.
 
 ## Overview

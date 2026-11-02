@@ -132,8 +132,8 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Layer 1: Request validation (validates inline spec fields and metadata)
-	if err := validation.ValidateRequiredFields(&req); err != nil {
+	// Ordinary creates retain optional metadata; spec must be supplied in every mode.
+	if err := validation.ValidateRequiredFields(&req, "spec"); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
