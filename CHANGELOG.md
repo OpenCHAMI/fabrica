@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
 
 ### Fixed
+- Generated OpenAPI request schemas now document mandatory envelopes and strict-mode required Spec/Status fields, with separate series and revision create contracts (#149).
 - UID migration verification exercises the shared atomic storage backend with
   conditional requests disabled and enabled. Deletion rejects stale ETags and
   retains resource metadata on failure for both legacy and TypeID identities.

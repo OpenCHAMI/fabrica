@@ -26,7 +26,12 @@ import (
 	"net/http"
 
 	"github.com/getkin/kin-openapi/openapi3"
-{{if .Resources}}	"github.com/getkin/kin-openapi/openapi3gen"{{end}}
+{{if .Resources}}	"reflect"
+	"slices"
+	"strings"
+
+	"github.com/getkin/kin-openapi/openapi3gen"
+	"github.com/openchami/fabrica/pkg/validation"{{end}}
 {{range .UniqueImports}}	"{{.Path}}"
 {{end}})
 
@@ -286,13 +291,28 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	resourceSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.PackageAlias}}.{{.Name}}{}, spec.Components.Schemas)
 	spec.Components.Schemas["{{.Name}}"] = resourceSchema
 
-	createReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Create{{.Name}}Request{}, spec.Components.Schemas)
+	createReqSchema := requestSchema(&Create{{.Name}}Request{}, spec.Components.Schemas)
+	createReqSchema.Value.Required = []string{"spec"}
+	createReqSchema.Value.Properties["metadata"].Value.Nullable = true
+	{{if .RevisioningEnabled}}
+	createReqSchema.Value.Required = []string{"metadata", "spec"}
+	metadataSchema := createReqSchema.Value.Properties["metadata"].Value
+	metadataSchema.Nullable = false
+	metadataSchema.Required = append(metadataSchema.Required, "name")
+	metadataSchema.Properties["name"].Value.MinLength = 1
+	{{end}}
 	spec.Components.Schemas["Create{{.Name}}Request"] = createReqSchema
 
-	updateReqSchema, _ := openapi3gen.NewSchemaRefForValue(&Update{{.Name}}Request{}, spec.Components.Schemas)
+	updateReqSchema := requestSchema(&Update{{.Name}}Request{}, spec.Components.Schemas)
+	// PUT replaces spec. Omitting it is equivalent to a zero-valued spec;
+	// require presence only when that value fails the configured tag policy.
+	var emptySpec {{.SpecType}}
+	if {{printf "%q" $.Config.ValidationMode}} == "strict" && validation.ValidateResource(&emptySpec) != nil {
+		updateReqSchema.Value.Required = []string{"spec"}
+	}
 	spec.Components.Schemas["Update{{.Name}}Request"] = updateReqSchema
 
-	statusSchema, _ := openapi3gen.NewSchemaRefForValue(&{{.PackageAlias}}.{{.Name}}Status{}, spec.Components.Schemas)
+	statusSchema := requestSchema(&{{.PackageAlias}}.{{.Name}}Status{}, spec.Components.Schemas)
 	spec.Components.Schemas["{{.Name}}Status"] = statusSchema
 
 	// Error response schema
@@ -500,7 +520,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	spec.Components.Schemas["RevisionConflictResponse"] = conflictSchema
 	preconditionSchema, _ := openapi3gen.NewSchemaRefForValue(&RevisionPreconditionResponse{}, spec.Components.Schemas)
 	spec.Components.Schemas["RevisionPreconditionResponse"] = preconditionSchema
-	promoteRequestSchema, _ := openapi3gen.NewSchemaRefForValue(&Promote{{.Name}}DefaultRequest{}, spec.Components.Schemas)
+	promoteRequestSchema := requestSchema(&Promote{{.Name}}DefaultRequest{}, spec.Components.Schemas)
+	promoteRequestSchema.Value.Required = []string{"revisionUid"}
+	promoteRequestSchema.Value.Properties["revisionUid"].Value.MinLength = 1
 	spec.Components.Schemas["Promote{{.Name}}DefaultRequest"] = promoteRequestSchema
 
 	createOp.Responses.Set("201", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Series and first revision created").WithJSONSchemaRef(componentSchemaRef(spec, "{{.Name}}Revision"))})
@@ -532,7 +554,11 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	createRevisionOp.OperationID = "create{{.Name}}Revision"
 	createRevisionOp.Summary = "Create an unnamed immutable revision"
 	createRevisionOp.Tags = []string{"{{.Name}} Revisions"}
-	createRevisionOp.RequestBody = createOp.RequestBody
+	revisionRequestSchema := requestSchema(&Create{{.Name}}Request{}, spec.Components.Schemas)
+	revisionRequestSchema.Value.Required = []string{"spec"}
+	revisionRequestSchema.Value.Properties["metadata"].Value.Nullable = true
+	spec.Components.Schemas["Create{{.Name}}RevisionRequest"] = revisionRequestSchema
+	createRevisionOp.RequestBody = &openapi3.RequestBodyRef{Value: openapi3.NewRequestBody().WithRequired(true).WithJSONSchemaRef(componentSchemaRef(spec, "Create{{.Name}}RevisionRequest"))}
 	createRevisionOp.Responses = openapi3.NewResponses()
 	createRevisionOp.Responses.Set("201", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision created").WithJSONSchemaRef(componentSchemaRef(spec, "{{.Name}}Revision"))})
 	spec.Paths.Set({{printf "%q" (printf "%s/{name}/revisions" .URLPath)}}, &openapi3.PathItem{Get: listRevisionsOp, Post: createRevisionOp, Parameters: []*openapi3.ParameterRef{ {Value: nameParam} }})
@@ -541,7 +567,7 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	ensureRevisionOp.OperationID = "ensure{{.Name}}Revision"
 	ensureRevisionOp.Summary = "Idempotently ensure a named immutable revision"
 	ensureRevisionOp.Tags = []string{"{{.Name}} Revisions"}
-	ensureRevisionOp.RequestBody = createOp.RequestBody
+	ensureRevisionOp.RequestBody = createRevisionOp.RequestBody
 	ensureRevisionOp.Responses = openapi3.NewResponses()
 	ensureRevisionOp.Responses.Set("200", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Existing identical revision").WithJSONSchemaRef(componentSchemaRef(spec, "{{.Name}}Revision"))})
 	ensureRevisionOp.Responses.Set("201", &openapi3.ResponseRef{Value: openapi3.NewResponse().WithDescription("Revision created").WithJSONSchemaRef(componentSchemaRef(spec, "{{.Name}}Revision"))})
@@ -674,6 +700,40 @@ func patchRequestBody() *openapi3.RequestBodyRef {
 		},
 	}
 }
+
+{{if .Resources}}
+// requestSchema documents unconditional required tags only when handlers enforce
+// them. Custom validation and conditional tags remain application contracts.
+func requestSchema(value any, schemas openapi3.Schemas) *openapi3.SchemaRef {
+	ref, err := openapi3gen.NewSchemaRefForValue(value, schemas, openapi3gen.SchemaCustomizer(func(_ string, typ reflect.Type, _ reflect.StructTag, schema *openapi3.Schema) error {
+		if {{printf "%q" .Config.ValidationMode}} != "strict" || typ.Kind() != reflect.Struct {
+			return nil
+		}
+		for _, field := range reflect.VisibleFields(typ) {
+			name := strings.Split(field.Tag.Get("json"), ",")[0]
+			property := schema.Properties[name]
+			tags := strings.Split(field.Tag.Get("validate"), ",")
+			// The validator ignores required on non-pointer structs, and
+			// omitempty/omitnil can skip a later required check altogether.
+			if property == nil || property.Value == nil || !slices.Contains(tags, "required") || slices.Contains(tags, "omitempty") || slices.Contains(tags, "omitnil") || field.Type.Kind() == reflect.Struct {
+				continue
+			}
+			if !slices.Contains(schema.Required, name) {
+				schema.Required = append(schema.Required, name)
+			}
+			property.Value.Nullable = false
+			if field.Type.Kind() == reflect.String {
+				property.Value.MinLength = max(property.Value.MinLength, 1)
+			}
+		}
+		return nil
+	}))
+	if err != nil {
+		panic("generate request schema: " + err.Error())
+	}
+	return ref
+}
+{{end}}
 
 // componentSchemaRef retains the JSON reference while resolving its value for direct validation.
 func componentSchemaRef(spec *openapi3.T, name string) *openapi3.SchemaRef {

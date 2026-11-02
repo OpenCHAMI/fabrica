@@ -66,6 +66,23 @@ storage, a 201-character description rejects in strict mode, logs and persists i
 warn mode, and persists without optional checks when disabled. Return to strict
 mode by setting both `enabled: true` and `mode: strict` and regenerating.
 
+### Required fields in OpenAPI
+
+Regenerated `/openapi.json` marks mandatory create envelopes in every mode:
+`spec` for ordinary and revision creates/ensure, and `metadata`, its `name`,
+and `spec` for series creation. Promotion always requires `revisionUid`.
+Ordinary metadata remains optional, including `null`.
+
+In strict mode, request schemas also mark unconditional `validate:"required"`
+fields inside Spec and Status. Warn and disabled schemas omit these optional
+requirements. A spec PUT requires `spec` when its zero value fails strict tag
+validation. JSON Patch schemas describe patch operations rather than requiring
+all fields of the resulting resource on each patch.
+
+OpenAPI does not express arbitrary custom hooks, conditional validation rules,
+or every nonzero-value constraint. These remain service contracts. Regenerate
+OpenAPI along with handlers when changing the validation policy.
+
 ### Upgrading existing services
 
 This policy applies to every service on its next `fabrica generate`, including
