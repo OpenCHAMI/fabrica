@@ -75,7 +75,12 @@ Ordinary metadata remains optional, including `null`.
 
 In strict mode, request schemas also mark unconditional `validate:"required"`
 fields inside Spec and Status. Warn and disabled schemas omit these optional
-requirements. A spec PUT requires `spec` when its zero value fails strict tag
+requirements. Inference follows validator traversal: `validate:"-"` and
+`structonly` suppress nested field requirements, and collection elements are
+visited only with `dive`. A `required` tag after `dive` constrains elements,
+not the collection's presence. Tags are interpreted in order, so an earlier
+`omitempty` or `omitnil` can skip a later requirement. A spec PUT requires
+`spec` when its zero value fails strict tag
 validation. JSON Patch schemas describe patch operations rather than requiring
 all fields of the resulting resource on each patch.
 

@@ -26,6 +26,10 @@ func TestGeneratedOpenAPIRequiredFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	validationTypes, err := os.ReadFile("testdata/openapi_validation_types.go.fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, revisioning := range []bool{false, true} {
 		t.Run(fmt.Sprintf("revisioning=%t", revisioning), func(t *testing.T) {
 			dir := t.TempDir()
@@ -39,10 +43,17 @@ func TestGeneratedOpenAPIRequiredFields(t *testing.T) {
 				t.Fatal(err)
 			}
 			types = bytes.ReplaceAll(types, []byte(`Status NodeStatus `+"`"+`json:"status"`+"`"), []byte(`Status NodeStatus `+"`"+`json:"status" validate:"omitempty"`+"`"))
+			for _, name := range []string{"NodeSpec", "NodeStatus"} {
+				prefix := []byte("type " + name + " struct {")
+				types = bytes.Replace(types, prefix, append(prefix, []byte(" OpenAPIValidationFields;")...), 1)
+			}
 			if revisioning {
 				types = bytes.ReplaceAll(types, []byte(`validate:"omitempty,oneof=Pending Ready"`), []byte(`validate:"required,oneof=Pending Ready"`))
 			}
 			if err := os.WriteFile(typesPath, types, 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "apis/v1/openapi_validation_types.go"), validationTypes, 0644); err != nil {
 				t.Fatal(err)
 			}
 			gen := NewGenerator(dir, "main", "example.com/revisionfixture")

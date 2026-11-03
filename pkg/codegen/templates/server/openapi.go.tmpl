@@ -307,6 +307,9 @@ func register{{.Name}}Paths(spec *openapi3.T) {
 	// PUT replaces spec. Omitting it is equivalent to a zero-valued spec;
 	// require presence only when that value fails the configured tag policy.
 	var emptySpec {{.SpecType}}
+	// The resource validator traverses Spec even when the PUT envelope's
+	// omitempty tag skips its zero value, so infer Spec from its own root.
+	updateReqSchema.Value.Properties["spec"] = requestSchema(&emptySpec, spec.Components.Schemas)
 	if {{printf "%q" $.Config.ValidationMode}} == "strict" && validation.ValidateResource(&emptySpec) != nil {
 		updateReqSchema.Value.Required = []string{"spec"}
 	}
@@ -705,33 +708,121 @@ func patchRequestBody() *openapi3.RequestBodyRef {
 // requestSchema documents unconditional required tags only when handlers enforce
 // them. Custom validation and conditional tags remain application contracts.
 func requestSchema(value any, schemas openapi3.Schemas) *openapi3.SchemaRef {
-	ref, err := openapi3gen.NewSchemaRefForValue(value, schemas, openapi3gen.SchemaCustomizer(func(_ string, typ reflect.Type, _ reflect.StructTag, schema *openapi3.Schema) error {
-		if {{printf "%q" .Config.ValidationMode}} != "strict" || typ.Kind() != reflect.Struct {
-			return nil
+	// A customizer disables openapi3gen's type-only cache. Keep each field
+	// independent even in relaxed modes: series-name constraints must not
+	// tighten unrelated strings that happen to share the same Go type.
+	ref, err := openapi3gen.NewSchemaRefForValue(value, schemas, openapi3gen.SchemaCustomizer(
+		func(_ string, _ reflect.Type, _ reflect.StructTag, _ *openapi3.Schema) error { return nil },
+	))
+	if err != nil {
+		panic("generate request schema: " + err.Error())
+	}
+	if {{printf "%q" .Config.ValidationMode}} == "strict" {
+		ref = requestValidationSchema(ref, reflect.TypeOf(value), nil, make(map[reflect.Type]bool))
+	}
+	return ref
+}
+
+// requestFieldRequired considers only this value's tags, before validation can
+// skip it or dive into its elements. Required on a non-pointer struct is ignored
+// by the handler's validator configuration.
+func requestFieldRequired(typ reflect.Type, tags []string) bool {
+	if typ.Kind() == reflect.Struct {
+		return false
+	}
+	for _, tag := range tags {
+		switch tag {
+		case "required":
+			return true
+		case "-", "omitempty", "omitnil", "dive", "structonly", "nostructlevel":
+			return false
+		}
+	}
+	return false
+}
+
+// requestValidationSchema follows handler validation from the request root.
+// Copy each visited schema: the same Go type can be validated through one field
+// and skipped through another, so constraints must not leak via shared schemas.
+func requestValidationSchema(
+	ref *openapi3.SchemaRef,
+	typ reflect.Type,
+	tags []string,
+	active map[reflect.Type]bool,
+) *openapi3.SchemaRef {
+	if ref == nil || ref.Value == nil {
+		return ref
+	}
+	fieldType := typ
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if active[typ] {
+		return ref
+	}
+	schema := *ref.Value
+	schema.Required = slices.Clone(schema.Required)
+	if requestFieldRequired(fieldType, tags) {
+		schema.Nullable = false
+		if fieldType.Kind() == reflect.String {
+			schema.MinLength = max(schema.MinLength, 1)
+		}
+	}
+	result := &openapi3.SchemaRef{Value: &schema}
+	for _, tag := range tags {
+		if tag == "dive" {
+			break
+		}
+		if tag == "-" || tag == "structonly" || tag == "nostructlevel" {
+			return result
+		}
+	}
+	// omitempty can skip a zero-valued struct even though its JSON object is
+	// present. Its nested requirements cannot be expressed unconditionally.
+	if fieldType.Kind() == reflect.Struct && slices.Contains(tags, "omitempty") {
+		return result
+	}
+	active[typ] = true
+	defer delete(active, typ)
+	switch typ.Kind() {
+	case reflect.Struct:
+		schema.Properties = make(openapi3.Schemas, len(ref.Value.Properties))
+		for name, property := range ref.Value.Properties {
+			schema.Properties[name] = property
 		}
 		for _, field := range reflect.VisibleFields(typ) {
 			name := strings.Split(field.Tag.Get("json"), ",")[0]
 			property := schema.Properties[name]
-			tags := strings.Split(field.Tag.Get("validate"), ",")
-			// The validator ignores required on non-pointer structs, and
-			// omitempty/omitnil can skip a later required check altogether.
-			if property == nil || property.Value == nil || !slices.Contains(tags, "required") || slices.Contains(tags, "omitempty") || slices.Contains(tags, "omitnil") || field.Type.Kind() == reflect.Struct {
+			if property == nil {
 				continue
 			}
-			if !slices.Contains(schema.Required, name) {
+			fieldTags := strings.Split(field.Tag.Get("validate"), ",")
+			schema.Properties[name] = requestValidationSchema(property, field.Type, fieldTags, active)
+			if requestFieldRequired(field.Type, fieldTags) && !slices.Contains(schema.Required, name) {
 				schema.Required = append(schema.Required, name)
 			}
-			property.Value.Nullable = false
-			if field.Type.Kind() == reflect.String {
-				property.Value.MinLength = max(property.Value.MinLength, 1)
-			}
 		}
-		return nil
-	}))
-	if err != nil {
-		panic("generate request schema: " + err.Error())
+	case reflect.Slice, reflect.Array, reflect.Map:
+		dive := slices.Index(tags, "dive")
+		if dive < 0 {
+			break
+		}
+		elementTags := tags[dive+1:]
+		if typ.Kind() == reflect.Map {
+			// Map key tags do not apply to the values in additionalProperties.
+			if len(elementTags) > 0 && elementTags[0] == "keys" {
+				end := slices.Index(elementTags, "endkeys")
+				if end < 0 {
+					break
+				}
+				elementTags = elementTags[end+1:]
+			}
+			schema.AdditionalProperties.Schema = requestValidationSchema(schema.AdditionalProperties.Schema, typ.Elem(), elementTags, active)
+			break
+		}
+		schema.Items = requestValidationSchema(schema.Items, typ.Elem(), elementTags, active)
 	}
-	return ref
+	return result
 }
 {{end}}
 
