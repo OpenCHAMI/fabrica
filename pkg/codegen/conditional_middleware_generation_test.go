@@ -70,30 +70,50 @@ func TestGeneratedETagIsStable(t *testing.T) {
 }
 
 func TestGeneratedReadPrecondition(t *testing.T) {
-	etag, err := GenerateETag(map[string]string{"uid": "node-1"})
-	if err != nil {
-		t.Fatalf("GenerateETag: %v", err)
+	tests := []struct {
+		name        string
+		currentETag string
+		header      string
+		wantStatus  int
+	}{
+		{name: "absent header", currentETag: "\"abc\"", wantStatus: http.StatusOK},
+		{name: "strong match", currentETag: "\"abc\"", header: "\"abc\"", wantStatus: http.StatusNotModified},
+		{name: "weak request match", currentETag: "\"abc\"", header: "W/\"abc\"", wantStatus: http.StatusNotModified},
+		{name: "weak current match", currentETag: "W/\"abc\"", header: "\"abc\"", wantStatus: http.StatusNotModified},
+		{name: "both weak match", currentETag: "W/\"abc\"", header: "W/\"abc\"", wantStatus: http.StatusNotModified},
+		{name: "strong mismatch", currentETag: "\"abc\"", header: "\"other\"", wantStatus: http.StatusOK},
+		{name: "weak mismatch", currentETag: "\"abc\"", header: "W/\"other\"", wantStatus: http.StatusOK},
+		{name: "opaque tag is case sensitive", currentETag: "\"abc\"", header: "W/\"ABC\"", wantStatus: http.StatusOK},
+		{name: "list with weak match", currentETag: "\"abc\"", header: "\"other\", W/\"abc\"", wantStatus: http.StatusNotModified},
+		{name: "list without match", currentETag: "\"abc\"", header: "\"other\", W/\"stale\"", wantStatus: http.StatusOK},
+		{name: "wildcard", currentETag: "\"abc\"", header: "*", wantStatus: http.StatusNotModified},
+		{name: "surrounding whitespace", currentETag: "\"abc\"", header: " \tW/\"abc\" \t", wantStatus: http.StatusNotModified},
 	}
-
-	matching := httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil)
-	matching.Header.Set("If-None-Match", etag)
-	matchingResponse := httptest.NewRecorder()
-	SetETag(matchingResponse, etag)
-	if CheckIfNoneMatch(matchingResponse, matching, etag) {
-		t.Fatal("matching If-None-Match should suppress the response body")
-	}
-	if matchingResponse.Code != http.StatusNotModified {
-		t.Fatalf("matching status = %d, want %d", matchingResponse.Code, http.StatusNotModified)
-	}
-	if got := matchingResponse.Header().Get("ETag"); got != etag {
-		t.Fatalf("matching ETag header = %q, want %q", got, etag)
-	}
-
-	stale := httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil)
-	stale.Header.Set("If-None-Match", ` + "`" + `"stale"` + "`" + `)
-	staleResponse := httptest.NewRecorder()
-	if !CheckIfNoneMatch(staleResponse, stale, etag) {
-		t.Fatal("stale If-None-Match should return the resource")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/nodes/node-1", nil)
+			if tt.header != "" {
+				request.Header.Set("If-None-Match", tt.header)
+			}
+			response := httptest.NewRecorder()
+			SetETag(response, tt.currentETag)
+			proceed := CheckIfNoneMatch(response, request, tt.currentETag)
+			if wantProceed := tt.wantStatus == http.StatusOK; proceed != wantProceed {
+				t.Fatalf("CheckIfNoneMatch() = %v, want %v", proceed, wantProceed)
+			}
+			if proceed {
+				response.Write([]byte("resource"))
+			}
+			if response.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusNotModified && response.Body.Len() != 0 {
+				t.Fatalf("304 response body = %q, want empty", response.Body.String())
+			}
+			if got := response.Header().Get("ETag"); got != tt.currentETag {
+				t.Fatalf("ETag header = %q, want %q", got, tt.currentETag)
+			}
+		})
 	}
 }
 
@@ -111,6 +131,7 @@ func TestGeneratedMutationPrecondition(t *testing.T) {
 	}{
 		{name: "absent header proceeds", wantProceed: true, wantStatus: http.StatusOK},
 		{name: "matching header proceeds", ifMatch: etag, wantProceed: true, wantStatus: http.StatusOK},
+		{name: "weak header fails", ifMatch: "W/" + etag, wantProceed: false, wantStatus: http.StatusPreconditionFailed},
 		{name: "stale header fails", ifMatch: ` + "`" + `"stale"` + "`" + `, wantProceed: false, wantStatus: http.StatusPreconditionFailed},
 	}
 	for _, tt := range tests {

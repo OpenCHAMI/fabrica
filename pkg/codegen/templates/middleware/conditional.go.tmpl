@@ -102,11 +102,13 @@ func CheckIfNoneMatch(w http.ResponseWriter, r *http.Request, currentETag string
 		return true
 	}
 
+	// If-None-Match uses weak comparison (RFC 9110, section 13.1.2).
+	currentTag := strings.TrimPrefix(currentETag, "W/")
 	// Parse If-None-Match (can be comma-separated list)
 	tags := strings.Split(ifNoneMatch, ",")
 	for _, tag := range tags {
 		tag = strings.TrimSpace(tag)
-		if tag == "*" || tag == currentETag {
+		if tag == "*" || strings.TrimPrefix(tag, "W/") == currentTag {
 			// ETag matches - return 304 Not Modified
 			w.WriteHeader(http.StatusNotModified)
 			return false

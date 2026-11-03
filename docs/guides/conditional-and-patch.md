@@ -62,6 +62,11 @@ curl -X PUT http://localhost:8080/resources/123 \
 
 Requires the resource's ETag to NOT match. Used for conditional GET.
 
+Generated handlers use weak comparison: `"abc123"` and `W/"abc123"`
+both match the same validator, including in a comma-separated list. A matching
+validator or `*` returns `304 Not Modified` with an empty body. `If-Match`
+continues to require a strong validator for updates.
+
 ```bash
 # Get only if resource changed
 curl -H "If-None-Match: \"abc123\"" \
