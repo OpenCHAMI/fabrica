@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 
 > Build production-ready REST APIs in Go with automatic code generation
 
-[![REUSE status](https://api.reuse.software/badge/github.com/openchami/fabrica)](https://api.reuse.software/info/github.com/openchami/fabrica)[![golangci-lint](https://github.com/openchami/fabrica/actions/workflows/lint.yaml/badge.svg)](https://github.com/openchami/fabrica/actions/workflows/lint.yaml)
+[![REUSE compliance](https://github.com/OpenCHAMI/fabrica/actions/workflows/reuse.yaml/badge.svg)](https://github.com/OpenCHAMI/fabrica/actions/workflows/reuse.yaml)[![golangci-lint](https://github.com/openchami/fabrica/actions/workflows/lint.yaml/badge.svg)](https://github.com/openchami/fabrica/actions/workflows/lint.yaml)
 [![Build](https://github.com/openchami/fabrica/actions/workflows/release.yaml/badge.svg)](https://github.com/openchami/fabrica/actions/workflows/release.yaml)
 [![Release](https://img.shields.io/github/v/release/openchami/fabrica?sort=semver)](https://github.com/openchami/fabrica/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/openchami/fabrica.svg)](https://pkg.go.dev/github.com/openchami/fabrica)
