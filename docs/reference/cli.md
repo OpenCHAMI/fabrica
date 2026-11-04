@@ -158,6 +158,11 @@ my-api/
     └── middleware/     # Middleware
 ```
 
+Go scaffold files are formatted before they are written. If a rendered Go
+template is invalid, initialization returns an error before writing that file.
+The server entrypoint remains user-owned; regeneration does not reformat an
+existing `cmd/server/main.go`. Existing projects can format it with `gofmt -w`.
+
 ---
 
 ### fabrica add resource

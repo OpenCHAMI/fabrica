@@ -6,7 +6,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"strings"
@@ -629,14 +631,19 @@ func generateFromTemplate(templateName, outputPath string, data templateData) er
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create file %s: %w", outputPath, err)
-	}
-	defer file.Close() //nolint:errcheck
-
-	if err := tmpl.Execute(file, data); err != nil {
+	var rendered bytes.Buffer
+	if err := tmpl.Execute(&rendered, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
+	}
+	content := rendered.Bytes()
+	if filepath.Ext(outputPath) == ".go" {
+		content, err = format.Source(content)
+		if err != nil {
+			return fmt.Errorf("failed to format scaffold %s: %w", outputPath, err)
+		}
+	}
+	if err := os.WriteFile(outputPath, content, 0o644); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", outputPath, err)
 	}
 
 	return nil
