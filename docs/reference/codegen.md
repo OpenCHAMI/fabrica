@@ -259,6 +259,23 @@ Generates client library code:
 
 **Output:** Files in `pkg/client/`
 
+Generated client methods treat resource UIDs, version IDs, series names, revision
+names, and revision UIDs used in paths as literal single path segments. Empty
+strings, `.` and `..` return an error before sending a request. Other values are
+URL-escaped once, including slashes, percent signs, query delimiters, and fragment
+delimiters. Pass the original identifier rather than a pre-escaped value: `a/b`
+is sent as `a%2Fb`, while the literal ID `a%2Fb` is sent as `a%252Fb`.
+
+The same escaping applies to ordinary, status, snapshot, and immutable revision
+operations, including PATCH. Client base URL prefixes keep their escaping. Query
+parameters such as optional revision names and resolve selectors remain query
+parameters and do not use the path-segment restrictions.
+
+Regenerate and rebuild client libraries and CLI applications with the corrected
+Fabrica version to obtain this behavior; updating Fabrica alone does not change
+previously generated code. This protects client request construction; the server
+still validates identifiers and authorizes requests.
+
 ### 3. Reconcile Mode (`PackageName: "reconcile"`)
 
 Generates reconciliation code for eventual consistency:

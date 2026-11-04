@@ -67,7 +67,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"strings"
 {{if $hasVersioning}}	"time"{{end}}
 
@@ -223,6 +222,30 @@ func (c *Client) WithShowToken(show bool) *Client {
 	}
 }
 
+// escapePathSegment validates an identifier and encodes it as one URL path segment.
+// Empty and dot segments must be rejected because URL.JoinPath cleans them even
+// after PathEscape. Percent signs are escaped as data, never decoded as input.
+func escapePathSegment(value string) (string, error) {
+	switch value {
+	case "", ".", "..":
+		return "", fmt.Errorf("invalid path segment %q: must not be empty, . or ..", value)
+	default:
+		return url.PathEscape(value), nil
+	}
+}
+
+// requestURL joins escaped paths without decoding identifier separators or dots.
+// Both ordinary and PATCH requests must preserve the same encoding and queries.
+func (c *Client) requestURL(endpoint string) (*url.URL, error) {
+	relative, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid request endpoint: %w", err)
+	}
+	u := c.baseURL.JoinPath(relative.EscapedPath())
+	u.RawQuery = relative.RawQuery
+	return u, nil
+}
+
 // doRequest performs an HTTP request and handles the response
 func (c *Client) doRequest(ctx context.Context, method, endpoint string, body interface{}, result interface{}) error {
 	_, err := c.doRequestWithResponse(ctx, method, endpoint, body, nil, result)
@@ -244,13 +267,10 @@ func (c *Client) doRequestWithResponse(ctx context.Context, method, endpoint str
 		reqBody = bytes.NewBuffer(jsonData)
 	}
 
-	relative, err := url.Parse(endpoint)
+	u, err := c.requestURL(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("invalid request endpoint: %w", err)
+		return nil, err
 	}
-	u := *c.baseURL
-	u.Path = path.Join(u.Path, relative.Path)
-	u.RawQuery = relative.RawQuery
 
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), reqBody)
 	if err != nil {
@@ -373,8 +393,10 @@ func (c *Client) doPatchRequest(ctx context.Context, endpoint string, patchData 
 }
 
 func (c *Client) doPatchRequestWithHeaders(ctx context.Context, endpoint string, patchData []byte, contentType string, headers http.Header, result interface{}) error {
-	u := *c.baseURL
-	u.Path = path.Join(u.Path, endpoint)
+	u, err := c.requestURL(endpoint)
+	if err != nil {
+		return err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "PATCH", u.String(), bytes.NewBuffer(patchData))
 	if err != nil {
@@ -470,7 +492,11 @@ func (c *Client) Get{{.Name}}s(ctx context.Context) ([]{{.PackageAlias}}.{{.Name
 // Get{{.Name}} retrieves a specific {{.Name}} by UID
 func (c *Client) Get{{.Name}}(ctx context.Context, uid string) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, escapedUID)
 	if err := c.doRequest(ctx, "GET", endpoint, nil, &result); err != nil {
 		return nil, err
 	}
@@ -571,7 +597,11 @@ func (c *Client) Update{{.Name}}Simple(ctx context.Context, uid string, spec {{.
 //   resource, err := client.Update{{.Name}}(ctx, uid, req)
 func (c *Client) Update{{.Name}}(ctx context.Context, uid string, req Update{{.Name}}Request) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, escapedUID)
 	if err := c.doRequest(ctx, "PUT", endpoint, req, &result); err != nil {
 		return nil, err
 	}
@@ -581,7 +611,11 @@ func (c *Client) Update{{.Name}}(ctx context.Context, uid string, req Update{{.N
 // Patch{{.Name}} patches an existing {{.Name}} spec with the specified patch data and content type
 func (c *Client) Patch{{.Name}}(ctx context.Context, uid string, patchData []byte, contentType string) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, escapedUID)
 	if err := c.doPatchRequest(ctx, endpoint, patchData, contentType, &result); err != nil {
 		return nil, err
 	}
@@ -593,7 +627,11 @@ func (c *Client) Patch{{.Name}}(ctx context.Context, uid string, patchData []byt
 // It preserves the spec and only updates the status portion of the resource.
 func (c *Client) Update{{.Name}}Status(ctx context.Context, uid string, status {{.PackageAlias}}.{{.Name}}Status) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, escapedUID)
 	if err := c.doRequest(ctx, "PUT", endpoint, status, &result); err != nil {
 		return nil, err
 	}
@@ -610,7 +648,11 @@ func (c *Client) Patch{{.Name}}Status(ctx context.Context, uid string, patchData
 // Supported types: application/merge-patch+json, application/json-patch+json, application/fabrica-patch+json
 func (c *Client) Patch{{.Name}}StatusWithType(ctx context.Context, uid string, patchData []byte, contentType string) ({{.TypeName}}, error) {
 	var result {{.PackageAlias}}.{{.Name}}
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, escapedUID)
 	if err := c.doPatchRequest(ctx, endpoint, patchData, contentType, &result); err != nil {
 		return nil, err
 	}
@@ -619,7 +661,11 @@ func (c *Client) Patch{{.Name}}StatusWithType(ctx context.Context, uid string, p
 
 // Delete{{.Name}} deletes a {{.Name}} by UID
 func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, escapedUID)
 	var response DeleteResponse
 	if err := c.doRequest(ctx, "DELETE", endpoint, nil, &response); err != nil {
 		return err
@@ -631,7 +677,11 @@ func (c *Client) Delete{{.Name}}(ctx context.Context, uid string) error {
 {{if .RevisioningEnabled}}
 func (c *Client) Get{{.Name}}Series(ctx context.Context, name string) (*RevisionSeriesStatus, string, error) {
 	var result RevisionSeriesStatus
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, url.PathEscape(name))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, "", err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s" .URLPath)}}, escapedName)
 	headers, err := c.doRequestWithResponse(ctx, http.MethodGet, endpoint, nil, nil, &result)
 	if err != nil {
 		return nil, "", err
@@ -655,7 +705,11 @@ func (c *Client) Create{{.Name}}Series(ctx context.Context, req Create{{.Name}}R
 // Use Ensure{{.Name}}Revision when retries must return the same revision.
 func (c *Client) Create{{.Name}}Revision(ctx context.Context, name string, req Create{{.Name}}Request) (*{{.Name}}Revision, error) {
 	var result {{.Name}}Revision
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions" .URLPath)}}, url.PathEscape(name))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions" .URLPath)}}, escapedName)
 	if err := c.doRequest(ctx, http.MethodPost, endpoint, req, &result); err != nil {
 		return nil, err
 	}
@@ -664,7 +718,11 @@ func (c *Client) Create{{.Name}}Revision(ctx context.Context, name string, req C
 
 // Update{{.Name}}SeriesStatus updates mutable series status without creating a revision.
 func (c *Client) Update{{.Name}}SeriesStatus(ctx context.Context, name string, status {{.StatusType}}, ifMatch string) (*{{.StatusType}}, error) {
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, url.PathEscape(name))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, escapedName)
 	headers := make(http.Header)
 	if ifMatch != "" { headers.Set("If-Match", ifMatch) }
 	var result {{.StatusType}}
@@ -676,7 +734,11 @@ func (c *Client) Update{{.Name}}SeriesStatus(ctx context.Context, name string, s
 
 // Patch{{.Name}}SeriesStatus patches mutable series status using the requested patch format.
 func (c *Client) Patch{{.Name}}SeriesStatus(ctx context.Context, name string, patchData []byte, contentType, ifMatch string) (*{{.StatusType}}, error) {
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, url.PathEscape(name))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/status" .URLPath)}}, escapedName)
 	headers := make(http.Header)
 	if ifMatch != "" { headers.Set("If-Match", ifMatch) }
 	var result {{.StatusType}}
@@ -688,7 +750,15 @@ func (c *Client) Patch{{.Name}}SeriesStatus(ctx context.Context, name string, pa
 
 func (c *Client) Ensure{{.Name}}Revision(ctx context.Context, name, revisionName string, req Create{{.Name}}Request) (*{{.Name}}Revision, error) {
 	var result {{.Name}}Revision
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/%%s" .URLPath)}}, url.PathEscape(name), url.PathEscape(revisionName))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	escapedRevisionName, err := escapePathSegment(revisionName)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/%%s" .URLPath)}}, escapedName, escapedRevisionName)
 	if err := c.doRequest(ctx, http.MethodPut, endpoint, req, &result); err != nil {
 		return nil, err
 	}
@@ -697,7 +767,11 @@ func (c *Client) Ensure{{.Name}}Revision(ctx context.Context, name, revisionName
 
 func (c *Client) List{{.Name}}Revisions(ctx context.Context, name string) ([]{{.Name}}Revision, error) {
 	var result []{{.Name}}Revision
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions" .URLPath)}}, url.PathEscape(name))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions" .URLPath)}}, escapedName)
 	if err := c.doRequest(ctx, http.MethodGet, endpoint, nil, &result); err != nil {
 		return nil, err
 	}
@@ -706,7 +780,15 @@ func (c *Client) List{{.Name}}Revisions(ctx context.Context, name string) ([]{{.
 
 func (c *Client) Get{{.Name}}Revision(ctx context.Context, name, revisionUID string) (*{{.Name}}Revision, error) {
 	var result {{.Name}}Revision
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/by-uid/%%s" .URLPath)}}, url.PathEscape(name), url.PathEscape(revisionUID))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	escapedRevisionUID, err := escapePathSegment(revisionUID)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/by-uid/%%s" .URLPath)}}, escapedName, escapedRevisionUID)
 	if err := c.doRequest(ctx, http.MethodGet, endpoint, nil, &result); err != nil {
 		return nil, err
 	}
@@ -715,7 +797,15 @@ func (c *Client) Get{{.Name}}Revision(ctx context.Context, name, revisionUID str
 
 func (c *Client) Retire{{.Name}}Revision(ctx context.Context, name, revisionUID string) (*{{.Name}}Revision, error) {
 	var result {{.Name}}Revision
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/by-uid/%%s" .URLPath)}}, url.PathEscape(name), url.PathEscape(revisionUID))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	escapedRevisionUID, err := escapePathSegment(revisionUID)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/revisions/by-uid/%%s" .URLPath)}}, escapedName, escapedRevisionUID)
 	if err := c.doRequest(ctx, http.MethodDelete, endpoint, nil, &result); err != nil {
 		return nil, err
 	}
@@ -727,7 +817,11 @@ func (c *Client) Resolve{{.Name}}Revision(ctx context.Context, reference Resourc
 	if reference.UID != "" { query.Set("uid", reference.UID) }
 	if reference.RevisionName != "" { query.Set("revisionName", reference.RevisionName) }
 	if reference.Selector != "" { query.Set("selector", string(reference.Selector)) }
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/resolve?%%s" .URLPath)}}, url.PathEscape(reference.Name), query.Encode())
+	escapedName, err := escapePathSegment(reference.Name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/resolve?%%s" .URLPath)}}, escapedName, query.Encode())
 	var result RevisionResolveResponse
 	if err := c.doRequest(ctx, http.MethodGet, endpoint, nil, &result); err != nil {
 		return nil, err
@@ -736,7 +830,11 @@ func (c *Client) Resolve{{.Name}}Revision(ctx context.Context, reference Resourc
 }
 
 func (c *Client) Promote{{.Name}}Default(ctx context.Context, name, revisionUID, ifMatch string) (*RevisionSeriesStatus, error) {
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/default" .URLPath)}}, url.PathEscape(name))
+	escapedName, err := escapePathSegment(name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/default" .URLPath)}}, escapedName)
 	headers := make(http.Header)
 	headers.Set("If-Match", ifMatch)
 	var result RevisionSeriesStatus
@@ -753,7 +851,11 @@ func (c *Client) Promote{{.Name}}Default(ctx context.Context, name, revisionUID,
 // List{{.Name}}Versions lists version snapshots for a resource
 func (c *Client) List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Name}}VersionSnapshot, error) {
 	var result []{{.Name}}VersionSnapshot
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/versions" .URLPath)}}, uid)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/versions" .URLPath)}}, escapedUID)
 	if err := c.doRequest(ctx, "GET", endpoint, nil, &result); err != nil {
 		return nil, err
 	}
@@ -763,7 +865,15 @@ func (c *Client) List{{.Name}}Versions(ctx context.Context, uid string) ([]{{.Na
 // Get{{.Name}}Version retrieves a specific version snapshot
 func (c *Client) Get{{.Name}}Version(ctx context.Context, uid, versionID string) (*{{.Name}}VersionSnapshot, error) {
 	var result {{.Name}}VersionSnapshot
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/versions/%%s" .URLPath)}}, uid, versionID)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return nil, err
+	}
+	escapedVersionID, err := escapePathSegment(versionID)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/versions/%%s" .URLPath)}}, escapedUID, escapedVersionID)
 	if err := c.doRequest(ctx, "GET", endpoint, nil, &result); err != nil {
 		return nil, err
 	}
@@ -772,7 +882,15 @@ func (c *Client) Get{{.Name}}Version(ctx context.Context, uid, versionID string)
 
 // Delete{{.Name}}Version deletes a specific version snapshot
 func (c *Client) Delete{{.Name}}Version(ctx context.Context, uid, versionID string) error {
-	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/versions/%%s" .URLPath)}}, uid, versionID)
+	escapedUID, err := escapePathSegment(uid)
+	if err != nil {
+		return err
+	}
+	escapedVersionID, err := escapePathSegment(versionID)
+	if err != nil {
+		return err
+	}
+	endpoint := fmt.Sprintf({{printf "%q" (printf "%s/%%s/versions/%%s" .URLPath)}}, escapedUID, escapedVersionID)
 	var response DeleteResponse
 	if err := c.doRequest(ctx, "DELETE", endpoint, nil, &response); err != nil {
 		return err

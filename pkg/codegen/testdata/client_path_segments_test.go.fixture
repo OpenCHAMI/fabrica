@@ -1,0 +1,271 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package client
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"reflect"
+	"testing"
+
+	v1 "example.com/clientpaths/apis/v1"
+	"github.com/rs/zerolog"
+)
+
+type pathOperation struct {
+	name, method, path, response string
+	query                        url.Values
+	ifMatch                      string
+	call                         func(*Client, string) error
+}
+
+func pathOperations(ctx context.Context) []pathOperation {
+	return []pathOperation{
+		{name: "get", method: "GET", path: "/nodes/%s", call: func(c *Client, id string) error {
+			_, err := c.GetNode(ctx, id)
+			return err
+		}},
+		{name: "update", method: "PUT", path: "/nodes/%s", call: func(c *Client, id string) error {
+			_, err := c.UpdateNode(ctx, id, UpdateNodeRequest{})
+			return err
+		}},
+		{name: "patch", method: "PATCH", path: "/nodes/%s", call: func(c *Client, id string) error {
+			_, err := c.PatchNode(ctx, id, []byte(`{}`), "application/merge-patch+json")
+			return err
+		}},
+		{name: "update-status", method: "PUT", path: "/nodes/%s/status", call: func(c *Client, id string) error {
+			_, err := c.UpdateNodeStatus(ctx, id, v1.NodeStatus{})
+			return err
+		}},
+		{name: "patch-status", method: "PATCH", path: "/nodes/%s/status", call: func(c *Client, id string) error {
+			_, err := c.PatchNodeStatus(ctx, id, []byte(`{}`))
+			return err
+		}},
+		{name: "patch-status-with-type", method: "PATCH", path: "/nodes/%s/status", call: func(c *Client, id string) error {
+			_, err := c.PatchNodeStatusWithType(ctx, id, []byte(`[]`), "application/json-patch+json")
+			return err
+		}},
+		{name: "delete", method: "DELETE", path: "/nodes/%s", call: func(c *Client, id string) error {
+			return c.DeleteNode(ctx, id)
+		}},
+		{name: "list-versions", method: "GET", path: "/nodes/%s/versions", response: "[]", call: func(c *Client, id string) error {
+			_, err := c.ListNodeVersions(ctx, id)
+			return err
+		}},
+		{name: "get-version-resource-id", method: "GET", path: "/nodes/%s/versions/version%%2Fone", call: func(c *Client, id string) error {
+			_, err := c.GetNodeVersion(ctx, id, "version/one")
+			return err
+		}},
+		{name: "get-version-id", method: "GET", path: "/nodes/node%%2Fone/versions/%s", call: func(c *Client, id string) error {
+			_, err := c.GetNodeVersion(ctx, "node/one", id)
+			return err
+		}},
+		{name: "delete-version-resource-id", method: "DELETE", path: "/nodes/%s/versions/version%%2Fone", call: func(c *Client, id string) error {
+			return c.DeleteNodeVersion(ctx, id, "version/one")
+		}},
+		{name: "delete-version-id", method: "DELETE", path: "/nodes/node%%2Fone/versions/%s", call: func(c *Client, id string) error {
+			return c.DeleteNodeVersion(ctx, "node/one", id)
+		}},
+		{name: "get-series", method: "GET", path: "/boot-configs/%s", call: func(c *Client, id string) error {
+			_, etag, err := c.GetBootConfigSeries(ctx, id)
+			if err == nil && etag != `"series-etag"` {
+				return fmt.Errorf("lost response ETag: %q", etag)
+			}
+			return err
+		}},
+		{name: "create-revision", method: "POST", path: "/boot-configs/%s/revisions", call: func(c *Client, id string) error {
+			_, err := c.CreateBootConfigRevision(ctx, id, CreateBootConfigRequest{})
+			return err
+		}},
+		{name: "update-series-status", method: "PUT", path: "/boot-configs/%s/status", ifMatch: `"series-etag"`, call: func(c *Client, id string) error {
+			_, err := c.UpdateBootConfigSeriesStatus(ctx, id, v1.BootConfigStatus{}, `"series-etag"`)
+			return err
+		}},
+		{name: "patch-series-status", method: "PATCH", path: "/boot-configs/%s/status", ifMatch: `"series-etag"`, call: func(c *Client, id string) error {
+			_, err := c.PatchBootConfigSeriesStatus(ctx, id, []byte(`{}`), "application/merge-patch+json", `"series-etag"`)
+			return err
+		}},
+		{name: "ensure-revision-series-name", method: "PUT", path: "/boot-configs/%s/revisions/revision%%2Fone", call: func(c *Client, id string) error {
+			_, err := c.EnsureBootConfigRevision(ctx, id, "revision/one", CreateBootConfigRequest{})
+			return err
+		}},
+		{name: "ensure-revision-name", method: "PUT", path: "/boot-configs/series%%2Fone/revisions/%s", call: func(c *Client, id string) error {
+			_, err := c.EnsureBootConfigRevision(ctx, "series/one", id, CreateBootConfigRequest{})
+			return err
+		}},
+		{name: "list-revisions", method: "GET", path: "/boot-configs/%s/revisions", response: "[]", call: func(c *Client, id string) error {
+			_, err := c.ListBootConfigRevisions(ctx, id)
+			return err
+		}},
+		{name: "get-revision-series-name", method: "GET", path: "/boot-configs/%s/revisions/by-uid/revision%%2Fone", call: func(c *Client, id string) error {
+			_, err := c.GetBootConfigRevision(ctx, id, "revision/one")
+			return err
+		}},
+		{name: "get-revision-uid", method: "GET", path: "/boot-configs/series%%2Fone/revisions/by-uid/%s", call: func(c *Client, id string) error {
+			_, err := c.GetBootConfigRevision(ctx, "series/one", id)
+			return err
+		}},
+		{name: "retire-revision-series-name", method: "DELETE", path: "/boot-configs/%s/revisions/by-uid/revision%%2Fone", call: func(c *Client, id string) error {
+			_, err := c.RetireBootConfigRevision(ctx, id, "revision/one")
+			return err
+		}},
+		{name: "retire-revision-uid", method: "DELETE", path: "/boot-configs/series%%2Fone/revisions/by-uid/%s", call: func(c *Client, id string) error {
+			_, err := c.RetireBootConfigRevision(ctx, "series/one", id)
+			return err
+		}},
+		{name: "resolve-revision", method: "GET", path: "/boot-configs/%s/resolve", query: url.Values{"selector": {"latest"}}, call: func(c *Client, id string) error {
+			_, err := c.ResolveBootConfigRevision(ctx, ResourceReference{Name: id, Selector: ReferenceSelectorLatest})
+			return err
+		}},
+		{name: "promote-default", method: "PUT", path: "/boot-configs/%s/default", ifMatch: `"series-etag"`, call: func(c *Client, id string) error {
+			_, err := c.PromoteBootConfigDefault(ctx, id, "revision/one", `"series-etag"`)
+			return err
+		}},
+	}
+}
+
+type observedRequest struct {
+	method, uri, auth, ifMatch string
+}
+
+func TestResourcePathSegments(t *testing.T) {
+	ids := []struct {
+		name, value string
+		reject      bool
+	}{
+		{name: "empty", value: "", reject: true},
+		{name: "dot", value: ".", reject: true},
+		{name: "dot-dot", value: "..", reject: true},
+		{name: "ordinary", value: "node_01"},
+		{name: "traversal", value: "../bmcs/abc"},
+		{name: "slash", value: "a/b"},
+		{name: "question", value: "?"},
+		{name: "fragment", value: "#"},
+		{name: "query-injection", value: "abc?force=true"},
+		{name: "escaped-slash", value: "a%2Fb"},
+		{name: "escaped-dots", value: "%2e%2e"},
+		{name: "escaped-traversal", value: "%2e%2e%2fbmcs%2fabc"},
+		{name: "percent", value: "%"},
+		{name: "space", value: "space name"},
+		{name: "unicode", value: "日本語"},
+		{name: "authority", value: "//example.invalid/x"},
+		{name: "backslash", value: `a\b`},
+	}
+	for _, prefix := range []string{"", "/deployment", "/deployment%2Fblue"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			for _, op := range pathOperations(t.Context()) {
+				t.Run(op.name, func(t *testing.T) {
+					requests := make(chan observedRequest, 1)
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						_, _ = io.Copy(io.Discard, r.Body)
+						requests <- observedRequest{r.Method, r.RequestURI, r.Header.Get("Authorization"), r.Header.Get("If-Match")}
+						w.Header().Set("Content-Type", "application/json")
+						w.Header().Set("ETag", `"series-etag"`)
+						body := op.response
+						if body == "" {
+							body = "{}"
+						}
+						_, _ = io.WriteString(w, body)
+					}))
+					defer server.Close()
+					c, err := NewClientWithBearerToken(server.URL+prefix, "test-bearer", server.Client(), zerolog.Nop())
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, id := range ids {
+						t.Run(id.name, func(t *testing.T) {
+							err := op.call(c, id.value)
+							if id.reject {
+								if err == nil {
+									t.Error("accepted invalid path segment")
+								}
+								select {
+								case request := <-requests:
+									t.Errorf("invalid ID sent a request: %+v", request)
+								default:
+								}
+								return
+							}
+							if err != nil {
+								t.Fatal(err)
+							}
+							var got observedRequest
+							select {
+							case got = <-requests:
+							default:
+								t.Fatal("no request received")
+							}
+							wantURI := prefix + "/api/v1" + fmt.Sprintf(op.path, url.PathEscape(id.value))
+							if len(op.query) > 0 {
+								wantURI += "?" + op.query.Encode()
+							}
+							if got.uri != wantURI {
+								t.Errorf("request URI = %q, want %q", got.uri, wantURI)
+							}
+							if got.method != op.method {
+								t.Errorf("method = %q, want %q", got.method, op.method)
+							}
+							if got.auth != "Bearer test-bearer" {
+								t.Errorf("authorization header = %q", got.auth)
+							}
+							if got.ifMatch != op.ifMatch {
+								t.Errorf("If-Match = %q, want %q", got.ifMatch, op.ifMatch)
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestRevisionQueryParameters(t *testing.T) {
+	for _, value := range []string{"", ".", "..", "../bmcs/abc", "?", "#", "abc?force=true", "a%2Fb", "%2e%2e"} {
+		t.Run(fmt.Sprintf("value=%q", value), func(t *testing.T) {
+			for _, operation := range []string{"create-series", "resolve-uid", "resolve-revision-name"} {
+				t.Run(operation, func(t *testing.T) {
+					queries := make(chan url.Values, 1)
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						queries <- r.URL.Query()
+						_, _ = io.WriteString(w, `{}`)
+					}))
+					defer server.Close()
+					c, err := NewClient(server.URL, server.Client(), zerolog.Nop())
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := url.Values{}
+					switch operation {
+					case "create-series":
+						_, err = c.CreateBootConfigSeries(t.Context(), CreateBootConfigRequest{}, value)
+						if value != "" {
+							want.Set("revisionName", value)
+						}
+					case "resolve-uid":
+						_, err = c.ResolveBootConfigRevision(t.Context(), ResourceReference{Name: "series", UID: value})
+						if value != "" {
+							want.Set("uid", value)
+						}
+					case "resolve-revision-name":
+						_, err = c.ResolveBootConfigRevision(t.Context(), ResourceReference{Name: "series", RevisionName: value})
+						if value != "" {
+							want.Set("revisionName", value)
+						}
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got := <-queries; !reflect.DeepEqual(got, want) {
+						t.Errorf("query = %v, want %v", got, want)
+					}
+				})
+			}
+		})
+	}
+}
