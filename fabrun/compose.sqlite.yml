@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+# Generic docker compose file for a Fabrica service backed by SQLite.
+# Rendered and run by the `fabrun` tool, which supplies the variables below.
+services:
+  service:
+    image: ${FABRUN_IMAGE:-fabrun-service}
+    container_name: ${FABRUN_NAME:-fabrun-service}
+    ports:
+      - "${FABRUN_PORT:-8080}:8080"
+    command: ["serve", "--port", "8080", "--database-url", "${FABRUN_DATABASE_URL:-file:/data/service.db?_fk=1}"]
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  data:

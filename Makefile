@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-.PHONY: help build test test-install-script test-integration test-all lint clean install install-release run docker-build docker-run
+.PHONY: help build build-fabrun test test-install-script test-integration test-all lint clean install install-release run docker-build docker-run
 
 # Variables
 BINARY_NAME=fabrica
@@ -40,6 +40,12 @@ build: ## Build the application
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/fabrica
 ifneq ($(GOEXE),)
 	cp bin/$(BINARY_NAME) bin/$(BINARY_NAME)$(GOEXE)
+endif
+
+build-fabrun: ## Build the fabrun test helper (bin/fabrun)
+	$(GO) build $(GOFLAGS) -ldflags "-X main.serviceVersion=$(VERSION) -X main.serviceCommit=$(COMMIT) -X main.serviceDate=$(DATE)" -o bin/fabrun ./fabrun
+ifneq ($(GOEXE),)
+	cp bin/fabrun bin/fabrun$(GOEXE)
 endif
 
 test: ## Run tests
