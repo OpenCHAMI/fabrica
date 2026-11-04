@@ -1770,6 +1770,11 @@ func (g *Generator) GenerateClientVersion() error {
 
 // GenerateOpenAPI generates OpenAPI specification code
 func (g *Generator) GenerateOpenAPI() error {
+	mode, err := validation.ResolveMode(g.Config.ValidationEnabled, g.Config.ValidationMode)
+	if err != nil {
+		return err
+	}
+	g.Config.ValidationMode = string(mode)
 	fmt.Printf("📋 Generating OpenAPI specification...\n")
 	var buf bytes.Buffer
 	data := g.globalTemplateData("server/openapi.go.tmpl")

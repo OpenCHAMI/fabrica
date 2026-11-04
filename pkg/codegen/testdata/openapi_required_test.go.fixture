@@ -1,0 +1,287 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+//
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http/httptest"
+	"os"
+	"slices"
+	"testing"
+
+	"example.com/revisionfixture/internal/storage"
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/go-chi/chi/v5"
+)
+
+func TestMain(m *testing.M) {
+	if err := registerResourcePrefixes(); err != nil {
+		panic(err)
+	}
+	os.Exit(m.Run())
+}
+
+func TestRequiredSchemaMatchesHandlers(t *testing.T) {
+	const strict = "EXPECTED_MODE" == "strict"
+	const revisioning = REVISIONING
+	if err := storage.InitFileBackend(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+	served := httptest.NewRecorder()
+	ServeOpenAPISpec(served, httptest.NewRequest("GET", "/openapi.json", nil))
+	spec, err := openapi3.NewLoader().LoadFromData(served.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := spec.Validate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	schema := func(name string) *openapi3.Schema { return spec.Components.Schemas[name].Value }
+	required := func(s *openapi3.Schema, name string, want bool) {
+		t.Helper()
+		if got := slices.Contains(s.Required, name); got != want {
+			t.Fatalf("required %s = %t, want %t (%v)", name, got, want, s.Required)
+		}
+	}
+	create := schema("CreateNodeRequest")
+	required(create, "spec", true)
+	required(create, "metadata", revisioning)
+	required(create.Properties["spec"].Value, "value", strict)
+	required(schema("UpdateNodeRequest").Properties["spec"].Value, "value", strict)
+	required(schema("NodeStatus"), "phase", strict && revisioning)
+	if !revisioning {
+		required(schema("UpdateNodeRequest"), "spec", strict)
+	}
+	// Every create requires a non-null spec. Only series creation requires a name.
+	for _, body := range []string{`{}`, `{"spec":null}`} {
+		var value any
+		json.Unmarshal([]byte(body), &value)
+		if create.VisitJSON(value) == nil {
+			t.Fatalf("schema accepts %s", body)
+		}
+		if result := request("POST", "/nodes/", body); result.Code != 400 {
+			t.Fatalf("create %s: %d %s", body, result.Code, result.Body)
+		}
+	}
+	body := `{"spec":{"value":"ok"}}`
+	if revisioning {
+		body = `{"metadata":{"name":"production"},"spec":{"value":"ok"}}`
+	}
+	var value any
+	json.Unmarshal([]byte(body), &value)
+	if err := create.VisitJSON(value); err != nil {
+		t.Fatalf("valid schema: %v", err)
+	}
+	created := request("POST", "/nodes/", body)
+	if created.Code != 201 {
+		t.Fatalf("valid create: %d %s", created.Code, created.Body)
+	}
+	path := "/nodes/production"
+	if !revisioning {
+		var node struct{ Metadata struct{ UID string } }
+		if err := json.Unmarshal(created.Body.Bytes(), &node); err != nil {
+			t.Fatal(err)
+		}
+		path = "/nodes/" + node.Metadata.UID
+	}
+	// Strict request schemas reject missing required spec/status fields; relaxed
+	// policies and their handlers both accept them.
+	cases := []struct{ method, path, name, body string }{}
+	if revisioning {
+		cases = append(cases, struct{ method, path, name, body string }{"PUT", path + "/status", "NodeStatus", `{}`})
+	}
+	if revisioning {
+		revision := schema("CreateNodeRevisionRequest")
+		required(revision, "spec", true)
+		required(revision, "metadata", false)
+		required(schema("PromoteNodeDefaultRequest"), "revisionUid", true)
+		for _, route := range []string{"revisions", "revisions/release"} {
+			method := "POST"
+			if route != "revisions" {
+				method = "PUT"
+			}
+			cases = append(cases, struct{ method, path, name, body string }{method, path + "/" + route, "CreateNodeRevisionRequest", `{"spec":{}}`})
+		}
+	} else {
+		cases = append(cases, struct{ method, path, name, body string }{"PUT", path, "UpdateNodeRequest", `{"spec":{}}`})
+	}
+	for _, tc := range cases {
+		json.Unmarshal([]byte(tc.body), &value)
+		if got := schema(tc.name).VisitJSON(value) == nil; got == strict {
+			t.Fatalf("schema %s acceptance=%t strict=%t", tc.name, got, strict)
+		}
+		result := request(tc.method, tc.path, tc.body)
+		if strict && result.Code != 400 || !strict && result.Code >= 300 {
+			t.Fatalf("%s %s: %d %s", tc.method, tc.path, result.Code, result.Body)
+		}
+	}
+	// A satisfying status body and metadata-free revision bodies remain valid.
+	if result := request("PUT", path+"/status", `{"phase":"Ready"}`); result.Code != 200 {
+		t.Fatalf("status: %d %s", result.Code, result.Body)
+	}
+	if revisioning {
+		for _, method := range []string{"POST", "PUT"} {
+			route := path + "/revisions"
+			if method == "PUT" {
+				route += "/valid"
+			}
+			body := `{"spec":{"value":"next"}}`
+			json.Unmarshal([]byte(body), &value)
+			if err := schema("CreateNodeRevisionRequest").VisitJSON(value); err != nil {
+				t.Fatal(err)
+			}
+			if result := request(method, route, body); result.Code >= 300 {
+				t.Fatalf("revision: %d %s", result.Code, result.Body)
+			}
+		}
+	}
+}
+
+func TestValidationTraversalMatchesHandlers(t *testing.T) {
+	const strict = "EXPECTED_MODE" == "strict"
+	const revisioning = REVISIONING
+	if err := storage.InitFileBackend(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	RegisterGeneratedRoutes(router)
+	served := httptest.NewRecorder()
+	ServeOpenAPISpec(served, httptest.NewRequest("GET", "/openapi.json", nil))
+	spec, err := openapi3.NewLoader().LoadFromData(served.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := spec.Validate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path string, value any) *httptest.ResponseRecorder {
+		t.Helper()
+		body, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(method, path, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+	cases := []struct {
+		name   string
+		fields string
+		valid  bool
+	}{
+		{name: "omitted collection with element required", fields: `{}`, valid: true},
+		{name: "empty collection with element required", fields: `{"tags":[]}`, valid: true},
+		{name: "invalid required element", fields: `{"tags":[""]}`},
+		{name: "collection without dive", fields: `{"items":[{}]}`, valid: true},
+		{name: "ignored struct", fields: `{"ignored":{}}`, valid: true},
+		{name: "structonly skips fields", fields: `{"structOnly":{}}`, valid: true},
+		{name: "nostructlevel skips fields", fields: `{"noStruct":{}}`, valid: true},
+		{name: "omitempty skips zero struct", fields: `{"skipEmpty":{}}`, valid: true},
+		{name: "embedded skipped struct", fields: `{"embeddedSkipped":{}}`, valid: true},
+		{name: "embedded skipped empty value", fields: `{"embeddedSkipped":{"value":""}}`, valid: true},
+		{name: "embedded structonly", fields: `{"embeddedStructOnly":{}}`, valid: true},
+		{name: "embedded omitempty", fields: `{"embeddedOmitEmpty":{}}`, valid: true},
+		{name: "embedded omitempty populated", fields: `{"embeddedOmitEmpty":{"value":"ok"}}`, valid: true},
+		{name: "nested embedded skip", fields: `{"embeddedNested":{}}`, valid: true},
+		{name: "embedded required value", fields: `{"embeddedRequired":{}}`},
+		{name: "embedded required empty value", fields: `{"embeddedRequired":{"value":""}}`},
+		{name: "embedded required populated", fields: `{"embeddedRequired":{"value":"ok"}}`, valid: true},
+		{name: "embedded nil pointer", fields: `{"embeddedPointer":{}}`, valid: true},
+		{name: "named embedded skip", fields: `{"embeddedNamed":{"nested":{}}}`, valid: true},
+		{name: "map without dive", fields: `{"itemMap":{"key":{}}}`, valid: true},
+		{name: "map key required does not constrain values", fields: `{"keyTags":{"key":""}}`, valid: true},
+		{name: "outer dive does not traverse inner collection", fields: `{"outerOnly":[[{}]]}`, valid: true},
+		{name: "dived struct requires value", fields: `{"dived":[{}]}`},
+		{name: "dived map requires value", fields: `{"divedMap":{"key":{}}}`},
+		{name: "nested dive requires value", fields: `{"nested":[[{}]]}`},
+		{name: "optional pointer traversed when present", fields: `{"optional":{}}`},
+		{name: "omitnil pointer traversed when present", fields: `{"omitNil":{}}`},
+		{name: "omitnil pointer can be null", fields: `{"omitNil":null}`, valid: true},
+		{name: "required before dive", fields: `{"ordered":{}}`},
+		{name: "required before omitempty", fields: `{"ordered":{"required":[]}}`},
+		{name: "empty required collection allowed", fields: `{"ordered":{"required":[],"first":[]}}`, valid: true},
+		{name: "omitempty before required", fields: `{"ordered":{"required":[],"first":[],"optional":[]}}`, valid: true},
+		{name: "valid traversed fields", fields: `{"dived":[{"value":"ok"}],"divedMap":{"key":{"value":"ok"}},"nested":[[{"value":"ok"}]],"optional":{"value":"ok"}}`, valid: true},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := map[string]any{}
+			if err := json.Unmarshal([]byte(tc.fields), &fields); err != nil {
+				t.Fatal(err)
+			}
+			fields["value"] = "ok"
+			body := map[string]any{"spec": fields, "metadata": map[string]any{"name": fmt.Sprintf("case-%d", i)}}
+			want := tc.valid || !strict
+			for _, name := range []string{"CreateNodeRequest", "UpdateNodeRequest"} {
+				if err := spec.Components.Schemas[name].Value.VisitJSON(body); (err == nil) != want {
+					t.Errorf("%s acceptance=%t, want %t: %v", name, err == nil, want, err)
+				}
+			}
+			result := request("POST", "/nodes/", body)
+			if (result.Code == 201) != want || !want && result.Code != 400 {
+				t.Fatalf("create: %d %s, want acceptance=%t", result.Code, result.Body, want)
+			}
+			// Start from a valid resource even for a case whose input is rejected.
+			seedName := fmt.Sprintf("seed-%d", i)
+			seed := request("POST", "/nodes/", map[string]any{
+				"metadata": map[string]any{"name": seedName}, "spec": map[string]any{"value": "ok"},
+			})
+			if seed.Code != 201 {
+				t.Fatalf("seed: %d %s", seed.Code, seed.Body)
+			}
+			path := "/nodes/" + seedName
+			if !revisioning {
+				var resource struct{ Metadata struct{ UID string } }
+				if err := json.Unmarshal(seed.Body.Bytes(), &resource); err != nil {
+					t.Fatal(err)
+				}
+				path = "/nodes/" + resource.Metadata.UID
+			}
+			method := "PUT"
+			if revisioning {
+				path += "/revisions"
+				method = "POST"
+				if err := spec.Components.Schemas["CreateNodeRevisionRequest"].Value.VisitJSON(body); (err == nil) != want {
+					t.Errorf("revision acceptance=%t, want %t: %v", err == nil, want, err)
+				}
+			}
+			result = request(method, path, body)
+			if (result.Code < 300) != want || !want && result.Code != 400 {
+				t.Fatalf("%s %s: %d %s, want acceptance=%t", method, path, result.Code, result.Body, want)
+			}
+			status := map[string]any{"phase": "Ready"}
+			for key, value := range fields {
+				if key != "value" {
+					status[key] = value
+				}
+			}
+			if err := spec.Components.Schemas["NodeStatus"].Value.VisitJSON(status); (err == nil) != want {
+				t.Errorf("status acceptance=%t, want %t: %v", err == nil, want, err)
+			}
+			statusPath := "/nodes/" + seedName
+			if !revisioning {
+				statusPath = path
+			}
+			result = request("PUT", statusPath+"/status", status)
+			if (result.Code == 200) != want || !want && result.Code != 400 {
+				t.Fatalf("status: %d %s, want acceptance=%t", result.Code, result.Body, want)
+			}
+		})
+	}
+}

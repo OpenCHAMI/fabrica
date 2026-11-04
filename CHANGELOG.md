@@ -25,9 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Previously handlers always rejected these failures, whatever the configuration said. This also applies to services that have not adopted the feature loader.
   After the next `fabrica generate`, a service configured with `enabled: false`, `mode: warn`, or `mode: disabled` accepts requests it used to reject; set `enabled: true` and `mode: strict` to keep the old behavior.
   See [Upgrading existing services](docs/guides/validation.md#upgrading-existing-services).
-- **Behavior change for all regenerated services:** generated create, series-create, and revision handlers reject omitted or `null` required `metadata` and `spec` envelopes with HTTP 400 in every validation mode.
-  Previously these bodies decoded to zero values and failed only on optional checks. Revision creation and ensure require only `spec`; explicitly empty objects (`{}`) remain valid.
-  Generated Fabrica clients always send both fields; raw HTTP clients that omit either must now send an empty object.
+- **Behavior change for all regenerated services:** generated create, series-create, and revision handlers reject omitted or `null` required envelopes with HTTP 400 in every validation mode.
+  Ordinary creates, revision creation and ensure require only `spec`; ordinary metadata remains optional. Series creation also requires metadata with a name. Explicitly empty spec objects (`{}`) satisfy presence checks.
+  Generated Fabrica clients always send both fields; raw HTTP clients must supply `spec` but may continue omitting metadata on ordinary creates.
   See [Upgrading existing services](docs/guides/validation.md#upgrading-existing-services).
 - New resource UIDs use TypeID/UUIDv7 (`prefix_` plus 26 lowercase base32
   characters), replacing the short random hexadecimal default. Rebuilding
@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Use `GenerateUID` or `GenerateUIDForResource` for new resource identities.
 
 ### Fixed
+- Codegen runners apply the CLI's resolved configuration instead of parsing `.fabrica.yaml` again, keeping manifests and subsequent selective generation consistent (#151).
+- Generated OpenAPI request schemas now document mandatory envelopes and strict-mode required Spec/Status fields, with separate series and revision create contracts (#149).
 - UID migration verification exercises the shared atomic storage backend with
   conditional requests disabled and enabled. Deletion rejects stale ETags and
   retains resource metadata on failure for both legacy and TypeID identities.

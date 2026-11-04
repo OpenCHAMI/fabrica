@@ -10,16 +10,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/openchami/fabrica/internal/config"
+	"github.com/openchami/fabrica/internal/projectfeatures"
+	"github.com/openchami/fabrica/pkg/codegen"
 	"gopkg.in/yaml.v3"
 )
 
-// The CLI preflight and the generated runner read .fabrica.yaml separately.
-// Omitted validation keys must resolve to strict in both, or handlers silently
-// drop validation and the manifest disagrees with every later selective run.
+// The runner must write the exact normalized selection checked by preflight,
+// including omitted keys, aliases, and overlapping legacy/security settings.
 func TestGeneratedValidationDefaultsMatchCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generated service integration")
@@ -41,10 +42,6 @@ func TestGeneratedValidationDefaultsMatchCLI(t *testing.T) {
 		}
 	}
 	run(t, repo, "go", "build", "-o", binary, "./cmd/fabrica")
-	dir := filepath.Join(workspace, "svc")
-	run(t, workspace, binary, "init", "svc", "--module", "example.com/svc", "--storage-type", "file")
-	run(t, dir, "go", "mod", "edit", "-replace", "github.com/openchami/fabrica="+repo)
-	run(t, dir, binary, "add", "resource", "Node")
 
 	for _, scenario := range []struct {
 		name string
@@ -52,8 +49,30 @@ func TestGeneratedValidationDefaultsMatchCLI(t *testing.T) {
 	}{
 		{"omitted-enabled", func(validation, _ map[string]any) { delete(validation, "enabled") }},
 		{"omitted-block", func(_, features map[string]any) { delete(features, "validation") }},
+		{"disabled-overrides-warn", func(validation, features map[string]any) {
+			validation["enabled"] = false
+			validation["mode"] = "warn"
+			features["conditional"] = map[string]any{"enabled": true, "etag_algorithm": "md5"}
+			features["storage"].(map[string]any)["db_driver"] = "sqlite"
+		}},
+		{"legacy-auth-and-workers", func(validation, features map[string]any) {
+			validation["mode"] = "warn"
+			features["auth"] = map[string]any{"enabled": true}
+			features["security"] = map[string]any{"authn": map[string]any{"enabled": false}, "authz": map[string]any{"enabled": false, "mode": "shadow"}}
+			features["events"] = map[string]any{"enabled": true, "bus_type": "memory"}
+			features["reconciliation"] = map[string]any{"enabled": true, "worker_count": 2, "requeue_delay": 7}
+			features["metrics"] = map[string]any{"enabled": true}
+		}},
+		{"ent-sqlite-alias", func(_, features map[string]any) {
+			features["storage"] = map[string]any{"enabled": true, "type": "ent", "db_driver": "sqlite"}
+		}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "svc")
+			run(t, filepath.Dir(dir), binary, "init", "svc", "--module", "example.com/svc", "--storage-type", "file")
+			run(t, dir, "go", "mod", "edit", "-replace", "github.com/openchami/fabrica="+repo)
+			run(t, dir, binary, "add", "resource", "Node")
+
 			path := filepath.Join(dir, ".fabrica.yaml")
 			data, err := os.ReadFile(path)
 			if err != nil {
@@ -79,23 +98,27 @@ func TestGeneratedValidationDefaultsMatchCLI(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// Explicit storage selection must win even over misleading legacy comments.
+			mainPath := filepath.Join(dir, "cmd/server/main.go")
+			mainSource, err := os.ReadFile(mainPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mainSource = append(mainSource, []byte("\n// legacy internal/storage/ent reference\n")...)
+			if err := os.WriteFile(mainPath, mainSource, 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := config.LoadConfig(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := config.ValidateConfig(cfg); err != nil {
+				t.Fatal(err)
+			}
+			want := projectfeatures.FromConfig(cfg, true)
 			run(t, dir, binary, "generate", "--fabrica-source", repo)
-			handlers, err := filepath.Glob(filepath.Join(dir, "cmd/server/*handlers*_generated.go"))
-			if err != nil || len(handlers) == 0 {
-				t.Fatalf("handlers: %v, %v", handlers, err)
-			}
-			for _, handler := range handlers {
-				source, err := os.ReadFile(handler)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if strings.Contains(string(source), `validation.Mode("disabled")`) || !strings.Contains(string(source), `validation.Mode("strict")`) {
-					t.Fatalf("%s does not use strict validation", handler)
-				}
-			}
-			var manifest struct {
-				Config struct{ ValidationMode string }
-			}
+			var manifest struct{ Config codegen.FeatureConfig }
+
 			data, err = os.ReadFile(filepath.Join(dir, "cmd/server/features_manifest_generated.json"))
 			if err != nil {
 				t.Fatal(err)
@@ -103,12 +126,17 @@ func TestGeneratedValidationDefaultsMatchCLI(t *testing.T) {
 			if err := json.Unmarshal(data, &manifest); err != nil {
 				t.Fatal(err)
 			}
-			if manifest.Config.ValidationMode != "strict" {
-				t.Fatalf("manifest validation mode = %q", manifest.Config.ValidationMode)
+			if manifest.Config != want {
+				t.Fatalf("manifest = %#v\npreflight = %#v", manifest.Config, want)
 			}
-			if _, err := os.Stat(filepath.Join(dir, "internal/middleware/validation_middleware_generated.go")); err != nil {
-				t.Fatalf("validation middleware: %v", err)
+			after, err := os.ReadFile(mainPath)
+			if err != nil {
+				t.Fatal(err)
 			}
+			if string(after) != string(mainSource) {
+				t.Fatal("generation rewrote user main.go")
+			}
+
 			// The CLI's own reading must match the recorded selection.
 			run(t, dir, binary, "generate", "--handlers", "--fabrica-source", repo)
 		})

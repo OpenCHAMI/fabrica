@@ -5,6 +5,7 @@
 package main
 
 import (
+	"github.com/openchami/fabrica/pkg/codegen"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestGenerateRunnerCode_UsesStableAuthSetter(t *testing.T) {
 		true,
 		false,
 		false,
-		"file",
+		runnerTestConfig("file"),
 		false,
 	)
 
@@ -48,7 +49,7 @@ func TestGenerateRunnerCode_SetsAuthForFalseAndTrue(t *testing.T) {
 		false,
 		false,
 		false,
-		"file",
+		runnerTestConfig("file"),
 		false,
 	)
 
@@ -68,17 +69,16 @@ func TestGenerateRunnerCode_ConfiguresOpenAPIServerURLWhenSet(t *testing.T) {
 		true,
 		false,
 		false,
-		"file",
+		runnerTestConfig("file"),
 		false,
 	)
 
 	for _, want := range []string{
-		"Generation GenerationConfig `yaml:\"generation\"`",
-		"OpenAPIServerURL string `yaml:\"openapi_server_url,omitempty\"`",
-		"OpenAPIServerDescription string `yaml:\"openapi_server_description,omitempty\"`",
-		`if config.Generation.OpenAPIServerURL != ""`,
-		"gen.Config.OpenAPIServerURL = config.Generation.OpenAPIServerURL",
-		"gen.Config.OpenAPIServerDescription = config.Generation.OpenAPIServerDescription",
+		"OpenAPIServerURL string",
+		"OpenAPIServerDescription string",
+		`if selection.OpenAPIServerURL != ""`,
+		"gen.Config.OpenAPIServerURL = selection.OpenAPIServerURL",
+		"gen.Config.OpenAPIServerDescription = selection.OpenAPIServerDescription",
 	} {
 		if !strings.Contains(runnerCode, want) {
 			t.Fatalf("runner code should contain %q", want)
@@ -97,7 +97,7 @@ func TestGenerateRunnerCode_StorageOnlyDoesNotRegenerateRoutesOrModels(t *testin
 		false,
 		false,
 		false,
-		"file",
+		runnerTestConfig("file"),
 		false,
 	)
 
@@ -122,7 +122,7 @@ func TestGenerateRunnerCode_CustomStorageDoesNotGeneratePersistence(t *testing.T
 		true,
 		false,
 		false,
-		"custom",
+		runnerTestConfig("custom"),
 		false,
 	)
 
@@ -156,7 +156,7 @@ func TestGenerateRunnerCode_OpenAPIOnlyRegeneratesModelDependency(t *testing.T) 
 		true,
 		false,
 		false,
-		"file",
+		runnerTestConfig("file"),
 		false,
 	)
 
@@ -169,4 +169,8 @@ func TestGenerateRunnerCode_OpenAPIOnlyRegeneratesModelDependency(t *testing.T) 
 	if strings.Contains(runnerCode, "GenerateRoutes") || strings.Contains(runnerCode, "GenerateStorage") {
 		t.Fatalf("openapi-only runner should not generate routes or storage")
 	}
+}
+
+func runnerTestConfig(storage string) resolvedGenerationConfig {
+	return resolvedGenerationConfig{Features: codegen.FeatureConfig{StorageType: storage, ValidationEnabled: true}.Normalize()}
 }

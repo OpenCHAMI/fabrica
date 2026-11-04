@@ -39,10 +39,11 @@ Decoding, endpoint-required identity/envelope fields, revision promotion selecto
 patch structure/path restrictions, authorization, ETag preconditions, server-managed
 fields, and backend constraints remain mandatory in every mode. For example, an
 omitted `revisionUid` still rejects a revision promotion when validation is disabled.
-Generated create and series-create requests track whether their required
-`metadata` and `spec` JSON keys were supplied. Omitted or `null` values reject with
-HTTP 400 in every mode; explicitly supplied empty objects satisfy presence, and
-optional nested checks still follow the selected mode. Revision creation/ensure
+Generated ordinary creates require a non-null `spec` JSON key; `metadata` may be
+omitted or null, and no name is required. Series creation requires both `metadata`
+and `spec`, plus a nonempty series name. Omitted or `null` required values reject
+with HTTP 400 in every mode; explicitly supplied empty objects satisfy presence,
+and optional nested checks still follow the selected mode. Revision creation/ensure
 gets identity from the URL and requires only the `spec` envelope, so its metadata
 may be omitted. Existing series-name and promotion-selector requirements remain
 mandatory. This does not introduce a new name requirement for ordinary creates.
@@ -65,6 +66,34 @@ storage, a 201-character description rejects in strict mode, logs and persists i
 warn mode, and persists without optional checks when disabled. Return to strict
 mode by setting both `enabled: true` and `mode: strict` and regenerating.
 
+### Required fields in OpenAPI
+
+Regenerated `/openapi.json` marks mandatory create envelopes in every mode:
+`spec` for ordinary and revision creates/ensure, and `metadata`, its `name`,
+and `spec` for series creation. Promotion always requires `revisionUid`.
+Ordinary metadata remains optional, including `null`.
+
+In strict mode, request schemas also mark unconditional `validate:"required"`
+fields inside Spec and Status. Warn and disabled schemas omit these optional
+requirements. Inference follows validator traversal: `validate:"-"` and
+`structonly` suppress nested field requirements, and collection elements are
+visited only with `dive`. A `required` tag after `dive` constrains elements,
+not the collection's presence. Tags are interpreted in order, so an earlier
+`omitempty` or `omitnil` can skip a later requirement. A spec PUT requires
+`spec` when its zero value fails strict tag
+validation. JSON Patch schemas describe patch operations rather than requiring
+all fields of the resulting resource on each patch.
+
+Promoted fields of anonymous embedded structs retain their parents' validation
+rules. Skipped, `structonly`, and optional zero-valued embedded structs do not
+introduce unconditional child requirements. Neither do optional embedded
+pointers that may be absent. An embedded struct with a JSON property name is
+validated within that property rather than as promoted fields of its parent.
+
+OpenAPI does not express arbitrary custom hooks, conditional validation rules,
+or every nonzero-value constraint. These remain service contracts. Regenerate
+OpenAPI along with handlers when changing the validation policy.
+
 ### Upgrading existing services
 
 This policy applies to every service on its next `fabrica generate`, including
@@ -79,12 +108,13 @@ middleware file. After regenerating, a service whose configuration sets
 reject. To keep the previous behavior, set `enabled: true` and `mode: strict`
 before regenerating.
 
-Regenerated create, series-create, and revision handlers also reject omitted or
-`null` required envelopes in every mode, including disabled. Previously a body
-without `spec` or `metadata` decoded to zero values, because `required` does not
-apply to Go struct values, and failed only if optional checks rejected those
-values. Clients that send only `spec`, or only `metadata`, now receive HTTP 400;
-send `"metadata": {}` or `"spec": {}` instead.
+Regenerated create, series-create, and revision handlers reject omitted or
+`null` required envelopes in every mode, including disabled. Previously an absent
+`spec` decoded to zero values and failed only if optional checks rejected them.
+Send `"spec": {}` when an empty spec is intended. Ordinary creates continue to
+accept bodies containing only `spec`; series creation also requires metadata with
+a name. Ordinary creates with omitted or null metadata receive a generated UID
+and an empty name.
 Generated Fabrica clients always send both fields and are unaffected.
 
 ## Overview
