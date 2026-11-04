@@ -84,6 +84,12 @@ not the collection's presence. Tags are interpreted in order, so an earlier
 validation. JSON Patch schemas describe patch operations rather than requiring
 all fields of the resulting resource on each patch.
 
+Promoted fields of anonymous embedded structs retain their parents' validation
+rules. Skipped, `structonly`, and optional zero-valued embedded structs do not
+introduce unconditional child requirements. Neither do optional embedded
+pointers that may be absent. An embedded struct with a JSON property name is
+validated within that property rather than as promoted fields of its parent.
+
 OpenAPI does not express arbitrary custom hooks, conditional validation rules,
 or every nonzero-value constraint. These remain service contracts. Regenerate
 OpenAPI along with handlers when changing the validation policy.

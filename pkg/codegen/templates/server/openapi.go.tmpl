@@ -741,6 +741,45 @@ func requestFieldRequired(typ reflect.Type, tags []string) bool {
 	return false
 }
 
+func requestValidationSkipped(typ reflect.Type, tags []string) bool {
+	for _, tag := range tags {
+		if tag == "dive" {
+			break
+		}
+		if tag == "-" || tag == "structonly" || tag == "nostructlevel" {
+			return true
+		}
+	}
+	return typ.Kind() == reflect.Struct && slices.Contains(tags, "omitempty")
+}
+
+// requestEmbeddedFieldValidated keeps promoted JSON fields tied to their
+// anonymous parents. VisibleFields alone loses the validation context of those
+// parents. A named JSON parent is handled recursively through its own property.
+func requestEmbeddedFieldValidated(typ reflect.Type, index []int) bool {
+	for _, i := range index[:len(index)-1] {
+		parent := typ.Field(i)
+		if name := strings.Split(parent.Tag.Get("json"), ",")[0]; name != "" {
+			return false
+		}
+		tags := strings.Split(parent.Tag.Get("validate"), ",")
+		if requestValidationSkipped(parent.Type, tags) {
+			return false
+		}
+		// An absent anonymous pointer has no JSON property on which to make
+		// child requirements conditional. Do not require its promoted fields
+		// unless the parent itself must be present.
+		if parent.Type.Kind() == reflect.Pointer && !requestFieldRequired(parent.Type, tags) {
+			return false
+		}
+		typ = parent.Type
+		for typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+		}
+	}
+	return true
+}
+
 // requestValidationSchema follows handler validation from the request root.
 // Copy each visited schema: the same Go type can be validated through one field
 // and skipped through another, so constraints must not leak via shared schemas.
@@ -769,17 +808,9 @@ func requestValidationSchema(
 		}
 	}
 	result := &openapi3.SchemaRef{Value: &schema}
-	for _, tag := range tags {
-		if tag == "dive" {
-			break
-		}
-		if tag == "-" || tag == "structonly" || tag == "nostructlevel" {
-			return result
-		}
-	}
 	// omitempty can skip a zero-valued struct even though its JSON object is
 	// present. Its nested requirements cannot be expressed unconditionally.
-	if fieldType.Kind() == reflect.Struct && slices.Contains(tags, "omitempty") {
+	if requestValidationSkipped(fieldType, tags) {
 		return result
 	}
 	active[typ] = true
@@ -791,6 +822,9 @@ func requestValidationSchema(
 			schema.Properties[name] = property
 		}
 		for _, field := range reflect.VisibleFields(typ) {
+			if !requestEmbeddedFieldValidated(typ, field.Index) {
+				continue
+			}
 			name := strings.Split(field.Tag.Get("json"), ",")[0]
 			property := schema.Properties[name]
 			if property == nil {

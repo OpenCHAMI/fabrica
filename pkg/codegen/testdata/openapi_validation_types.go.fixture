@@ -14,20 +14,56 @@ type OpenAPIOrderedTags struct {
 	First    []string `json:"first" validate:"required,omitempty,dive,required"`
 }
 
+type OpenAPIEmbeddedSkipped struct {
+	OpenAPIRequiredItem `validate:"-"`
+}
+
+type OpenAPIEmbeddedStructOnly struct {
+	OpenAPIRequiredItem `validate:"structonly"`
+}
+
+type OpenAPIEmbeddedOmitEmpty struct {
+	OpenAPIRequiredItem `validate:"omitempty"`
+}
+
+type OpenAPIEmbeddedNested struct {
+	OpenAPIEmbeddedSkipped
+}
+
+type OpenAPIEmbeddedRequired struct {
+	OpenAPIRequiredItem
+}
+
+type OpenAPIEmbeddedPointer struct {
+	*OpenAPIRequiredItem
+}
+
+type OpenAPIEmbeddedNamed struct {
+	OpenAPIRequiredItem `json:"nested" validate:"-"`
+	OtherValue          string `json:"value,omitempty"`
+}
+
 type OpenAPIValidationFields struct {
-	Tags       []string                       `json:"tags,omitempty" validate:"dive,required"`
-	Items      []OpenAPIRequiredItem          `json:"items,omitempty"`
-	Ignored    OpenAPIRequiredItem            `json:"ignored,omitempty" validate:"-"`
-	Dived      []OpenAPIRequiredItem          `json:"dived,omitempty" validate:"dive"`
-	ItemMap    map[string]OpenAPIRequiredItem `json:"itemMap,omitempty"`
-	DivedMap   map[string]OpenAPIRequiredItem `json:"divedMap,omitempty" validate:"dive"`
-	Nested     [][]OpenAPIRequiredItem        `json:"nested,omitempty" validate:"dive,dive"`
-	OuterOnly  [][]OpenAPIRequiredItem        `json:"outerOnly,omitempty" validate:"dive"`
-	KeyTags    map[string]string              `json:"keyTags,omitempty" validate:"dive,keys,required,endkeys"`
-	Optional   *OpenAPIRequiredItem           `json:"optional,omitempty" validate:"omitempty"`
-	OmitNil    *OpenAPIRequiredItem           `json:"omitNil,omitempty" validate:"omitnil"`
-	SkipEmpty  OpenAPIRequiredItem            `json:"skipEmpty,omitempty" validate:"omitempty"`
-	StructOnly OpenAPIRequiredItem            `json:"structOnly,omitempty" validate:"structonly"`
-	NoStruct   OpenAPIRequiredItem            `json:"noStruct,omitempty" validate:"nostructlevel"`
-	Ordered    *OpenAPIOrderedTags            `json:"ordered,omitempty" validate:"omitempty"`
+	Tags               []string                       `json:"tags,omitempty" validate:"dive,required"`
+	Items              []OpenAPIRequiredItem          `json:"items,omitempty"`
+	Ignored            OpenAPIRequiredItem            `json:"ignored,omitempty" validate:"-"`
+	Dived              []OpenAPIRequiredItem          `json:"dived,omitempty" validate:"dive"`
+	ItemMap            map[string]OpenAPIRequiredItem `json:"itemMap,omitempty"`
+	DivedMap           map[string]OpenAPIRequiredItem `json:"divedMap,omitempty" validate:"dive"`
+	Nested             [][]OpenAPIRequiredItem        `json:"nested,omitempty" validate:"dive,dive"`
+	OuterOnly          [][]OpenAPIRequiredItem        `json:"outerOnly,omitempty" validate:"dive"`
+	KeyTags            map[string]string              `json:"keyTags,omitempty" validate:"dive,keys,required,endkeys"`
+	Optional           *OpenAPIRequiredItem           `json:"optional,omitempty" validate:"omitempty"`
+	OmitNil            *OpenAPIRequiredItem           `json:"omitNil,omitempty" validate:"omitnil"`
+	SkipEmpty          OpenAPIRequiredItem            `json:"skipEmpty,omitempty" validate:"omitempty"`
+	StructOnly         OpenAPIRequiredItem            `json:"structOnly,omitempty" validate:"structonly"`
+	NoStruct           OpenAPIRequiredItem            `json:"noStruct,omitempty" validate:"nostructlevel"`
+	Ordered            *OpenAPIOrderedTags            `json:"ordered,omitempty" validate:"omitempty"`
+	EmbeddedSkipped    *OpenAPIEmbeddedSkipped        `json:"embeddedSkipped,omitempty" validate:"omitempty"`
+	EmbeddedStructOnly *OpenAPIEmbeddedStructOnly     `json:"embeddedStructOnly,omitempty" validate:"omitempty"`
+	EmbeddedOmitEmpty  *OpenAPIEmbeddedOmitEmpty      `json:"embeddedOmitEmpty,omitempty" validate:"omitempty"`
+	EmbeddedNested     *OpenAPIEmbeddedNested         `json:"embeddedNested,omitempty" validate:"omitempty"`
+	EmbeddedRequired   *OpenAPIEmbeddedRequired       `json:"embeddedRequired,omitempty" validate:"omitempty"`
+	EmbeddedPointer    *OpenAPIEmbeddedPointer        `json:"embeddedPointer,omitempty" validate:"omitempty"`
+	EmbeddedNamed      *OpenAPIEmbeddedNamed          `json:"embeddedNamed,omitempty" validate:"omitempty"`
 }
