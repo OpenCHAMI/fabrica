@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MIT
+# Generic Dockerfile for running a Fabrica service backed by PostgreSQL.
+# Built and used by the `fabrun` tool. The service binary is copied into the
+# build context as `service`. The run-time CMD (including --database-url) is
+# supplied by fabrun, which also starts the companion postgres container.
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1000 fabrun && \
+    useradd -r -u 1000 -g fabrun fabrun
+
+WORKDIR /home/fabrun
+
+COPY service /usr/local/bin/service
+RUN chown -R fabrun:fabrun /home/fabrun
+
+USER fabrun
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/service"]
+CMD ["serve", "--port", "8080"]
