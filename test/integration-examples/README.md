@@ -12,6 +12,7 @@ tests written with [testify](https://github.com/stretchr/testify).
 
 | Directory | Example |
 | --- | --- |
+| [basic-crud](basic-crud) | [01-basic-crud](../../examples/01-basic-crud) |
 
 ## Requirements
 
