@@ -66,6 +66,14 @@ func TestStorageAnnotationsCLI(t *testing.T) {
 		}
 	}
 	run(project, "go", "mod", "edit", "-replace", "github.com/openchami/fabrica="+repo)
+	run(project, "go", "mod", "edit", "-require", "github.com/mattn/go-sqlite3@v1.14.32")
+	fixture, err := os.ReadFile(filepath.Join(repo, "cmd/fabrica/testdata/dedicated_envelope_test.go.fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(project, "internal/storage/dedicated_envelope_test.go"), fixture, 0644); err != nil {
+		t.Fatal(err)
+	}
 	run(project, "go", "test", "-mod=mod", "./internal/storage")
 	text = strings.Replace(text, "storage=dedicated", "storage=typo", 1)
 	if err = os.WriteFile(types, []byte(text), 0644); err != nil {

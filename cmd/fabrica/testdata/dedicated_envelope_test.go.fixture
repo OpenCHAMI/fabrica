@@ -1,0 +1,78 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+
+package storage
+
+import (
+	"context"
+	"encoding/json"
+	"maps"
+	"testing"
+	"time"
+
+	v1 "example.com/annotated/apis/example.fabrica.dev/v1"
+	"example.com/annotated/internal/storage/ent"
+	_ "example.com/annotated/internal/storage/ent/runtime"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/openchami/fabrica/pkg/fabrica"
+)
+
+func TestDedicatedEnvelope(t *testing.T) {
+	ctx := context.Background()
+	client, err := ent.Open("sqlite3", "file:envelope?mode=memory&cache=shared&_fk=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err = client.Schema.Create(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	want := &v1.Token{APIVersion: "v1", Kind: "Token", Metadata: fabrica.Metadata{Name: "before", UID: "tok-envelope", CreatedAt: now, UpdatedAt: now, Labels: map[string]string{"team": "compute"}, Annotations: map[string]string{"note": "keep"}}, Spec: v1.TokenSpec{Description: "one"}, Status: v1.TokenStatus{Phase: "ready", Ready: true}}
+	create, err := ToEntToken(ctx, client, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entity, err := create.Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := FromEntToken(ctx, entity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func() {
+		t.Helper()
+		if !maps.Equal(got.Metadata.Labels, want.Metadata.Labels) || !maps.Equal(got.Metadata.Annotations, want.Metadata.Annotations) || got.Status != want.Status || got.Metadata.Name != want.Metadata.Name || got.Spec != want.Spec {
+			t.Fatalf("round trip mismatch: got=%+v want=%+v", got, want)
+		}
+	}
+	check()
+	var envelope map[string]json.RawMessage
+	if err = json.Unmarshal(entity.Envelope, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := envelope["spec"]; ok {
+		t.Fatal("Spec is duplicated into envelope")
+	}
+	want.Metadata.Name = "after"
+	want.Metadata.Labels = nil
+	want.Metadata.Annotations = map[string]string{}
+	want.Status = v1.TokenStatus{}
+	want.Spec.Description = "two"
+	update := client.Token.UpdateOne(entity)
+	if err = UpdateTokenFromResource(ctx, update, want); err != nil {
+		t.Fatal(err)
+	}
+	entity, err = update.Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = FromEntToken(ctx, entity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// JSON omitempty treats empty and nil maps equally.
+	want.Metadata.Annotations = nil
+	check()
+}
