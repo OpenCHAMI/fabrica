@@ -17,8 +17,11 @@ tests written with [testify](https://github.com/stretchr/testify).
 
 ## Requirements
 
-- Go, GNU make, and a POSIX shell (Linux, macOS, or Cygwin/MSYS on Windows)
+- Go, GNU make, and a POSIX shell (Linux is assumed; the `build-server` step
+  builds a linux binary)
 - Docker with `docker compose` (used by fabrun to run the service)
+- A C compiler (e.g. gcc) for the storage-annotations example, whose sqlite
+  driver needs cgo
 
 ## Running
 
@@ -46,9 +49,8 @@ service; tests create uniquely named resources so they can be re-run while the
 service is up.
 
 Useful variables: `PORT` (default `18080`), `DB` (`sqlite` or `postgres`),
-`NAME` (fabrun container name), `TEST_FLAGS` (default `-count=1 -v`, e.g.
-`TEST_FLAGS='-count=1 -v -run TestStorageAnnotations/TestCreateUser'`), and
-`BUILD_IN_DOCKER=0` to build the server with the host toolchain on linux.
+`NAME` (fabrun container name), and `TEST_FLAGS` (default `-count=1 -v`, e.g.
+`TEST_FLAGS='-count=1 -v -run TestStorageAnnotations/TestCreateUser'`).
 
 Running `go test ./...` in this directory without `FABRICA_EXAMPLE_URL` set
 skips the tests.

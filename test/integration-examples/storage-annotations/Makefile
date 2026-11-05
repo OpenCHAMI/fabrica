@@ -43,16 +43,8 @@ PORT    ?= 18080
 PG_PORT ?= 15433
 BASE_URL ?= http://localhost:$(PORT)
 
-# The server is built for linux inside a golang container because the sqlite
-# driver needs cgo, which rules out simple cross-compilation from the host.
-# Set BUILD_IN_DOCKER=0 to build with the host toolchain instead (linux hosts).
-BUILD_IN_DOCKER ?= 1
-GO_IMAGE ?= golang:$(shell echo $(FABRICA_GO_VERSION) | cut -d. -f1,2)
-CONTAINER_BUILD_DIR := /fabrica/$(patsubst $(FABRICA_ROOT)/%,%,$(BUILD_DIR))
-
 # docker.exe on Windows needs native paths for bind mounts.
 hostpath = $(shell cygpath -m '$(1)' 2>/dev/null || echo '$(1)')
-DOCKER_USER := $(if $(filter Linux Darwin,$(shell uname -s)),--user $(shell id -u):$(shell id -g))
 
 TEST_FLAGS ?= -count=1 -v
 
@@ -88,19 +80,7 @@ generate: tools ## Generate the example service under build/ (DB=sqlite|postgres
 build-server: ## Build the linux server binary fabrun runs (build/<service>/bin/<service>)
 	@test -f $(SERVICE_DIR)/go.mod || { echo "no generated service at $(SERVICE_DIR); run 'make generate' first"; exit 1; }
 	mkdir -p $(SERVICE_DIR)/bin
-ifeq ($(BUILD_IN_DOCKER),1)
-	mkdir -p $(BUILD_DIR)/.cache/go-build
-	docker run --rm $(DOCKER_USER) \
-		-e HOME=/tmp -e GOTOOLCHAIN=auto \
-		-e GOMODCACHE=/gomodcache \
-		-e GOCACHE=$(CONTAINER_BUILD_DIR)/.cache/go-build \
-		-v $(call hostpath,$(FABRICA_ROOT)):/fabrica \
-		-v $(call hostpath,$(shell $(GO) env GOMODCACHE)):/gomodcache \
-		-w $(CONTAINER_BUILD_DIR)/$(SERVICE) \
-		$(GO_IMAGE) go build -o bin/$(SERVICE) ./cmd/server
-else
 	cd $(SERVICE_DIR) && CGO_ENABLED=1 GOOS=linux $(GO) build -o bin/$(SERVICE) ./cmd/server
-endif
 
 .PHONY: up
 up: build-server ## Start the service with fabrun (PORT=$(PORT))
