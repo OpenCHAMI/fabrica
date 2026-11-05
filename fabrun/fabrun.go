@@ -2,10 +2,11 @@
 
 // Command fabrun starts and stops a Fabrica service in Docker using Compose.
 //
-// It detects whether the service uses ent storage and which database driver
-// (sqlite or postgres) is configured, builds a container image from an
+// It detects the service's storage backend (file storage, or ent storage with
+// a sqlite or postgres database driver), builds a container image from an
 // embedded, generic Dockerfile, then runs the service with `docker compose`
-// using an embedded, generic compose file (one for sqlite, one for postgres).
+// using an embedded, generic compose file (one each for file, sqlite and
+// postgres).
 // For postgres-backed services the compose stack also includes a postgres
 // container.
 //
@@ -16,7 +17,7 @@
 //
 // Usage:
 //
-//	fabrun start [--service PATH | --bin PATH] [--name NAME] [--port PORT] [--db sqlite|postgres]
+//	fabrun start [--service PATH | --bin PATH] [--name NAME] [--port PORT] [--db file|sqlite|postgres]
 //	fabrun stop  [--service PATH | --bin PATH] [--name NAME] [--keep-volumes]
 //	fabrun sql   [--name NAME] [--db sqlite|postgres] "QUERY"
 //
@@ -37,9 +38,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-//go:embed Dockerfile.sqlite Dockerfile.postgres compose.sqlite.yml compose.postgres.yml
+//go:embed Dockerfile.file Dockerfile.sqlite Dockerfile.postgres compose.file.yml compose.sqlite.yml compose.postgres.yml
 var assets embed.FS
 
 const (
@@ -47,10 +50,11 @@ const (
 	defaultPgPort = "5433" // default host port for the postgres container
 )
 
-// dbKind identifies the detected (or chosen) database backend.
+// dbKind identifies the detected (or chosen) storage backend.
 type dbKind string
 
 const (
+	dbFile     dbKind = "file"
 	dbSQLite   dbKind = "sqlite"
 	dbPostgres dbKind = "postgres"
 )
@@ -136,7 +140,7 @@ Flags:
   --pg-port PORT   Host port for postgres (start only, default: 5433)
   --auto-ports     Prefer 8080/5433 but pick other free ports if they are taken
                    (start only; without this, in-use ports cause failure)
-  --db KIND        Force database backend: sqlite or postgres (default: auto-detect)
+  --db KIND        Force storage backend: file, sqlite or postgres (default: auto-detect)
   --keep-volumes   Keep the data volume (stop only; by default it is removed)
   -v, --verbose    Print diagnostics (e.g. the sql target volume/network)
 
@@ -146,11 +150,13 @@ Commands:
   sql     run a SQL query against the running service's database:
             sqlite   runs sqlite3 in a container mounting the data volume
             postgres runs psql in a container on the service's compose network
+            (not available for file storage)
 
 If neither --service nor --bin is given, the current directory is used as the
 service directory: BINARY_NAME is read from ./Makefile and bin/$BINARY_NAME is
-used. fabrun auto-detects ent usage and the db driver from the service's
-.fabrica.yaml, then runs the service with docker compose.
+used. fabrun auto-detects the storage type (file or ent) and the db driver from
+the service's .fabrica.yaml, then runs the service with docker compose. File
+storage services are run with --data-dir /data on a persistent volume.
 
 Environment variables (override fabrun's defaults):
   FABRUN_NAME             Container/service name
@@ -220,10 +226,10 @@ func parseFlags(args []string) (options, error) {
 				return opts, err
 			}
 			switch dbKind(v) {
-			case dbSQLite, dbPostgres:
+			case dbFile, dbSQLite, dbPostgres:
 				opts.dbForce = dbKind(v)
 			default:
-				return opts, fmt.Errorf("invalid --db value %q (want sqlite or postgres)", v)
+				return opts, fmt.Errorf("invalid --db value %q (want file, sqlite or postgres)", v)
 			}
 		case "--keep-volumes":
 			opts.keepVolumes = true
@@ -327,16 +333,21 @@ func binaryNameFromMakefile(path string) (string, error) {
 	return "", fmt.Errorf("BINARY_NAME not found in Makefile")
 }
 
-// detectDB determines the database backend. An explicit --db wins. Otherwise it
-// reads the service's .fabrica.yaml (features.storage) to find the db_driver. It
-// defaults to sqlite when nothing can be determined.
+// detectDB determines the storage backend. An explicit --db wins. Otherwise it
+// reads the service's .fabrica.yaml (features.storage): file storage selects the
+// file backend (db_driver is ignored, as fabrica always writes one), and ent
+// storage selects sqlite or postgres from db_driver. It defaults to sqlite when
+// nothing can be determined.
 func detectDB(opts options, serviceDir string) (dbKind, bool, error) {
 	if opts.dbForce != "" {
-		return opts.dbForce, true, nil
+		return opts.dbForce, opts.dbForce != dbFile, nil
 	}
 
-	usesEnt, driver := readFabricaStorage(filepath.Join(serviceDir, ".fabrica.yaml"))
+	storageType, driver := readFabricaStorage(filepath.Join(serviceDir, ".fabrica.yaml"))
+	usesEnt := storageType == "ent"
 	switch {
+	case storageType == "file":
+		return dbFile, false, nil
 	case strings.HasPrefix(driver, "postgres"):
 		return dbPostgres, usesEnt, nil
 	case strings.HasPrefix(driver, "sqlite"):
@@ -347,30 +358,26 @@ func detectDB(opts options, serviceDir string) (dbKind, bool, error) {
 	}
 }
 
-// readFabricaStorage parses .fabrica.yaml for the storage type and db driver.
-// It returns whether ent storage is in use and the raw db_driver value.
-func readFabricaStorage(path string) (usesEnt bool, driver string) {
-	f, err := os.Open(path)
+// readFabricaStorage parses .fabrica.yaml and returns the lower-cased
+// features.storage.type and features.storage.db_driver values (empty if absent).
+func readFabricaStorage(path string) (storageType, driver string) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return false, ""
+		return "", ""
 	}
-	defer f.Close()
-
-	typeRe := regexp.MustCompile(`^\s*type:\s*(\S+)`)
-	driverRe := regexp.MustCompile(`^\s*db_driver:\s*(\S+)`)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if m := driverRe.FindStringSubmatch(line); m != nil {
-			driver = strings.ToLower(m[1])
-		}
-		if m := typeRe.FindStringSubmatch(line); m != nil {
-			if strings.EqualFold(m[1], "ent") {
-				usesEnt = true
-			}
-		}
+	var cfg struct {
+		Features struct {
+			Storage struct {
+				Type     string `yaml:"type"`
+				DBDriver string `yaml:"db_driver"`
+			} `yaml:"storage"`
+		} `yaml:"features"`
 	}
-	return usesEnt, driver
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return "", ""
+	}
+	return strings.ToLower(strings.TrimSpace(cfg.Features.Storage.Type)),
+		strings.ToLower(strings.TrimSpace(cfg.Features.Storage.DBDriver))
 }
 
 func runStart(opts options) error {
@@ -450,10 +457,7 @@ func ensureImage(name, binPath string, db dbKind) (string, error) {
 func buildImage(name, binPath string, db dbKind) (string, error) {
 	image := "fabrun-" + strings.ToLower(name) + ":latest"
 
-	dockerfile := "Dockerfile.sqlite"
-	if db == dbPostgres {
-		dockerfile = "Dockerfile.postgres"
-	}
+	dockerfile := "Dockerfile." + string(db)
 	dfContent, err := assets.ReadFile(dockerfile)
 	if err != nil {
 		return "", fmt.Errorf("reading embedded %s: %w", dockerfile, err)
@@ -527,10 +531,7 @@ func printPostgresInfo(name, pgPort string) {
 // writeComposeFile writes the embedded compose file for the backend into the
 // service's state directory and returns its path.
 func writeComposeFile(name string, db dbKind) (string, error) {
-	src := "compose.sqlite.yml"
-	if db == dbPostgres {
-		src = "compose.postgres.yml"
-	}
+	src := "compose." + string(db) + ".yml"
 	content, err := assets.ReadFile(src)
 	if err != nil {
 		return "", fmt.Errorf("reading embedded %s: %w", src, err)
@@ -562,7 +563,10 @@ func composeEnv(name, image string, db dbKind, port, pgPort string) []string {
 	m["FABRUN_IMAGE"] = image
 	m["FABRUN_PORT"] = port
 
-	if db == dbPostgres {
+	switch db {
+	case dbFile:
+		m["FABRUN_DATA_DIR"] = "/data"
+	case dbPostgres:
 		if m["FABRUN_POSTGRES_IMAGE"] == "" {
 			m["FABRUN_POSTGRES_IMAGE"] = "postgres:16-alpine"
 		}
@@ -576,7 +580,7 @@ func composeEnv(name, image string, db dbKind, port, pgPort string) []string {
 		m["FABRUN_PG_DB"] = sanitizeDBName(name)
 		m["FABRUN_DATABASE_URL"] = fmt.Sprintf("postgres://%s:%s@postgres:5432/%s?sslmode=disable",
 			m["FABRUN_PG_USER"], m["FABRUN_PG_PASSWORD"], m["FABRUN_PG_DB"])
-	} else {
+	default:
 		m["FABRUN_DATABASE_URL"] = fmt.Sprintf("file:/data/%s.db?_fk=1", name)
 	}
 
@@ -685,10 +689,8 @@ func runStop(opts options) error {
 	if fileExists(composeFile) {
 		// Detect the backend from the stored compose file so compose can
 		// interpolate every variable without warnings.
-		db := dbSQLite
-		if data, _ := os.ReadFile(composeFile); strings.Contains(string(data), "FABRUN_POSTGRES_IMAGE") {
-			db = dbPostgres
-		}
+		data, _ := os.ReadFile(composeFile)
+		db := dbFromCompose(data)
 		image := os.Getenv("FABRUN_IMAGE")
 		if image == "" {
 			image = "fabrun-" + strings.ToLower(name) + ":latest"
@@ -746,10 +748,26 @@ func runSQL(opts options, query string) error {
 	db := detectRunningDB(opts, name)
 	project := sanitizeProject(name)
 
-	if db == dbPostgres {
+	switch db {
+	case dbPostgres:
 		return sqlPostgres(name, project, query, opts.verbose)
+	case dbFile:
+		return fmt.Errorf("%s uses file storage, which has no SQL database; its data is in docker volume %s_data (at /data)", name, project)
 	}
 	return sqlSQLite(name, project, query, opts.verbose)
+}
+
+// dbFromCompose identifies the backend of a rendered (stored) compose file.
+func dbFromCompose(data []byte) dbKind {
+	s := string(data)
+	switch {
+	case strings.Contains(s, "FABRUN_POSTGRES_IMAGE"):
+		return dbPostgres
+	case strings.Contains(s, "FABRUN_DATA_DIR"):
+		return dbFile
+	default:
+		return dbSQLite
+	}
 }
 
 // detectRunningDB determines the backend to query. An explicit --db wins; then
@@ -761,10 +779,7 @@ func detectRunningDB(opts options, name string) dbKind {
 	}
 	if dir, err := stateDir(name); err == nil {
 		if data, err := os.ReadFile(filepath.Join(dir, "compose.yml")); err == nil {
-			if strings.Contains(string(data), "FABRUN_POSTGRES_IMAGE") {
-				return dbPostgres
-			}
-			return dbSQLite
+			return dbFromCompose(data)
 		}
 	}
 	if _, serviceDir, err := resolveBinary(opts); err == nil {
