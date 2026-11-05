@@ -1970,6 +1970,7 @@ func (g *Generator) validateDedicatedEntResource(resource ResourceMetadata) erro
 	}
 
 	seenColumns := map[string]bool{
+		"envelope":         true,
 		"uid":              true,
 		"name":             true,
 		"namespace":        true,

@@ -476,3 +476,11 @@ it back to the Go field name. JSON names must form distinct Ent identifiers
 and must not collide with metadata or Ent's built-in ID. Non-ASCII names are
 rejected because Ent v0.14.6's identifier capitalization cannot handle them
 reliably. Snake case and camel case names are supported.
+
+Dedicated tables keep Spec values in their flattened columns and store the
+remaining API envelope in an optional JSON `envelope` column. This preserves
+status, labels, annotations and legacy envelope fields across round trips.
+Spec is excluded from that JSON column so hashed credentials are not also
+persisted as plaintext. Identity columns remain authoritative on reads.
+Existing dedicated rows without an envelope retain their column values;
+previously discarded metadata/status cannot be reconstructed automatically.

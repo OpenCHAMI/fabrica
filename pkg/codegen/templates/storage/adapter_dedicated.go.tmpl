@@ -7,6 +7,8 @@ package storage
 
 import (
 	"context"
+ "encoding/json"
+ "fmt"
 	{{if .EntAdapter.HasDurationFields}}
 	"time"
 	{{end}}
@@ -20,8 +22,11 @@ import (
 // ToEnt{{.Name}} converts a Fabrica {{.Name}} resource to an Ent {{.Name}} entity.
 // This adapter maps the resource envelope to dedicated table fields.
 func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.PackageAlias}}.{{.Name}}) (*ent.{{.Name}}Create, error) {
+	envelope, err := marshal{{.Name}}Envelope(resource)
+    if err != nil { return nil, err }
 	create := client.{{.Name}}.Create().
-		SetUID(resource.Metadata.UID).
+		SetEnvelope(envelope).
+ SetUID(resource.Metadata.UID).
 		SetName(resource.Metadata.Name).
 		SetAPIVersion(resource.APIVersion).
 		SetKind(resource.Kind).
@@ -107,6 +112,17 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 	}
 	{{end}}
 
+	if len(entity.Envelope) > 0 {
+        if err := json.Unmarshal(entity.Envelope, resource); err != nil { return nil, fmt.Errorf("decode {{.Name}} envelope: %w",err) }
+    }
+    // Identity columns remain authoritative, including legacy rows with no envelope.
+    resource.APIVersion = entity.APIVersion
+    resource.Kind = entity.Kind
+    resource.Metadata.UID = entity.UID
+    resource.Metadata.Name = entity.Name
+    resource.Metadata.CreatedAt = entity.CreatedAt
+    resource.Metadata.UpdatedAt = entity.UpdatedAt
+
 	// Map entity fields to Spec fields
 	resource.Spec = {{.PackageAlias}}.{{.Name}}Spec{
 		{{range .SpecFields}}
@@ -134,7 +150,11 @@ func FromEnt{{.Name}}(ctx context.Context, entity *ent.{{.Name}}) (*{{.PackageAl
 // Update{{.Name}}FromResource updates an Ent {{.Name}} entity from a Fabrica resource.
 // This is used for PATCH/PUT operations, respecting immutable field constraints.
 func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}UpdateOne, resource *{{.PackageAlias}}.{{.Name}}) error {
+	envelope, err := marshal{{.Name}}Envelope(resource)
+    if err != nil { return err }
 	update = update.
+		SetEnvelope(envelope).
+		SetName(resource.Metadata.Name).
 		SetUpdatedAt(resource.Metadata.UpdatedAt).
 		SetResourceVersion("1")
 
@@ -209,4 +229,17 @@ func Delete{{.Name}}ByUID(ctx context.Context, client *ent.Client, uid string) e
 		Where(ent{{toLower .Name}}.UIDEQ(uid)).
 		Exec(ctx)
 	return err
+}
+
+// marshal{{.Name}}Envelope persists metadata, status and other envelope fields.
+// Spec must never be copied here: doing so would retain plaintext credentials
+// alongside their hashed dedicated columns.
+func marshal{{.Name}}Envelope(resource *{{.PackageAlias}}.{{.Name}}) (json.RawMessage,error) {
+    data,err:=json.Marshal(resource)
+    if err!=nil {return nil,fmt.Errorf("encode {{.Name}} envelope: %w",err)}
+    var envelope map[string]json.RawMessage
+    if err=json.Unmarshal(data,&envelope);err!=nil {return nil,err}
+    delete(envelope,"spec")
+    delete(envelope,"Spec")
+    return json.Marshal(envelope)
 }

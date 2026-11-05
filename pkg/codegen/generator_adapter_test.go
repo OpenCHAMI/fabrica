@@ -212,6 +212,7 @@ func writeMappedTypesRoundTripTest(t *testing.T, dir string) {
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -265,6 +266,10 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 		},
 	}
 
+	token.Metadata.Labels = map[string]string{"team":"compute"}
+    token.Metadata.Annotations = map[string]string{"note":"keep"}
+    token.Status = map[string]interface{}{"phase":"ready"}
+    token.SchemaVersion = "1.2"
 	created, err := ToEntMappedToken(ctx, client, token)
 	if err != nil {
 		t.Fatalf("ToEntMappedToken: %v", err)
@@ -281,6 +286,10 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromEntMappedToken: %v", err)
 	}
+	if !reflect.DeepEqual(got.Metadata.Labels,token.Metadata.Labels) || !reflect.DeepEqual(got.Metadata.Annotations,token.Metadata.Annotations) || !reflect.DeepEqual(got.Status,token.Status) || got.SchemaVersion != token.SchemaVersion { t.Fatalf("envelope lost: %#v",got) }
+    var stored map[string]interface{}
+    if err:=json.Unmarshal(entity.Envelope,&stored);err!=nil {t.Fatal(err)}
+    if _,ok:=stored["spec"];ok {t.Fatal("Spec duplicated into envelope")}
 	if got.Spec.TTL != token.Spec.TTL {
 		t.Fatalf("roundtrip TTL = %v, want %v", got.Spec.TTL, token.Spec.TTL)
 	}

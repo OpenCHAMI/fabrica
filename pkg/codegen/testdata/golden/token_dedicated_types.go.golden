@@ -6,6 +6,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"time"
 
 	"entgo.io/ent"
@@ -37,6 +38,10 @@ func (TypedToken) Fields() []ent.Field {
 		field.String("namespace").
 			Optional().
 			Comment("Namespace for multi-tenancy"),
+
+		// Preserve the full API envelope except Spec, whose values live only in
+		// their dedicated columns (including hashed credentials).
+		field.JSON("envelope", json.RawMessage{}).Optional(),
 
 		// Resource metadata
 		field.String("api_version").
