@@ -455,3 +455,18 @@ without rewriting user-owned `cmd/server/main.go`. See the
 [feature loader guide](../guides/feature-loader.md) for regeneration commands,
 selective-generation rules, customization boundaries, and migration of existing
 services.
+
+### Source annotations and dedicated Ent tables
+
+`fabrica generate` reads annotations from registered resource types and their
+`<Name>Spec` companions, including declarations split across Go files. Put
+`+fabrica:resource` and `+fabrica:storage=dedicated` on the resource declaration;
+put field controls on Spec fields. Dedicated tables require `--storage-type ent`.
+Source packages must be available inside the project module when generating.
+Invalid or unsupported controls fail generation with the resource name.
+Unannotated resources continue to use shared generic storage.
+
+Parsing and schema emission alone do not establish runtime support. When
+upgrading an existing service, review regenerated storage and plan its data
+migration before enabling dedicated tables; existing generic rows are not
+moved automatically.
