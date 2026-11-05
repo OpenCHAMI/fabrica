@@ -39,6 +39,7 @@ import (
 	"embed"
 	"fmt"
 	"go/format"
+	"go/token"
 	"os"
 	"path"
 	"path/filepath"
@@ -407,11 +408,60 @@ func normalizeSpecFields(fields []SpecField) []SpecField {
 	return normalized
 }
 
+// entAcronyms mirrors the initialisms Ent registers in its default ruleset
+// (entc/gen/func.go ruleset()). Ent uppercases a word only when its all-caps
+// form is one of these; otherwise it merely capitalizes the first rune.
+var entAcronyms = map[string]struct{}{
+	"ACL": {}, "API": {}, "ASCII": {}, "AWS": {}, "CPU": {}, "CSS": {}, "DNS": {},
+	"EOF": {}, "GB": {}, "GUID": {}, "HCL": {}, "HTML": {}, "HTTP": {}, "HTTPS": {},
+	"ID": {}, "IP": {}, "JSON": {}, "KB": {}, "LHS": {}, "MAC": {}, "MB": {},
+	"QPS": {}, "RAM": {}, "RHS": {}, "RPC": {}, "SLA": {}, "SMTP": {}, "SQL": {},
+	"SSH": {}, "SSO": {}, "TCP": {}, "TLS": {}, "TTL": {}, "UDP": {}, "UI": {},
+	"UID": {}, "URI": {}, "URL": {}, "UTF8": {}, "UUID": {}, "VM": {}, "XML": {},
+	"XMPP": {}, "XSRF": {}, "XSS": {},
+}
+
+// entGoName replicates Ent's pascal() applied to a schema field name (the
+// column, which Fabrica sets to the field's JSONName). Ent derives its Go
+// method and accessor names from the column, e.g. column "apiKey" yields
+// method "SetApiKey" and field "ApiKey" (Ent does NOT apply Go initialisms
+// unless the whole word is a registered acronym). This must match Ent exactly
+// so generated adapters reference the correct Ent identifiers.
+func entGoName(jsonName string) string {
+	if jsonName == "" {
+		return ""
+	}
+	words := strings.FieldsFunc(jsonName, func(r rune) bool {
+		return r == '_' || r == '-' || r == ' '
+	})
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		if _, ok := entAcronyms[strings.ToUpper(w)]; ok {
+			words[i] = strings.ToUpper(w)
+		} else {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, "")
+}
+
+// entFieldName returns the Ent-generated Go accessor/method base name for a
+// field (e.g. "ApiKey" for JSONName "apiKey"), used by storage adapters.
+func entFieldName(field SpecField) string {
+	name := field.JSONName
+	if name == "" {
+		name = field.Name
+	}
+	return entGoName(name)
+}
+
 func entSetter(field SpecField) string {
 	if field.EntType == "time_ptr" {
-		return "SetNillable" + field.Name
+		return "SetNillable" + entFieldName(field)
 	}
-	return "Set" + field.Name
+	return "Set" + entFieldName(field)
 }
 
 func entSetExpr(field SpecField, expr string) string {
@@ -1929,7 +1979,25 @@ func (g *Generator) validateDedicatedEntResource(resource ResourceMetadata) erro
 		"updated_at":       true,
 		"resource_version": true,
 	}
+	seenNames := make(map[string]bool)
+	for column := range seenColumns {
+		seenNames[entFieldName(SpecField{JSONName: column})] = true
+	}
+	seenNames["ID"] = true
 	for _, field := range resource.SpecFields {
+		if seenColumns[field.JSONName] {
+			return fmt.Errorf("resource %s field %s: JSON name %q collides with a dedicated Ent metadata column", resource.Name, field.Name, field.JSONName)
+		}
+		name := entFieldName(field)
+		for _, r := range field.JSONName {
+			if r > 127 {
+				return fmt.Errorf("resource %s field %s: non-ASCII JSON name %q is not supported by Ent v0.14.6 identifiers", resource.Name, field.Name, field.JSONName)
+			}
+		}
+		if !token.IsIdentifier(field.JSONName) || !token.IsExported(name) || seenNames[name] {
+			return fmt.Errorf("resource %s field %s: JSON name %q creates an invalid or colliding Ent identifier %q", resource.Name, field.Name, field.JSONName, name)
+		}
+		seenNames[name] = true
 		if seenColumns[field.JSONName] {
 			return fmt.Errorf("resource %s field %s: JSON name %q collides with a dedicated Ent metadata column", resource.Name, field.Name, field.JSONName)
 		}
@@ -2392,6 +2460,7 @@ var templateFuncs = template.FuncMap{
 		return strings.ToUpper(fmt.Sprint(indexType))
 	},
 	"entSetter":                entSetter,
+	"entFieldName":             entFieldName,
 	"entSetExpr":               entSetExpr,
 	"resourceSetExpr":          resourceSetExpr,
 	"optionalSpecCondition":    optionalSpecCondition,
