@@ -970,6 +970,11 @@ func main() {
 		log.Fatalf("Failed to register resources: %%v", err)
 	}
 
+	// Reflection cannot see source annotations. Load them before any emitter.
+	if err := callOptionalGenerator(gen, "LoadResourceAnnotations"); err != nil {
+		log.Fatalf("Failed to load resource annotations: %%v", err)
+	}
+
 %s}
 
 // Bridge the shared typed feature model without requiring newer symbols when
