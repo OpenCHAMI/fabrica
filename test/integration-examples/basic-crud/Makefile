@@ -1,0 +1,108 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+#
+# SPDX-License-Identifier: MIT
+
+# Integration test set for examples/01-basic-crud.
+#
+# Steps (each can be run on its own):
+#   make generate    scaffold + generate the service under build/ using
+#                    `fabrica init` and `fabrica add resources resource-defs`
+#   make up          build a linux server binary and start it with `fabrun start`
+#   make test-only   run the Go (testify) tests against the running service
+#   make down        stop the service with `fabrun stop`
+#
+#   make test        generate, up, test-only, then always down
+#
+# This example uses the default file storage backend, so the server needs no
+# cgo and is built by cross-compiling (CGO_ENABLED=0). fabrun still requires
+# Docker to run the service.
+
+.DEFAULT_GOAL := help
+
+GO ?= go
+GOEXE := $(shell $(GO) env GOEXE)
+export GOTOOLCHAIN ?= auto
+
+EXAMPLE_DIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+FABRICA_ROOT := $(abspath $(EXAMPLE_DIR)/../../..)
+TESTS_ROOT   := $(abspath $(EXAMPLE_DIR)/..)
+FABRICA      := $(FABRICA_ROOT)/bin/fabrica$(GOEXE)
+FABRUN       := $(FABRICA_ROOT)/bin/fabrun$(GOEXE)
+
+# Generated service settings.
+SERVICE ?= device-inventory
+MODULE  ?= github.com/openchami/$(SERVICE)
+GROUP   ?= basic-crud.openchami.org
+BUILD_DIR   := $(EXAMPLE_DIR)/build
+SERVICE_DIR := $(BUILD_DIR)/$(SERVICE)
+# Relative so it resolves both on the host and inside the build container. The
+# service's go directive is raised to fabrica's so the replaced module builds.
+FABRICA_REPLACE := ../../../../..
+FABRICA_GO_VERSION := $(shell awk '/^go / {print $$2; exit}' $(FABRICA_ROOT)/go.mod)
+
+# fabrun settings. NAME is the container name.
+NAME ?= fabrica-example-basic-crud
+PORT ?= 18081
+BASE_URL ?= http://localhost:$(PORT)
+
+# docker.exe on Windows needs native paths for bind mounts.
+hostpath = $(shell cygpath -m '$(1)' 2>/dev/null || echo '$(1)')
+
+TEST_FLAGS ?= -count=1 -v
+
+.PHONY: help
+help: ## Display this help screen
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: tools
+tools: ## Build bin/fabrica and bin/fabrun from this checkout
+	$(MAKE) -C $(FABRICA_ROOT) build build-fabrun
+
+.PHONY: generate
+generate: tools ## Generate the example service under build/
+	rm -rf $(SERVICE_DIR)
+	mkdir -p $(BUILD_DIR)
+	$(FABRICA) init $(SERVICE) \
+		--module $(MODULE) \
+		--group $(GROUP) \
+		--storage-version v1 \
+		--storage-type file \
+		--dir $(call hostpath,$(BUILD_DIR))
+	cd $(SERVICE_DIR) && $(GO) mod edit \
+		-replace github.com/openchami/fabrica=$(FABRICA_REPLACE) \
+		-go $(FABRICA_GO_VERSION)
+	cd $(SERVICE_DIR) && $(FABRICA) add resources $(call hostpath,$(EXAMPLE_DIR)/resource-defs)
+	cd $(SERVICE_DIR) && $(FABRICA) generate
+	cd $(SERVICE_DIR) && $(GO) mod tidy
+	cd $(SERVICE_DIR) && $(GO) build ./...
+
+.PHONY: build-server
+build-server: ## Cross-compile the linux server binary fabrun runs (no cgo)
+	@test -f $(SERVICE_DIR)/go.mod || { echo "no generated service at $(SERVICE_DIR); run 'make generate' first"; exit 1; }
+	mkdir -p $(SERVICE_DIR)/bin
+	cd $(SERVICE_DIR) && CGO_ENABLED=0 GOOS=linux $(GO) build -o bin/$(SERVICE) ./cmd/server
+
+.PHONY: up
+up: build-server ## Start the service with fabrun (PORT=$(PORT))
+	$(FABRUN) start --service $(call hostpath,$(SERVICE_DIR)) --name $(NAME) --port $(PORT)
+	@echo "service is up at $(BASE_URL)"
+
+.PHONY: test-only
+test-only: ## Run the tests against an already running service (see 'make up')
+	cd $(TESTS_ROOT) && \
+		FABRICA_EXAMPLE_URL=$(BASE_URL) \
+		FABRICA_EXAMPLE_NAME=$(NAME) \
+		$(GO) test $(TEST_FLAGS) ./basic-crud/...
+
+.PHONY: down
+down: ## Stop the service with fabrun (removes its data volume)
+	-$(FABRUN) stop --name $(NAME)
+
+.PHONY: test
+test: generate ## Run everything: generate, up, test-only, down
+	$(MAKE) up
+	status=0; $(MAKE) test-only || status=$$?; $(MAKE) down; exit $$status
+
+.PHONY: clean
+clean: down ## Stop the service and remove build/
+	rm -rf $(BUILD_DIR)
