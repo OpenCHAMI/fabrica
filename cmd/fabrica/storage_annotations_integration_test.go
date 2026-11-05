@@ -65,6 +65,8 @@ func TestStorageAnnotationsCLI(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	run(project, "go", "mod", "edit", "-replace", "github.com/openchami/fabrica="+repo)
+	run(project, "go", "test", "-mod=mod", "./internal/storage")
 	text = strings.Replace(text, "storage=dedicated", "storage=typo", 1)
 	if err = os.WriteFile(types, []byte(text), 0644); err != nil {
 		t.Fatal(err)

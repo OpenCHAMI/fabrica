@@ -470,3 +470,9 @@ Parsing and schema emission alone do not establish runtime support. When
 upgrading an existing service, review regenerated storage and plan its data
 migration before enabling dedicated tables; existing generic rows are not
 moved automatically.
+
+Dedicated Ent columns use the JSON tag as their schema name; the adapter maps
+it back to the Go field name. JSON names must form distinct Ent identifiers
+and must not collide with metadata or Ent's built-in ID. Non-ASCII names are
+rejected because Ent v0.14.6's identifier capitalization cannot handle them
+reliably. Snake case and camel case names are supported.

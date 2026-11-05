@@ -317,8 +317,8 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 	if updated.TTL != int64(5*time.Minute) {
 		t.Fatalf("updated TTL = %d, want %d", updated.TTL, int64(5*time.Minute))
 	}
-	if updated.ConsumedAt == nil || !updated.ConsumedAt.Equal(updatedConsumedAt) {
-		t.Fatalf("updated ConsumedAt = %v, want %v", updated.ConsumedAt, updatedConsumedAt)
+	if updated.ExpiryInstant == nil || !updated.ExpiryInstant.Equal(updatedConsumedAt) {
+		t.Fatalf("updated ConsumedAt = %v, want %v", updated.ExpiryInstant, updatedConsumedAt)
 	}
 
 	token.Spec.ConsumedAt = nil
@@ -333,8 +333,8 @@ func TestGeneratedDedicatedAdapterMappedTypesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query cleared token: %v", err)
 	}
-	if cleared.ConsumedAt != nil {
-		t.Fatalf("cleared ConsumedAt = %v, want nil", cleared.ConsumedAt)
+	if cleared.ExpiryInstant != nil {
+		t.Fatalf("cleared ConsumedAt = %v, want nil", cleared.ExpiryInstant)
 	}
 }
 
