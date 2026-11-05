@@ -221,7 +221,7 @@ func TestGenerateRevisionImportExportFailsClosed(t *testing.T) {
 		required  string
 	}{
 		"import": {forbidden: "storage.GetBootConfigByUID", required: "storage.GetNodeByUID"},
-		"export": {forbidden: "storage.QuerybootConfigs", required: "storage.Querynodes"},
+		"export": {forbidden: "storage.LoadAllBootConfigs", required: "storage.LoadAllNodes"},
 	} {
 		var rendered bytes.Buffer
 		if err := gen.Templates[templateName].Execute(&rendered, gen.globalTemplateData("server/"+templateName+".go.tmpl")); err != nil {

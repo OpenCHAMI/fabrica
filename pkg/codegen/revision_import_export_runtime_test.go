@@ -96,7 +96,8 @@ var nodes = map[string]*v1.Node{}
 type NodeQuery struct{}
 
 func Querynodes(context.Context) *NodeQuery { return &NodeQuery{} }
-func (*NodeQuery) All(context.Context) ([]*v1.Node, error) {
+func (*NodeQuery) All(ctx context.Context) ([]*v1.Node, error) { return LoadAllNodes(ctx) }
+func LoadAllNodes(context.Context) ([]*v1.Node, error) {
 	result := make([]*v1.Node, 0, len(nodes))
 	for _, node := range nodes { result = append(result, node) }
 	return result, nil

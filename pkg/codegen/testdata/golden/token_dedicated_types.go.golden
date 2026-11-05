@@ -31,7 +31,7 @@ func (TypedToken) Fields() []ent.Field {
 			Comment("Unique identifier"),
 
 		field.String("name").
-			NotEmpty().
+			Default("").
 			MaxLen(253).
 			Comment("Human-readable name"),
 

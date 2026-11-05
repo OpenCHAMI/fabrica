@@ -9,6 +9,8 @@ package storage
 import (
     "context"
     "fmt"
+{{if hasDedicated .Resources}}"entgo.io/ent/dialect/sql"
+"entgo.io/ent/dialect/sql/sqljson"{{end}}
 
     "{{.ModulePath}}/internal/storage/ent"
     entresource "{{.ModulePath}}/internal/storage/ent/resource"
@@ -28,6 +30,9 @@ func ensureEntClient() {
 // QueryResources returns a generic query builder for a given kind
 func QueryResources(ctx context.Context, kind string) *ent.ResourceQuery {
     ensureEntClient()
+    switch kind { {{range .Resources}}{{if isDedicated .}}case "{{.Name}}": panic("{{.Name}} uses dedicated storage; use Query{{.PluralName}}")
+    {{end}}{{end}}}
+
     return entClient.Resource.Query().
         Where(entresource.KindEQ(kind))
 }
@@ -35,6 +40,9 @@ func QueryResources(ctx context.Context, kind string) *ent.ResourceQuery {
 // QueryResourcesByLabels queries resources by kind and exact-match labels
 func QueryResourcesByLabels(ctx context.Context, kind string, labels map[string]string) (*ent.ResourceQuery, error) {
     ensureEntClient()
+    switch kind { {{range .Resources}}{{if isDedicated .}}case "{{.Name}}": return nil,fmt.Errorf("{{.Name}} uses dedicated storage; use Query{{.PluralName}}ByLabels")
+    {{end}}{{end}}}
+
     q := entClient.Resource.Query().Where(entresource.KindEQ(kind))
     for k, v := range labels {
         q = q.Where(entresource.HasLabelsWith(
@@ -45,7 +53,34 @@ func QueryResourcesByLabels(ctx context.Context, kind string, labels map[string]
     return q, nil
 }
 
-{{range .Resources}}
+{{range .Resources}}{{if isDedicated .}}
+// Query{{.PluralName}} returns the dedicated {{.Name}} query builder.
+// Like the generic builder, this panics when storage is unavailable.
+func Query{{.PluralName}}(ctx context.Context) *ent.{{.Name}}Query {
+    ensureEntClient()
+    if err:=check{{.Name}}Layout(ctx,entClient);err!=nil {panic(err)}
+    return entClient.{{.Name}}.Query()
+}
+
+func Query{{.PluralName}}ByLabels(ctx context.Context, labels map[string]string)(*ent.{{.Name}}Query,error) {
+    if err:=check{{.Name}}Layout(ctx,entClient);err!=nil {return nil,err}
+    q:=entClient.{{.Name}}.Query()
+    for k,v:=range labels {
+        q=q.Where(func(s *sql.Selector){s.Where(sqljson.ValueEQ(s.C("envelope"),v,sqljson.Path("metadata","labels",k)))})
+    }
+    return q,nil
+}
+
+func Get{{.Name}}ByUID(ctx context.Context,uid string)({{.TypeName}},error) {return Load{{.StorageName}}(ctx,uid)}
+
+func List{{.PluralName}}ByLabels(ctx context.Context,labels map[string]string)([]{{.TypeName}},error) {
+    q,err:=Query{{.PluralName}}ByLabels(ctx,labels);if err!=nil {return nil,err}
+    entities,err:=q.All(ctx);if err!=nil {return nil,err}
+    out:=make([]{{.TypeName}},0,len(entities))
+    for _,entity:=range entities {value,err:=FromEnt{{.Name}}(ctx,entity);if err!=nil {return nil,err};out=append(out,value)}
+    return out,nil
+}
+{{else}}
 // Query{{.PluralName}} returns a query builder for {{.PluralName}}
 func Query{{.PluralName}}(ctx context.Context) *ent.ResourceQuery {
     return QueryResources(ctx, "{{.Name}}")
@@ -92,4 +127,4 @@ func List{{.PluralName}}ByLabels(ctx context.Context, labels map[string]string) 
     }
     return out, nil
 }
-{{end}}
+{{end}}{{end}}

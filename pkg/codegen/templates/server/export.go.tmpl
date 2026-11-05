@@ -114,7 +114,9 @@ func validateExportKinds(kinds []string) error {
 		switch kind {
 		{{- range .Resources}}
 		case "{{.Name}}":
-			{{- if .RevisioningEnabled}}
+			{{- if hasHashedStorage .}}
+            return fmt.Errorf("export for hashed resource {{.Name}} is unsupported; back up the database to preserve stored hashes")
+            {{- else if .RevisioningEnabled}}
 			return fmt.Errorf("export for revision-enabled resource {{.Name}} is unsupported; back up the backing database to preserve revision identity and tombstones")
 			{{- end}}
 		{{- end}}
@@ -126,7 +128,7 @@ func validateExportKinds(kinds []string) error {
 }
 
 func exportResourceKind(ctx context.Context, kind, output, format string, perType bool) (int, error) {
-	// Query all resources of this kind using storage query builder
+	// Export API envelopes independently of the physical storage layout.
 	var resources []interface{}
 	var err error
 
@@ -136,7 +138,7 @@ func exportResourceKind(ctx context.Context, kind, output, format string, perTyp
 		{{- if .RevisioningEnabled}}
 		return 0, fmt.Errorf("export for revision-enabled resource {{.Name}} is unsupported; back up the backing database to preserve revision identity and tombstones")
 		{{- else}}
-		items, e := storage.Query{{.PluralName}}(ctx).All(ctx)
+		items, e := storage.LoadAll{{.StorageName}}s(ctx)
 		if e != nil {
 			return 0, fmt.Errorf("failed to query {{.PluralName}}: %w", e)
 		}

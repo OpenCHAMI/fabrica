@@ -463,7 +463,8 @@ services.
 `+fabrica:resource` and `+fabrica:storage=dedicated` on the resource declaration;
 put field controls on Spec fields. Dedicated tables require `--storage-type ent`.
 Source packages must be available inside the project module when generating.
-Invalid or unsupported controls fail generation with the resource name.
+Invalid controls and unimplemented encryption/Argon2 emission fail generation
+with the resource name.
 Unannotated resources continue to use shared generic storage.
 
 Parsing and schema emission alone do not establish runtime support. When
@@ -484,3 +485,39 @@ Spec is excluded from that JSON column so hashed credentials are not also
 persisted as plaintext. Identity columns remain authoritative on reads.
 Existing dedicated rows without an envelope retain their column values;
 previously discarded metadata/status cannot be reconstructed automatically.
+
+### Dedicated storage operations and upgrades
+
+Typed CRUD, `StorageBackend`, `AtomicMutationBackend` and the reconciliation
+client use the resource's selected table. Saves, conditional updates and deletes
+share transactional compare-and-swap checks. Mutations return the stored
+representation after defaults, hashing and immutable-field handling. An unchanged
+stored hash is not hashed again during an unrelated update.
+
+Per-resource query builders return that resource's Ent query type. For example,
+`Querytokens` returns `*ent.TokenQuery` for a dedicated Token. Use
+`ListtokensByLabels` or `QuerytokensByLabels` for its labels. The generic
+`QueryResources` builder is only for generic kinds and panics with guidance if
+asked for a dedicated kind; its error-returning label helper reports the same
+restriction. Existing generic resource builders retain their types.
+
+Changing an existing kind from generic to dedicated storage requires a planned
+migration. Reads and writes return `storage.ErrDedicatedMigrationRequired` if
+rows of that kind still exist in the generic table. Query builders that cannot
+return an error panic with this diagnostic. The guard adds a generic-table
+existence query to dedicated operations. It never moves or deletes legacy rows.
+
+Before upgrading, stop writers and back up the database. For ordinary resources,
+first regenerate the existing generic service with this generator so its export
+command emits API envelopes rather than raw Ent rows. Export those envelopes,
+then import into a separate empty database with the dedicated schemas. Verify UIDs, counts,
+Spec, metadata and status before switching the service to that database. Keep the
+old database and service version for rollback. Test this process on a copy first;
+changing the annotation on the live database is not a migration procedure.
+
+JSON/YAML export and import preserve the envelope for dedicated resources without
+hashed fields. Credential resources with hashed fields are rejected during
+import/export preflight: passing an exported hash through ordinary create hooks
+would hash it again. Use a full database backup/restore to preserve those hashes;
+a portable trusted credential migration format is not implemented. Revision
+resources retain their existing database-backup requirement.

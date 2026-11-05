@@ -202,6 +202,7 @@ func writeMappedTypesModule(t *testing.T, repoRoot string, dir string) {
 	}
 	copyDir(t, filepath.Join(repoRoot, "pkg", "resource"), filepath.Join(dir, "pkg", "resource"))
 	copyDir(t, filepath.Join(repoRoot, "pkg", "uid"), filepath.Join(dir, "pkg", "uid"))
+	copyDir(t, filepath.Join(repoRoot, "pkg", "storage"), filepath.Join(dir, "pkg", "storage"))
 	copyDir(t, filepath.Join(repoRoot, "pkg", "codegen", "testfixtures"), filepath.Join(dir, "pkg", "codegen", "testfixtures"))
 }
 

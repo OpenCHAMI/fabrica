@@ -464,6 +464,22 @@ func entSetter(field SpecField) string {
 	return "Set" + entFieldName(field)
 }
 
+func isDedicatedResource(resource ResourceMetadata) bool {
+	return resource.Annotations != nil && resource.Annotations.StorageMode == annotations.StorageModeDedicated
+}
+
+func hasHashedStorage(r ResourceMetadata) bool {
+	if !isDedicatedResource(r) {
+		return false
+	}
+	for _, field := range r.Annotations.Fields {
+		if field != nil && field.Storage != nil && field.Storage.Type == annotations.StorageTypeHashed {
+			return true
+		}
+	}
+	return false
+}
+
 func entSetExpr(field SpecField, expr string) string {
 	switch field.EntType {
 	case "duration":
@@ -2460,8 +2476,18 @@ var templateFuncs = template.FuncMap{
 	"entIndexType": func(indexType interface{}) string {
 		return strings.ToUpper(fmt.Sprint(indexType))
 	},
-	"entSetter":                entSetter,
-	"entFieldName":             entFieldName,
+	"entSetter":        entSetter,
+	"entFieldName":     entFieldName,
+	"isDedicated":      isDedicatedResource,
+	"hasHashedStorage": hasHashedStorage,
+	"hasDedicated": func(resources []ResourceMetadata) bool {
+		for _, r := range resources {
+			if isDedicatedResource(r) {
+				return true
+			}
+		}
+		return false
+	},
 	"entSetExpr":               entSetExpr,
 	"resourceSetExpr":          resourceSetExpr,
 	"optionalSpecCondition":    optionalSpecCondition,

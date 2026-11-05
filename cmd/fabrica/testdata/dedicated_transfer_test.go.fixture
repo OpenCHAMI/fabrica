@@ -1,0 +1,68 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"maps"
+	"path/filepath"
+	"testing"
+	"time"
+
+	api "example.com/validationfixture/apis/example.fabrica.dev/v1"
+	"example.com/validationfixture/internal/storage"
+	"github.com/openchami/fabrica/pkg/fabrica"
+)
+
+func TestDedicatedImportExport(t *testing.T) {
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			ctx := context.Background()
+			cfg := DefaultConfig()
+			cfg.DatabaseURL = "file:" + filepath.Join(t.TempDir(), "source.db") + "?_fk=1"
+			cleanup, err := initializeStorage(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			want := &api.Node{APIVersion: "v1", Kind: "Node", Metadata: fabrica.Metadata{Name: "restore", UID: "node-restore", CreatedAt: now, UpdatedAt: now, Labels: map[string]string{"team": "compute"}, Annotations: map[string]string{"note": "keep"}}, Spec: api.NodeSpec{Description: "portable"}, Status: api.NodeStatus{Phase: "Ready", Ready: true}}
+			if err = storage.SaveNode(ctx, want); err != nil {
+				cleanup()
+				t.Fatal(err)
+			}
+			backup := t.TempDir()
+			if err = runExport(ctx, format, backup, []string{"Node"}, true); err != nil {
+				cleanup()
+				t.Fatal(err)
+			}
+			cleanup()
+			source := cfg.DatabaseURL
+			cfg.DatabaseURL = "file:" + filepath.Join(t.TempDir(), "destination.db") + "?_fk=1"
+			cleanup, err = initializeStorage(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = runImport(ctx, backup, "upsert", false, false); err != nil {
+				cleanup()
+				t.Fatal(err)
+			}
+			got, err := storage.LoadNode(ctx, want.Metadata.UID)
+			if err != nil || got.Spec != want.Spec || got.Status != want.Status || !maps.Equal(got.Metadata.Labels, want.Metadata.Labels) || !maps.Equal(got.Metadata.Annotations, want.Metadata.Annotations) {
+				cleanup()
+				t.Fatalf("restore=%+v error=%v", got, err)
+			}
+			cleanup()
+			// Rollback reopens the unchanged source database.
+			cfg.DatabaseURL = source
+			cleanup, err = initializeStorage(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cleanup()
+			if _, err = storage.LoadNode(ctx, want.Metadata.UID); err != nil {
+				t.Fatalf("source rollback failed: %v", err)
+			}
+		})
+	}
+}

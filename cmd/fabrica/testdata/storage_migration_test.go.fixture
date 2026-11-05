@@ -1,0 +1,98 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"database/sql"
+	"maps"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	api "example.com/annotated/apis/example.fabrica.dev/v1"
+	"example.com/annotated/internal/storage"
+	"github.com/openchami/fabrica/pkg/fabrica"
+)
+
+// The harness compiles this against the generic service, exports its database,
+// regenerates dedicated storage and imports into a separate database. Finally
+// the original test binary reopens the untouched source to prove rollback.
+func TestStorageMigration(t *testing.T) {
+	dir, stage := os.Getenv("FABRICA_TEST_MIGRATION_DIR"), os.Getenv("FABRICA_TEST_MIGRATION_STAGE")
+	if dir == "" || stage == "" {
+		t.Fatal("migration harness configuration missing")
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	want := &api.Node{APIVersion: "v1", Kind: "Node", Metadata: fabrica.Metadata{Name: "migrated", UID: "node-migration", CreatedAt: now, UpdatedAt: now, Labels: map[string]string{"team": "compute"}, Annotations: map[string]string{"note": "keep"}}, Spec: api.NodeSpec{Description: "portable"}, Status: api.NodeStatus{Phase: "Ready", Ready: true}}
+	open := func(path string) func() {
+		t.Helper()
+		cfg := DefaultConfig()
+		cfg.DatabaseURL = "file:" + path + "?_fk=1"
+		cleanup, err := initializeStorage(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cleanup
+	}
+	check := func() {
+		t.Helper()
+		got, err := storage.LoadNode(ctx, want.Metadata.UID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Spec != want.Spec || got.Status != want.Status || got.Metadata.Name != want.Metadata.Name || !got.Metadata.CreatedAt.Equal(now) || !maps.Equal(got.Metadata.Labels, want.Metadata.Labels) || !maps.Equal(got.Metadata.Annotations, want.Metadata.Annotations) {
+			t.Fatalf("migration changed API envelope: %+v", got)
+		}
+	}
+	source := filepath.Join(dir, "source.db")
+	switch stage {
+	case "export":
+		cleanup := open(source)
+		defer cleanup()
+		if err := storage.SaveNode(ctx, want); err != nil {
+			t.Fatal(err)
+		}
+		for _, format := range []string{"json", "yaml"} {
+			if err := runExport(ctx, format, filepath.Join(dir, format), []string{"Node"}, true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	case "import":
+		for _, format := range []string{"json", "yaml"} {
+			path := filepath.Join(dir, "dedicated-"+format+".db")
+			cleanup := open(path)
+			if err := runImport(ctx, filepath.Join(dir, format), "upsert", false, false); err != nil {
+				cleanup()
+				t.Fatal(err)
+			}
+			check()
+			cleanup()
+			db, err := sql.Open("sqlite3", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var generic, dedicated int
+			err = db.QueryRow("SELECT COUNT(*) FROM resources").Scan(&generic)
+			if err == nil {
+				err = db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&dedicated)
+			}
+			db.Close()
+			if err != nil || generic != 0 || dedicated != 1 {
+				t.Fatalf("migration tables: generic=%d dedicated=%d err=%v", generic, dedicated, err)
+			}
+		}
+	case "rollback":
+		cleanup := open(source)
+		defer cleanup()
+		check()
+	default:
+		t.Fatalf("unknown stage %q", stage)
+	}
+}

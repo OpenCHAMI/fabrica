@@ -35,6 +35,10 @@ func (s *ExportImportTestSuite) SetupSuite() {
 	s.fabricaBinary, err = filepath.Abs(s.fabricaBinary)
 	s.Require().NoError(err)
 
+	// Pin the runner as well as the CLI to this checkout; a local CLI can
+	// otherwise resolve released generator templates in its isolated module.
+	s.T().Setenv("FABRICA_SOURCE_PATH", filepath.Dir(filepath.Dir(s.fabricaBinary)))
+
 	// Create temp directory
 	s.tempDir = s.T().TempDir()
 }
@@ -207,11 +211,9 @@ func (s *ExportImportTestSuite) TestExportImportEntBackend() {
 	s.Require().NoError(err)
 	exportStr := string(exportContent)
 
-	// Check for Ent-specific storage usage (case-insensitive for plural form)
-	hasQuery := strings.Contains(strings.ToLower(exportStr), "storage.query") &&
-		strings.Contains(strings.ToLower(exportStr), "entit")
-	s.Assert().True(hasQuery,
-		"export.go should use generated query functions for Entity resources")
+	// Export the API envelope rather than the physical Ent entity.
+	s.Assert().Contains(exportStr, "storage.LoadAllEntitys(ctx)",
+		"export.go should load API resources independently of their table layout")
 }
 
 // TestExportImportMultipleResources verifies export/import work with multiple resources
