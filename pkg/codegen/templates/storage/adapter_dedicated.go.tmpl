@@ -15,6 +15,8 @@ import (
 
 	"{{.ModulePath}}/internal/storage/ent"
 	ent{{toLower .Name}} "{{.ModulePath}}/internal/storage/ent/{{toLower .Name}}"
+ entresource "{{.ModulePath}}/internal/storage/ent/resource"
+ fabricaStorage "github.com/openchami/fabrica/pkg/storage"
 	{{if .IsVersioned}}"github.com/openchami/fabrica/pkg/fabrica"{{else}}"github.com/openchami/fabrica/pkg/resource"{{end}}
 	"{{.Package}}"
 )
@@ -47,7 +49,8 @@ func ToEnt{{.Name}}(ctx context.Context, client *ent.Client, resource *{{.Packag
 	{{if $fieldAnnots}}
 	{{if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
 	// {{.Name}} field will be hashed by Ent hook
-	create = create.Set{{entFieldName .}}(resource.Spec.{{.Name}})
+    {{if .Required}}create = create.Set{{entFieldName .}}(resource.Spec.{{.Name}}){{else}}
+    if resource.Spec.{{.Name}}!="" {create = create.Set{{entFieldName .}}(resource.Spec.{{.Name}})}{{end}}
 	{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "encrypted")}}
 	// {{.Name}} field - encryption handled by Ent hook (TODO: Phase 5+)
 	create = create.Set{{entFieldName .}}(resource.Spec.{{.Name}})
@@ -168,7 +171,9 @@ func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}Updat
 	{{else if and $fieldAnnots.Storage (eq $fieldAnnots.Storage.Type "hashed")}}
 	// {{.Name}} field - hash update will be handled by Ent hook
 	if resource.Spec.{{.Name}} != "" {
-		update = update.Set{{entFieldName .}}(resource.Spec.{{.Name}})
+        old,err:=update.Mutation().Old{{entFieldName .}}(ctx)
+        if err!=nil {return err}
+        if resource.Spec.{{.Name}} != old {update = update.Set{{entFieldName .}}(resource.Spec.{{.Name}})}
 	}
 	{{else if eq .EntType "time_ptr"}}
 	if resource.Spec.{{.Name}} == nil {
@@ -198,7 +203,8 @@ func Update{{.Name}}FromResource(ctx context.Context, update *ent.{{.Name}}Updat
 
 // Query{{.Name}}ByName queries a {{.Name}} by name and optional namespace.
 func Query{{.Name}}ByName(ctx context.Context, client *ent.Client, name string, namespace string) (*ent.{{.Name}}, error) {
-	query := client.{{.Name}}.Query().
+	if err:=check{{.Name}}Layout(ctx,client);err!=nil {return nil,err}
+ query := client.{{.Name}}.Query().
 		Where(ent{{toLower .Name}}.NameEQ(name))
 
 	{{if .Metadata.Namespace}}
@@ -212,7 +218,8 @@ func Query{{.Name}}ByName(ctx context.Context, client *ent.Client, name string, 
 
 // List{{.Name}}s lists all {{.Name}} resources, optionally filtered by namespace.
 func List{{.Name}}s(ctx context.Context, client *ent.Client, namespace string) ([]*ent.{{.Name}}, error) {
-	query := client.{{.Name}}.Query()
+	if err:=check{{.Name}}Layout(ctx,client);err!=nil {return nil,err}
+ query := client.{{.Name}}.Query()
 
 	{{if .Metadata.Namespace}}
 	if namespace != "" {
@@ -225,9 +232,9 @@ func List{{.Name}}s(ctx context.Context, client *ent.Client, namespace string) (
 
 // Delete{{.Name}}ByUID deletes a {{.Name}} by UID.
 func Delete{{.Name}}ByUID(ctx context.Context, client *ent.Client, uid string) error {
-	_, err := client.{{.Name}}.Delete().
-		Where(ent{{toLower .Name}}.UIDEQ(uid)).
-		Exec(ctx)
+    if err:=check{{.Name}}Layout(ctx,client);err!=nil {return err}
+    count,err:=client.{{.Name}}.Delete().Where(ent{{toLower .Name}}.UIDEQ(uid)).Exec(ctx)
+    if err==nil && count==0 {return fabricaStorage.ErrNotFound}
 	return err
 }
 
@@ -242,4 +249,12 @@ func marshal{{.Name}}Envelope(resource *{{.PackageAlias}}.{{.Name}}) (json.RawMe
     delete(envelope,"spec")
     delete(envelope,"Spec")
     return json.Marshal(envelope)
+}
+
+func check{{.Name}}Layout(ctx context.Context,client *ent.Client) error {
+    if client==nil {return fmt.Errorf("ent client not initialized")}
+    exists,err:=client.Resource.Query().Where(entresource.KindEQ("{{.Name}}")).Exist(ctx)
+    if err!=nil {return err}
+    if exists {return fmt.Errorf("{{.Name}}: %w",fabricaStorage.ErrDedicatedMigrationRequired)}
+    return nil
 }

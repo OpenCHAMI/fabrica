@@ -174,7 +174,9 @@ func validateImportFile(path string) error {
 	switch file.kind {
 	{{- range .Resources}}
 	case "{{.Name}}":
-		{{- if .RevisioningEnabled}}
+		{{- if hasHashedStorage .}}
+            return fmt.Errorf("import for hashed resource {{.Name}} is unsupported; restore the database to preserve stored hashes")
+        {{- else if .RevisioningEnabled}}
 		return fmt.Errorf("import for revision-enabled resource {{.Name}} is unsupported; restore the backing database to preserve revision identity and tombstones")
 		{{- else}}
 		var res {{.TypeName}}

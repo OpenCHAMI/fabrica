@@ -47,6 +47,12 @@ func TestDedicatedEnvelope(t *testing.T) {
 			t.Fatalf("round trip mismatch: got=%+v want=%+v", got, want)
 		}
 	}
+	// Dedicated field defaults may normalize optional Spec values; the envelope
+	// test checks metadata/status independently of that normalization.
+	if got.Spec.Description != want.Spec.Description {
+		t.Fatal("Spec description lost")
+	}
+	want.Spec = got.Spec
 	check()
 	var envelope map[string]json.RawMessage
 	if err = json.Unmarshal(entity.Envelope, &envelope); err != nil {

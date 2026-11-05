@@ -28,6 +28,7 @@ func TestGeneratedValidationPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
+	t.Setenv("GOFLAGS", strings.TrimSpace(os.Getenv("GOFLAGS")+" -mod=mod"))
 	binary := filepath.Join(workspace, "fabrica")
 	run := func(t *testing.T, dir, executable string, args ...string) []byte {
 		t.Helper()
@@ -46,16 +47,20 @@ func TestGeneratedValidationPolicy(t *testing.T) {
 		name    string
 		modes   []string
 		enabled bool
+		backend string
 	}{
-		{"fresh-strict", []string{"strict"}, true},
-		{"fresh-warn", []string{"warn"}, true},
-		{"fresh-disabled", []string{"disabled"}, true},
-		{"regenerated", []string{"strict", "warn", "disabled", "strict"}, true},
-		{"boolean-disables", []string{"strict", "warn"}, false},
+		{"fresh-strict", []string{"strict"}, true, "file"},
+		{"fresh-warn", []string{"warn"}, true, "file"},
+		{"fresh-disabled", []string{"disabled"}, true, "file"},
+		{"regenerated", []string{"strict", "warn", "disabled", "strict"}, true, "file"},
+		{"boolean-disables", []string{"strict", "warn"}, false, "file"},
+		{"dedicated-strict", []string{"strict"}, true, "ent"},
+		{"dedicated-warn", []string{"warn"}, true, "ent"},
+		{"dedicated-disabled", []string{"disabled"}, true, "ent"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			dir := filepath.Join(workspace, scenario.name)
-			run(t, workspace, binary, "init", scenario.name, "--module", "example.com/validationfixture", "--storage-type", "file")
+			run(t, workspace, binary, "init", scenario.name, "--module", "example.com/validationfixture", "--storage-type", scenario.backend)
 			run(t, dir, "go", "mod", "edit", "-replace", "github.com/openchami/fabrica="+repo)
 			run(t, dir, binary, "add", "resource", "Node")
 			paths, err := filepath.Glob(filepath.Join(dir, "apis", "*", "*", "node_types.go"))
@@ -65,6 +70,10 @@ func TestGeneratedValidationPolicy(t *testing.T) {
 			types, err := os.ReadFile(paths[0])
 			if err != nil {
 				t.Fatal(err)
+			}
+			if scenario.backend == "ent" {
+				types = bytes.Replace(types, []byte("// Node represents"), []byte("// +fabrica:resource\n// +fabrica:storage=dedicated\n// Node represents"), 1)
+				types = bytes.Replace(types, []byte("Description string"), []byte("// +fabrica:field:index\nDescription string"), 1)
 			}
 			// Replace the scaffold hook with a test application hook while keeping
 			// tags and all other user-owned resource source intact.
@@ -117,7 +126,16 @@ func TestGeneratedValidationPolicy(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, "cmd/server/validation_policy_test.go"), []byte(test), 0644); err != nil {
 					t.Fatal(err)
 				}
-				run(t, dir, "go", "test", "./cmd/server", "-run", "^TestValidationPolicyHTTP$", "-count=1")
+				if scenario.backend == "ent" {
+					fixture, err := os.ReadFile(filepath.Join(repo, "cmd/fabrica/testdata/dedicated_transfer_test.go.fixture"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err = os.WriteFile(filepath.Join(dir, "cmd/server/dedicated_transfer_test.go"), fixture, 0644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				run(t, dir, "go", "test", "./cmd/server", "-run", "^(TestValidationPolicyHTTP|TestDedicatedImportExport)$", "-count=1")
 				got, err := os.ReadFile(mainPath)
 				if err != nil || !bytes.Equal(got, main) {
 					t.Fatalf("main changed: %v", err)
@@ -169,14 +187,14 @@ func(*validationBus)Unsubscribe(events.SubscriptionID)error{return nil}
 func(*validationBus)Close()error{return nil}
 func TestValidationPolicyHTTP(t *testing.T){
  const mode="EXPECTED_MODE"
- viper.Reset();viper.Set("data_dir",t.TempDir());config:=DefaultConfig();if err:=viper.Unmarshal(config);err!=nil{t.Fatal(err)}
+ viper.Reset();viper.Set("database_url","file:"+t.TempDir()+"/test.db?_fk=1&_journal_mode=WAL&_busy_timeout=5000");viper.Set("data_dir",t.TempDir());config:=DefaultConfig();if err:=viper.Unmarshal(config);err!=nil{t.Fatal(err)}
  // Runtime settings cannot override the generation-time validation policy.
  viper.Set("validation_mode","disabled");viper.Set("validation_enabled",false)
  features,err:=loadGeneratedFeatures(context.Background(),config);if err!=nil{t.Fatal(err)};defer features.Close()
  if err:=registerResourcePrefixes();err!=nil{t.Fatal(err)}
  router:=chi.NewRouter();features.Use(router)
  router.Post("/nodes",CreateNode);router.Get("/nodes",GetNodes);router.Get("/nodes/{uid}",GetNode)
- router.Put("/nodes/{uid}",UpdateNode);router.Patch("/nodes/{uid}",PatchNode)
+ router.Put("/nodes/{uid}",UpdateNode);router.Patch("/nodes/{uid}",PatchNode);router.Delete("/nodes/{uid}",DeleteNode)
  router.Put("/nodes/{uid}/status",UpdateNodeStatus);router.Patch("/nodes/{uid}/status",PatchNodeStatus)
  bus:=&validationBus{};oldConfig,oldBus:=events.GetEventConfig(),events.GetGlobalEventBus();defer func(){events.SetEventConfig(oldConfig);events.SetGlobalEventBus(oldBus)}()
  eventConfig:=events.DefaultEventConfig();eventConfig.Enabled=true;eventConfig.LifecycleEventsEnabled=true;events.SetEventConfig(eventConfig);events.SetGlobalEventBus(bus)
@@ -259,8 +277,20 @@ func TestValidationPolicyHTTP(t *testing.T){
   {"PATCH",path,` + "`" + `[{"op":"remove","path":"/missing"}]` + "`" + `,"*",422},
   {"PATCH",path+"/status",` + "`" + `[{"op":"remove","path":"/missing"}]` + "`" + `,"*",422},
   {"PUT",path,` + "`" + `{"spec":{"description":"valid"}}` + "`" + `,"\"stale\"",412},
+  {"PATCH",path,` + "`" + `{"description":"valid"}` + "`" + `,"\"stale\"",412},
   {"PUT","/nodes/missing",` + "`" + `{"spec":{"description":"valid"}}` + "`" + `,"*",404},
  }{got:=request(tc.method,tc.path,tc.body,tc.etag);if got.Code!=tc.want{t.Fatalf("mandatory %s %s mode=%s: %d want %d: %s",tc.method,tc.path,mode,got.Code,tc.want,got.Body)}}
  missingUID:=httptest.NewRecorder();UpdateNode(missingUID,httptest.NewRequest("PUT","/nodes/",strings.NewReader("{}")));if missingUID.Code!=http.StatusBadRequest{t.Fatalf("missing UID = %d",missingUID.Code)}
+ t.Run("conditional delete",func(t *testing.T){
+  before:=bus.count
+  rejected:=request("DELETE",path,"","\"stale\"")
+  if rejected.Code!=http.StatusPreconditionFailed||bus.count!=before{t.Fatalf("stale delete mode=%s: status=%d events=%d want=%d",mode,rejected.Code,bus.count,before)}
+  current:=request("GET",path,"","")
+  etag:=current.Header().Get("ETag")
+  if current.Code!=http.StatusOK||etag==""{t.Fatalf("resource lost after rejected delete: %d %s",current.Code,current.Body)}
+  deleted:=request("DELETE",path,"",etag)
+  if deleted.Code!=http.StatusOK||bus.count!=before+1{t.Fatalf("delete mode=%s: status=%d body=%s events=%d want=%d",mode,deleted.Code,deleted.Body,bus.count,before+1)}
+  if got:=request("GET",path,"","");got.Code!=http.StatusNotFound{t.Fatalf("delete did not persist: %d %s",got.Code,got.Body)}
+ })
 }
 `

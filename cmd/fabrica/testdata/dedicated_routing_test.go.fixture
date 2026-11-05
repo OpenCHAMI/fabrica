@@ -1,0 +1,275 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+
+package storage
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	v1 "example.com/annotated/apis/example.fabrica.dev/v1"
+	"example.com/annotated/internal/storage/ent"
+	"github.com/openchami/fabrica/pkg/fabrica"
+	"golang.org/x/crypto/bcrypt"
+)
+
+func dedicatedDatabase(t *testing.T) (*ent.Client, string) {
+	t.Helper()
+	dsn := "file:" + filepath.Join(t.TempDir(), "test.db") + "?_fk=1&_journal_mode=WAL&_busy_timeout=5000"
+	c, err := ent.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Schema.Create(context.Background()); err != nil {
+		c.Close()
+		t.Fatal(err)
+	}
+	SetEntClient(c)
+	t.Cleanup(func() { SetEntClient(nil); c.Close() })
+	return c, dsn
+}
+
+func dedicatedToken() *v1.Token {
+	now := time.Now().UTC()
+	return &v1.Token{APIVersion: "v1", Kind: "Token", Metadata: fabrica.Metadata{Name: "token", UID: "tok-routing", CreatedAt: now, UpdatedAt: now, Labels: map[string]string{"team": "compute"}}, Spec: v1.TokenSpec{Description: "one", Password: "example-only-secret", Owner: "owner"}, Status: v1.TokenStatus{Phase: "ready", Ready: true}}
+}
+
+func TestDedicatedRouting(t *testing.T) {
+	ctx := context.Background()
+	c, dsn := dedicatedDatabase(t)
+	want := dedicatedToken()
+	if err := SaveToken(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := c.Token.Query().Count(ctx); n != 1 {
+		t.Fatalf("dedicated rows=%d", n)
+	}
+	if n, _ := c.Resource.Query().Count(ctx); n != 0 {
+		t.Fatalf("generic rows=%d", n)
+	}
+	got, err := LoadToken(ctx, want.Metadata.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.Role != "user" {
+		t.Fatalf("default not applied: %+v", got.Spec)
+	}
+	hash := got.Spec.Password
+	if err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(want.Spec.Password)); err != nil {
+		t.Fatal(err)
+	}
+	entity, err := c.Token.Query().Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(entity.Envelope), want.Spec.Password) {
+		t.Fatal("plaintext in envelope")
+	}
+	duplicate := dedicatedToken()
+	duplicate.Metadata.UID = "tok-duplicate"
+	if err = SaveToken(ctx, duplicate); err == nil {
+		t.Fatal("unique constraint not enforced")
+	}
+	if n, _ := Querytokens(ctx).Count(ctx); n != 1 {
+		t.Fatalf("query rows=%d", n)
+	}
+	if rows, err := ListtokensByLabels(ctx, map[string]string{"team": "compute"}); err != nil || len(rows) != 1 {
+		t.Fatalf("label query=%v %v", rows, err)
+	}
+	if rows, err := ListtokensByLabels(ctx, map[string]string{"team": "other"}); err != nil || len(rows) != 0 {
+		t.Fatalf("negative label query=%v %v", rows, err)
+	}
+	if _, err = GetTokenByUID(ctx, want.Metadata.UID); err != nil {
+		t.Fatal(err)
+	}
+	client := NewStorageClient()
+	if _, err = client.Get(ctx, "Token", want.Metadata.UID); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := client.List(ctx, "Token"); err != nil || len(rows) != 1 {
+		t.Fatalf("storage client list=%v %v", rows, err)
+	}
+	got.Spec.Description = "two"
+	got.Spec.Owner = "forbidden-change"
+	got.Status.Phase = "updated"
+	if err = client.Update(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	got, err = LoadToken(ctx, want.Metadata.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.Owner != "owner" || got.Spec.Password != hash || got.Status.Phase != "updated" {
+		t.Fatalf("update contract: %+v", got)
+	}
+	stop := errors.New("reject")
+	_, err = MutateToken(ctx, want.Metadata.UID, func(current *v1.Token) (bool, error) { current.Spec.Description = "rollback"; return false, stop })
+	if !errors.Is(err, stop) {
+		t.Fatalf("rollback error=%v", err)
+	}
+	got, err = MutateToken(ctx, want.Metadata.UID, func(current *v1.Token) (bool, error) {
+		if current.Spec.Description != "two" {
+			return false, errors.New("rejected mutation persisted")
+		}
+		current.Spec.Description = "three"
+		return false, nil
+	})
+	if err != nil || got.Spec.Description != "three" || got.Spec.Password != hash {
+		t.Fatalf("atomic mutation: %+v %v", got, err)
+	}
+	// Generic resources remain generic in this same service.
+	widget := &v1.Widget{APIVersion: "v1", Kind: "Widget", Metadata: fabrica.Metadata{Name: "widget", UID: "wid-routing", CreatedAt: time.Now(), UpdatedAt: time.Now()}, Spec: v1.WidgetSpec{Description: "generic"}}
+	if err = SaveWidget(ctx, widget); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := Backend.LoadAll(ctx, "Widget"); err != nil || len(rows) != 1 {
+		t.Fatalf("generic rows=%v %v", rows, err)
+	}
+	raw, err := Backend.Load(ctx, "Token", want.Metadata.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Import/export use these same backend calls. A second connection proves
+	// persisted data can be read without depending on in-memory state.
+	second, err := ent.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	SetEntClient(second)
+	if err = Backend.Save(ctx, "Token", want.Metadata.UID, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = LoadToken(ctx, want.Metadata.UID); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.Delete(ctx, "Token", want.Metadata.UID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = LoadToken(ctx, want.Metadata.UID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted resource=%v", err)
+	}
+	if err = DeleteToken(ctx, want.Metadata.UID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing delete=%v", err)
+	}
+}
+
+func TestDedicatedMigrationGuard(t *testing.T) {
+	ctx := context.Background()
+	c, _ := dedicatedDatabase(t)
+	_, err := c.Resource.Create().SetUID("legacy").SetName("legacy").SetKind("Token").SetResourceType("Token").SetSpec(json.RawMessage(`{}`)).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, call := range map[string]func() error{
+		"save": func() error { return SaveToken(ctx, dedicatedToken()) },
+		"load": func() error { _, err := LoadToken(ctx, "legacy"); return err },
+		"list": func() error { _, err := LoadAllTokens(ctx); return err },
+		"mutate": func() error {
+			_, err := MutateToken(ctx, "legacy", func(*v1.Token) (bool, error) { return true, nil })
+			return err
+		},
+		"labels": func() error { _, err := ListtokensByLabels(ctx, nil); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := call(); !errors.Is(err, ErrDedicatedMigrationRequired) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+	if n, _ := c.Resource.Query().Count(ctx); n != 1 {
+		t.Fatalf("legacy data modified: %d", n)
+	}
+	if n, _ := c.Token.Query().Count(ctx); n != 0 {
+		t.Fatalf("partial dedicated write: %d", n)
+	}
+}
+
+func TestDedicatedContention(t *testing.T) {
+	for _, operation := range []string{"save", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			c, dsn := dedicatedDatabase(t)
+			value := dedicatedToken()
+			if err := SaveToken(ctx, value); err != nil {
+				t.Fatal(err)
+			}
+			other, err := ent.Open("sqlite3", dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer other.Close()
+			old := &entStorageBackend{client: c}
+			writer := &entStorageBackend{client: other}
+			loaded, release := make(chan struct{}), make(chan struct{})
+			var calls atomic.Int32
+			stale := errors.New("stale snapshot")
+			result := make(chan error, 1)
+			go func() {
+				_, err := old.Mutate(ctx, "Token", value.Metadata.UID, func(raw json.RawMessage) (json.RawMessage, bool, error) {
+					var current v1.Token
+					if err := json.Unmarshal(raw, &current); err != nil {
+						return nil, false, err
+					}
+					if calls.Add(1) == 1 {
+						close(loaded)
+						select {
+						case <-release:
+						case <-ctx.Done():
+							return nil, false, ctx.Err()
+						}
+					}
+					if current.Spec.Description != "one" {
+						return nil, false, stale
+					}
+					current.Spec.Description = "losing-write"
+					next, err := json.Marshal(current)
+					return next, false, err
+				})
+				result <- err
+			}()
+			select {
+			case <-loaded:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			value.Spec.Description = "winner"
+			raw, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if operation == "save" {
+				err = writer.write(ctx, "Token", value.Metadata.UID, raw)
+			} else {
+				_, err = writer.Mutate(ctx, "Token", value.Metadata.UID, func(json.RawMessage) (json.RawMessage, bool, error) { return nil, true, nil })
+			}
+			close(release)
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err = <-result:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			if operation == "save" {
+				if !errors.Is(err, stale) || calls.Load() < 2 {
+					t.Fatalf("stale callback not retried: calls=%d err=%v", calls.Load(), err)
+				}
+				got, err := LoadToken(ctx, value.Metadata.UID)
+				if err != nil || got.Spec.Description != "winner" {
+					t.Fatalf("lost ordinary save: %+v %v", got, err)
+				}
+			} else if !errors.Is(err, ErrNotFound) {
+				t.Fatalf("lost delete: %v", err)
+			}
+		})
+	}
+}

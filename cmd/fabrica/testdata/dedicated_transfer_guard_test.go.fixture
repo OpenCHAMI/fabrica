@@ -1,0 +1,24 @@
+// SPDX-FileCopyrightText: 2026 OpenCHAMI Contributors
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestDedicatedTransferGuard(t *testing.T) {
+	if err := validateExportKinds([]string{"Token"}); err == nil || !strings.Contains(err.Error(), "preserve stored hashes") {
+		t.Fatalf("export silently accepts hashed resource: %v", err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(`{"apiVersion":"v1","kind":"Token","metadata":{"uid":"token-id"},"spec":{"description":"test"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := preflightImport(dir); err == nil || !strings.Contains(err.Error(), "preserve stored hashes") {
+		t.Fatalf("import silently rehashes stored credential: %v", err)
+	}
+}
