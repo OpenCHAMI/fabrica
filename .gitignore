@@ -48,6 +48,7 @@ dist/
 # Integration test temporary directories
 test/integration/tmp-debug/
 test/integration/projects/
+test/integration-examples/*/build/
 
 # Local build output
 bin/
