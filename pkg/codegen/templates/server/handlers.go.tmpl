@@ -64,6 +64,48 @@ import (
 	{{end}}
 	"{{.ModulePath}}/internal/storage"
 )
+{{- if hasSensitiveFields .Annotations .SpecFields }}
+
+// redact{{.Name}} serializes a {{.Name}} with its sensitive spec fields
+// (+fabrica:field:sensitive) removed so they are never returned in responses.
+func redact{{.Name}}({{camelCase .Name}} *{{.PackageAlias}}.{{.Name}}) interface{} {
+	if {{camelCase .Name}} == nil {
+		return {{camelCase .Name}}
+	}
+	raw, err := json.Marshal({{camelCase .Name}})
+	if err != nil {
+		return {{camelCase .Name}}
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return {{camelCase .Name}}
+	}
+	specRaw, ok := envelope["spec"]
+	if !ok {
+		return envelope
+	}
+	var spec map[string]json.RawMessage
+	if err := json.Unmarshal(specRaw, &spec); err != nil {
+		return envelope
+	}
+	{{- range sensitiveJSONNames .Annotations .SpecFields }}
+	delete(spec, {{goString .}})
+	{{- end }}
+	if b, err := json.Marshal(spec); err == nil {
+		envelope["spec"] = b
+	}
+	return envelope
+}
+
+// redact{{.Name}}s applies redact{{.Name}} to each item in a list response.
+func redact{{.Name}}s({{camelCase .PluralName}} []*{{.PackageAlias}}.{{.Name}}) []interface{} {
+	out := make([]interface{}, 0, len({{camelCase .PluralName}}))
+	for _, item := range {{camelCase .PluralName}} {
+		out = append(out, redact{{.Name}}(item))
+	}
+	return out
+}
+{{- end }}
 
 // Get{{.Name}}s returns all {{.Name}} resources
 func Get{{.Name}}s(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +128,7 @@ func Get{{.Name}}s(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	{{end}}
-	respondJSON(w, http.StatusOK, {{camelCase .PluralName}})
+	respondJSON(w, http.StatusOK, {{if hasSensitiveFields .Annotations .SpecFields}}redact{{.Name}}s({{camelCase .PluralName}}){{else}}{{camelCase .PluralName}}{{end}})
 }
 
 // Get{{.Name}} returns a specific {{.Name}} resource by UID
@@ -121,7 +163,7 @@ func Get{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	{{end}}
-	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+	respondJSON(w, http.StatusOK, {{if hasSensitiveFields .Annotations .SpecFields}}redact{{.Name}}({{camelCase .Name}}){{else}}{{camelCase .Name}}{{end}})
 }
 
 // Create{{.Name}} creates a new {{.Name}} resource
@@ -137,6 +179,14 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
 	}
+	{{- $defaults := specDefaultStmts .Annotations .SpecFields "req.Spec" }}
+	{{- if $defaults }}
+
+	// Apply field defaults (+fabrica:field:default) to unset spec fields before validation.
+	{{- range $defaults }}
+	{{ . }}
+	{{- end }}
+	{{- end }}
 	if err := validation.ValidateRequest(&req, validation.Mode("{{.ValidationMode}}")); err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
 		return
@@ -255,7 +305,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusCreated, {{camelCase .Name}})
+	respondJSON(w, http.StatusCreated, {{if hasSensitiveFields .Annotations .SpecFields}}redact{{.Name}}({{camelCase .Name}}){{else}}{{camelCase .Name}}{{end}})
 }
 
 // Update{{.Name}} updates the spec of an existing {{.Name}} resource
@@ -362,7 +412,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+	respondJSON(w, http.StatusOK, {{if hasSensitiveFields .Annotations .SpecFields}}redact{{.Name}}({{camelCase .Name}}){{else}}{{camelCase .Name}}{{end}})
 }
 
 // Patch{{.Name}} patches an existing {{.Name}} resource spec using JSON Merge Patch, JSON Patch, or Shorthand Patch
@@ -453,7 +503,7 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 {{end}}
 	}
 
-	respondJSON(w, http.StatusOK, {{camelCase .Name}})
+	respondJSON(w, http.StatusOK, {{if hasSensitiveFields .Annotations .SpecFields}}redact{{.Name}}({{camelCase .Name}}){{else}}{{camelCase .Name}}{{end}})
 }
 
 // Update{{.Name}}Status updates only the status of a {{.Name}} resource

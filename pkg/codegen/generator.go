@@ -933,6 +933,91 @@ func entTypeForTypeString(typeName string) string {
 	}
 }
 
+// goIntType reports whether a Go type string is a signed or unsigned integer.
+func goIntType(goType string) bool {
+	switch goType {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	default:
+		return false
+	}
+}
+
+// specDefaultStmt builds a Go statement that applies a +fabrica:field:default
+// value to a spec field when it still holds its zero value. The empty string is
+// returned for defaults that cannot be expressed as a zero-value override (for
+// example bool defaults of false, which are no-ops).
+func specDefaultStmt(receiver, goName, goType, raw string) string {
+	switch {
+	case goType == "string":
+		return fmt.Sprintf("if %s.%s == \"\" {\n%s.%s = %s\n}", receiver, goName, receiver, goName, strconv.Quote(raw))
+	case goType == "bool":
+		b, err := strconv.ParseBool(raw)
+		if err != nil || !b {
+			return ""
+		}
+		return fmt.Sprintf("if !%s.%s {\n%s.%s = true\n}", receiver, goName, receiver, goName)
+	case goIntType(goType):
+		if _, err := strconv.ParseInt(raw, 10, 64); err != nil {
+			return ""
+		}
+		return fmt.Sprintf("if %s.%s == 0 {\n%s.%s = %s\n}", receiver, goName, receiver, goName, raw)
+	case goType == "float32" || goType == "float64":
+		if _, err := strconv.ParseFloat(raw, 64); err != nil {
+			return ""
+		}
+		return fmt.Sprintf("if %s.%s == 0 {\n%s.%s = %s\n}", receiver, goName, receiver, goName, raw)
+	}
+	return ""
+}
+
+// specDefaultStmts returns the default-application statements for every annotated
+// spec field that declares a +fabrica:field:default value.
+func specDefaultStmts(ann *annotations.ResourceAnnotations, fields []SpecField, receiver string) []string {
+	if ann == nil {
+		return nil
+	}
+	var out []string
+	for _, field := range normalizeSpecFields(fields) {
+		fa := ann.Fields[field.Name]
+		if fa == nil || fa.Default == "" {
+			continue
+		}
+		if stmt := specDefaultStmt(receiver, field.Name, field.Type, fa.Default); stmt != "" {
+			out = append(out, stmt)
+		}
+	}
+	return out
+}
+
+// sensitiveJSONNames returns the JSON field names of every spec field marked
+// +fabrica:field:sensitive, used to strip them from API response bodies.
+func sensitiveJSONNames(ann *annotations.ResourceAnnotations, fields []SpecField) []string {
+	if ann == nil {
+		return nil
+	}
+	var out []string
+	for _, field := range normalizeSpecFields(fields) {
+		fa := ann.Fields[field.Name]
+		if fa == nil || !fa.Sensitive {
+			continue
+		}
+		name := field.JSONName
+		if name == "" {
+			name = field.Name
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+// hasSensitiveFields reports whether a resource has any +fabrica:field:sensitive
+// spec fields that must be redacted from responses.
+func hasSensitiveFields(ann *annotations.ResourceAnnotations, fields []SpecField) bool {
+	return len(sensitiveJSONNames(ann, fields)) > 0
+}
+
 // generateExampleValue creates an example value based on the field type and name
 func generateExampleValue(t reflect.Type, fieldName string) string {
 	// Handle common types
@@ -2492,6 +2577,9 @@ var templateFuncs = template.FuncMap{
 	"resourceSetExpr":          resourceSetExpr,
 	"optionalSpecCondition":    optionalSpecCondition,
 	"hasOptionalSpecCondition": hasOptionalSpecCondition,
+	"specDefaultStmts":         specDefaultStmts,
+	"hasSensitiveFields":       hasSensitiveFields,
+	"sensitiveJSONNames":       sensitiveJSONNames,
 	"last": func(s []string) string {
 		if len(s) == 0 {
 			return ""
