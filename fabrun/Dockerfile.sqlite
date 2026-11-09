@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT
+# Generic Dockerfile for running a Fabrica service backed by SQLite.
+# Built and used by the `fabrun` tool. The service binary is copied into the
+# build context as `service`. The run-time CMD is overridden by fabrun.
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1000 fabrun && \
+    useradd -r -u 1000 -g fabrun fabrun && \
+    mkdir -p /data && \
+    chown 1000:1000 /data
+
+WORKDIR /home/fabrun
+
+COPY service /usr/local/bin/service
+RUN chown -R fabrun:fabrun /home/fabrun
+
+USER fabrun
+VOLUME ["/data"]
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/service"]
+CMD ["serve", "--port", "8080", "--database-url", "file:/data/service.db?_fk=1"]

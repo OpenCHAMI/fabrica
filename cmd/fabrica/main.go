@@ -92,6 +92,7 @@ The CLI provides commands for:
 	}
 
 	rootCmd.AddCommand(newInitCommand())
+	rootCmd.AddCommand(newCreateCommand())
 	rootCmd.AddCommand(newAddCommand())
 	rootCmd.AddCommand(newGenerateCommand())
 	rootCmd.AddCommand(newEntCommand())

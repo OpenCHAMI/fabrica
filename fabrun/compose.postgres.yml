@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# Generic docker compose file for a Fabrica service backed by PostgreSQL.
+# Rendered and run by the `fabrun` tool, which supplies the variables below.
+# The service reaches postgres via the compose service name "postgres".
+services:
+  postgres:
+    image: ${FABRUN_POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: ${FABRUN_NAME:-fabrun-service}-postgres
+    environment:
+      POSTGRES_USER: ${FABRUN_PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${FABRUN_PG_PASSWORD:-postgres}
+      POSTGRES_DB: ${FABRUN_PG_DB:-fabrun}
+    ports:
+      - "${FABRUN_PG_PORT:-5432}:5432"
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${FABRUN_PG_USER:-postgres}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  service:
+    image: ${FABRUN_IMAGE:-fabrun-service}
+    container_name: ${FABRUN_NAME:-fabrun-service}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${FABRUN_PORT:-8080}:8080"
+    command: ["serve", "--port", "8080", "--database-url", "${FABRUN_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/fabrun?sslmode=disable}"]
+    restart: unless-stopped
+
+volumes:
+  data:
