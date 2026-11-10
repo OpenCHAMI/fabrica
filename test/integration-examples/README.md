@@ -13,6 +13,7 @@ tests written with [testify](https://github.com/stretchr/testify).
 | Directory | Example |
 | --- | --- |
 | [basic-crud](basic-crud) | [01-basic-crud](../../examples/01-basic-crud) |
+| [core](core) | Node ([03-fru-service](../../examples/03-fru-service) `FRUSpec`) and User ([12-storage-annotations](../../examples/12-storage-annotations) `UserSpec`, without annotations), generated with file, sqlite, and postgres storage and tested with one shared suite |
 
 ## Requirements
 
@@ -51,6 +52,30 @@ Useful variables: `PORT` (default `18080`), `DB` (`sqlite` or `postgres`),
 
 Running `go test ./...` in this directory without `FABRICA_EXAMPLE_URL` set
 skips the tests.
+
+### core
+
+[core](core) generates the same service three times,
+into `build/<backend>/`, and runs one suite against each. Every step exists for
+all backends and per backend (`file`, `sqlite`, `postgres`):
+
+```sh
+cd test/integration-examples/core
+make test                 # test-file, test-sqlite, test-postgres (continues past failures)
+make test-sqlite          # generate-sqlite + up-sqlite + test-only-sqlite + down-sqlite
+
+make generate             # or generate-file / generate-sqlite / generate-postgres
+make up                   # or up-<backend>; all three can run at once
+make test-only            # or test-only-<backend>
+make down                 # or down-<backend>
+```
+
+Ports: `PORT_file` (18082), `PORT_sqlite` (18083), `PORT_postgres` (18084), and
+`PG_PORT` (15433) for the postgres database container. The sqlite server needs
+cgo, so it is built in a `golang:<ver>-bookworm` container unless
+`BUILD_IN_DOCKER=0`. The suite is grouped into service, CRUD, patch, status,
+validation, and conditional-request (ETag/If-Match) tests; see the package doc
+in `suite_test.go`.
 
 ## Adding an example
 
