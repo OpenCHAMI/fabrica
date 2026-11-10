@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 {{if .Resources}}	"github.com/openchami/fabrica/pkg/fabrica"{{end}}
 {{if $hasRevisioning}}	"github.com/openchami/fabrica/pkg/revision"{{end}}
@@ -136,6 +137,14 @@ type DeleteResponse struct {
 }
 
 // Helper functions for handlers
+
+// resourceTimestamp returns the current time for resource metadata
+// (createdAt/updatedAt). It is UTC and truncated to microseconds, the finest
+// precision every storage backend (including PostgreSQL) persists, so the
+// timestamps a write returns match those a later read returns.
+func resourceTimestamp() time.Time {
+	return time.Now().UTC().Truncate(time.Microsecond)
+}
 
 // respondJSON sends a JSON response
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {

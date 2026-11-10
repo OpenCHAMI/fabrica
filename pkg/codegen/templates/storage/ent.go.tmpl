@@ -477,7 +477,8 @@ func persistEntMutation(ctx context.Context, client *ent.Client, current *ent.Re
 		id = entity.ID
 	} else {
 		if refreshUpdatedAt {
-			envelope.Metadata.UpdatedAt = time.Now()
+			// Microsecond precision matches what PostgreSQL persists.
+			envelope.Metadata.UpdatedAt = time.Now().UTC().Truncate(time.Microsecond)
 		}
 		count, err := client.Resource.Update().Where(entresource.IDEQ(current.ID), entresource.ResourceVersionEQ(current.ResourceVersion)).
 			SetAPIVersion(envelope.APIVersion).SetName(envelope.Metadata.Name).
