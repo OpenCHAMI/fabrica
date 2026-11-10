@@ -72,8 +72,9 @@ make down                 # or down-<backend>
 
 Ports: `PORT_file` (18082), `PORT_sqlite` (18083), `PORT_postgres` (18084), and
 `PG_PORT` (15433) for the postgres database container. The sqlite server needs
-cgo, so it is built in a `golang:<ver>-bookworm` container unless
-`BUILD_IN_DOCKER=0`. The suite is grouped into service, CRUD, patch, status,
+cgo, so it is built with the host toolchain by default (a linux host with a C
+compiler); set `BUILD_IN_DOCKER=1` to build it in a `golang:<ver>-bookworm`
+container instead. The suite is grouped into service, CRUD, patch, status,
 validation, and conditional-request (ETag/If-Match) tests; see the package doc
 in `suite_test.go`.
 
