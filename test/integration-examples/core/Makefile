@@ -24,10 +24,11 @@
 #
 # The file and postgres servers are pure Go and are cross-compiled with
 # CGO_ENABLED=0. The sqlite driver (mattn/go-sqlite3) needs cgo, so its server
-# is built inside a golang:<ver>-bookworm container by default (matching the
-# debian:bookworm-slim image fabrun runs it in). On a linux host with a C
-# compiler and a glibc no newer than bookworm's, BUILD_IN_DOCKER=0 builds it
-# with the host toolchain instead.
+# is built with the host toolchain by default; this requires a linux host with
+# a C compiler and a glibc no newer than the debian:bookworm-slim image fabrun
+# runs it in. Set BUILD_IN_DOCKER=1 to build it inside a golang:<ver>-bookworm
+# container instead (for example on non-linux hosts or to match bookworm's
+# glibc).
 
 .DEFAULT_GOAL := help
 
@@ -79,8 +80,9 @@ PG_PORT       ?= 15433
 
 FABRUN_ARGS_postgres := --pg-port $(PG_PORT)
 
-# Build the cgo (sqlite) server in a container. Set to 0 on a suitable linux host.
-BUILD_IN_DOCKER ?= 1
+# Build the cgo (sqlite) server locally by default. Set to 1 to build it inside
+# a container instead (e.g. on non-linux hosts or to match bookworm's glibc).
+BUILD_IN_DOCKER ?= 0
 GO_IMAGE ?= golang:$(FABRICA_GO_VERSION)-bookworm
 DOCKER   ?= docker
 
