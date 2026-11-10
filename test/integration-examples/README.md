@@ -56,7 +56,7 @@ skips the tests.
 ### core
 
 [core](core) generates the same service three times,
-into `build/<backend>/`, and runs one suite against each. Every step exists for
+into `build/<service>-<backend>/`, and runs one suite against each. Every step exists for
 all backends and per backend (`file`, `sqlite`, `postgres`):
 
 ```sh
