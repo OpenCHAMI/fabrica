@@ -94,15 +94,18 @@ TEST_FLAGS ?= -count=1 -v
 .PHONY: help
 help: ## Display this help screen
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
-	@echo
-	@echo "Per-backend targets (BACKEND is one of: $(BACKENDS)):"
-	@printf "\033[36m%-22s\033[0m %s\n" \
-		generate-BACKEND     "Generate one backend's service under build/<service>-BACKEND/" \
-		build-server-BACKEND "Build one backend's linux server binary" \
-		up-BACKEND           "Start one backend's service with fabrun" \
-		test-only-BACKEND    "Run the tests against one backend's running service" \
-		down-BACKEND         "Stop one backend's service (removes its data volume)" \
-		test-BACKEND         "generate, up, test-only, then always down for one backend"
+	@$(foreach b,$(BACKENDS),$(call backend_help,$(b));)
+
+# backend_help prints the per-backend targets for backend $(1).
+backend_help = \
+	printf '\n%s based:\n' '$(1)'; \
+	printf "\033[36m%-22s\033[0m %s\n" \
+		generate-$(1)     "Generate the $(1) service under build/$(SERVICE)-$(1)/" \
+		build-server-$(1) "Build the $(1) service's linux server binary" \
+		up-$(1)           "Start the $(1) service with fabrun on port $(PORT_$(1))" \
+		test-only-$(1)    "Run the tests against the running $(1) service" \
+		down-$(1)         "Stop the $(1) service (removes its data volume)" \
+		test-$(1)         "generate, up, test-only, then always down for $(1)"
 
 .PHONY: tools
 tools: ## Build bin/fabrica and bin/fabrun from this checkout
