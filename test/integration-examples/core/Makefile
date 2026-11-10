@@ -45,15 +45,15 @@ FABRUN       := $(FABRICA_ROOT)/bin/fabrun$(GOEXE)
 BACKENDS := file sqlite postgres
 
 # Generated service settings. Each backend is generated into
-# build/<backend>/$(SERVICE).
+# build/$(SERVICE)-<backend>.
 SERVICE ?= node-user-service
 MODULE  ?= github.com/openchami/$(SERVICE)
 GROUP   ?= core.openchami.org
 BUILD_DIR := $(EXAMPLE_DIR)/build
 # Relative so it resolves both on the host and inside the build container
-# (build/<backend>/<service> is six levels below the fabrica root). The
+# (build/<service>-<backend> is five levels below the fabrica root). The
 # service's go directive is raised to fabrica's so the replaced module builds.
-FABRICA_REPLACE := ../../../../../..
+FABRICA_REPLACE := ../../../../..
 FABRICA_GO_VERSION := $(shell awk '/^go / {print $$2; exit}' $(FABRICA_ROOT)/go.mod)
 
 STORAGE_ARGS_file     := --storage-type file
@@ -95,7 +95,7 @@ help: ## Display this help screen
 	@echo
 	@echo "Per-backend targets (BACKEND is one of: $(BACKENDS)):"
 	@printf "\033[36m%-22s\033[0m %s\n" \
-		generate-BACKEND     "Generate one backend's service under build/BACKEND/" \
+		generate-BACKEND     "Generate one backend's service under build/<service>-BACKEND/" \
 		build-server-BACKEND "Build one backend's linux server binary" \
 		up-BACKEND           "Start one backend's service with fabrun" \
 		test-only-BACKEND    "Run the tests against one backend's running service" \
@@ -108,18 +108,20 @@ tools: ## Build bin/fabrica and bin/fabrun from this checkout
 
 # backend_rules generates the per-backend targets for backend $(1).
 define backend_rules
-SERVICE_DIR_$(1) := $(BUILD_DIR)/$(1)/$(SERVICE)
+SERVICE_DIR_$(1) := $(BUILD_DIR)/$(SERVICE)-$(1)
 
 .PHONY: generate-$(1)
 generate-$(1): tools
-	rm -rf $$(SERVICE_DIR_$(1))
-	mkdir -p $(BUILD_DIR)/$(1)
+	rm -rf $$(SERVICE_DIR_$(1)) $(BUILD_DIR)/.tmp-$(1)
+	mkdir -p $(BUILD_DIR)/.tmp-$(1)
 	$(FABRICA) init $(SERVICE) \
 		--module $(MODULE) \
 		--group $(GROUP) \
 		--storage-version v1 \
 		$(STORAGE_ARGS_$(1)) \
-		--dir $$(call hostpath,$(BUILD_DIR)/$(1))
+		--dir $$(call hostpath,$(BUILD_DIR)/.tmp-$(1))
+	mv $(BUILD_DIR)/.tmp-$(1)/$(SERVICE) $$(SERVICE_DIR_$(1))
+	rmdir $(BUILD_DIR)/.tmp-$(1)
 	cd $$(SERVICE_DIR_$(1)) && $(GO) mod edit \
 		-replace github.com/openchami/fabrica=$(FABRICA_REPLACE) \
 		-go $(FABRICA_GO_VERSION)
