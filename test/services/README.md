@@ -25,13 +25,13 @@ tests written with [testify](https://github.com/stretchr/testify).
 From the fabrica repository root, run every example:
 
 ```sh
-make test-integration-examples
+make test-services
 ```
 
 Or run one example, either all at once or step by step:
 
 ```sh
-cd test/integration-examples/storage-annotations
+cd test/services/storage-annotations
 make test        # generate + up + test-only + down
 
 make generate    # fabrica init, fabrica add resources resource-defs/, fabrica generate, go build
@@ -60,7 +60,7 @@ into `build/<service>-<backend>/`, and runs one suite against each. Every step e
 all backends and per backend (`file`, `sqlite`, `postgres`):
 
 ```sh
-cd test/integration-examples/core
+cd test/services/core
 make test                 # test-file, test-sqlite, test-postgres (continues past failures)
 make test-sqlite          # generate-sqlite + up-sqlite + test-only-sqlite + down-sqlite
 
@@ -83,5 +83,5 @@ in `suite_test.go`.
 Create `<example>/` with a `resource-defs/` directory of annotated `<Name>Spec`
 files, a `Makefile` providing the `generate`, `up`, `test-only`, `down`, and
 `test` targets (copy `storage-annotations/Makefile`), and a `_test.go` file. The
-root `make test-integration-examples` target picks up any subdirectory that has
+root `make test-services` target picks up any subdirectory that has
 a `Makefile`.

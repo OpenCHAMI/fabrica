@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-module github.com/openchami/fabrica/test/integration-examples
+module github.com/openchami/fabrica/test/services
 
 go 1.26.10
 

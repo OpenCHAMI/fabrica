@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-.PHONY: help build build-fabrun test test-install-script test-integration test-integration-examples test-all lint clean install install-release run docker-build docker-run
+.PHONY: help build build-fabrun test test-install-script test-integration test-services test-all lint clean install install-release run docker-build docker-run
 
 # Variables
 BINARY_NAME=fabrica
@@ -57,12 +57,12 @@ test-install-script: ## Run deterministic offline tests for the POSIX release in
 test-integration: ## Run integration tests
 	cd test/integration && $(GO) test $(GOFLAGS) ./...
 
-INTEGRATION_EXAMPLES ?= $(patsubst test/integration-examples/%/Makefile,%,$(wildcard test/integration-examples/*/Makefile))
+SERVICES ?= $(patsubst test/services/%/Makefile,%,$(wildcard test/services/*/Makefile))
 
-test-integration-examples: ## Generate, run (fabrun/docker), and test each example under test/integration-examples
-	@for example in $(INTEGRATION_EXAMPLES); do \
-		echo "== integration example: $$example =="; \
-		$(MAKE) -C test/integration-examples/$$example test || exit $$?; \
+test-services: ## Generate, run (fabrun/docker), and test each example service under test/services
+	@for example in $(SERVICES); do \
+		echo "== service: $$example =="; \
+		$(MAKE) -C test/services/$$example test || exit $$?; \
 	done
 
 test-all: test test-install-script test-integration ## Run all tests (unit + installer + integration)
