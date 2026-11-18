@@ -4,16 +4,9 @@
 
 package v1
 
-import "time"
+import "github.com/openchami/fabrica/pkg/fabrica"
 
-type Metadata struct {
-	UID         string            `json:"uid"`
-	Name        string            `json:"name"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt"`
-}
+type Metadata = fabrica.Metadata
 
 type NodeSpec struct {
 	Value string `json:"value"`
