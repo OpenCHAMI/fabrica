@@ -37,6 +37,9 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 	if err := gen.LoadTemplates(); err != nil {
 		t.Fatalf("LoadTemplates: %v", err)
 	}
+	if err := gen.GenerateModels(); err != nil {
+		t.Fatalf("GenerateModels: %v", err)
+	}
 	if err := gen.GenerateHandlers(); err != nil {
 		t.Fatalf("GenerateHandlers: %v", err)
 	}

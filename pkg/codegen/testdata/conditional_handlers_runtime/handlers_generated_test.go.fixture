@@ -152,6 +152,45 @@ func testNode(value string) v1.Node {
 	}
 }
 
+func TestGeneratedResourceTimestamps(t *testing.T) {
+	storage.SeedNode(testNode("initial"))
+	create := httptest.NewRecorder()
+	CreateNode(create, httptest.NewRequest(http.MethodPost, "/nodes", bytes.NewBufferString(`{"spec":{"value":"created"}}`)))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("POST status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var created v1.Node
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	checkTimestamp := func(name string, stamp time.Time) {
+		t.Helper()
+		if stamp.IsZero() || stamp.Location() != time.UTC || stamp.Nanosecond()%1000 != 0 {
+			t.Errorf("%s = %v, want nonzero UTC time with microsecond precision", name, stamp)
+		}
+	}
+	checkTimestamp("createdAt", created.Metadata.CreatedAt)
+	checkTimestamp("updatedAt", created.Metadata.UpdatedAt)
+	if !created.Metadata.CreatedAt.Equal(created.Metadata.UpdatedAt) {
+		t.Fatalf("create timestamps differ: %+v", created.Metadata)
+	}
+	stored := storage.NodeForTest(created.Metadata.UID)
+	if !stored.Metadata.CreatedAt.Equal(created.Metadata.CreatedAt) || !stored.Metadata.UpdatedAt.Equal(created.Metadata.UpdatedAt) {
+		t.Fatalf("stored timestamps differ from response: stored=%+v response=%+v", stored.Metadata, created.Metadata)
+	}
+
+	update := httptest.NewRecorder()
+	UpdateNode(update, httptest.NewRequest(http.MethodPut, "/nodes/node-1", bytes.NewBufferString(`{"spec":{"value":"updated"}}`)))
+	if update.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body = %s", update.Code, update.Body.String())
+	}
+	var updated v1.Node
+	if err := json.Unmarshal(update.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	checkTimestamp("updatedAt after PUT", updated.Metadata.UpdatedAt)
+}
+
 // rendezvousBackend makes both competing HTTP requests reach storage before
 // either can commit. It delegates the actual serialization to the real backend.
 type rendezvousBackend struct {

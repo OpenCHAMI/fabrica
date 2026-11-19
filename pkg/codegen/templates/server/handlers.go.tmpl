@@ -163,7 +163,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 	// Initialize metadata from request
 	{{camelCase .Name}}.Metadata = req.Metadata
 	{{camelCase .Name}}.Metadata.UID = uid
-	now := time.Now()
+	now := resourceTimestamp()
 	{{camelCase .Name}}.Metadata.CreatedAt = now
 	{{camelCase .Name}}.Metadata.UpdatedAt = now
 
@@ -196,7 +196,7 @@ func Create{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		{{camelCase .Name}}.Metadata.Initialize(req.Metadata.Name, uid)
 	} else {
 		{{camelCase .Name}}.Metadata.Initialize("", uid)
-	now := time.Now()
+	now := resourceTimestamp()
 	{{camelCase .Name}}.Metadata.CreatedAt = now
 	{{camelCase .Name}}.Metadata.UpdatedAt = now
 
@@ -299,7 +299,7 @@ func Update{{.Name}}(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Update timestamp
-		{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
+		{{camelCase .Name}}.Metadata.UpdatedAt = resourceTimestamp()
 		{{else}}
 		// Legacy mode: use SetLabel/SetAnnotation methods
 		if req.Metadata.Name != "" {
@@ -405,7 +405,7 @@ func Patch{{.Name}}(w http.ResponseWriter, r *http.Request) {
 
 		// Touch to update metadata
 		{{if .IsVersioned}}
-		{{camelCase .Name}}.Metadata.UpdatedAt = time.Now()
+		{{camelCase .Name}}.Metadata.UpdatedAt = resourceTimestamp()
 		{{else}}
 		{{camelCase .Name}}.Touch()
 		{{end}}
@@ -489,7 +489,7 @@ func Update{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		res.Status.Version = prevVersion
 		{{- end }}{{- end }}
 		{{if .IsVersioned}}
-		res.Metadata.UpdatedAt = time.Now()
+		res.Metadata.UpdatedAt = resourceTimestamp()
 		{{else}}
 		res.Touch()
 		{{end}}
@@ -574,7 +574,7 @@ func Patch{{.Name}}Status(w http.ResponseWriter, r *http.Request) {
 		{{- end }}{{- end }}
 
 		{{if .IsVersioned}}
-		res.Metadata.UpdatedAt = time.Now()
+		res.Metadata.UpdatedAt = resourceTimestamp()
 		{{else}}
 		res.Touch()
 		{{end}}
@@ -759,7 +759,7 @@ func new{{.Name}}RevisionResource(r *http.Request, name string, req Create{{.Nam
 	res.Metadata.UID = uid
 	res.Metadata.Labels = req.Labels
 	res.Metadata.Annotations = req.Annotations
-	now := time.Now().UTC()
+	now := resourceTimestamp()
 	res.Metadata.CreatedAt = now
 	res.Metadata.UpdatedAt = now
 	return res, nil
