@@ -150,6 +150,9 @@ func (s *FileStore[T]) readRecord(uid string) (Record[T], error) {
 		}
 		return Record[T]{}, err
 	}
+	if record.Metadata.UID != uid {
+		return Record[T]{}, fmt.Errorf("%w: record UID %q does not match indexed UID %q", ErrRevisionIdentityMismatch, record.Metadata.UID, uid)
+	}
 	return record, nil
 }
 

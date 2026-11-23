@@ -26,6 +26,8 @@ var (
 	ErrSeriesNotFound = errors.New("revision: series not found")
 	// ErrRevisionNotFound reports that a revision could not be found.
 	ErrRevisionNotFound = errors.New("revision: revision not found")
+	// ErrRevisionIdentityMismatch reports an operational integrity error in a stored revision's UID.
+	ErrRevisionIdentityMismatch = errors.New("revision: record identity mismatch")
 	// ErrRevisionNameConflict reports that a revision name is bound to different content.
 	ErrRevisionNameConflict = errors.New("revision: revision name conflict")
 	// ErrPreconditionFailed reports that a compare-and-swap precondition failed.
