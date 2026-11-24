@@ -14,6 +14,9 @@ import (
 
 // TestEventConfiguration tests the basic event configuration functionality
 func TestEventConfiguration(t *testing.T) {
+	original := events.GetEventConfig()
+	t.Cleanup(func() { events.SetEventConfig(original) })
+
 	t.Run("CanSetConfiguration", func(t *testing.T) {
 		config := &events.EventConfig{
 			Enabled:                true,

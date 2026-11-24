@@ -112,6 +112,12 @@ func (s *RackReconciliationFunctionalTestSuite) SetupSuite() {
 // 3. Workers process the requests and call the reconciler
 // 4. Child resources are created and parent status is updated
 func (s *RackReconciliationFunctionalTestSuite) TestRackReconciliationExecution() {
+	original := events.GetEventConfig()
+	s.T().Cleanup(func() { events.SetEventConfig(original) })
+	config := events.DefaultEventConfig()
+	config.Enabled = true
+	events.SetEventConfig(config)
+
 	ctx := context.Background()
 
 	// Set up storage
@@ -124,12 +130,17 @@ func (s *RackReconciliationFunctionalTestSuite) TestRackReconciliationExecution(
 	defer eventBus.Close() //nolint:errcheck
 
 	// Register resource prefixes
-	resource.RegisterResourcePrefix("RackTemplate", "rktmpl")
-	resource.RegisterResourcePrefix("Rack", "rack")
-	resource.RegisterResourcePrefix("Chassis", "chas")
-	resource.RegisterResourcePrefix("Blade", "blade")
-	resource.RegisterResourcePrefix("BMC", "bmc")
-	resource.RegisterResourcePrefix("Node", "node")
+	registered := resource.GetRegisteredPrefixes()
+	for kind, prefix := range map[string]string{
+		"RackTemplate": "rktmpl", "Rack": "rack", "Chassis": "chas",
+		"Blade": "blade", "BMC": "bmc", "Node": "node",
+	} {
+		if existing, ok := registered[kind]; ok {
+			s.Require().Equal(prefix, existing, "prefix for %s", kind)
+			continue
+		}
+		resource.RegisterResourcePrefix(kind, prefix)
+	}
 
 	// Create a RackTemplate
 	templateUID, err := resource.GenerateUIDForResource("RackTemplate")
