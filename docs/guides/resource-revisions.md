@@ -35,7 +35,7 @@ For file storage, initialize generated services with `storage.InitFileBackend(da
 
 All `FileStore` instances in one process that resolve to the same canonical revision directory share a mutex. This serializes series creation, revision-number allocation, named ensure, status updates, and default promotion even when application code reopens the store. It does not provide an inter-process file lock: do not run multiple service processes against the same file-storage directory.
 
-Series state contains the authoritative ordered revision UID list. Revision listing and lookup use that list rather than scanning record files, so a record written immediately before a failed series-state update is an ignored orphan and cannot claim a revision number or become resolvable. Orphan files are retained; this release does not run automatic garbage collection.
+Series state contains the authoritative ordered revision UID list. Revision listing and lookup use that list rather than scanning record files, so a record written immediately before a failed series-state update is an ignored orphan and cannot claim a revision number or become resolvable. A record whose embedded UID differs from its indexed filename is rejected as an integrity error. Orphan files are retained; this release does not run automatic garbage collection.
 
 Each JSON file is replaced atomically with a temporary-file rename, but a revision mutation spans a record file and a series-state file. The file backend does not provide a filesystem transaction or call `fsync` across both files and their directories. A process crash between the two renames can leave an ignored orphan. Sudden host or storage-device failure can still require restoring the data directory from backup.
 
