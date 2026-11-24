@@ -7,7 +7,6 @@ package codegen
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -21,7 +20,7 @@ func TestGeneratedClientPathSegments(t *testing.T) {
 	files := map[string]string{
 		"go.mod": fmt.Sprintf(`module example.com/clientpaths
 
-go 1.26.10
+go %s
 
 require (
 	github.com/openchami/fabrica v0.0.0
@@ -30,7 +29,7 @@ require (
 )
 
 replace github.com/openchami/fabrica => %s
-`, filepath.ToSlash(root)),
+`, repositoryGoVersion(t), filepath.ToSlash(root)),
 		"apis/v1/types.go": `package v1
 import "github.com/openchami/fabrica/pkg/fabrica"
 type NodeSpec struct{}
@@ -88,9 +87,8 @@ type BootConfig struct {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-race", "-count=1", "."}} {
-		cmd := exec.Command("go", args...)
+		cmd := fixtureGoCommand(args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("generated client go %v: %v\n%s", args, err, output)

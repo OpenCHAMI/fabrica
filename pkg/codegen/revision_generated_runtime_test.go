@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"go/format"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,9 +85,8 @@ func(s *NodeStatus)Validate(context.Context)error{ValidationCalls.Add(1);if s.Ph
 			commands = append(commands, []string{"test", "-count=1", "-run", "^TestWorkflow$", "./..."})
 		}
 		for _, args := range commands {
-			cmd := exec.Command("go", args...)
+			cmd := fixtureGoCommand(args...)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("execute generated revision API mode=%s go %v: %v\n%s", mode, args, err, output)
@@ -153,9 +151,8 @@ func TestGeneratedOpenAPISpecValidatesAcrossResourceModes(t *testing.T) {
 			}
 
 			for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}} {
-				cmd := exec.Command("go", args...)
+				cmd := fixtureGoCommand(args...)
 				cmd.Dir = dir
-				cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 				output, err := cmd.CombinedOutput()
 				if err != nil {
 					t.Fatalf("execute generated OpenAPI mode go %v: %v\n%s", args, err, output)
@@ -168,7 +165,7 @@ func TestGeneratedOpenAPISpecValidatesAcrossResourceModes(t *testing.T) {
 func writeOpenAPIValidationFixture(t *testing.T, dir, root string) {
 	t.Helper()
 	files := map[string]string{
-		"go.mod": fmt.Sprintf("module example.com/openapifixture\n\ngo 1.26.10\n\nrequire github.com/openchami/fabrica v0.0.0\n\nreplace github.com/openchami/fabrica => %s\n", root),
+		"go.mod": fmt.Sprintf("module example.com/openapifixture\n\ngo %s\n\nrequire github.com/openchami/fabrica v0.0.0\n\nreplace github.com/openchami/fabrica => %s\n", repositoryGoVersion(t), root),
 		"apis/v1/types.go": `package v1
 import "github.com/openchami/fabrica/pkg/resource"
 type NodeSpec struct { Value string ` + "`json:\"value\"`" + ` }
@@ -216,7 +213,7 @@ func TestGeneratedOpenAPISpec(t *testing.T) {
 func writeRevisionFixture(t *testing.T, dir, root string) {
 	t.Helper()
 	files := map[string]string{
-		"go.mod": fmt.Sprintf("module example.com/revisionfixture\n\ngo 1.26.10\n\nrequire (\n github.com/go-chi/chi/v5 v5.2.3\n github.com/openchami/fabrica v0.0.0\n)\n\nreplace github.com/openchami/fabrica => %s\n", root),
+		"go.mod": fmt.Sprintf("module example.com/revisionfixture\n\ngo %s\n\nrequire (\n github.com/go-chi/chi/v5 v5.2.3\n github.com/openchami/fabrica v0.0.0\n)\n\nreplace github.com/openchami/fabrica => %s\n", repositoryGoVersion(t), root),
 		"apis/v1/types.go": `package v1
 import "github.com/openchami/fabrica/pkg/resource"
 type NodeSpec struct { Value string ` + "`json:\"value\" validate:\"required\"`" + ` }

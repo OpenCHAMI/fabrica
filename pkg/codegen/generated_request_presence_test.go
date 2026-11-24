@@ -7,7 +7,6 @@ package codegen
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -30,7 +29,7 @@ type Node struct{}
 	if err != nil {
 		t.Fatal(err)
 	}
-	goMod := fmt.Sprintf("module example.com/presence\n\ngo 1.26.10\n\nrequire github.com/openchami/fabrica v0.0.0\nreplace github.com/openchami/fabrica => %s\n", repoRoot)
+	goMod := fmt.Sprintf("module example.com/presence\n\ngo %s\n\nrequire github.com/openchami/fabrica v0.0.0\nreplace github.com/openchami/fabrica => %s\n", repositoryGoVersion(t), repoRoot)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -77,15 +76,13 @@ func TestPresence(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "presence_test.go"), []byte(testSource), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tidy := exec.Command("go", "mod", "tidy")
+	tidy := fixtureGoCommand("mod", "tidy")
 	tidy.Dir = dir
-	tidy.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 	if output, err := tidy.CombinedOutput(); err != nil {
 		t.Fatalf("tidy generated request fixture: %v\n%s", err, output)
 	}
-	cmd := exec.Command("go", "test", "-run", "^TestPresence$", ".")
+	cmd := fixtureGoCommand("test", "-run", "^TestPresence$", ".")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated request presence: %v\n%s", err, output)
 	}

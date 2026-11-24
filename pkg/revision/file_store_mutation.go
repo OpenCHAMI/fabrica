@@ -6,7 +6,6 @@ package revision
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -139,30 +138,8 @@ func (s *FileStore[T]) newRecord(seriesName, revisionName, digest string, number
 	return Record[T]{Metadata: Metadata{UID: uid, SeriesName: seriesName, RevisionName: revisionName, Number: number, Digest: digest, CreatedAt: s.now()}, Resource: resource}, nil
 }
 
-func (s *FileStore[T]) seriesPath(name string) string {
-	encoded := base64.RawURLEncoding.EncodeToString([]byte(name))
-	return filepath.Join(s.root, "series", encoded+".json")
-}
-
 func (s *FileStore[T]) recordPath(uid string) string {
 	return filepath.Join(s.root, "records", uid+".json")
-}
-
-func (s *FileStore[T]) readSeries(name string) (fileSeries, error) {
-	var series fileSeries
-	if err := readJSONFile(s.seriesPath(name), &series); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return fileSeries{}, ErrSeriesNotFound
-		}
-		return fileSeries{}, err
-	}
-	if series.RevisionNames == nil {
-		series.RevisionNames = map[string]string{}
-	}
-	if series.RevisionUIDs == nil {
-		series.RevisionUIDs = authoritativeUIDsFromLegacySeries(series)
-	}
-	return series, nil
 }
 
 func (s *FileStore[T]) readRecord(uid string) (Record[T], error) {

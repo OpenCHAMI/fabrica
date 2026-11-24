@@ -7,7 +7,6 @@ package codegen
 import (
 	_ "embed"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -189,9 +188,8 @@ func TestUIDDefaultGeneratedWorkflow(t *testing.T) {
 				commands = append([][]string{{"run", "-mod=mod", "entgo.io/ent/cmd/ent", "generate", "./internal/storage/ent/schema"}}, commands...)
 			}
 			for _, args := range commands {
-				cmd := exec.Command("go", args...)
+				cmd := fixtureGoCommand(args...)
 				cmd.Dir = dir
-				cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 				if output, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("generated UID workflow go %v: %v\n%s", args, err, output)
 				}

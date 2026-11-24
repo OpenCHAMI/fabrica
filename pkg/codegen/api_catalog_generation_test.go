@@ -10,7 +10,6 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -93,7 +92,7 @@ func TestGeneratedAPICatalog(t *testing.T) {
 			fixture := "package main\nconst expectedBase = " + strconv.Quote(base) + "\nvar expectedPaths = []string{" + strings.Join(paths, ",") + "}\n"
 			writeConditionalFixtureFile(t, dir, "expected_test.go", fixture)
 			writeConditionalFixtureFile(t, dir, "catalog_test.go", generatedCatalogBehaviorTest)
-			cmd := exec.Command("go", "test", "-mod=mod", "-count=1", ".")
+			cmd := fixtureGoCommand("test", "-mod=mod", "-count=1", ".")
 			cmd.Dir = dir
 			output, err := cmd.CombinedOutput()
 			if err != nil {

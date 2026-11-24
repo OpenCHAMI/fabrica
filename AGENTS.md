@@ -110,10 +110,14 @@ Use the narrowest test that proves the contract:
 - Template structure: test template text in `cmd/fabrica` when route grouping or generated shape matters.
 - Generated behavior: generate into `t.TempDir()` and inspect or compile the output.
 
-For release-lane work while the module targets Go 1.26.10:
+Use the Go requirement in `go.mod`. CI reads it with `go-version-file`, and
+Make selects it unless `GOTOOLCHAIN` is explicitly overridden. Runtime fixture
+commands reuse the toolchain running the tests and ignore outside workspaces;
+fixture modules that compile the current runtime derive their Go requirement
+from the repository's `go.mod` rather than pinning another patch version.
 
 ```bash
-GOTOOLCHAIN=go1.26.10 go test ./cmd/fabrica ./internal/config ./pkg/codegen -count=1
+go test ./cmd/fabrica ./internal/config ./pkg/codegen -count=1
 ```
 
 Run `gofmt` with the same selected toolchain when possible.

@@ -9,7 +9,6 @@ import (
 	"go/format"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,9 +67,8 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "internal", "storage", "storage_generated.go"), formatted, 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-race", "-count=1", "./...")
+	cmd := fixtureGoCommand("test", "-race", "-count=1", "./...")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute generated handlers: %v\n%s", err, output)
@@ -82,9 +80,8 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 	if err := gen.GenerateHandlers(); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command("go", "test", "-race", "-count=1", "-run", "^(TestDisabledConditionalModePreservesCustomMutations|TestSnapshotBookkeepingRejectsStaleResource)$", "./...")
+	cmd = fixtureGoCommand("test", "-race", "-count=1", "-run", "^(TestDisabledConditionalModePreservesCustomMutations|TestSnapshotBookkeepingRejectsStaleResource)$", "./...")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("execute conditional-disabled handlers: %v\n%s", err, output)
 	}
@@ -110,9 +107,8 @@ func TestGeneratedReadHandlersExecuteConditionalRequests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "handlers_generated_test.go"), []byte(customStorageHandlerTest), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command("go", "test", "-race", "-count=1", "./...")
+	cmd = fixtureGoCommand("test", "-race", "-count=1", "./...")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("execute handwritten custom-storage handlers: %v\n%s", err, output)
 	}

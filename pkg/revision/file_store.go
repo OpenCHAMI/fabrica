@@ -125,9 +125,9 @@ func (s *FileStore[T]) createSeries(ctx context.Context, name, revisionName, dig
 	if err := ctx.Err(); err != nil {
 		return Record[T]{}, "", err
 	}
-	if _, err := os.Stat(s.seriesPath(name)); err == nil {
+	if _, err := s.readSeries(name); err == nil {
 		return Record[T]{}, "", ErrSeriesExists
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, ErrSeriesNotFound) {
 		return Record[T]{}, "", fmt.Errorf("revision: inspect series: %w", err)
 	}
 

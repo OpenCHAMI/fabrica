@@ -7,7 +7,6 @@ package codegen
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -66,9 +65,8 @@ func TestRevisionEntGeneratedRuntimeParity(t *testing.T) {
 		{"mod", "tidy"},
 		{"test", "-count=1", "./..."},
 	} {
-		cmd := exec.Command("go", args...)
+		cmd := fixtureGoCommand(args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("execute generated Ent revision go %v: %v\n%s", args, err, output)
@@ -81,7 +79,7 @@ func writeRevisionEntFixture(t *testing.T, dir, root string) {
 	files := map[string]string{
 		"go.mod": fmt.Sprintf(`module example.com/entrevisionfixture
 
-go 1.26.10
+go %s
 
 require (
 	entgo.io/ent v0.14.5
@@ -90,7 +88,7 @@ require (
 )
 
 replace github.com/openchami/fabrica => %s
-`, root),
+`, repositoryGoVersion(t), root),
 		"apis/v1/types.go": `package v1
 import "github.com/openchami/fabrica/pkg/resource"
 type NodeSpec struct { Value string ` + "`json:\"value\"`" + ` }

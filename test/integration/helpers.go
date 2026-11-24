@@ -305,7 +305,7 @@ func (p *TestProject) GenerateEnt(fabricaBinary string) error {
 
 // findAvailablePort finds an available port by listening on port 0
 func findAvailablePort() (int, error) {
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, err
 	}
@@ -346,7 +346,7 @@ func (p *TestProject) StartServerRuntime() error {
 	}
 
 	// Start the server with the serve subcommand and port flag
-	args := []string{"serve", "--port", fmt.Sprintf("%d", port)}
+	args := []string{"serve", "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port)}
 	if p.Storage == "ent" {
 		args = append(args, "--database-url", "file:./data.db?cache=shared&_fk=1")
 	}

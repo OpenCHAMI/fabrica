@@ -30,7 +30,7 @@ func TestGeneratedEntAtomicMutations(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	module := "module example.com/atomic-ent\n\ngo 1.26.10\n\nrequire (\n github.com/openchami/fabrica v0.0.0\n entgo.io/ent v0.14.5\n github.com/mattn/go-sqlite3 v1.14.32\n)\nreplace github.com/openchami/fabrica => " + root + "\n"
+	module := "module example.com/atomic-ent\n\ngo " + repositoryGoVersion(t) + "\n\nrequire (\n github.com/openchami/fabrica v0.0.0\n entgo.io/ent v0.14.5\n github.com/mattn/go-sqlite3 v1.14.32\n)\nreplace github.com/openchami/fabrica => " + root + "\n"
 	if err := os.WriteFile("go.mod", []byte(module), 0644); err != nil {
 		t.Fatal(err)
 	}

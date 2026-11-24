@@ -9,7 +9,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -468,40 +467,40 @@ func TestGeneratedDedicatedEntSchemasCompile(t *testing.T) {
 		}
 	}
 
-	goMod := []byte("module generatedschema\n\ngo 1.26.10\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgolang.org/x/crypto v0.43.0\n)\n")
+	goMod := []byte("module generatedschema\n\ngo " + repositoryGoVersion(t) + "\n\nrequire (\n\tentgo.io/ent v0.14.5\n\tgolang.org/x/crypto v0.43.0\n)\n")
 	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), goMod, 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
 	}
 
-	tidy := exec.Command("go", "mod", "tidy")
+	tidy := fixtureGoCommand("mod", "tidy")
 	tidy.Dir = tmpDir
 	output, err := tidy.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated dedicated Ent schema module failed go mod tidy: %v\n%s", err, output)
 	}
 
-	cmd := exec.Command("go", "test", "./schema")
+	cmd := fixtureGoCommand("test", "./schema")
 	cmd.Dir = tmpDir
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated dedicated Ent schemas failed to compile: %v\n%s", err, output)
 	}
 
-	entGenerate := exec.Command("go", "run", "-mod=mod", "entgo.io/ent/cmd/ent", "generate", "./schema")
+	entGenerate := fixtureGoCommand("run", "-mod=mod", "entgo.io/ent/cmd/ent", "generate", "./schema")
 	entGenerate.Dir = tmpDir
 	output, err = entGenerate.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated dedicated Ent schemas failed Ent codegen: %v\n%s", err, output)
 	}
 
-	tidy = exec.Command("go", "mod", "tidy")
+	tidy = fixtureGoCommand("mod", "tidy")
 	tidy.Dir = tmpDir
 	output, err = tidy.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated Ent module failed post-generation go mod tidy: %v\n%s", err, output)
 	}
 
-	moduleTest := exec.Command("go", "test", "./...")
+	moduleTest := fixtureGoCommand("test", "./...")
 	moduleTest.Dir = tmpDir
 	output, err = moduleTest.CombinedOutput()
 	if err != nil {

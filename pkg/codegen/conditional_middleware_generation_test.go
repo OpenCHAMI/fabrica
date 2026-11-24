@@ -7,7 +7,6 @@ package codegen
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -25,11 +24,11 @@ func TestGeneratedConditionalMiddlewareBehavior(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	writeConditionalFixtureFile(t, dir, "go.mod", "module example.com/conditionalfixture\n\ngo 1.26.10\n")
+	writeConditionalFixtureFile(t, dir, "go.mod", "module example.com/conditionalfixture\n\ngo "+repositoryGoVersion(t)+"\n")
 	writeConditionalFixtureFile(t, dir, "conditional_generated.go", generated.String())
 	writeConditionalFixtureFile(t, dir, "conditional_generated_test.go", generatedConditionalBehaviorTest)
 
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := fixtureGoCommand("test", "-count=1", ".")
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err != nil {

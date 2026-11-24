@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"go/format"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -91,7 +90,7 @@ func TestGeneratedOpenAPIRequiredFields(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}} {
-					cmd := exec.Command("go", args...)
+					cmd := fixtureGoCommand(args...)
 					cmd.Dir = dir
 					output, err := cmd.CombinedOutput()
 					if err != nil {
