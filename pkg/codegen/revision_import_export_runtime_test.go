@@ -6,7 +6,6 @@ package codegen
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -26,9 +25,8 @@ func TestRevisionImportExportGeneratedRuntimeFailsClosed(t *testing.T) {
 
 	writeRevisionImportExportFixture(t, dir)
 	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "./..."}} {
-		cmd := exec.Command("go", args...)
+		cmd := fixtureGoCommand(args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("execute generated import/export go %v: %v\n%s", args, err, output)
@@ -54,9 +52,8 @@ func TestRevisionImportExportGeneratedAllRevisionCompiles(t *testing.T) {
 
 	writeRevisionImportExportFixture(t, dir)
 	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-run", "^$", "-count=1", "./..."}} {
-		cmd := exec.Command("go", args...)
+		cmd := fixtureGoCommand(args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("compile all-revision generated import/export go %v: %v\n%s", args, err, output)
@@ -69,7 +66,7 @@ func writeRevisionImportExportFixture(t *testing.T, dir string) {
 	files := map[string]string{
 		"go.mod": `module example.com/revisions
 
-go 1.26.10
+go ` + repositoryGoVersion(t) + `
 
 require (
 	github.com/spf13/cobra v1.10.2

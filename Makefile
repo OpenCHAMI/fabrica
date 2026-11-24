@@ -16,8 +16,6 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 RELEASE_VERSION ?= latest
-ACT_GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' go.mod | cut -d. -f1,2)
-ACT_LOCAL_GO_VERSION ?= 1.25
 ACT_DOCKER_HOST ?= $(shell docker context inspect $${DOCKER_CONTEXT:-$$(docker context show 2>/dev/null)} 2>/dev/null | awk -F'"' '/"Host":/ {print $$4; exit}')
 
 # Export so Go commands launched by Make use the selected toolchain.
@@ -173,8 +171,8 @@ act-list: ## List all GitHub Actions workflows
 
 act-test: ## Run the integration workflow locally (ubuntu only)
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
-	@echo "Note: GitHub CI uses Go $(ACT_GO_VERSION); local act defaults to Go $(ACT_LOCAL_GO_VERSION) because the Go $(ACT_GO_VERSION) linux/amd64 toolchain is currently crashing under act"
-	$(call run_act,push -W .github/workflows/regression-tests.yml --container-architecture linux/amd64 -j integration-tests --matrix go-version:$(ACT_LOCAL_GO_VERSION))
+	@echo "Using the Go version from go.mod, matching GitHub CI"
+	$(call run_act,push -W .github/workflows/tests.yml --container-architecture linux/amd64 -j integration-tests)
 
 act-build: ## Run the release workflow locally
 	@command -v act >/dev/null 2>&1 || { echo "act is not installed. Run 'make act-install' first."; exit 1; }
@@ -198,7 +196,7 @@ act-all: ## Run all testable workflows locally (build, test, lint, reuse, vuln)
 	@echo "\n=== Build Workflow ==="
 	$(call run_act,push -W .github/workflows/release.yaml --container-architecture linux/amd64 -j goreleaser) || true
 	@echo "\n=== Test Workflow ==="
-	$(call run_act,push -W .github/workflows/regression-tests.yml --container-architecture linux/amd64 -j integration-tests --matrix go-version:$(ACT_LOCAL_GO_VERSION)) || true
+	$(call run_act,push -W .github/workflows/tests.yml --container-architecture linux/amd64 -j integration-tests) || true
 	@echo "\n=== Lint Workflow ==="
 	$(call run_act,push -W .github/workflows/lint.yaml --container-architecture linux/amd64 -j golangci-lint) || true
 	@echo "\n=== REUSE Workflow ==="

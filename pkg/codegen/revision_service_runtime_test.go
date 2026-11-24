@@ -7,7 +7,6 @@ package codegen
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -40,7 +39,7 @@ func TestRevisionGeneratedService(t *testing.T) {
 			}
 			writeServiceFixture("go.mod", []byte(fmt.Sprintf(`module example.com/revisionservice
 
-go 1.26.10
+go %s
 
 require (
 	github.com/openchami/fabrica v0.0.0
@@ -51,7 +50,7 @@ require (
 )
 
 replace github.com/openchami/fabrica => %s
-`, filepath.ToSlash(root))))
+`, repositoryGoVersion(t), filepath.ToSlash(root))))
 			for _, file := range []struct{ source, target string }{
 				{"types.go.fixture", "apis/v1/types.go"},
 				{"workflow_test.go.fixture", "cmd/server/workflow_test.go"},
@@ -111,9 +110,8 @@ func TestMutableCommandsRemainAvailable(t *testing.T) {
 				}
 			}
 			for _, args := range [][]string{{"mod", "tidy"}, {"test", "-race", "-count=1", "./..."}} {
-				cmd := exec.Command("go", args...)
+				cmd := fixtureGoCommand(args...)
 				cmd.Dir = dir
-				cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 				if output, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("generated %s service: go %v: %v\n%s", name, args, err, output)
 				}

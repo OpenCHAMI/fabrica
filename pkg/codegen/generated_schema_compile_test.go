@@ -69,7 +69,7 @@ func newSchemaModule(t *testing.T, files map[string][]byte) string {
 		{"get", "golang.org/x/crypto"},
 		{"mod", "tidy"},
 	} {
-		cmd := exec.Command("go", args...)
+		cmd := fixtureGoCommand(args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Skipf("cannot resolve Ent dependencies (%v): %s", err, out)
@@ -84,7 +84,7 @@ func newSchemaModule(t *testing.T, files map[string][]byte) string {
 func buildSchemaModule(t *testing.T, dir string) (string, bool) {
 	t.Helper()
 
-	cmd := exec.Command("go", "build", "./schema/")
+	cmd := fixtureGoCommand("build", "./schema/")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 

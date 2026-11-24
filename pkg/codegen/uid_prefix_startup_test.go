@@ -10,7 +10,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -140,9 +139,8 @@ func TestStartupPrefixAudit(t *testing.T) {
 	}
 
 	for _, args := range [][]string{{"mod", "tidy"}, {"test", "-count=1", "."}} {
-		cmd := exec.Command("go", args...)
+		cmd := fixtureGoCommand(args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.10")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, out)
 		}
